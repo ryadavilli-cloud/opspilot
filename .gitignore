@@ -1,0 +1,94 @@
+# ─────────────────────────────────────────────────────────────
+# OpsPilot .gitignore  (Python / LangGraph / Azure)
+# ─────────────────────────────────────────────────────────────
+
+# ── Secrets & credentials  (NEVER commit) ──────────────────────
+.env
+.env.*
+!.env.example            # keep a checked-in template
+*.pem
+*.key
+*.pfx
+*.p12
+secrets.*
+**/azure.json
+**/*service-principal*.json
+.azure/                  # azure-cli / azd local state
+local.settings.json      # Azure Functions local config
+.langsmith
+.langsmith.env
+
+# ── Python ─────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+dist/
+*.egg-info/
+*.egg
+.eggs/
+pip-wheel-metadata/
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+.python-version
+
+# Test / lint / type-check caches
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+.tox/
+.nox/
+.mypy_cache/
+.ruff_cache/
+.pyre/
+.dmypy.json
+
+# ── Notebooks ──────────────────────────────────────────────────
+.ipynb_checkpoints/
+
+# ── Local model weights & vector stores  (large; not source) ───
+# Keep golden/synthetic eval *datasets* tracked — ignore only heavy artifacts.
+qdrant_storage/
+*.gguf
+*.bin
+*.safetensors
+*.onnx
+models/
+.cache/
+.huggingface/
+
+# ── Logs, traces, eval outputs ─────────────────────────────────
+*.log
+logs/
+eval_runs/
+eval_results/
+scorecards/
+
+# ── IaC / build artifacts ──────────────────────────────────────
+# Bicep compiles to ARM JSON — ignore generated output, keep the .bicep source.
+*.azrm.json
+main.json
+.bicep/
+
+# ── Docker ─────────────────────────────────────────────────────
+docker-compose.override.yml
+
+# ── IDE / editor ───────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# ── OS cruft ───────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+desktop.ini
