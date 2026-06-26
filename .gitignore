@@ -5,7 +5,8 @@
 # ── Secrets & credentials  (NEVER commit) ──────────────────────
 .env
 .env.*
-!.env.example            # keep a checked-in template
+# keep a checked-in template
+!.env.example
 *.pem
 *.key
 *.pfx
@@ -13,8 +14,9 @@
 secrets.*
 **/azure.json
 **/*service-principal*.json
-.azure/                  # azure-cli / azd local state
-local.settings.json      # Azure Functions local config
+# azure-cli / azd local state; Azure Functions local config
+.azure/
+local.settings.json
 .langsmith
 .langsmith.env
 
@@ -36,7 +38,6 @@ pip-wheel-metadata/
 venv/
 env/
 ENV/
-.python-version
 
 # Test / lint / type-check caches
 .pytest_cache/
@@ -92,3 +93,9 @@ docker-compose.override.yml
 .DS_Store
 Thumbs.db
 desktop.ini
+
+# ── Course materials & local scratch (not for the public repo) ──
+*.pdf
+.vs/
+out.txt
+raw.txt
