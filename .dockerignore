@@ -1,0 +1,29 @@
+# Keep the build context lean — the image only needs pyproject/uv.lock/README/src.
+.git
+.gitignore
+.venv
+venv
+**/__pycache__
+**/*.py[cod]
+.pytest_cache
+.mypy_cache
+.ruff_cache
+.python-version
+
+# Not needed in the image
+docs
+infra
+.github
+tests
+eval
+*.pdf
+.vs
+.vscode
+.idea
+out.txt
+raw.txt
+
+# Secrets / local env
+.env
+.env.*
+!.env.example

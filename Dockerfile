@@ -11,13 +11,12 @@ ENV UV_COMPILE_BYTECODE=1 \
     PYTHONUNBUFFERED=1
 
 # Install dependencies first (cached layer), then the project.
+# Note: no BuildKit cache mount — az acr build uses the classic Docker builder.
 COPY pyproject.toml uv.lock* README.md ./
-RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --no-install-project --no-dev
+RUN uv sync --no-install-project --no-dev
 
 COPY src/ ./src/
-RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --no-dev
+RUN uv sync --no-dev
 
 EXPOSE 8000
 CMD ["uv", "run", "uvicorn", "opspilot.api:app", "--host", "0.0.0.0", "--port", "8000"]
