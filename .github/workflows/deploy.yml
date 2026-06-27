@@ -1,0 +1,66 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# OIDC: no stored secrets — federated credential authenticates to Azure.
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  IMAGE_REPO: opspilot
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Azure login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Build image in ACR
+        run: az acr build --registry "${{ vars.ACR_NAME }}" --image "$IMAGE_REPO:${{ github.sha }}" .
+
+      - name: Configure ACR pull via managed identity
+        run: |
+          az containerapp registry set \
+            --name "${{ vars.CONTAINER_APP_NAME }}" \
+            --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
+            --identity system \
+            --server "${{ vars.ACR_NAME }}.azurecr.io"
+
+      - name: Deploy to Container Apps
+        run: |
+          az containerapp update \
+            --name "${{ vars.CONTAINER_APP_NAME }}" \
+            --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
+            --image "${{ vars.ACR_NAME }}.azurecr.io/$IMAGE_REPO:${{ github.sha }}"
+
+      - name: Point ingress at the app port
+        run: |
+          az containerapp ingress update \
+            --name "${{ vars.CONTAINER_APP_NAME }}" \
+            --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
+            --target-port 8000
+
+      - name: Post-deploy smoke test
+        run: |
+          FQDN=$(az containerapp show \
+            --name "${{ vars.CONTAINER_APP_NAME }}" \
+            --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
+            --query properties.configuration.ingress.fqdn -o tsv)
+          echo "Smoke-testing https://$FQDN/health"
+          for i in $(seq 1 12); do
+            code=$(curl -s -o /dev/null -w "%{http_code}" "https://$FQDN/health" || true)
+            if [ "$code" = "200" ]; then echo "health OK ($code)"; exit 0; fi
+            echo "attempt $i: HTTP $code — retrying"; sleep 10
+          done
+          echo "smoke test failed"; exit 1
