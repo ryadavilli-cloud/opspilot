@@ -1,0 +1,60 @@
+{
+  "deployments": [
+    {
+      "deploy_id": "dep-20260512-01",
+      "service": "payment-api",
+      "ts": "2026-05-12T14:00:00Z",
+      "version": "payment-api@2.4.1",
+      "note": "reduced Cosmos connection pool 100->10 (causal: inc-001)"
+    },
+    {
+      "deploy_id": "dep-20260528-01",
+      "service": "catalog-api",
+      "ts": "2026-05-28T09:00:00Z",
+      "version": "catalog-api@1.9.0",
+      "note": "catalog bulk-import job rollout (trigger: inc-002)"
+    },
+    {
+      "deploy_id": "dep-20260601-07",
+      "service": "catalog-api",
+      "ts": "2026-06-01T11:00:00Z",
+      "version": "catalog-api@1.9.3",
+      "note": "routine"
+    },
+    {
+      "deploy_id": "dep-20260610-01",
+      "service": "notification-worker",
+      "ts": "2026-06-10T19:45:00Z",
+      "version": "notification-worker@3.1.0",
+      "note": "worker release with poison-message bug (causal: inc-003)"
+    },
+    {
+      "deploy_id": "dep-20260615-02",
+      "service": "checkout-api",
+      "ts": "2026-06-15T13:30:00Z",
+      "version": "checkout-api@5.6.0",
+      "note": "routine"
+    },
+    {
+      "deploy_id": "dep-20260620-04",
+      "service": "inventory-api",
+      "ts": "2026-06-20T10:15:00Z",
+      "version": "inventory-api@4.1.2",
+      "note": "routine"
+    },
+    {
+      "deploy_id": "dep-20260625-01",
+      "service": "inventory-api",
+      "ts": "2026-06-25T16:00:00Z",
+      "version": "inventory-api@4.2.0",
+      "note": "dropped cache invalidation on stock writes (causal: inc-006)"
+    },
+    {
+      "deploy_id": "dep-20260628-01",
+      "service": "checkout-api",
+      "ts": "2026-06-28T09:00:00Z",
+      "version": "checkout-api@5.7.2",
+      "note": "routine checkout release (RED HERRING: coincidental to inc-004)"
+    }
+  ]
+}

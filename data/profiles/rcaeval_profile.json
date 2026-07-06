@@ -1,0 +1,247 @@
+{
+  "source": "RCAEval RE1+RE2 (Zenodo 14590730, CC-BY-4.0). Calibration only; not redistributed.",
+  "calibration_systems": [
+    "sockshop",
+    "trainticket"
+  ],
+  "held_out_for_wild_eval": [
+    "onlineboutique"
+  ],
+  "method": {
+    "sample_rate_seconds": 1,
+    "deviation_gate": {
+      "z_thresh": 4.0,
+      "rel_thresh": 0.2
+    },
+    "note": "Dimensionless ratios only; absolute structure intentionally discarded."
+  },
+  "category_fault_basis": {
+    "payment": "delay",
+    "datastore": "mem",
+    "cache": "mem",
+    "messaging": "loss",
+    "inventory": "cpu"
+  },
+  "metric_signal": {
+    "by_fault_type": {
+      "mem": {
+        "affected_metric_fraction": {
+          "median": 0.0679,
+          "p25": 0.0606,
+          "p75": 0.0782,
+          "n": 50
+        },
+        "blast_radius_fraction": {
+          "median": 0.4462,
+          "p25": 0.3808,
+          "p75": 0.5423,
+          "n": 50
+        },
+        "onset_lag_seconds": {
+          "median": 7.0,
+          "p25": 5.0,
+          "p75": 9.0,
+          "n": 50
+        }
+      },
+      "disk": {
+        "affected_metric_fraction": {
+          "median": 0.0452,
+          "p25": 0.0392,
+          "p75": 0.0493,
+          "n": 50
+        },
+        "blast_radius_fraction": {
+          "median": 0.2222,
+          "p25": 0.2,
+          "p75": 0.2771,
+          "n": 50
+        },
+        "onset_lag_seconds": {
+          "median": 6.5,
+          "p25": 4.0,
+          "p75": 10.0,
+          "n": 50
+        }
+      },
+      "cpu": {
+        "affected_metric_fraction": {
+          "median": 0.0322,
+          "p25": 0.0253,
+          "p75": 0.0418,
+          "n": 50
+        },
+        "blast_radius_fraction": {
+          "median": 0.2778,
+          "p25": 0.2222,
+          "p75": 0.3333,
+          "n": 50
+        },
+        "onset_lag_seconds": {
+          "median": 9.0,
+          "p25": 6.0,
+          "p75": 11.25,
+          "n": 50
+        }
+      },
+      "loss": {
+        "affected_metric_fraction": {
+          "median": 0.0366,
+          "p25": 0.0292,
+          "p75": 0.0425,
+          "n": 50
+        },
+        "blast_radius_fraction": {
+          "median": 0.3077,
+          "p25": 0.2308,
+          "p75": 0.3692,
+          "n": 50
+        },
+        "onset_lag_seconds": {
+          "median": 9.0,
+          "p25": 6.0,
+          "p75": 12.5,
+          "n": 49
+        }
+      },
+      "delay": {
+        "affected_metric_fraction": {
+          "median": 0.0435,
+          "p25": 0.0336,
+          "p75": 0.0505,
+          "n": 50
+        },
+        "blast_radius_fraction": {
+          "median": 0.3231,
+          "p25": 0.2308,
+          "p75": 0.3889,
+          "n": 50
+        },
+        "onset_lag_seconds": {
+          "median": 9.0,
+          "p25": 6.0,
+          "p75": 10.0,
+          "n": 50
+        }
+      }
+    },
+    "root_cause_recall": 0.996
+  },
+  "log_signal": {
+    "by_fault_type": {
+      "mem": {
+        "log_lines_per_min_per_service": {
+          "median": 327.9512,
+          "p25": 302.606,
+          "p75": 358.845,
+          "n": 15
+        },
+        "ambient_error_fraction": {
+          "median": 0.068,
+          "p25": 0.0679,
+          "p75": 0.0681,
+          "n": 15
+        }
+      },
+      "disk": {
+        "log_lines_per_min_per_service": {
+          "median": 329.1073,
+          "p25": 327.8299,
+          "p75": 359.2036,
+          "n": 15
+        },
+        "ambient_error_fraction": {
+          "median": 0.0678,
+          "p25": 0.0666,
+          "p75": 0.0679,
+          "n": 15
+        }
+      },
+      "cpu": {
+        "log_lines_per_min_per_service": {
+          "median": 328.2279,
+          "p25": 325.5981,
+          "p75": 361.868,
+          "n": 15
+        },
+        "ambient_error_fraction": {
+          "median": 0.0678,
+          "p25": 0.0672,
+          "p75": 0.068,
+          "n": 15
+        }
+      },
+      "loss": {
+        "log_lines_per_min_per_service": {
+          "median": 320.2451,
+          "p25": 223.8373,
+          "p75": 346.358,
+          "n": 15
+        },
+        "ambient_error_fraction": {
+          "median": 0.0653,
+          "p25": 0.0645,
+          "p75": 0.0659,
+          "n": 15
+        }
+      },
+      "delay": {
+        "log_lines_per_min_per_service": {
+          "median": 335.8431,
+          "p25": 309.1276,
+          "p75": 346.6782,
+          "n": 15
+        },
+        "ambient_error_fraction": {
+          "median": 0.0677,
+          "p25": 0.0623,
+          "p75": 0.0678,
+          "n": 15
+        }
+      }
+    },
+    "note": "logs.csv has empty level/error; error inferred from message text. Resource faults show metric (not log) signal, so no per-fault error lift is harvested. These ratios calibrate the synthetic NOISE FLOOR only; incident error-logs are authored from the answer key."
+  },
+  "per_category": {
+    "payment": {
+      "basis_fault_type": "delay",
+      "affected_metric_fraction": 0.0435,
+      "blast_radius_fraction": 0.3231,
+      "onset_lag_seconds": 9.0,
+      "ambient_error_fraction": 0.0677,
+      "log_lines_per_min_per_service": 335.8431
+    },
+    "datastore": {
+      "basis_fault_type": "mem",
+      "affected_metric_fraction": 0.0679,
+      "blast_radius_fraction": 0.4462,
+      "onset_lag_seconds": 7.0,
+      "ambient_error_fraction": 0.068,
+      "log_lines_per_min_per_service": 327.9512
+    },
+    "cache": {
+      "basis_fault_type": "mem",
+      "affected_metric_fraction": 0.0679,
+      "blast_radius_fraction": 0.4462,
+      "onset_lag_seconds": 7.0,
+      "ambient_error_fraction": 0.068,
+      "log_lines_per_min_per_service": 327.9512
+    },
+    "messaging": {
+      "basis_fault_type": "loss",
+      "affected_metric_fraction": 0.0366,
+      "blast_radius_fraction": 0.3077,
+      "onset_lag_seconds": 9.0,
+      "ambient_error_fraction": 0.0653,
+      "log_lines_per_min_per_service": 320.2451
+    },
+    "inventory": {
+      "basis_fault_type": "cpu",
+      "affected_metric_fraction": 0.0322,
+      "blast_radius_fraction": 0.2778,
+      "onset_lag_seconds": 9.0,
+      "ambient_error_fraction": 0.0678,
+      "log_lines_per_min_per_service": 328.2279
+    }
+  }
+}

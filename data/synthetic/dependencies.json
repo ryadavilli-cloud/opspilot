@@ -1,0 +1,68 @@
+{
+  "edges": [
+    {
+      "from": "checkout-api",
+      "to": "payment-api",
+      "kind": "sync-http",
+      "critical": true
+    },
+    {
+      "from": "checkout-api",
+      "to": "inventory-api",
+      "kind": "sync-http",
+      "critical": true
+    },
+    {
+      "from": "checkout-api",
+      "to": "redis-cache",
+      "kind": "cache"
+    },
+    {
+      "from": "checkout-api",
+      "to": "service-bus",
+      "kind": "publish"
+    },
+    {
+      "from": "payment-api",
+      "to": "cosmos-db",
+      "kind": "datastore",
+      "critical": true
+    },
+    {
+      "from": "payment-api",
+      "to": "payment-gateway",
+      "kind": "external"
+    },
+    {
+      "from": "inventory-api",
+      "to": "cosmos-db",
+      "kind": "datastore",
+      "critical": true
+    },
+    {
+      "from": "inventory-api",
+      "to": "redis-cache",
+      "kind": "cache"
+    },
+    {
+      "from": "catalog-api",
+      "to": "cosmos-db",
+      "kind": "datastore"
+    },
+    {
+      "from": "catalog-api",
+      "to": "redis-cache",
+      "kind": "cache"
+    },
+    {
+      "from": "notification-worker",
+      "to": "service-bus",
+      "kind": "subscribe"
+    },
+    {
+      "from": "notification-worker",
+      "to": "email-provider",
+      "kind": "external"
+    }
+  ]
+}

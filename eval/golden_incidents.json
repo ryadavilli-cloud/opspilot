@@ -1,0 +1,195 @@
+[
+  {
+    "incident_id": "inc-001",
+    "title": "Payment authorizations timing out",
+    "type": "historical",
+    "alert": {
+      "summary": "Elevated checkout failures; payment authorizations timing out.",
+      "signal": "checkout-api 5xx rate > 5% sustained 10m"
+    },
+    "expected_severity": "SEV2",
+    "expected_category": "payment",
+    "expected_intent": "known_issue",
+    "expected_match": "postmortem:inc-001",
+    "expected_root_cause": "payment-api exhausted its Cosmos DB connection pool, so payment authorizations queued and timed out. The failures surfaced upstream as 5xx at checkout-api.",
+    "expected_impacted_chain": [
+      "cosmos-db",
+      "payment-api",
+      "checkout-api"
+    ],
+    "expected_evidence_refs": [
+      "logs:payment-api:evt-001-01",
+      "logs:checkout-api:evt-001-02",
+      "metrics:payment-api:p95_latency_ms@2026-05-12T14:25:00Z",
+      "metrics:checkout-api:http_5xx_rate@2026-05-12T14:30:00Z",
+      "deploys:payment-api:dep-20260512-01",
+      "deps:checkout-api->payment-api"
+    ],
+    "expected_retrieval_ids": [
+      "runbook:payment-timeout",
+      "runbook:checkout-api-500-errors",
+      "architecture:service-dependency-map"
+    ],
+    "red_herring": null
+  },
+  {
+    "incident_id": "inc-002",
+    "title": "Cosmos DB throttling cascading to reads",
+    "type": "historical",
+    "alert": {
+      "summary": "Inventory and catalog reads failing intermittently with 429s.",
+      "signal": "cosmos-db throttled-request rate spiking"
+    },
+    "expected_severity": "SEV2",
+    "expected_category": "datastore",
+    "expected_intent": "known_issue",
+    "expected_match": "postmortem:inc-002",
+    "expected_root_cause": "cosmos-db hit its provisioned RU ceiling and began returning 429s, throttling inventory-api and catalog-api reads, which degraded availability checks at checkout.",
+    "expected_impacted_chain": [
+      "cosmos-db",
+      "inventory-api",
+      "checkout-api"
+    ],
+    "expected_evidence_refs": [
+      "logs:inventory-api:evt-002-01",
+      "logs:catalog-api:evt-002-02",
+      "metrics:cosmos-db:ru_throttled_rate@2026-05-28T09:15:00Z",
+      "metrics:inventory-api:p95_latency_ms@2026-05-28T09:20:00Z",
+      "deploys:catalog-api:dep-20260528-01",
+      "deps:inventory-api->cosmos-db"
+    ],
+    "expected_retrieval_ids": [
+      "runbook:cosmos-db-throttling",
+      "architecture:retailease-system-overview",
+      "architecture:service-dependency-map"
+    ],
+    "red_herring": null
+  },
+  {
+    "incident_id": "inc-003",
+    "title": "Service Bus backlog; order notifications delayed",
+    "type": "historical",
+    "alert": {
+      "summary": "Order notifications delayed; Service Bus queue depth climbing.",
+      "signal": "service-bus active message count rising, not draining"
+    },
+    "expected_severity": "SEV3",
+    "expected_category": "messaging",
+    "expected_intent": "known_issue",
+    "expected_match": "postmortem:inc-003",
+    "expected_root_cause": "notification-worker entered a crash loop on an undeserializable message and stopped consuming from service-bus. Queue depth grew unbounded and order notifications were delayed.",
+    "expected_impacted_chain": [
+      "notification-worker",
+      "service-bus"
+    ],
+    "expected_evidence_refs": [
+      "logs:notification-worker:evt-003-01",
+      "metrics:service-bus:active_message_count@2026-06-10T20:00:00Z",
+      "metrics:notification-worker:restart_count@2026-06-10T20:05:00Z",
+      "deploys:notification-worker:dep-20260610-01",
+      "deps:notification-worker->service-bus"
+    ],
+    "expected_retrieval_ids": [
+      "runbook:service-bus-backlog",
+      "runbook:deployment-rollback",
+      "architecture:observability-strategy"
+    ],
+    "red_herring": null
+  },
+  {
+    "incident_id": "inc-004",
+    "title": "checkout-api 500s after the morning deploy",
+    "type": "novel",
+    "alert": {
+      "summary": "checkout-api returning 500s shortly after this morning's deployment.",
+      "signal": "checkout-api 5xx rate > 8% sustained 5m"
+    },
+    "expected_severity": "SEV1",
+    "expected_category": "payment",
+    "expected_intent": "novel_investigation",
+    "expected_match": null,
+    "expected_root_cause": "The third-party payment-gateway latency spiked and payment-api authorization calls timed out, so checkout-api returned 500s. The 09:00 checkout-api deploy was coincidental and not causal.",
+    "expected_impacted_chain": [
+      "payment-gateway",
+      "payment-api",
+      "checkout-api"
+    ],
+    "expected_evidence_refs": [
+      "logs:checkout-api:evt-004-01",
+      "logs:payment-api:evt-004-02",
+      "metrics:payment-api:p95_latency_ms@2026-06-28T10:10:00Z",
+      "metrics:checkout-api:http_5xx_rate@2026-06-28T10:15:00Z",
+      "deploys:checkout-api:dep-20260628-01",
+      "deps:checkout-api->payment-api"
+    ],
+    "expected_retrieval_ids": [
+      "runbook:checkout-api-500-errors",
+      "runbook:payment-timeout",
+      "runbook:deployment-rollback",
+      "architecture:service-dependency-map"
+    ],
+    "red_herring": "deploys:checkout-api:dep-20260628-01"
+  },
+  {
+    "incident_id": "inc-005",
+    "title": "Redis eviction storm degrading checkout latency",
+    "type": "novel",
+    "alert": {
+      "summary": "Checkout latency up and some carts/sessions dropping.",
+      "signal": "checkout-api p95 latency > 2x baseline"
+    },
+    "expected_severity": "SEV2",
+    "expected_category": "cache",
+    "expected_intent": "novel_investigation",
+    "expected_match": null,
+    "expected_root_cause": "redis-cache hit max memory and began evicting cart/session keys aggressively. checkout-api fell back to slower Cosmos reads and lost some sessions, raising latency.",
+    "expected_impacted_chain": [
+      "redis-cache",
+      "checkout-api"
+    ],
+    "expected_evidence_refs": [
+      "logs:checkout-api:evt-005-01",
+      "metrics:redis-cache:used_memory_pct@2026-06-22T11:35:00Z",
+      "metrics:redis-cache:evicted_keys_rate@2026-06-22T11:40:00Z",
+      "metrics:checkout-api:p95_latency_ms@2026-06-22T11:45:00Z",
+      "deps:checkout-api->redis-cache"
+    ],
+    "expected_retrieval_ids": [
+      "runbook:redis-cache-degradation",
+      "architecture:service-dependency-map"
+    ],
+    "red_herring": null
+  },
+  {
+    "incident_id": "inc-006",
+    "title": "Inventory overselling from stale cache after deploy",
+    "type": "novel",
+    "alert": {
+      "summary": "Reservation conflicts and oversells at checkout.",
+      "signal": "inventory-api reservation error rate elevated"
+    },
+    "expected_severity": "SEV2",
+    "expected_category": "inventory",
+    "expected_intent": "novel_investigation",
+    "expected_match": null,
+    "expected_root_cause": "An inventory-api deploy dropped cache invalidation on stock writes, so redis-cache served stale availability. checkout-api reservations conflicted and oversold. The deploy is the real cause here.",
+    "expected_impacted_chain": [
+      "inventory-api",
+      "redis-cache",
+      "checkout-api"
+    ],
+    "expected_evidence_refs": [
+      "logs:inventory-api:evt-006-01",
+      "logs:checkout-api:evt-006-02",
+      "metrics:inventory-api:reservation_error_rate@2026-06-25T16:20:00Z",
+      "deploys:inventory-api:dep-20260625-01",
+      "deps:inventory-api->redis-cache"
+    ],
+    "expected_retrieval_ids": [
+      "runbook:deployment-rollback",
+      "runbook:redis-cache-degradation",
+      "architecture:service-dependency-map"
+    ],
+    "red_herring": null
+  }
+]
