@@ -58,6 +58,9 @@ coverage.xml
 # ── Local model weights & vector stores  (large; not source) ───
 # Keep golden/synthetic eval *datasets* tracked — ignore only heavy artifacts.
 qdrant_storage/
+# Raw third-party datasets (RCAEval, CC-BY-4.0) — cited in data/provenance.md.
+# Only the derived profile (data/profiles/*.json) is committed, never the raw GBs.
+data/.rcaeval_cache/
 *.gguf
 *.bin
 *.safetensors

@@ -1,0 +1,63 @@
+# RetailEase — synthetic e-commerce checkout platform.
+#
+# This is the SPINE of the OpsPilot corpus. Every telemetry row (2b), KB doc (2d), and
+# eval label (golden sets) must agree with what is declared here. Services we own emit
+# logs/metrics/deploys; infra is the stateful backbone; externals are third parties we
+# depend on but do not control (a realistic "is it us or them?" investigation axis).
+name: RetailEase
+description: Synthetic online retail checkout platform used as OpsPilot's incident corpus.
+
+# Telemetry sample cadence: metric series are sampled every 5 minutes on :00/:05/:10/...
+# Every `metrics:...@<ts>` evidence ref in scenarios.yaml MUST land on a 5-minute boundary.
+metric_sample_interval_minutes: 5
+
+services:
+  - id: checkout-api
+    role: Public checkout orchestration; the customer-facing entry point.
+    tier: edge
+  - id: payment-api
+    role: Authorizes and captures payments; wraps the external payment gateway.
+    tier: core
+  - id: inventory-api
+    role: Stock reservation and availability checks.
+    tier: core
+  - id: catalog-api
+    role: Product catalog and pricing reads.
+    tier: core
+  - id: notification-worker
+    role: Async consumer that sends order and shipping notifications.
+    tier: worker
+
+infra:
+  - id: service-bus
+    kind: messaging
+    role: Order-event queue between checkout-api and notification-worker.
+  - id: cosmos-db
+    kind: datastore
+    role: System of record for orders, payments, stock, and catalog.
+  - id: redis-cache
+    kind: cache
+    role: Session/cart state and hot read cache.
+
+externals:
+  - id: payment-gateway
+    role: Third-party card processor. Out of our control; a latency/error source.
+  - id: email-provider
+    role: Third-party transactional email/SMS provider.
+
+# Directed dependency edges: <from> depends on / calls <to>. These are exactly what the
+# get_service_dependencies tool (Phase 3) returns, and what `deps:<from>-><to>` evidence
+# refs resolve against. `critical: true` marks an edge on the synchronous checkout path.
+dependencies:
+  - { from: checkout-api,        to: payment-api,      kind: sync-http,  critical: true }
+  - { from: checkout-api,        to: inventory-api,    kind: sync-http,  critical: true }
+  - { from: checkout-api,        to: redis-cache,      kind: cache }
+  - { from: checkout-api,        to: service-bus,      kind: publish }
+  - { from: payment-api,         to: cosmos-db,        kind: datastore,  critical: true }
+  - { from: payment-api,         to: payment-gateway,  kind: external }
+  - { from: inventory-api,       to: cosmos-db,        kind: datastore,  critical: true }
+  - { from: inventory-api,       to: redis-cache,      kind: cache }
+  - { from: catalog-api,         to: cosmos-db,        kind: datastore }
+  - { from: catalog-api,         to: redis-cache,      kind: cache }
+  - { from: notification-worker, to: service-bus,      kind: subscribe }
+  - { from: notification-worker, to: email-provider,   kind: external }

@@ -1,0 +1,198 @@
+# RetailEase incident scenarios — THE ANSWER KEY.
+#
+# This is the source of truth every downstream artifact derives from and is scored against:
+#   * 2b telemetry (logs/metrics/deploys/deps) is generated so that every `expected_evidence`
+#     ref below resolves to a real row.
+#   * 2c alerts.json / incidents.json are the entry points and catalog for these scenarios.
+#   * 2d KB docs (runbooks/architecture/postmortems) are authored so that every
+#     `expected_retrieval` id below exists, and every historical postmortem matches its incident.
+#   * eval/golden_incidents.json + eval/golden_retrieval.json are PROJECTED from this file by
+#     build_goldens.py — do not hand-edit the JSON.
+#
+# Ref grammar (see README.md). Evidence refs use the frozen Evidence.source set:
+#   logs:<service>:<event_id>            metrics:<service>:<metric>@<ts>
+#   deploys:<service>:<deploy_id>        deps:<from>-><to>
+# Retrieval ids use KB namespaces: runbook:<id> | architecture:<id> | postmortem:<incident_id>
+#
+# type: historical -> seeds a postmortem, expected_intent known_issue, expected_match set.
+# type: novel      -> first-time investigation, expected_intent novel_investigation.
+
+scenarios:
+  # ---------------------------------------------------------------------------- historical
+  - id: inc-001
+    title: Payment authorizations timing out
+    type: historical
+    severity: SEV2
+    category: payment
+    occurred_at: 2026-05-12T14:30:00Z
+    alert:
+      summary: Elevated checkout failures; payment authorizations timing out.
+      signal: checkout-api 5xx rate > 5% sustained 10m
+    expected_intent: known_issue
+    expected_match: postmortem:inc-001
+    trigger: A config change cut payment-api's Cosmos DB connection pool from 100 to 10, starving connections under load.
+    root_cause: >-
+      payment-api exhausted its Cosmos DB connection pool, so payment authorizations queued and
+      timed out. The failures surfaced upstream as 5xx at checkout-api.
+    impacted_chain: [cosmos-db, payment-api, checkout-api]
+    expected_evidence:
+      - logs:payment-api:evt-001-01            # connection-pool-exhausted timeout
+      - logs:checkout-api:evt-001-02           # 503 from payment-api dependency call
+      - metrics:payment-api:p95_latency_ms@2026-05-12T14:25:00Z
+      - metrics:checkout-api:http_5xx_rate@2026-05-12T14:30:00Z
+      - deploys:payment-api:dep-20260512-01    # the pool config change
+      - deps:checkout-api->payment-api
+    expected_retrieval:
+      - runbook:payment-timeout
+      - runbook:checkout-api-500-errors
+      - architecture:service-dependency-map
+    resolution: Reverted the connection-pool config to 100 and added an alert on pool saturation.
+
+  - id: inc-002
+    title: Cosmos DB throttling cascading to reads
+    type: historical
+    severity: SEV2
+    category: datastore
+    occurred_at: 2026-05-28T09:15:00Z
+    alert:
+      summary: Inventory and catalog reads failing intermittently with 429s.
+      signal: cosmos-db throttled-request rate spiking
+    expected_intent: known_issue
+    expected_match: postmortem:inc-002
+    trigger: A catalog bulk import issued an unindexed query, spiking Cosmos RU consumption into throttling.
+    root_cause: >-
+      cosmos-db hit its provisioned RU ceiling and began returning 429s, throttling inventory-api
+      and catalog-api reads, which degraded availability checks at checkout.
+    impacted_chain: [cosmos-db, inventory-api, checkout-api]
+    expected_evidence:
+      - logs:inventory-api:evt-002-01          # 429 TooManyRequests from cosmos
+      - logs:catalog-api:evt-002-02            # 429 TooManyRequests from cosmos
+      - metrics:cosmos-db:ru_throttled_rate@2026-05-28T09:15:00Z
+      - metrics:inventory-api:p95_latency_ms@2026-05-28T09:20:00Z
+      - deploys:catalog-api:dep-20260528-01    # the bulk-import job rollout
+      - deps:inventory-api->cosmos-db
+    expected_retrieval:
+      - runbook:cosmos-db-throttling
+      - architecture:retailease-system-overview
+      - architecture:service-dependency-map
+    resolution: Added the missing composite index, throttled the import job, and raised the RU floor.
+
+  - id: inc-003
+    title: Service Bus backlog; order notifications delayed
+    type: historical
+    severity: SEV3
+    category: messaging
+    occurred_at: 2026-06-10T20:00:00Z
+    alert:
+      summary: Order notifications delayed; Service Bus queue depth climbing.
+      signal: service-bus active message count rising, not draining
+    expected_intent: known_issue
+    expected_match: postmortem:inc-003
+    trigger: A bad notification-worker deploy crash-looped on a poison message, so the worker stopped draining the queue.
+    root_cause: >-
+      notification-worker entered a crash loop on an undeserializable message and stopped consuming
+      from service-bus. Queue depth grew unbounded and order notifications were delayed.
+    impacted_chain: [notification-worker, service-bus]
+    expected_evidence:
+      - logs:notification-worker:evt-003-01    # unhandled deserialization exception, crash loop
+      - metrics:service-bus:active_message_count@2026-06-10T20:00:00Z
+      - metrics:notification-worker:restart_count@2026-06-10T20:05:00Z
+      - deploys:notification-worker:dep-20260610-01
+      - deps:notification-worker->service-bus
+    expected_retrieval:
+      - runbook:service-bus-backlog
+      - runbook:deployment-rollback
+      - architecture:observability-strategy
+    resolution: Rolled back the worker deploy, dead-lettered the poison message, and reprocessed the backlog.
+
+  # --------------------------------------------------------------------------------- novel
+  - id: inc-004
+    title: checkout-api 500s after the morning deploy
+    type: novel
+    severity: SEV1
+    category: payment
+    occurred_at: 2026-06-28T10:15:00Z
+    # DEMO 1. Misdirection scenario: the 09:00 checkout-api deploy is a RED HERRING; the real
+    # cause is downstream payment-gateway latency. The agent must verify the deploy hypothesis
+    # against evidence rather than rolling back checkout-api on a coincidence.
+    alert:
+      summary: checkout-api returning 500s shortly after this morning's deployment.
+      signal: checkout-api 5xx rate > 8% sustained 5m
+    expected_intent: novel_investigation
+    expected_match: null
+    trigger: An external payment-gateway latency spike made payment-api authorization calls time out, surfacing as 500s at checkout.
+    root_cause: >-
+      The third-party payment-gateway latency spiked and payment-api authorization calls timed out,
+      so checkout-api returned 500s. The 09:00 checkout-api deploy was coincidental and not causal.
+    impacted_chain: [payment-gateway, payment-api, checkout-api]
+    red_herring: deploys:checkout-api:dep-20260628-01   # present in telemetry, must be ruled out
+    expected_evidence:
+      - logs:checkout-api:evt-004-01           # 500 InternalServerError on /checkout
+      - logs:payment-api:evt-004-02            # PaymentGatewayTimeout
+      - metrics:payment-api:p95_latency_ms@2026-06-28T10:10:00Z
+      - metrics:checkout-api:http_5xx_rate@2026-06-28T10:15:00Z
+      - deploys:checkout-api:dep-20260628-01   # the red-herring deploy
+      - deps:checkout-api->payment-api
+    expected_retrieval:
+      - runbook:checkout-api-500-errors
+      - runbook:payment-timeout
+      - runbook:deployment-rollback
+      - architecture:service-dependency-map
+    recommended_next_step: >-
+      Shed load / fail the payment-gateway path to a timeout-and-retry posture; do NOT roll back the
+      checkout-api deploy — evidence clears it.
+
+  - id: inc-005
+    title: Redis eviction storm degrading checkout latency
+    type: novel
+    severity: SEV2
+    category: cache
+    occurred_at: 2026-06-22T11:45:00Z
+    alert:
+      summary: Checkout latency up and some carts/sessions dropping.
+      signal: checkout-api p95 latency > 2x baseline
+    expected_intent: novel_investigation
+    expected_match: null
+    trigger: redis-cache reached its memory ceiling and entered an eviction storm, dropping cart/session keys.
+    root_cause: >-
+      redis-cache hit max memory and began evicting cart/session keys aggressively. checkout-api fell
+      back to slower Cosmos reads and lost some sessions, raising latency.
+    impacted_chain: [redis-cache, checkout-api]
+    expected_evidence:
+      - logs:checkout-api:evt-005-01           # session-not-found / cache-miss surge
+      - metrics:redis-cache:used_memory_pct@2026-06-22T11:35:00Z
+      - metrics:redis-cache:evicted_keys_rate@2026-06-22T11:40:00Z
+      - metrics:checkout-api:p95_latency_ms@2026-06-22T11:45:00Z
+      - deps:checkout-api->redis-cache
+    expected_retrieval:
+      - runbook:redis-cache-degradation
+      - architecture:service-dependency-map
+    recommended_next_step: Scale Redis memory and tune the maxmemory eviction policy; add an eviction-rate alert.
+
+  - id: inc-006
+    title: Inventory overselling from stale cache after deploy
+    type: novel
+    severity: SEV2
+    category: inventory
+    occurred_at: 2026-06-25T16:20:00Z
+    alert:
+      summary: Reservation conflicts and oversells at checkout.
+      signal: inventory-api reservation error rate elevated
+    expected_intent: novel_investigation
+    expected_match: null
+    trigger: An inventory-api deploy removed cache invalidation on stock writes, so Redis served stale availability.
+    root_cause: >-
+      An inventory-api deploy dropped cache invalidation on stock writes, so redis-cache served stale
+      availability. checkout-api reservations conflicted and oversold. The deploy is the real cause here.
+    impacted_chain: [inventory-api, redis-cache, checkout-api]
+    expected_evidence:
+      - logs:inventory-api:evt-006-01          # StockReservationConflict / oversell
+      - logs:checkout-api:evt-006-02           # reserve failed downstream
+      - metrics:inventory-api:reservation_error_rate@2026-06-25T16:20:00Z
+      - deploys:inventory-api:dep-20260625-01  # causal deploy
+      - deps:inventory-api->redis-cache
+    expected_retrieval:
+      - runbook:deployment-rollback
+      - runbook:redis-cache-degradation
+      - architecture:service-dependency-map
+    recommended_next_step: Roll back the inventory-api deploy, flush stale stock keys, and reconcile reservations.
