@@ -1,0 +1,36 @@
+{
+  "source": "UCI Incident Management Process Enriched Event Log (dataset 498, CC-BY-4.0). Anonymized real ServiceNow data; distributions only, not redistributed.",
+  "n_incidents": 24918,
+  "priority_distribution": {
+    "3 - Moderate": 0.9417,
+    "4 - Low": 0.0311,
+    "2 - High": 0.0164,
+    "1 - Critical": 0.0108
+  },
+  "impact_distribution": {
+    "2 - Medium": 0.953,
+    "3 - Low": 0.0301,
+    "1 - High": 0.0169
+  },
+  "urgency_distribution": {
+    "2 - Medium": 0.9507,
+    "3 - Low": 0.028,
+    "1 - High": 0.0213
+  },
+  "made_sla_rate": 0.6342,
+  "reassignment_count": {
+    "mean": 0.94,
+    "median": 0,
+    "p75": 1,
+    "max": 27
+  },
+  "resolution_hours": {
+    "median": 17.94,
+    "p25": 0.37,
+    "p75": 120.83
+  },
+  "state_distribution": {
+    "Closed": 1.0,
+    "Active": 0.0
+  }
+}
