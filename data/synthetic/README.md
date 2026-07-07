@@ -16,6 +16,14 @@ rcaeval_profile (noise ratios) ─┘
 | `metrics.json` | `get_metrics` | per-entity 5-min series; only referenced `(service, metric)` deviate |
 | `deployments.json` | `get_deployments` | causal deploys + the inc-004 red herring + routine noise |
 | `dependencies.json` | `get_service_dependencies` | the topology edge list (with `critical` flags) |
+| `alerts.json` | `POST /investigate` input | per-incident alert **storm** across the blast-radius services + noise alerts |
+| `incidents.json` | incident catalog / fast path | one record per scenario (priority/SLA/timeline), historical ones closed with resolution |
+
+The alert/incident layer (`generate_alerts_incidents.py`) realizes the **services → alerts →
+incidents → scenarios** hierarchy: each incident aggregates a storm (one `root_cause` alert + N
+`symptom` alerts + one `is_trigger` alert — the customer-facing one that opens the investigation).
+Fan-in and lifecycle are calibrated from `../profiles/itsm_profile.json` (real ITSM distributions)
+plus the same blast radius the telemetry uses; noise alerts roll up to no incident.
 
 ## The three design invariants (enforced by `tests/test_telemetry.py`)
 
@@ -29,8 +37,10 @@ rcaeval_profile (noise ratios) ─┘
 ## Regenerate
 
 ```
-python data/profiles/build_profile.py    # only if the RCAEval cache changed
-python data/synthetic/generate.py
+python data/profiles/build_profile.py            # only if the RCAEval cache changed
+python data/profiles/build_incident_profile.py   # only if the ITSM cache changed
+python data/synthetic/generate.py                # logs/metrics/deployments/dependencies
+python data/synthetic/generate_alerts_incidents.py   # alerts + incidents
 ```
 
 `NOISE_LOG_SCALE` in `generate.py` trades corpus size against noise-floor realism (RCAEval's real
