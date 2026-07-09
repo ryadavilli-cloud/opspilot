@@ -15,9 +15,12 @@ from typing import Any
 from opspilot.data.repository import Repository, default_repository
 from opspilot.tools.alerts import get_correlated_alerts
 from opspilot.tools.contracts import ToolResult
+from opspilot.tools.dependencies import get_service_dependencies
 from opspilot.tools.deployments import get_deployments
 from opspilot.tools.errors import error_result
 from opspilot.tools.incidents import get_incident
+from opspilot.tools.logs import query_logs
+from opspilot.tools.metrics import get_metrics
 
 
 class ToolService:
@@ -27,6 +30,9 @@ class ToolService:
             "get_incident": get_incident,
             "get_correlated_alerts": get_correlated_alerts,
             "get_deployments": get_deployments,
+            "query_logs": query_logs,
+            "get_metrics": get_metrics,
+            "get_service_dependencies": get_service_dependencies,
         }
 
     def get_incident(self, **kwargs: Any) -> ToolResult[Any]:
@@ -37,6 +43,15 @@ class ToolService:
 
     def get_deployments(self, **kwargs: Any) -> ToolResult[Any]:
         return get_deployments(self.repo, **kwargs)
+
+    def query_logs(self, **kwargs: Any) -> ToolResult[Any]:
+        return query_logs(self.repo, **kwargs)
+
+    def get_metrics(self, **kwargs: Any) -> ToolResult[Any]:
+        return get_metrics(self.repo, **kwargs)
+
+    def get_service_dependencies(self, **kwargs: Any) -> ToolResult[Any]:
+        return get_service_dependencies(self.repo, **kwargs)
 
     @property
     def tool_names(self) -> tuple[str, ...]:
