@@ -1,9 +1,9 @@
 """Deterministic repository over the RetailEase corpus.
 
-Tools query this layer instead of reading JSON files themselves. It loads the incident, alert,
-and deployment records once and serves plain dicts; the typed contracts live in the tool layer.
-This is the seam where the synthetic JSON source is later swapped for Azure Monitor / App Insights
-/ Cosmos — the tools do not change, only the repository's backing store.
+Tools query this layer instead of reading files themselves. It loads incidents, alerts,
+deployments, logs, metric series, and dependency edges once and serves plain dicts; the typed
+contracts live in the tool layer. This is the seam where the synthetic corpus is later swapped for
+Azure Monitor / App Insights / Cosmos — the tools do not change, only the repository's backing.
 """
 
 from __future__ import annotations
@@ -24,6 +24,12 @@ def _load(path: Path, key: str) -> list[dict[str, Any]]:
     return json.loads(path.read_text(encoding="utf-8"))[key]
 
 
+def _load_jsonl(path: Path) -> list[dict[str, Any]]:
+    if not path.exists():
+        raise FileNotFoundError(f"corpus file missing: {path}")
+    return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line]
+
+
 class Repository:
     """In-memory view of the corpus. Construct once; query many times."""
 
@@ -32,20 +38,29 @@ class Repository:
         self._incidents = _load(corpus_dir / "incidents.json", "incidents")
         self._alerts = _load(corpus_dir / "alerts.json", "alerts")
         self._deployments = _load(corpus_dir / "deployments.json", "deployments")
+        self._logs = _load_jsonl(corpus_dir / "logs.jsonl")
+        self._metrics = _load(corpus_dir / "metrics.json", "series")
+        self._edges = _load(corpus_dir / "dependencies.json", "edges")
         self._incident_by_id = {i["incident_id"]: i for i in self._incidents}
 
-    # In tests we also build a Repository straight from records (e.g. to inject malformed rows).
     @classmethod
     def from_records(
         cls,
         incidents: list[dict] | None = None,
         alerts: list[dict] | None = None,
         deployments: list[dict] | None = None,
+        logs: list[dict] | None = None,
+        metrics: list[dict] | None = None,
+        edges: list[dict] | None = None,
     ) -> Repository:
+        """Build a repository straight from records — used in tests to inject edge cases."""
         obj = cls.__new__(cls)
         obj._incidents = incidents or []
         obj._alerts = alerts or []
         obj._deployments = deployments or []
+        obj._logs = logs or []
+        obj._metrics = metrics or []
+        obj._edges = edges or []
         obj._incident_by_id = {i["incident_id"]: i for i in obj._incidents if "incident_id" in i}
         return obj
 
@@ -57,6 +72,15 @@ class Repository:
 
     def deployments(self) -> list[dict[str, Any]]:
         return list(self._deployments)
+
+    def logs(self) -> list[dict[str, Any]]:
+        return list(self._logs)
+
+    def metric_series(self) -> list[dict[str, Any]]:
+        return list(self._metrics)
+
+    def edges(self) -> list[dict[str, Any]]:
+        return list(self._edges)
 
 
 _default: Repository | None = None

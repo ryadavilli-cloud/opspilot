@@ -12,7 +12,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import Literal
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 # Caps — tool-local guardrails (keep queries bounded; real limits tighten in the reliability layer).
 MAX_RESULTS = 500
@@ -65,6 +65,32 @@ class DeploymentRecord(BaseModel):
     note: str
 
 
+class LogRecord(BaseModel):
+    event_id: str
+    ts: datetime
+    service: str
+    level: str
+    message: str
+    incident_id: str | None = None
+    label: str | None = None
+
+
+class MetricSample(BaseModel):
+    service: str
+    metric: str
+    ts: datetime
+    value: float
+    unit: str
+
+
+class DependencyEdge(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+    from_service: str = Field(alias="from")
+    to_service: str = Field(alias="to")
+    kind: str
+    critical: bool = False
+
+
 # --- requests (validated at the tool-service boundary) ----------------------------------------
 class GetIncidentRequest(BaseModel):
     incident_id: str = Field(min_length=1)
@@ -94,6 +120,38 @@ class GetDeploymentsRequest(BaseModel):
         if (self.end_time - self.start_time).days > MAX_WINDOW_DAYS:
             raise ValueError(f"time window exceeds {MAX_WINDOW_DAYS} days")
         return self
+
+
+class GetLogsRequest(BaseModel):
+    service: str = Field(min_length=1)
+    start_time: datetime | None = None
+    end_time: datetime | None = None
+    level: str | None = None       # optional filter, e.g. "error"
+    contains: str | None = None    # optional case-insensitive message substring
+
+    @model_validator(mode="after")
+    def _check_window(self) -> GetLogsRequest:
+        if self.start_time and self.end_time and self.end_time < self.start_time:
+            raise ValueError("end_time is before start_time")
+        return self
+
+
+class GetMetricsRequest(BaseModel):
+    service: str = Field(min_length=1)   # service or infra entity that emits metrics
+    metric: str | None = None            # optional single metric; else all for the entity
+    start_time: datetime | None = None
+    end_time: datetime | None = None
+
+    @model_validator(mode="after")
+    def _check_window(self) -> GetMetricsRequest:
+        if self.start_time and self.end_time and self.end_time < self.start_time:
+            raise ValueError("end_time is before start_time")
+        return self
+
+
+class GetServiceDependenciesRequest(BaseModel):
+    service: str | None = None           # None -> the whole graph
+    direction: Literal["upstream", "downstream", "both"] = "both"
 
 
 # --- uniform envelope -------------------------------------------------------------------------
