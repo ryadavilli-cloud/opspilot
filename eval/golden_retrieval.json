@@ -1,6 +1,7 @@
 [
   {
-    "query_id": "inc-001",
+    "query_id": "inc-001-0",
+    "scenario_id": "inc-001",
     "query": "Elevated checkout failures; payment authorizations timing out.",
     "relevant_doc_ids": [
       "runbook:payment-timeout",
@@ -9,7 +10,38 @@
     ]
   },
   {
-    "query_id": "inc-002",
+    "query_id": "inc-001-1",
+    "scenario_id": "inc-001",
+    "query": "payments timing out at checkout",
+    "relevant_doc_ids": [
+      "runbook:payment-timeout",
+      "runbook:checkout-api-500-errors",
+      "architecture:service-dependency-map"
+    ]
+  },
+  {
+    "query_id": "inc-001-2",
+    "scenario_id": "inc-001",
+    "query": "authorization requests to payment-api are slow and timing out",
+    "relevant_doc_ids": [
+      "runbook:payment-timeout",
+      "runbook:checkout-api-500-errors",
+      "architecture:service-dependency-map"
+    ]
+  },
+  {
+    "query_id": "inc-001-3",
+    "scenario_id": "inc-001",
+    "query": "checkout 5xx spike with high payment latency",
+    "relevant_doc_ids": [
+      "runbook:payment-timeout",
+      "runbook:checkout-api-500-errors",
+      "architecture:service-dependency-map"
+    ]
+  },
+  {
+    "query_id": "inc-002-0",
+    "scenario_id": "inc-002",
     "query": "Inventory and catalog reads failing intermittently with 429s.",
     "relevant_doc_ids": [
       "runbook:cosmos-db-throttling",
@@ -18,7 +50,38 @@
     ]
   },
   {
-    "query_id": "inc-003",
+    "query_id": "inc-002-1",
+    "scenario_id": "inc-002",
+    "query": "getting 429 TooManyRequests from the database",
+    "relevant_doc_ids": [
+      "runbook:cosmos-db-throttling",
+      "architecture:retailease-system-overview",
+      "architecture:service-dependency-map"
+    ]
+  },
+  {
+    "query_id": "inc-002-2",
+    "scenario_id": "inc-002",
+    "query": "cosmos throttling is failing inventory and catalog reads",
+    "relevant_doc_ids": [
+      "runbook:cosmos-db-throttling",
+      "architecture:retailease-system-overview",
+      "architecture:service-dependency-map"
+    ]
+  },
+  {
+    "query_id": "inc-002-3",
+    "scenario_id": "inc-002",
+    "query": "RU limit hit, database reads failing intermittently",
+    "relevant_doc_ids": [
+      "runbook:cosmos-db-throttling",
+      "architecture:retailease-system-overview",
+      "architecture:service-dependency-map"
+    ]
+  },
+  {
+    "query_id": "inc-003-0",
+    "scenario_id": "inc-003",
     "query": "Order notifications delayed; Service Bus queue depth climbing.",
     "relevant_doc_ids": [
       "runbook:service-bus-backlog",
@@ -27,7 +90,38 @@
     ]
   },
   {
-    "query_id": "inc-004",
+    "query_id": "inc-003-1",
+    "scenario_id": "inc-003",
+    "query": "order notification emails delayed, queue not draining",
+    "relevant_doc_ids": [
+      "runbook:service-bus-backlog",
+      "runbook:deployment-rollback",
+      "architecture:observability-strategy"
+    ]
+  },
+  {
+    "query_id": "inc-003-2",
+    "scenario_id": "inc-003",
+    "query": "service bus backlog growing, messages not consumed",
+    "relevant_doc_ids": [
+      "runbook:service-bus-backlog",
+      "runbook:deployment-rollback",
+      "architecture:observability-strategy"
+    ]
+  },
+  {
+    "query_id": "inc-003-3",
+    "scenario_id": "inc-003",
+    "query": "notification worker stopped processing the queue",
+    "relevant_doc_ids": [
+      "runbook:service-bus-backlog",
+      "runbook:deployment-rollback",
+      "architecture:observability-strategy"
+    ]
+  },
+  {
+    "query_id": "inc-004-0",
+    "scenario_id": "inc-004",
     "query": "checkout-api returning 500s shortly after this morning's deployment.",
     "relevant_doc_ids": [
       "runbook:checkout-api-500-errors",
@@ -37,7 +131,41 @@
     ]
   },
   {
-    "query_id": "inc-005",
+    "query_id": "inc-004-1",
+    "scenario_id": "inc-004",
+    "query": "checkout returning 500 errors after this morning's release",
+    "relevant_doc_ids": [
+      "runbook:checkout-api-500-errors",
+      "runbook:payment-timeout",
+      "runbook:deployment-rollback",
+      "architecture:service-dependency-map"
+    ]
+  },
+  {
+    "query_id": "inc-004-2",
+    "scenario_id": "inc-004",
+    "query": "did the recent checkout deploy break checkout",
+    "relevant_doc_ids": [
+      "runbook:checkout-api-500-errors",
+      "runbook:payment-timeout",
+      "runbook:deployment-rollback",
+      "architecture:service-dependency-map"
+    ]
+  },
+  {
+    "query_id": "inc-004-3",
+    "scenario_id": "inc-004",
+    "query": "checkout down following a deployment",
+    "relevant_doc_ids": [
+      "runbook:checkout-api-500-errors",
+      "runbook:payment-timeout",
+      "runbook:deployment-rollback",
+      "architecture:service-dependency-map"
+    ]
+  },
+  {
+    "query_id": "inc-005-0",
+    "scenario_id": "inc-005",
     "query": "Checkout latency up and some carts/sessions dropping.",
     "relevant_doc_ids": [
       "runbook:redis-cache-degradation",
@@ -45,8 +173,66 @@
     ]
   },
   {
-    "query_id": "inc-006",
+    "query_id": "inc-005-1",
+    "scenario_id": "inc-005",
+    "query": "cart sessions being lost and checkout is slow",
+    "relevant_doc_ids": [
+      "runbook:redis-cache-degradation",
+      "architecture:service-dependency-map"
+    ]
+  },
+  {
+    "query_id": "inc-005-2",
+    "scenario_id": "inc-005",
+    "query": "redis evicting keys, lots of cache misses",
+    "relevant_doc_ids": [
+      "runbook:redis-cache-degradation",
+      "architecture:service-dependency-map"
+    ]
+  },
+  {
+    "query_id": "inc-005-3",
+    "scenario_id": "inc-005",
+    "query": "checkout latency spike with session loss",
+    "relevant_doc_ids": [
+      "runbook:redis-cache-degradation",
+      "architecture:service-dependency-map"
+    ]
+  },
+  {
+    "query_id": "inc-006-0",
+    "scenario_id": "inc-006",
     "query": "Reservation conflicts and oversells at checkout.",
+    "relevant_doc_ids": [
+      "runbook:deployment-rollback",
+      "runbook:redis-cache-degradation",
+      "architecture:service-dependency-map"
+    ]
+  },
+  {
+    "query_id": "inc-006-1",
+    "scenario_id": "inc-006",
+    "query": "overselling stock at checkout",
+    "relevant_doc_ids": [
+      "runbook:deployment-rollback",
+      "runbook:redis-cache-degradation",
+      "architecture:service-dependency-map"
+    ]
+  },
+  {
+    "query_id": "inc-006-2",
+    "scenario_id": "inc-006",
+    "query": "inventory reservation conflicts on orders",
+    "relevant_doc_ids": [
+      "runbook:deployment-rollback",
+      "runbook:redis-cache-degradation",
+      "architecture:service-dependency-map"
+    ]
+  },
+  {
+    "query_id": "inc-006-3",
+    "scenario_id": "inc-006",
+    "query": "stale stock levels causing oversell",
     "relevant_doc_ids": [
       "runbook:deployment-rollback",
       "runbook:redis-cache-degradation",

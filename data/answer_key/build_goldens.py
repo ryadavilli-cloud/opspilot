@@ -62,17 +62,57 @@ def build_incident_goldens(scenarios: list[dict[str, Any]]) -> list[dict[str, An
     return out
 
 
+# Paraphrase queries per scenario — how an on-call engineer might actually phrase the same
+# symptom. Expanding the eval set (6 -> ~24 queries) makes retrieval MRR far less noisy. The
+# scenario's own alert summary is always query 0; these are the additional variants.
+QUERY_VARIANTS: dict[str, list[str]] = {
+    "inc-001": [
+        "payments timing out at checkout",
+        "authorization requests to payment-api are slow and timing out",
+        "checkout 5xx spike with high payment latency",
+    ],
+    "inc-002": [
+        "getting 429 TooManyRequests from the database",
+        "cosmos throttling is failing inventory and catalog reads",
+        "RU limit hit, database reads failing intermittently",
+    ],
+    "inc-003": [
+        "order notification emails delayed, queue not draining",
+        "service bus backlog growing, messages not consumed",
+        "notification worker stopped processing the queue",
+    ],
+    "inc-004": [
+        "checkout returning 500 errors after this morning's release",
+        "did the recent checkout deploy break checkout",
+        "checkout down following a deployment",
+    ],
+    "inc-005": [
+        "cart sessions being lost and checkout is slow",
+        "redis evicting keys, lots of cache misses",
+        "checkout latency spike with session loss",
+    ],
+    "inc-006": [
+        "overselling stock at checkout",
+        "inventory reservation conflicts on orders",
+        "stale stock levels causing oversell",
+    ],
+}
+
+
 def build_retrieval_goldens(scenarios: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """One labeled query per scenario — relevant KB doc ids for retrieval metrics."""
+    """Labeled queries -> relevant KB doc ids. Each scenario's alert summary plus its variants."""
     out: list[dict[str, Any]] = []
     for s in scenarios:
-        out.append(
-            {
-                "query_id": s["id"],
-                "query": " ".join(s["alert"]["summary"].split()),
-                "relevant_doc_ids": s["expected_retrieval"],
-            }
-        )
+        queries = [" ".join(s["alert"]["summary"].split())] + QUERY_VARIANTS.get(s["id"], [])
+        for i, query in enumerate(queries):
+            out.append(
+                {
+                    "query_id": f"{s['id']}-{i}",
+                    "scenario_id": s["id"],
+                    "query": query,
+                    "relevant_doc_ids": s["expected_retrieval"],
+                }
+            )
     return out
 
 
