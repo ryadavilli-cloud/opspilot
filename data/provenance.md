@@ -31,6 +31,7 @@ never as content**. We measure ratios and shapes from them and generate our own 
 | `data/answer_key/` | topology + incident scenarios | authored (the source of truth) |
 | `data/synthetic/` | logs, metrics, deployments, dependencies, alerts, incidents | generated from the answer key + calibration profiles |
 | `data/kb/` | runbooks, architecture, postmortems | authored; Azure-native; structure only from real SRE practice |
+| `data/distractors/` | same-domain "wrong answer" docs | authored; make retrieval eval realistic; never a labeled retrieval target |
 | `eval/golden_*.json` | retrieval + incident golden sets | projected from the answer key |
 
 The corpus is internally closed — every evidence reference resolves to a telemetry row, every
