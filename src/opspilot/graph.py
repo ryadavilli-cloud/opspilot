@@ -17,6 +17,7 @@ from opspilot.nodes.investigation import (
     finalize_report,
     hitl_gate,
     ingest,
+    known_issue_fast_path,
     postmortem,
     retrieve,
     safety_validate,
@@ -33,6 +34,7 @@ def build_graph():
 
     g.add_node("ingest", ingest)
     g.add_node("triage_router", triage_router)
+    g.add_node("known_issue_fast_path", known_issue_fast_path)
     g.add_node("retrieve", retrieve)
     g.add_node("diagnose", diagnose)
     g.add_node("synthesize_report", synthesize_report)
@@ -47,8 +49,13 @@ def build_graph():
     g.add_conditional_edges(
         "triage_router",
         route_by_intent,
-        {"retrieve": "retrieve", "synthesize_report": "synthesize_report"},
+        {
+            "retrieve": "retrieve",
+            "known_issue_fast_path": "known_issue_fast_path",
+            "synthesize_report": "synthesize_report",
+        },
     )
+    g.add_edge("known_issue_fast_path", "synthesize_report")
     g.add_edge("retrieve", "diagnose")
     g.add_conditional_edges(
         "diagnose",

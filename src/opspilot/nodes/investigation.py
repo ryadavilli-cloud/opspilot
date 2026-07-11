@@ -29,13 +29,73 @@ def ingest(state: IncidentState) -> dict[str, Any]:
     return {"incident_id": alert.get("incident_id", "INC-STUB"), "diagnose_iters": 0}
 
 
+_PRIORITY_TO_SEV = {"1": "SEV1", "2": "SEV2", "3": "SEV3", "4": "SEV4"}
+
+
 def triage_router(state: IncidentState) -> dict[str, Any]:
-    alert = state.get("alert", {})
+    """Deterministic triage over real tools: resolve the incident + its alert storm, derive
+    severity/category/affected-services/onset, and decide known-issue vs novel from a
+    past-incident search. No LLM — this is the baseline the eventual model must beat.
+    """
+    incident_id = state.get("incident_id", "")
+    svc = _tool_service()
+    record = (svc.get_incident(incident_id=incident_id).results or [None])[0]
+
+    if record is None:  # unknown incident id — cannot classify from data; treat as novel
+        alert = state.get("alert", {})
+        return {
+            "severity": alert.get("severity", "SEV3"),
+            "category": alert.get("category", "unknown"),
+            "intent": Intent.NOVEL_INVESTIGATION.value,
+            "matched_incident": "",
+            "affected_services": [],
+            "onset": "",
+            "triage": {"reason": "incident id not found; defaulting to novel investigation"},
+        }
+
+    alerts = svc.get_correlated_alerts(incident_id=incident_id).results
+    affected = sorted({a.service for a in alerts})
+    onset = min((a.fired_at for a in alerts), default=record.opened_at)
+
+    # Known vs novel: does a past-incident search surface THIS incident's own postmortem?
+    # (Deterministic baseline; the confidence-floored match verification is a later phase.)
+    past = svc.search_past_incidents(query=record.short_description, k=3).results
+    own = f"postmortem:{incident_id}"
+    matched = own if any(h.doc_id == own for h in past) else ""
+    intent = Intent.KNOWN_ISSUE.value if matched else Intent.NOVEL_INVESTIGATION.value
+
     return {
-        "severity": alert.get("severity", "SEV3"),
-        "category": alert.get("category", "unknown"),
-        "intent": Intent.NOVEL_INVESTIGATION.value,
-        "matched_incident": "",
+        "severity": _PRIORITY_TO_SEV.get(record.priority[:1], "SEV3"),
+        "category": record.category,
+        "intent": intent,
+        "matched_incident": matched,
+        "affected_services": affected,
+        "onset": onset.isoformat(),
+        "triage": {
+            "route": "known-incident" if matched else "novel-investigation",
+            "matched_incident": matched,
+            "affected_services": affected,
+            "onset": onset.isoformat(),
+            "top_past_incidents": [h.doc_id for h in past],
+            "reason": (f"top past-incident match is this incident's own postmortem ({matched})"
+                       if matched else "no prior postmortem matches this incident"),
+        },
+    }
+
+
+def known_issue_fast_path(state: IncidentState) -> dict[str, Any]:
+    """Deterministic short-circuit for a known issue: reuse the matched incident's stored
+    resolution as the hypothesis and skip the full diagnose loop."""
+    match = state.get("matched_incident", "")
+    inc_id = match.split(":", 1)[1] if ":" in match else state.get("incident_id", "")
+    record = _tool_service().get_incident(incident_id=inc_id).results
+    resolution = record[0].resolution if (record and record[0].resolution) else ""
+    ref = f"past_incident:{inc_id}"
+    return {
+        "hypothesis": f"Known issue — recurrence of {inc_id}. Prior resolution: {resolution}",
+        "confidence": 0.95,
+        "evidence": [{"source": "past_incident", "ref": ref, "content": resolution}],
+        "retrieved_sources": [ref],
     }
 
 

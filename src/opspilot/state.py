@@ -34,6 +34,10 @@ class IncidentState(TypedDict, total=False):
     intent: str
     matched_incident: str  # set if a past incident matches (fast path)
 
+    affected_services: list[str]  # derived from the alert storm at triage
+    onset: str                    # earliest alert / incident open time (ISO)
+    triage: dict[str, Any]        # the deterministic triage decision + the evidence behind it
+
     evidence: Annotated[list[Evidence], add]  # append-only across loop turns
     retrieved_sources: Annotated[list[str], add]
 

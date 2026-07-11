@@ -12,8 +12,10 @@ from opspilot.state import IncidentState, Intent
 
 def route_by_intent(state: IncidentState) -> str:
     if state.get("intent") == Intent.INFO_ONLY.value:
-        return "synthesize_report"
-    return "retrieve"  # known_issue fast path + novel both retrieve in Phase 1
+        return "synthesize_report"          # informational reply (exempt from the citation gate)
+    if state.get("intent") == Intent.KNOWN_ISSUE.value and state.get("matched_incident"):
+        return "known_issue_fast_path"      # short-circuit to the stored resolution
+    return "retrieve"                        # novel → full investigation
 
 
 def diagnose_continue(state: IncidentState) -> str:
