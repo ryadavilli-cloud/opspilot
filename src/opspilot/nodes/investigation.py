@@ -10,7 +10,18 @@ from __future__ import annotations
 from typing import Any
 
 from opspilot.state import Evidence, IncidentState, Intent
-from opspilot.tools.stubs import search_past_incidents, search_runbooks
+
+_tools = None
+
+
+def _tool_service():
+    """Lazily-built, cached ToolService (its retriever embeds the KB on first search call)."""
+    global _tools
+    if _tools is None:
+        from opspilot.tools.service import ToolService
+
+        _tools = ToolService()
+    return _tools
 
 
 def ingest(state: IncidentState) -> dict[str, Any]:
@@ -29,8 +40,16 @@ def triage_router(state: IncidentState) -> dict[str, Any]:
 
 
 def retrieve(state: IncidentState) -> dict[str, Any]:
+    """Real hybrid retrieval via ToolService; degrades to no evidence if retrieval is down."""
     query = state.get("alert", {}).get("summary", "")
-    evidence: list[Evidence] = [*search_runbooks(query), *search_past_incidents(query)]
+    svc = _tool_service()
+    evidence: list[Evidence] = []
+    for hit in svc.search_runbooks(query=query, k=5).results:
+        evidence.append({"source": "runbook", "ref": hit.doc_id, "content": hit.title})
+    for hit in svc.search_past_incidents(query=query, k=3).results:
+        inc_id = hit.doc_id.split(":", 1)[1] if ":" in hit.doc_id else hit.doc_id
+        evidence.append({"source": "past_incident", "ref": f"past_incident:{inc_id}",
+                         "content": hit.title})
     return {"evidence": evidence, "retrieved_sources": [e["ref"] for e in evidence]}
 
 

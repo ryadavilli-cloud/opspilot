@@ -1,8 +1,8 @@
 """Investigation tools.
 
-Phase 3 real tools: `get_incident`, `get_correlated_alerts`, `get_deployments`, exposed via
-`ToolService` (in-process now, MCP-fronted at Phase 8). `search_runbooks`/`search_past_incidents`
-remain stubs (stubs.py) until the RAG phase.
+Eight read-only tools exposed via `ToolService` (in-process now, MCP-fronted later): six
+deterministic (incident/alert/deployment/logs/metrics/dependencies) over the repository, and two
+retrieval tools (`search_runbooks`, `search_past_incidents`) over the hybrid Retriever.
 """
 
 from opspilot.tools.service import ToolService

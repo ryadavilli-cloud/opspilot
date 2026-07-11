@@ -91,6 +91,14 @@ class DependencyEdge(BaseModel):
     critical: bool = False
 
 
+class DocHit(BaseModel):
+    doc_id: str        # the retrieval ref, e.g. runbook:payment-timeout — also the evidence ref
+    kind: str          # runbook | architecture | postmortem
+    title: str
+    services: list[str]
+    score: float
+
+
 # --- requests (validated at the tool-service boundary) ----------------------------------------
 class GetIncidentRequest(BaseModel):
     incident_id: str = Field(min_length=1)
@@ -152,6 +160,18 @@ class GetMetricsRequest(BaseModel):
 class GetServiceDependenciesRequest(BaseModel):
     service: str | None = None           # None -> the whole graph
     direction: Literal["upstream", "downstream", "both"] = "both"
+
+
+class SearchRunbooksRequest(BaseModel):
+    query: str = Field(min_length=1)
+    k: int = Field(default=5, ge=1, le=MAX_RESULTS)
+    service: str | None = None           # optional metadata filter
+
+
+class SearchPastIncidentsRequest(BaseModel):
+    query: str = Field(min_length=1)
+    k: int = Field(default=5, ge=1, le=MAX_RESULTS)
+    service: str | None = None
 
 
 # --- uniform envelope -------------------------------------------------------------------------
