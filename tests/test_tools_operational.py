@@ -81,8 +81,9 @@ def test_dependencies_upstream_filter():
     assert all(e.to_service == "cosmos-db" for e in r.results)
 
 
-def test_service_now_exposes_six_tools():
+def test_service_exposes_all_eight_tools():
     assert set(SVC.tool_names) == {
         "get_incident", "get_correlated_alerts", "get_deployments",
         "query_logs", "get_metrics", "get_service_dependencies",
+        "search_runbooks", "search_past_incidents",
     }
