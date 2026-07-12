@@ -1,8 +1,7 @@
-"""MCP boundary — placeholder until Phase 8 (promotion, not premature complexity).
+"""MCP boundary — a transport over the existing ToolService, not a second implementation.
 
-Per the architecture, the *external-system* tools are promoted to MCP servers here: a `telemetry`
-server (`query_logs`, `get_metrics`) and a `platform` server (`get_deployments`,
-`get_service_dependencies`). The incident/alert lookups and the RAG tools stay in-process. Each
-server will front `opspilot.tools.service.ToolService` unchanged — this phase swaps the transport,
-not the tool contracts. Intentionally empty until then.
+`server.py` exposes a subset of `ToolService.call()` through MCP: schemas are generated from the
+existing Pydantic request models, and every call is dispatched through `ToolService.call()`, so the
+allowlist and validation are shared with the in-process path (proven by a parity test). New tools
+are added by registration, not custom handlers. No auth / remote hosting yet.
 """
