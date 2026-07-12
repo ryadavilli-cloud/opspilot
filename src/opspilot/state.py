@@ -48,6 +48,7 @@ class IncidentState(TypedDict, total=False):
     diagnosis: dict[str, Any]  # the structured diagnostic cycle (plan/observations/hypothesis)
 
     report: dict[str, Any]
+    safety: dict[str, Any]  # output-guardrail verdict {passed, violations}
     approval: dict[str, Any]
     postmortem: dict[str, Any]
 

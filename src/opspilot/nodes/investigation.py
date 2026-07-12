@@ -134,8 +134,8 @@ def diagnose(state: IncidentState) -> dict[str, Any]:
         "confidence": hypothesis.confidence,
         "evidence": evidence,
         "retrieved_sources": [c.ref for c in hypothesis.citations],
-        # count at least one attempt so a data-less incident can't loop forever
-        "diagnose_iters": state.get("diagnose_iters", 0) + max(1, len(observations)),
+        # one outer cycle per diagnose invocation, so the loop lands exactly on MAX_DIAGNOSE_ITERS
+        "diagnose_iters": state.get("diagnose_iters", 0) + 1,
         "diagnosis": {
             "hypothesis": hypothesis.model_dump(),
             "observations": [o.model_dump() for o in observations],
@@ -159,8 +159,17 @@ def synthesize_report(state: IncidentState) -> dict[str, Any]:
 
 
 def safety_validate(state: IncidentState) -> dict[str, Any]:
-    # Phase 6 adds real guardrails (citation requirement, unsupported-claim, schema).
-    return {}
+    """Output guardrail: no unsupported hypothesis. Every report citation must be an evidence
+    reference produced by a tool during this run (exempt only the info_only reply)."""
+    from opspilot.guardrails.policies import hypothesis_supported
+
+    if state.get("intent") == Intent.INFO_ONLY.value:  # ungrounded informational reply — exempt
+        return {"safety": {"passed": True, "violations": [], "exempt": "info_only"}}
+
+    citations = state.get("report", {}).get("citations", [])
+    produced = {e["ref"] for e in state.get("evidence", [])}
+    passed, violations = hypothesis_supported(citations, produced)
+    return {"safety": {"passed": passed, "violations": violations}}
 
 
 def hitl_gate(state: IncidentState) -> dict[str, Any]:
