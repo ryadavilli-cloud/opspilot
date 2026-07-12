@@ -114,12 +114,33 @@ def retrieve(state: IncidentState) -> dict[str, Any]:
 
 
 def diagnose(state: IncidentState) -> dict[str, Any]:
-    # Phase 1 stub: one pass, high confidence so the loop exits immediately.
-    # The real ReAct loop + MAX_DIAGNOSE_ITERS breaker land in Phase 4.
+    """One deterministic diagnostic cycle (deployment-regression path). No LLM yet — the
+    reasoning agent will later plug into these same contracts and transitions."""
+    from opspilot.diagnosis.contracts import DiagnosisContext
+    from opspilot.diagnosis.cycle import plan_investigation, run_cycle
+
+    ctx = DiagnosisContext(
+        incident_id=state.get("incident_id", ""),
+        affected_services=state.get("affected_services", []),
+        onset=state.get("onset", ""),
+        category=state.get("category", ""),
+    )
+    hypothesis, observations, stop = run_cycle(_tool_service(), ctx, plan_investigation(ctx))
+    evidence: list[Evidence] = [
+        {"source": c.source, "ref": c.ref, "content": c.note} for c in hypothesis.citations
+    ]
     return {
-        "hypothesis": "(stub) root cause: a recent deploy introduced a regression.",
-        "confidence": 0.9,
-        "diagnose_iters": state.get("diagnose_iters", 0) + 1,
+        "hypothesis": hypothesis.statement,
+        "confidence": hypothesis.confidence,
+        "evidence": evidence,
+        "retrieved_sources": [c.ref for c in hypothesis.citations],
+        # count at least one attempt so a data-less incident can't loop forever
+        "diagnose_iters": state.get("diagnose_iters", 0) + max(1, len(observations)),
+        "diagnosis": {
+            "hypothesis": hypothesis.model_dump(),
+            "observations": [o.model_dump() for o in observations],
+            "stop_reason": stop.model_dump(),
+        },
     }
 
 
