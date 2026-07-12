@@ -24,6 +24,7 @@ from opspilot.diagnosis.contracts import (
     ToolCallRequest,
     ToolObservation,
 )
+from opspilot.guardrails.policies import is_read_only
 
 if TYPE_CHECKING:
     from opspilot.tools.service import ToolService
@@ -82,6 +83,11 @@ def run_cycle(
         if i >= plan.max_iters:  # hard iteration limit
             stop = StopReason(reason="iteration_limit", detail=f"hit max_iters={plan.max_iters}")
             break
+        if not is_read_only(q.call.tool):  # read-only tool policy
+            observations.append(ToolObservation(
+                question=q.question, tool=q.call.tool, status="blocked:not_read_only",
+                evidence_refs=[], result_count=0))
+            continue
         result = service.call(q.call.tool, **q.call.params)
         observations.append(ToolObservation(
             question=q.question, tool=q.call.tool, status=result.status,

@@ -24,7 +24,12 @@ from opspilot.nodes.investigation import (
     synthesize_report,
     triage_router,
 )
-from opspilot.router import after_approval, diagnose_continue, route_by_intent
+from opspilot.router import (
+    after_approval,
+    after_safety_validate,
+    diagnose_continue,
+    route_by_intent,
+)
 from opspilot.state import IncidentState
 
 
@@ -63,7 +68,11 @@ def build_graph():
         {"diagnose": "diagnose", "synthesize_report": "synthesize_report", "escalate": "escalate"},
     )
     g.add_edge("synthesize_report", "safety_validate")
-    g.add_edge("safety_validate", "hitl_gate")
+    g.add_conditional_edges(
+        "safety_validate",
+        after_safety_validate,
+        {"hitl_gate": "hitl_gate", "escalate": "escalate"},
+    )
     g.add_conditional_edges(
         "hitl_gate",
         after_approval,

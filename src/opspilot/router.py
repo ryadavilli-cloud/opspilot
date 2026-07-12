@@ -26,6 +26,11 @@ def diagnose_continue(state: IncidentState) -> str:
     return "diagnose"
 
 
+def after_safety_validate(state: IncidentState) -> str:
+    safety = state.get("safety") or {}
+    return "hitl_gate" if safety.get("passed", True) else "escalate"
+
+
 def after_approval(state: IncidentState) -> str:
     decision = state.get("approval", {}).get("decision")
     return "finalize_report" if decision in ("approve", "edit") else "escalate"
