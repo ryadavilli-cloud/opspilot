@@ -45,6 +45,7 @@ class IncidentState(TypedDict, total=False):
     hypothesis: str
     confidence: float
     diagnose_iters: int
+    diagnosis: dict[str, Any]  # the structured diagnostic cycle (plan/observations/hypothesis)
 
     report: dict[str, Any]
     approval: dict[str, Any]
