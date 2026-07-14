@@ -1,0 +1,36 @@
+{
+  "embed_model": "BAAI/bge-small-en-v1.5",
+  "reranker_model": "BAAI/bge-reranker-v2-m3",
+  "prod_embed_model": "BAAI/bge-m3",
+  "prod_reranker_model": "BAAI/bge-reranker-v2-m3",
+  "mrr_target": 0.8,
+  "best_mode": "rerank",
+  "best_mrr": 0.7917,
+  "target_met": false,
+  "modes": {
+    "dense": {
+      "mode": "dense",
+      "k": 5,
+      "n": 24,
+      "MRR": 0.6868,
+      "P@5": 0.3083,
+      "Recall@5": 0.5069
+    },
+    "hybrid": {
+      "mode": "hybrid",
+      "k": 5,
+      "n": 24,
+      "MRR": 0.7076,
+      "P@5": 0.3,
+      "Recall@5": 0.4826
+    },
+    "rerank": {
+      "mode": "rerank",
+      "k": 5,
+      "n": 24,
+      "MRR": 0.7917,
+      "P@5": 0.4,
+      "Recall@5": 0.6736
+    }
+  }
+}
