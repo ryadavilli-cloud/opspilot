@@ -1,11 +1,15 @@
-name: Deploy
+name: CI & Deploy
 
+# CI runs on every PR and every push to main. Deploy is gated: build-and-deploy `needs` both
+# CI lanes and runs only on push to main, so a red suite can never reach Azure. (`needs` can
+# only reference jobs in the same workflow file, hence CI and deploy live together here.)
 on:
+  pull_request:
   push:
     branches: [main]
   workflow_dispatch:
 
-# OIDC: no stored secrets — federated credential authenticates to Azure.
+# OIDC: no stored secrets — federated credential authenticates to Azure (deploy job only).
 permissions:
   id-token: write
   contents: read
@@ -14,7 +18,47 @@ env:
   IMAGE_REPO: opspilot
 
 jobs:
+  # Fast lane: minimal runtime install. ML-gated tests skip (sentence-transformers absent),
+  # so this is a quick lint/type/contract sanity check on every PR.
+  core:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - name: Sync (dev + data)
+        run: uv sync --group dev --group data
+      - name: Lint
+        run: uv run ruff check .
+      - name: Type-check
+        run: uv run mypy
+      - name: Tests (ML-gated tests skip here)
+        run: uv run pytest -q
+
+  # Full lane: installs the eval group so the retrieval + scenario regression gate actually run
+  # (a skipped gate is not a gate). bge-small (~130MB) is cached across runs; the 2.2GB
+  # cross-encoder reranker tests are excluded via the `reranker` marker.
+  full:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - name: Cache Hugging Face models
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/huggingface
+          key: hf-models-${{ runner.os }}-bge-small-v1
+      - name: Sync (dev + data + eval)
+        run: uv sync --group dev --group data --group eval
+      - name: Full suite incl. scenario gate (exclude the heavy reranker)
+        run: uv run pytest -q -m "not reranker"
+
   build-and-deploy:
+    needs: [core, full]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

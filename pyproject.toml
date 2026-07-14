@@ -53,3 +53,6 @@ ignore_missing_imports = true
 [tool.pytest.ini_options]
 pythonpath = ["src"]
 testpaths = ["tests"]
+markers = [
+    "reranker: exercises the bge-reranker-v2-m3 cross-encoder (heavy ~2.2GB model; excluded from the CI gate lane with -m 'not reranker')",
+]

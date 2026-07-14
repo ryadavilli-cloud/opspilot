@@ -7,30 +7,28 @@ produces an evidence-backed root-cause report — grounded in runbooks, past inc
 live telemetry, with a human approval gate before anything consequential, and full
 observability, evaluation, guardrails, and cost controls around it.
 
-> 🚧 **Status: scaffolding (Phase 0).** This README is a skeleton — it is finalized later,
-> derived from the architecture and actual progress. See `docs/architecture.md` and
-> `docs/execution-plan.md` for the canonical design and build plan.
+> **Status: deterministic connected slice.** A synthetic incident flows ingest → triage →
+> hybrid retrieval → one diagnostic cycle → grounded report → citation guardrail, end to end,
+> with no LLM in the loop yet — the deterministic baseline the model must beat. Hybrid + reranked
+> retrieval is measured against a committed scorecard (`eval/baselines/`).
 
 ## Quickstart (local)
 
 ```bash
-uv sync                 # create the venv and install deps
-uv run pytest -q        # run the scaffold tests
+uv sync                       # runtime + dev deps
+uv run pytest -q              # full test suite (retrieval/eval tests skip without the extras)
 uv run uvicorn opspilot.api:app --reload   # serve the API (GET /health)
+
+uv sync --group eval          # add the retrieval/eval ML stack (sentence-transformers, BM25)
+uv run python eval/retrieval_eval.py       # score dense / hybrid / rerank + write the scorecard
 ```
 
 ## Layout
 
 ```
-src/opspilot/      # package: graph, nodes, tools, guardrails, ops, api, config
-eval/              # evaluation harness (runnable; evaluators added per phase)
-data/              # corpora (runbooks, past incidents, telemetry) — populated Phase 2
-infra/             # Bicep IaC — populated Phase 1.5 onward
-tests/             # deterministic safety-net tests
-docs/              # architecture + execution plan
+src/opspilot/      # package: graph, nodes, tools, retrieval, diagnosis, guardrails, mcp, api, config
+eval/              # evaluation harness + committed baselines (retrieval + scenario scorecards)
+data/              # RetailEase synthetic corpus: answer key, telemetry, alerts/incidents, KB
+infra/             # Bicep IaC + GitHub Actions CD
+tests/             # deterministic safety-net + scenario regression gate
 ```
-
-## Documentation
-
-- **Architecture:** `docs/architecture.md`
-- **Execution plan:** `docs/execution-plan.md`
