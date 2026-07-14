@@ -75,6 +75,7 @@ def test_metadata_filter_restricts_kind(retriever):
     assert hits and all(h.kind == "architecture" for h in hits)
 
 
+@pytest.mark.reranker
 def test_rerank_returns_ranked_doc_hits(retriever):
     hits = retriever.rerank("payments timing out at checkout", k=5)
     assert hits and all(isinstance(h.doc_id, str) for h in hits)
@@ -106,6 +107,7 @@ def test_scorecard_records_rerank_gain():
     assert scorecard["best_mrr"] >= 0.78, scorecard
 
 
+@pytest.mark.reranker
 def test_rerank_scorecard_matches_live_score(retriever):
     """One live query proves the rerank path still produces the top-ranked doc the scorecard
     was built on — a cheap guard that the code and the committed numbers haven't diverged."""
