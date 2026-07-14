@@ -75,6 +75,10 @@ def resolve_tier(severity: Severity) -> Tier:
 EMBEDDING_MODEL = "BAAI/bge-m3"               # dense + sparse in one model
 RERANKER_MODEL = "BAAI/bge-reranker-v2-m3"
 
+# Depth of the first-stage (hybrid) candidate set handed to the cross-encoder reranker.
+# Deeper = higher recall into the rerank stage at a linear cost in cross-encoder calls.
+RERANK_CANDIDATES = int(os.getenv("OPSPILOT_RERANK_CANDIDATES", "30"))
+
 
 # --------------------------------------------------------------------------------------
 # Agentic loop controls (circuit breakers)
