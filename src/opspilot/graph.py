@@ -30,12 +30,12 @@ from opspilot.router import (
     diagnose_continue,
     route_by_intent,
 )
-from opspilot.state import IncidentState
+from opspilot.state import InvestigationState
 
 
 def build_graph():
     """Build and compile the investigation graph."""
-    g = StateGraph(IncidentState)
+    g = StateGraph(InvestigationState)
 
     g.add_node("ingest", ingest)
     g.add_node("triage_router", triage_router)
@@ -86,16 +86,19 @@ def build_graph():
 
 
 def _initial_state(alert: dict) -> dict:
-    """Seed the reducer channels so append-only writes have a base."""
-    return {"alert": alert, "evidence": [], "retrieved_sources": [], "messages": []}
+    """Initial graph input — just the alert; the typed state supplies every other default."""
+    return {"alert": alert}
 
 
 if __name__ == "__main__":  # pragma: no cover
+    from opspilot.tools.service import ToolService
+
     app = build_graph()
     result = app.invoke(
         _initial_state(
             {"incident_id": "INC-DEMO", "severity": "SEV2", "summary": "API 5xx spike after deploy"}
-        )
+        ),
+        config={"configurable": {"tool_service": ToolService()}},
     )
     print("graph compiled OK; final report:")
     print(result.get("report"))

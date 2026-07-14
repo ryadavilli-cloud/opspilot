@@ -20,33 +20,35 @@ from opspilot.diagnosis.contracts import (  # noqa: E402
 )
 from opspilot.diagnosis.cycle import run_cycle  # noqa: E402
 from opspilot.nodes.investigation import diagnose, ingest, triage_router  # noqa: E402
+from opspilot.state import InvestigationState  # noqa: E402
 from opspilot.tools.service import ToolService  # noqa: E402
 
 
-def _front(inc_id: str, summary: str) -> dict:
-    state: dict = {"alert": {"incident_id": inc_id, "summary": summary}}
-    state.update(ingest(state))
-    state.update(triage_router(state))
-    state.update(diagnose(state))
+def _front(inc_id: str, summary: str) -> InvestigationState:
+    state = InvestigationState(alert={"incident_id": inc_id, "summary": summary})
+    state = state.model_copy(update=ingest(state))
+    state = state.model_copy(update=triage_router(state))
+    state = state.model_copy(update=diagnose(state))
     return state
 
 
 def test_deployment_hypothesis_from_real_observations():
     s = _front("inc-006", "Reservation conflicts and oversells at checkout.")
-    assert "deployment" in s["hypothesis"].lower()
-    assert 0.0 < s["confidence"] <= 1.0
-    assert s["evidence"]  # explicit supporting evidence
+    assert s.hypothesis and "deployment" in s.hypothesis.statement.lower()
+    assert 0.0 < s.hypothesis.confidence <= 1.0
+    assert s.evidence_by_id  # explicit supporting evidence
     # the causal deploy is surfaced and cited
-    assert "deploys:inventory-api:dep-20260625-01" in s["retrieved_sources"]
-    diag = s["diagnosis"]
-    assert diag["observations"] and diag["stop_reason"]["reason"] == "hypothesis_supported"
+    assert "deploys:inventory-api:dep-20260625-01" in s.evidence_refs()
+    assert s.diagnosis and s.diagnosis.observations
+    assert s.diagnosis.stop_reason and s.diagnosis.stop_reason.reason == "hypothesis_supported"
 
 
 def test_every_citation_is_backed_by_a_run_observation():
     s = _front("inc-006", "Reservation conflicts and oversells at checkout.")
-    observed = {ref for o in s["diagnosis"]["observations"] for ref in o["evidence_refs"]}
-    for citation in s["diagnosis"]["hypothesis"]["citations"]:
-        assert citation["ref"] in observed, f"{citation['ref']} was not produced this run"
+    assert s.diagnosis and s.hypothesis
+    observed = {ref for o in s.diagnosis.observations for ref in o.evidence_refs}
+    for citation in s.hypothesis.citations:
+        assert citation.ref in observed, f"{citation.ref} was not produced this run"
 
 
 def test_loop_obeys_hard_iteration_limit():
@@ -66,6 +68,7 @@ def test_loop_obeys_hard_iteration_limit():
 def test_diagnosis_is_deterministic():
     a = _front("inc-006", "Reservation conflicts and oversells at checkout.")
     b = _front("inc-006", "Reservation conflicts and oversells at checkout.")
-    assert a["hypothesis"] == b["hypothesis"]
-    assert a["retrieved_sources"] == b["retrieved_sources"]
-    assert a["confidence"] == b["confidence"]
+    assert a.hypothesis and b.hypothesis
+    assert a.hypothesis.statement == b.hypothesis.statement
+    assert a.evidence_refs() == b.evidence_refs()
+    assert a.hypothesis.confidence == b.hypothesis.confidence

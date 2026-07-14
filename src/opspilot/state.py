@@ -1,17 +1,35 @@
-"""Incident investigation state — the contract between graph nodes.
+"""Incident investigation state — the typed, versioned contract between graph nodes.
 
-Reducers define how concurrent writes merge: `evidence` / `retrieved_sources` are
-append-only (so diagnosis sees the full trail); `messages` uses add_messages; scalars
-are last-write-wins (one node owns each at a time).
+Migrated from a `TypedDict` to a Pydantic model so schema validation is real, and so the
+seams an LLM will later plug into are frozen and correct (see docs/code-guidelines §4/§7):
+
+- **Separated identifiers.** `incident_id` (business) is distinct from `investigation_id`
+  (one attempt, minted at ingest) and `thread_id` (derived from it). A reopened or rerun
+  incident can no longer overwrite or resume the wrong graph state.
+- **Keyed, deduplicated evidence.** `evidence_by_id` is a dict keyed by content hash with a
+  merge reducer, replacing the old `list + operator.add` channel that appended the same
+  reference on every diagnose re-entry (observed 5x duplication). Distinct hashes are never
+  collapsed, so contradictory observations survive.
+- **One source of truth.** The hypothesis (statement + confidence + citations) lives only on
+  `hypothesis: Hypothesis`; the old scalar `confidence` and the duplicated `diagnosis`
+  hypothesis-dump are gone. `retrieved_sources` is derived from evidence, not stored.
+
+Report / approval / safety / postmortem / alert stay as dicts here; each is typed when its
+own stage lands (report + approval at the HITL stage). This model types the four seams the
+pre-LLM hardening targets, not the whole future state.
 """
 
 from __future__ import annotations
 
+import hashlib
 from enum import StrEnum
-from operator import add
-from typing import Annotated, Any, TypedDict
+from typing import Annotated, Any, Literal
 
-from langgraph.graph.message import add_messages
+from pydantic import BaseModel, Field
+
+from opspilot.diagnosis.contracts import Hypothesis, StopReason, ToolObservation
+
+_UNIT_SEP = "\x1f"
 
 
 class Intent(StrEnum):
@@ -20,37 +38,86 @@ class Intent(StrEnum):
     INFO_ONLY = "info_only"
 
 
-class Evidence(TypedDict):
+def evidence_hash(source: str, ref: str, content: str) -> str:
+    """Content hash for dedup + integrity: sha256 over the canonical `source|ref|content`.
+
+    `content` is included so two observations sharing a ref but disagreeing on content get
+    distinct keys and are never silently collapsed (contradictions must survive).
+    """
+    canonical = _UNIT_SEP.join((source, ref, content)).encode("utf-8")
+    return hashlib.sha256(canonical).hexdigest()
+
+
+class EvidenceItem(BaseModel):
+    """A single piece of evidence produced by a tool during this run. `ref` uses the frozen
+    grammar (`logs:<svc>:<id>`, `deploys:<svc>:<id>`, `runbook:<id>`, ...)."""
+
     source: str  # runbook | past_incident | logs | metrics | deploys | deps
-    ref: str  # citation / doc id / query
-    content: str
+    ref: str
+    content: str = ""
+    content_hash: str
+
+    @classmethod
+    def make(cls, source: str, ref: str, content: str = "") -> EvidenceItem:
+        return cls(source=source, ref=ref, content=content,
+                   content_hash=evidence_hash(source, ref, content))
 
 
-class IncidentState(TypedDict, total=False):
-    incident_id: str  # == thread_id for the checkpointer
-    alert: dict[str, Any]
-    severity: str
-    category: str
-    intent: str
-    matched_incident: str  # set if a past incident matches (fast path)
+def merge_evidence(
+    existing: dict[str, EvidenceItem], incoming: dict[str, EvidenceItem]
+) -> dict[str, EvidenceItem]:
+    """Reducer: merge by content-hash key, first-seen wins. Associative and deterministic;
+    dedups across loop re-entry and parallel branches without collapsing distinct hashes."""
+    merged = dict(existing)
+    for key, item in incoming.items():
+        merged.setdefault(key, item)
+    return merged
 
-    affected_services: list[str]  # derived from the alert storm at triage
-    onset: str                    # earliest alert / incident open time (ISO)
-    triage: dict[str, Any]        # the deterministic triage decision + the evidence behind it
 
-    evidence: Annotated[list[Evidence], add]  # append-only across loop turns
-    retrieved_sources: Annotated[list[str], add]
+class DiagnosisTrace(BaseModel):
+    """The observable trail of one diagnostic cycle — the tool observations and why it stopped.
+    The hypothesis it produced is not duplicated here; it lives on the state's `hypothesis`."""
 
-    messages: Annotated[list, add_messages]  # ReAct scratchpad
-    hypothesis: str
-    confidence: float
-    diagnose_iters: int
-    diagnosis: dict[str, Any]  # the structured diagnostic cycle (plan/observations/hypothesis)
+    observations: list[ToolObservation] = Field(default_factory=list)
+    stop_reason: StopReason | None = None
 
-    report: dict[str, Any]
-    safety: dict[str, Any]  # output-guardrail verdict {passed, violations}
-    approval: dict[str, Any]
-    postmortem: dict[str, Any]
 
-    degraded: bool  # set by circuit breaker / fallback
-    error: str
+class InvestigationState(BaseModel):
+    schema_version: Literal["1.0"] = "1.0"
+
+    # identifiers — separated (never conflate incident_id with thread_id)
+    incident_id: str = ""
+    investigation_id: str = ""   # one attempt; minted at ingest (UUID)
+    thread_id: str = ""          # derived from investigation_id
+    workflow_version: str = ""
+    idempotency_key: str = ""
+
+    alert: dict[str, Any] = Field(default_factory=dict)  # raw ingested event (typed later)
+    severity: str | None = None
+    category: str | None = None
+    intent: str | None = None
+    matched_incident: str = ""   # a past match (candidate + verification lands with the fast path)
+
+    affected_services: list[str] = Field(default_factory=list)
+    onset: str = ""              # earliest alert/incident time (ISO)
+    triage: dict[str, Any] = Field(default_factory=dict)
+
+    # keyed collection — dedup by content hash, never blind-append
+    evidence_by_id: Annotated[dict[str, EvidenceItem], merge_evidence] = Field(default_factory=dict)
+
+    hypothesis: Hypothesis | None = None       # single source of truth (statement/confidence/cites)
+    diagnosis: DiagnosisTrace | None = None    # observations + stop reason (not the hypothesis)
+    diagnose_iters: int = 0
+
+    report: dict[str, Any] | None = None
+    safety: dict[str, Any] | None = None
+    approval: dict[str, Any] | None = None
+    postmortem: dict[str, Any] | None = None
+
+    degraded: bool = False
+    error: str = ""
+
+    def evidence_refs(self) -> list[str]:
+        """Derive the produced-reference list from evidence (the single source), preserving
+        insertion order — replaces the old separately-stored `retrieved_sources` channel."""
+        return [item.ref for item in self.evidence_by_id.values()]
