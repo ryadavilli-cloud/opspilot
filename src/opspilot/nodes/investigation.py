@@ -219,6 +219,14 @@ def hitl_gate(state: InvestigationState) -> dict[str, Any]:
     return {"approval": {"decision": "approve", "approver": "stub", "edits": None}}
 
 
+def apply_edit(state: InvestigationState) -> dict[str, Any]:
+    """Apply the reviewer's edits to the report. The graph routes the result back through
+    safety_validate — an edit never reaches finalize without passing the guardrail again."""
+    edits = (state.approval or {}).get("edits") or {}
+    report = {**(state.report or {}), **edits}
+    return {"report": report}
+
+
 def finalize_report(state: InvestigationState) -> dict[str, Any]:
     return {"report": state.report or {}}
 

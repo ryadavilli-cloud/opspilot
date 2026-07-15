@@ -12,6 +12,7 @@ from __future__ import annotations
 from langgraph.graph import END, START, StateGraph
 
 from opspilot.nodes.investigation import (
+    apply_edit,
     diagnose,
     escalate,
     finalize_report,
@@ -45,6 +46,7 @@ def build_graph():
     g.add_node("synthesize_report", synthesize_report)
     g.add_node("safety_validate", safety_validate)
     g.add_node("hitl_gate", hitl_gate)
+    g.add_node("apply_edit", apply_edit)
     g.add_node("finalize_report", finalize_report)
     g.add_node("postmortem", postmortem)
     g.add_node("escalate", escalate)
@@ -76,8 +78,10 @@ def build_graph():
     g.add_conditional_edges(
         "hitl_gate",
         after_approval,
-        {"finalize_report": "finalize_report", "escalate": "escalate"},
+        {"finalize_report": "finalize_report", "apply_edit": "apply_edit", "escalate": "escalate"},
     )
+    # An edit re-enters the guardrail, then returns to the gate for re-approval.
+    g.add_edge("apply_edit", "safety_validate")
     g.add_edge("finalize_report", "postmortem")
     g.add_edge("postmortem", END)
     g.add_edge("escalate", END)

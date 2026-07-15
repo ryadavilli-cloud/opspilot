@@ -40,5 +40,11 @@ def after_safety_validate(state: InvestigationState) -> str:
 
 
 def after_approval(state: InvestigationState) -> str:
+    # An edit re-enters validation (apply_edit -> safety_validate -> re-approve); it never
+    # shortcuts to finalize. reject / request_more_evidence / a missing decision fail closed.
     decision = (state.approval or {}).get("decision")
-    return "finalize_report" if decision in ("approve", "edit") else "escalate"
+    if decision == "approve":
+        return "finalize_report"
+    if decision == "edit":
+        return "apply_edit"
+    return "escalate"
