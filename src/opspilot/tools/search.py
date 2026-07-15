@@ -21,19 +21,19 @@ from opspilot.tools.contracts import (
 )
 from opspilot.tools.errors import run_tool
 
-if TYPE_CHECKING:  # avoid importing the ML stack at module load
-    from opspilot.retrieval.retriever import Retriever
+if TYPE_CHECKING:  # avoid importing any retrieval backend at module load
+    from opspilot.retrieval.base import SearchRetriever
 
 RECENCY_BONUS = 0.2  # up to +20% score for the most recent matching incident
 
 
-def _titles_services(retriever: Retriever) -> tuple[dict[str, str], dict[str, list[str]]]:
+def _titles_services(retriever: SearchRetriever) -> tuple[dict[str, str], dict[str, list[str]]]:
     titles = {d.doc_id: d.title for d in retriever.docs}
     services = {d.doc_id: list(d.services) for d in retriever.docs}
     return titles, services
 
 
-def _to_hits(retriever: Retriever, hits) -> list[DocHit]:
+def _to_hits(retriever: SearchRetriever, hits) -> list[DocHit]:
     titles, services = _titles_services(retriever)
     return [
         DocHit(doc_id=h.doc_id, kind=h.kind, title=titles.get(h.doc_id, ""),
@@ -42,10 +42,10 @@ def _to_hits(retriever: Retriever, hits) -> list[DocHit]:
     ]
 
 
-def search_runbooks(retriever: Retriever, **kwargs) -> ToolResult[DocHit]:
+def search_runbooks(retriever: SearchRetriever, **kwargs) -> ToolResult[DocHit]:
     def logic(req: SearchRunbooksRequest) -> tuple[list[DocHit], list[str]]:
         services = (req.service,) if req.service else None
-        hits = retriever.hybrid(req.query, k=req.k, kinds=("runbook", "architecture"),
+        hits = retriever.search(req.query, k=req.k, kinds=("runbook", "architecture"),
                                 services=services)
         recs = _to_hits(retriever, hits)
         return recs, [h.doc_id for h in recs]
@@ -53,11 +53,13 @@ def search_runbooks(retriever: Retriever, **kwargs) -> ToolResult[DocHit]:
     return run_tool("search_runbooks", SearchRunbooksRequest, logic, **kwargs)
 
 
-def search_past_incidents(retriever: Retriever, repo: Repository, **kwargs) -> ToolResult[DocHit]:
+def search_past_incidents(
+    retriever: SearchRetriever, repo: Repository, **kwargs
+) -> ToolResult[DocHit]:
     def logic(req: SearchPastIncidentsRequest) -> tuple[list[DocHit], list[str]]:
         services = (req.service,) if req.service else None
         # Over-fetch, then recency-weight the postmortems by their incident's onset.
-        hits = retriever.hybrid(req.query, k=max(req.k * 2, req.k), kinds=("postmortem",),
+        hits = retriever.search(req.query, k=max(req.k * 2, req.k), kinds=("postmortem",),
                                 services=services)
 
         def onset(doc_id: str) -> float | None:
