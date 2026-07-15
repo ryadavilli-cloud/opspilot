@@ -1,48 +1,77 @@
-"""Stubbed graph nodes (Phase 1 walking skeleton).
+"""Investigation graph nodes — deterministic connected slice (no LLM yet).
 
-Every node is wired so a synthetic alert flows end-to-end; the logic is canned and is
-replaced phase by phase — real retrieval (Phase 3), the agentic diagnose loop (Phase 4),
-HITL interrupt + report + memory write-back (Phase 5), guardrails/ops (Phase 6).
+A synthetic alert flows end to end over real tools; each node returns a partial update to the
+typed `InvestigationState`. The `ToolService` is injected via LangGraph `config` (one instance
+per investigation, built at the composition root) rather than a module global, so tests can
+supply edge-case repositories and the diagnosis loop always talks to the same service.
+
+(No `from __future__ import annotations` here: LangGraph inspects node signatures at
+`add_node`, and stringized annotations make it mis-read the injected `config` parameter.)
 """
 
-from __future__ import annotations
-
+import hashlib
 from typing import Any
+from uuid import uuid4
 
-from opspilot.state import Evidence, IncidentState, Intent
+from langchain_core.runnables import RunnableConfig
 
-_tools = None
+from opspilot.config import WORKFLOW_VERSION
+from opspilot.diagnosis.contracts import EvidenceCitation, Hypothesis
+from opspilot.state import DiagnosisTrace, EvidenceItem, Intent, InvestigationState
 
-
-def _tool_service():
-    """Lazily-built, cached ToolService (its retriever embeds the KB on first search call)."""
-    global _tools
-    if _tools is None:
-        from opspilot.tools.service import ToolService
-
-        _tools = ToolService()
-    return _tools
+_UNIT_SEP = "\x1f"
 
 
-def ingest(state: IncidentState) -> dict[str, Any]:
-    alert = state.get("alert", {})
-    return {"incident_id": alert.get("incident_id", "INC-STUB"), "diagnose_iters": 0}
+def _svc(config: RunnableConfig | None):
+    """Resolve the injected ToolService, or construct a default (direct-call tests / CLI)."""
+    if config:
+        injected = (config.get("configurable") or {}).get("tool_service")
+        if injected is not None:
+            return injected
+    from opspilot.tools.service import ToolService
+
+    return ToolService()
+
+
+def _evidence_map(items: list[EvidenceItem]) -> dict[str, EvidenceItem]:
+    """Key evidence by content hash so the merge reducer dedups it."""
+    return {item.content_hash: item for item in items}
+
+
+def ingest(state: InvestigationState) -> dict[str, Any]:
+    """Normalize the alert; mint a unique investigation_id and derive thread_id from it."""
+    alert = state.alert
+    incident_id = alert.get("incident_id", "INC-STUB")
+    investigation_id = str(uuid4())
+    idem = hashlib.sha256(
+        _UNIT_SEP.join((incident_id, alert.get("summary", ""))).encode("utf-8")
+    ).hexdigest()
+    return {
+        "incident_id": incident_id,
+        "investigation_id": investigation_id,
+        "thread_id": f"thread-{investigation_id}",
+        "workflow_version": WORKFLOW_VERSION,
+        "idempotency_key": idem,
+        "diagnose_iters": 0,
+    }
 
 
 _PRIORITY_TO_SEV = {"1": "SEV1", "2": "SEV2", "3": "SEV3", "4": "SEV4"}
 
 
-def triage_router(state: IncidentState) -> dict[str, Any]:
+def triage_router(
+    state: InvestigationState, config: RunnableConfig | None = None
+) -> dict[str, Any]:
     """Deterministic triage over real tools: resolve the incident + its alert storm, derive
     severity/category/affected-services/onset, and decide known-issue vs novel from a
     past-incident search. No LLM — this is the baseline the eventual model must beat.
     """
-    incident_id = state.get("incident_id", "")
-    svc = _tool_service()
+    incident_id = state.incident_id
+    svc = _svc(config)
     record = (svc.get_incident(incident_id=incident_id).results or [None])[0]
 
     if record is None:  # unknown incident id — cannot classify from data; treat as novel
-        alert = state.get("alert", {})
+        alert = state.alert
         return {
             "severity": alert.get("severity", "SEV3"),
             "category": alert.get("category", "unknown"),
@@ -58,7 +87,7 @@ def triage_router(state: IncidentState) -> dict[str, Any]:
     onset = min((a.fired_at for a in alerts), default=record.opened_at)
 
     # Known vs novel: does a past-incident search surface THIS incident's own postmortem?
-    # (Deterministic baseline; the confidence-floored match verification is a later phase.)
+    # (Deterministic baseline; the confidence-floored match verification is a later stage.)
     past = svc.search_past_incidents(query=record.short_description, k=3).results
     own = f"postmortem:{incident_id}"
     matched = own if any(h.doc_id == own for h in past) else ""
@@ -83,114 +112,113 @@ def triage_router(state: IncidentState) -> dict[str, Any]:
     }
 
 
-def known_issue_fast_path(state: IncidentState) -> dict[str, Any]:
+def known_issue_fast_path(
+    state: InvestigationState, config: RunnableConfig | None = None
+) -> dict[str, Any]:
     """Deterministic short-circuit for a known issue: reuse the matched incident's stored
     resolution as the hypothesis and skip the full diagnose loop."""
-    match = state.get("matched_incident", "")
-    inc_id = match.split(":", 1)[1] if ":" in match else state.get("incident_id", "")
-    record = _tool_service().get_incident(incident_id=inc_id).results
+    match = state.matched_incident
+    inc_id = match.split(":", 1)[1] if ":" in match else state.incident_id
+    record = _svc(config).get_incident(incident_id=inc_id).results
     resolution = record[0].resolution if (record and record[0].resolution) else ""
     ref = f"past_incident:{inc_id}"
+    hypothesis = Hypothesis(
+        statement=f"Known issue — recurrence of {inc_id}. Prior resolution: {resolution}",
+        confidence=0.95,
+        citations=[EvidenceCitation(source="past_incident", ref=ref, note=resolution)],
+    )
     return {
-        "hypothesis": f"Known issue — recurrence of {inc_id}. Prior resolution: {resolution}",
-        "confidence": 0.95,
-        "evidence": [{"source": "past_incident", "ref": ref, "content": resolution}],
-        "retrieved_sources": [ref],
+        "hypothesis": hypothesis,
+        "evidence_by_id": _evidence_map([EvidenceItem.make("past_incident", ref, resolution)]),
     }
 
 
-def retrieve(state: IncidentState) -> dict[str, Any]:
+def retrieve(state: InvestigationState, config: RunnableConfig | None = None) -> dict[str, Any]:
     """Real hybrid retrieval via ToolService; degrades to no evidence if retrieval is down."""
-    query = state.get("alert", {}).get("summary", "")
-    svc = _tool_service()
-    evidence: list[Evidence] = []
+    query = state.alert.get("summary", "")
+    svc = _svc(config)
+    items: list[EvidenceItem] = []
     for hit in svc.search_runbooks(query=query, k=5).results:
-        evidence.append({"source": "runbook", "ref": hit.doc_id, "content": hit.title})
+        items.append(EvidenceItem.make("runbook", hit.doc_id, hit.title))
     for hit in svc.search_past_incidents(query=query, k=3).results:
         inc_id = hit.doc_id.split(":", 1)[1] if ":" in hit.doc_id else hit.doc_id
-        evidence.append({"source": "past_incident", "ref": f"past_incident:{inc_id}",
-                         "content": hit.title})
-    return {"evidence": evidence, "retrieved_sources": [e["ref"] for e in evidence]}
+        items.append(EvidenceItem.make("past_incident", f"past_incident:{inc_id}", hit.title))
+    return {"evidence_by_id": _evidence_map(items)}
 
 
-def diagnose(state: IncidentState) -> dict[str, Any]:
+def diagnose(state: InvestigationState, config: RunnableConfig | None = None) -> dict[str, Any]:
     """One deterministic diagnostic cycle (deployment-regression path). No LLM yet — the
     reasoning agent will later plug into these same contracts and transitions."""
     from opspilot.diagnosis.contracts import DiagnosisContext
     from opspilot.diagnosis.cycle import plan_investigation, run_cycle
 
     ctx = DiagnosisContext(
-        incident_id=state.get("incident_id", ""),
-        affected_services=state.get("affected_services", []),
-        onset=state.get("onset", ""),
-        category=state.get("category", ""),
+        incident_id=state.incident_id,
+        affected_services=state.affected_services,
+        onset=state.onset,
+        category=state.category or "",
     )
-    hypothesis, observations, stop = run_cycle(_tool_service(), ctx, plan_investigation(ctx))
-    evidence: list[Evidence] = [
-        {"source": c.source, "ref": c.ref, "content": c.note} for c in hypothesis.citations
-    ]
+    hypothesis, observations, stop = run_cycle(_svc(config), ctx, plan_investigation(ctx))
+    evidence = [EvidenceItem.make(c.source, c.ref, c.note) for c in hypothesis.citations]
     return {
-        "hypothesis": hypothesis.statement,
-        "confidence": hypothesis.confidence,
-        "evidence": evidence,
-        "retrieved_sources": [c.ref for c in hypothesis.citations],
+        "hypothesis": hypothesis,
+        "evidence_by_id": _evidence_map(evidence),
         # one outer cycle per diagnose invocation, so the loop lands exactly on MAX_DIAGNOSE_ITERS
-        "diagnose_iters": state.get("diagnose_iters", 0) + 1,
-        "diagnosis": {
-            "hypothesis": hypothesis.model_dump(),
-            "observations": [o.model_dump() for o in observations],
-            "stop_reason": stop.model_dump(),
-        },
+        "diagnose_iters": state.diagnose_iters + 1,
+        "diagnosis": DiagnosisTrace(observations=observations, stop_reason=stop),
     }
 
 
-def synthesize_report(state: IncidentState) -> dict[str, Any]:
+def synthesize_report(state: InvestigationState) -> dict[str, Any]:
+    hyp = state.hypothesis
     report = {
-        "incident_id": state.get("incident_id", "INC-STUB"),
-        "severity": state.get("severity", "SEV3"),
-        "category": state.get("category", "unknown"),
-        "hypothesis": state.get("hypothesis", ""),
-        "confidence": state.get("confidence", 0.0),
-        "evidence": state.get("evidence", []),
+        "incident_id": state.incident_id or "INC-STUB",
+        "severity": state.severity or "SEV3",
+        "category": state.category or "unknown",
+        "hypothesis": hyp.statement if hyp else "",
+        "confidence": hyp.confidence if hyp else 0.0,
+        # published report evidence shape — the internal content_hash stays in state
+        "evidence": [{"source": ev.source, "ref": ev.ref, "content": ev.content}
+                     for ev in state.evidence_by_id.values()],
         "recommended_next_step": "(stub) roll back the most recent deploy and re-observe.",
-        "citations": state.get("retrieved_sources", []),
+        "citations": state.evidence_refs(),
     }
     return {"report": report}
 
 
-def safety_validate(state: IncidentState) -> dict[str, Any]:
+def safety_validate(state: InvestigationState) -> dict[str, Any]:
     """Output guardrail: no unsupported hypothesis. Every report citation must be an evidence
     reference produced by a tool during this run (exempt only the info_only reply)."""
     from opspilot.guardrails.policies import hypothesis_supported
 
-    if state.get("intent") == Intent.INFO_ONLY.value:  # ungrounded informational reply — exempt
+    if state.intent == Intent.INFO_ONLY.value:  # ungrounded informational reply — exempt
         return {"safety": {"passed": True, "violations": [], "exempt": "info_only"}}
 
-    citations = state.get("report", {}).get("citations", [])
-    produced = {e["ref"] for e in state.get("evidence", [])}
+    citations = (state.report or {}).get("citations", [])
+    produced = set(state.evidence_refs())
     passed, violations = hypothesis_supported(citations, produced)
     return {"safety": {"passed": passed, "violations": violations}}
 
 
-def hitl_gate(state: IncidentState) -> dict[str, Any]:
-    # Phase 5 replaces this with a checkpoint-backed interrupt(). For the walking
+def hitl_gate(state: InvestigationState) -> dict[str, Any]:
+    # The HITL stage replaces this with a checkpoint-backed interrupt(). For the walking
     # skeleton we auto-approve so the flow completes without a human in the loop.
     return {"approval": {"decision": "approve", "approver": "stub", "edits": None}}
 
 
-def finalize_report(state: IncidentState) -> dict[str, Any]:
-    return {"report": state.get("report", {})}
+def finalize_report(state: InvestigationState) -> dict[str, Any]:
+    return {"report": state.report or {}}
 
 
-def postmortem(state: IncidentState) -> dict[str, Any]:
-    # Phase 5 writes this back to the cross-thread incident Store (Cosmos).
+def postmortem(state: InvestigationState) -> dict[str, Any]:
+    # The HITL/memory stage writes this back to the cross-thread incident Store.
     return {
         "postmortem": {
-            "incident_id": state.get("incident_id", "INC-STUB"),
-            "resolution": state.get("hypothesis", ""),
+            "incident_id": state.incident_id or "INC-STUB",
+            "resolution": state.hypothesis.statement if state.hypothesis else "",
         }
     }
 
 
-def escalate(state: IncidentState) -> dict[str, Any]:
-    return {"degraded": True, "error": state.get("error", "escalated to human")}
+def escalate(state: InvestigationState) -> dict[str, Any]:
+    return {"degraded": True, "error": state.error or "escalated to human"}

@@ -35,17 +35,21 @@ def _load_scenarios() -> list[dict[str, Any]]:
 
 
 def _produced_refs(state: dict) -> set[str]:
-    refs = set(state.get("retrieved_sources", []))
-    for obs in state.get("diagnosis", {}).get("observations", []):
-        refs |= set(obs["evidence_refs"])
+    # evidence_by_id values are EvidenceItem; diagnosis is a DiagnosisTrace (typed state).
+    refs = {ev.ref for ev in state.get("evidence_by_id", {}).values()}
+    diag = state.get("diagnosis")
+    if diag is not None:
+        for obs in diag.observations:
+            refs |= set(obs.evidence_refs)
     return refs
 
 
 def _score_one(scenario: dict, state: dict) -> dict[str, float]:
     expected = set(scenario["expected_evidence"])
     produced = _produced_refs(state)
-    citations = state.get("report", {}).get("citations", [])
-    observations = state.get("diagnosis", {}).get("observations", [])
+    citations = (state.get("report") or {}).get("citations", [])
+    diag = state.get("diagnosis")
+    observations = diag.observations if diag is not None else []
     return {
         "routing_correct": float(state.get("intent") == scenario["expected_intent"]),
         "category_correct": float(state.get("category") == scenario["category"]),
@@ -54,7 +58,7 @@ def _score_one(scenario: dict, state: dict) -> dict[str, float]:
             len([c for c in citations if c not in produced]) / len(citations) if citations else 0.0
         ),
         "tool_calls_valid": (
-            float(all(o["status"] == "ok" for o in observations)) if observations else 1.0
+            float(all(o.status == "ok" for o in observations)) if observations else 1.0
         ),
         "iteration_ok": float(state.get("diagnose_iters", 0) <= MAX_DIAGNOSE_ITERS),
     }
@@ -80,10 +84,12 @@ def _mcp_parity_ok() -> bool:
 
 def evaluate(implementation: str = "deterministic") -> dict[str, Any]:
     app = build_graph()
+    svc = ToolService()  # one shared service, injected into every run
+    config = {"configurable": {"tool_service": svc}}
     scenarios = _load_scenarios()
     per = [
         _score_one(s, app.invoke(_initial_state(
-            {"incident_id": s["id"], "summary": s["alert"]["summary"]})))
+            {"incident_id": s["id"], "summary": s["alert"]["summary"]}), config=config))
         for s in scenarios
     ]
     n = len(per)

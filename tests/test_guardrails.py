@@ -9,7 +9,12 @@ from __future__ import annotations
 from opspilot.guardrails.policies import hypothesis_supported, is_read_only, unsupported_citations
 from opspilot.nodes.investigation import safety_validate
 from opspilot.router import after_safety_validate
-from opspilot.state import Intent
+from opspilot.state import EvidenceItem, Intent, InvestigationState
+
+
+def _evidence(source: str, ref: str, content: str = "") -> dict[str, EvidenceItem]:
+    item = EvidenceItem.make(source, ref, content)
+    return {item.content_hash: item}
 
 
 def test_read_only_tool_policy():
@@ -32,25 +37,25 @@ def test_invented_citation_is_flagged():
 
 
 def test_safety_validate_rejects_unsupported_report_and_escalates():
-    state = {
-        "report": {"citations": ["invented:ref"]},
-        "evidence": [{"source": "logs", "ref": "logs:a:b", "content": ""}],
-    }
+    state = InvestigationState(
+        report={"citations": ["invented:ref"]},
+        evidence_by_id=_evidence("logs", "logs:a:b"),
+    )
     result = safety_validate(state)
     assert result["safety"]["passed"] is False and result["safety"]["violations"]
-    assert after_safety_validate({**state, **result}) == "escalate"
+    assert after_safety_validate(state.model_copy(update=result)) == "escalate"
 
 
 def test_safety_validate_passes_grounded_report():
-    state = {
-        "report": {"citations": ["logs:a:b"]},
-        "evidence": [{"source": "logs", "ref": "logs:a:b", "content": ""}],
-    }
+    state = InvestigationState(
+        report={"citations": ["logs:a:b"]},
+        evidence_by_id=_evidence("logs", "logs:a:b"),
+    )
     result = safety_validate(state)
     assert result["safety"]["passed"] is True
-    assert after_safety_validate({**state, **result}) == "hitl_gate"
+    assert after_safety_validate(state.model_copy(update=result)) == "hitl_gate"
 
 
 def test_info_only_reply_is_exempt_from_citation_gate():
-    state = {"intent": Intent.INFO_ONLY.value, "report": {"citations": []}, "evidence": []}
+    state = InvestigationState(intent=Intent.INFO_ONLY.value, report={"citations": []})
     assert safety_validate(state)["safety"]["passed"] is True

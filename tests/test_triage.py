@@ -18,6 +18,7 @@ pytest.importorskip("rank_bm25")
 
 from opspilot.nodes.investigation import ingest, triage_router  # noqa: E402
 from opspilot.router import route_by_intent  # noqa: E402
+from opspilot.state import InvestigationState  # noqa: E402
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
@@ -40,11 +41,11 @@ ENTITIES = (
 )
 
 
-def _front(scenario) -> tuple[dict, str]:
+def _front(scenario) -> tuple[InvestigationState, str]:
     alert = {"incident_id": scenario["id"], "summary": scenario["alert"]["summary"]}
-    state: dict = {"alert": alert}
-    state.update(ingest(state))
-    state.update(triage_router(state))
+    state = InvestigationState(alert=alert)
+    state = state.model_copy(update=ingest(state))
+    state = state.model_copy(update=triage_router(state))
     return state, route_by_intent(state)
 
 
@@ -55,17 +56,17 @@ def test_ingest_triage_routes_and_classifies(scenario):
     expected_route = "known_issue_fast_path" if scenario["type"] == "historical" else "retrieve"
     assert route == expected_route, f"{scenario['id']}: routed to {route}"
 
-    assert state["intent"] == scenario["expected_intent"]
-    assert (state["matched_incident"] or None) == scenario["expected_match"]
-    assert state["severity"] == scenario["severity"]
-    assert state["category"] == scenario["category"]
+    assert state.intent == scenario["expected_intent"]
+    assert (state.matched_incident or None) == scenario["expected_match"]
+    assert state.severity == scenario["severity"]
+    assert state.category == scenario["category"]
 
     # Derived affected services are real topology entities from the alert storm.
-    assert state["affected_services"] and all(s in ENTITIES for s in state["affected_services"])
-    assert state["onset"]
+    assert state.affected_services and all(s in ENTITIES for s in state.affected_services)
+    assert state.onset
 
     # The decision records the evidence that caused it.
-    triage = state["triage"]
+    triage = state.triage
     assert triage["top_past_incidents"]  # the candidates the decision weighed
     if scenario["type"] == "historical":
         assert triage["matched_incident"] == f"postmortem:{scenario['id']}"

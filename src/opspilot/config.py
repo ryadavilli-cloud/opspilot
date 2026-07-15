@@ -81,6 +81,14 @@ RERANK_CANDIDATES = int(os.getenv("OPSPILOT_RERANK_CANDIDATES", "30"))
 
 
 # --------------------------------------------------------------------------------------
+# Workflow / state versioning
+# --------------------------------------------------------------------------------------
+# Stamped into every investigation's state; a resuming graph checks this to route a stale
+# in-flight state to a compatible reader (matters once the durable checkpointer lands).
+WORKFLOW_VERSION = "1.0"
+
+
+# --------------------------------------------------------------------------------------
 # Agentic loop controls (circuit breakers)
 # --------------------------------------------------------------------------------------
 MAX_DIAGNOSE_ITERS = int(os.getenv("OPSPILOT_MAX_DIAGNOSE_ITERS", "5"))
