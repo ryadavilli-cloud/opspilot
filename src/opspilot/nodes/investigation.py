@@ -15,7 +15,7 @@ from uuid import uuid4
 
 from langchain_core.runnables import RunnableConfig
 
-from opspilot.config import WORKFLOW_VERSION
+from opspilot.config import MAX_DIAGNOSE_ITERS, WORKFLOW_VERSION
 from opspilot.diagnosis.contracts import EvidenceCitation, Hypothesis
 from opspilot.state import DiagnosisTrace, EvidenceItem, Intent, InvestigationState
 
@@ -147,10 +147,12 @@ def retrieve(state: InvestigationState, config: RunnableConfig | None = None) ->
 
 
 def diagnose(state: InvestigationState, config: RunnableConfig | None = None) -> dict[str, Any]:
-    """One deterministic diagnostic cycle (deployment-regression path). No LLM yet — the
-    reasoning agent will later plug into these same contracts and transitions."""
+    """One deterministic diagnostic cycle (deployment-regression path + counter-evidence). No LLM
+    yet — the reasoning agent will later plug into these same contracts and transitions. Computes
+    the deterministic sufficiency state that decides whether the loop is allowed to stop."""
     from opspilot.diagnosis.contracts import DiagnosisContext
     from opspilot.diagnosis.cycle import plan_investigation, run_cycle
+    from opspilot.diagnosis.sufficiency import compute_sufficiency
 
     ctx = DiagnosisContext(
         incident_id=state.incident_id,
@@ -158,14 +160,25 @@ def diagnose(state: InvestigationState, config: RunnableConfig | None = None) ->
         onset=state.onset,
         category=state.category or "",
     )
-    hypothesis, observations, stop = run_cycle(_svc(config), ctx, plan_investigation(ctx))
+    plan = plan_investigation(ctx)
+    already = set(state.answered_questions)
+    hypothesis, observations, stop, newly = run_cycle(_svc(config), ctx, plan, already)
+
     evidence = [EvidenceItem.make(c.source, c.ref, c.note) for c in hypothesis.citations]
+    answered = already | newly
+    plan_can_advance = bool({q.key for q in plan.questions} - answered)
+    # Coverage is over everything gathered (the observation trail), not just what is cited.
+    produced_refs = {r for o in observations for r in o.evidence_refs} | {c.ref for c in
+                                                                          hypothesis.citations}
+    sufficiency = compute_sufficiency(state.severity, produced_refs, hypothesis, plan_can_advance)
+
     return {
         "hypothesis": hypothesis,
         "evidence_by_id": _evidence_map(evidence),
-        # one outer cycle per diagnose invocation, so the loop lands exactly on MAX_DIAGNOSE_ITERS
         "diagnose_iters": state.diagnose_iters + 1,
         "diagnosis": DiagnosisTrace(observations=observations, stop_reason=stop),
+        "answered_questions": sorted(answered),
+        "sufficiency": sufficiency,
     }
 
 
@@ -221,4 +234,15 @@ def postmortem(state: InvestigationState) -> dict[str, Any]:
 
 
 def escalate(state: InvestigationState) -> dict[str, Any]:
-    return {"degraded": True, "error": state.error or "escalated to human"}
+    """Terminal hand-off to a human — always with a machine-readable reason, never silent."""
+    if state.error:
+        reason = state.error
+    elif state.diagnose_iters >= MAX_DIAGNOSE_ITERS:
+        reason = f"iteration_budget_exhausted: diagnose_iters={state.diagnose_iters}"
+    elif state.sufficiency is not None and not state.sufficiency.plan_can_advance:
+        s = state.sufficiency
+        reason = (f"plan_exhausted_insufficient: coverage={s.evidence_coverage} "
+                  f"classes={s.evidence_classes} required={s.required_classes}")
+    else:
+        reason = "escalated to human"
+    return {"degraded": True, "error": reason}

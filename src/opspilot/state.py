@@ -27,7 +27,12 @@ from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, Field
 
-from opspilot.diagnosis.contracts import Hypothesis, StopReason, ToolObservation
+from opspilot.diagnosis.contracts import (
+    Hypothesis,
+    StopReason,
+    SufficiencyState,
+    ToolObservation,
+)
 
 _UNIT_SEP = "\x1f"
 
@@ -107,6 +112,8 @@ class InvestigationState(BaseModel):
 
     hypothesis: Hypothesis | None = None       # single source of truth (statement/confidence/cites)
     diagnosis: DiagnosisTrace | None = None    # observations + stop reason (not the hypothesis)
+    sufficiency: SufficiencyState | None = None  # deterministic stop-rule inputs (per turn)
+    answered_questions: list[str] = Field(default_factory=list)  # plan-advancement: keys asked
     diagnose_iters: int = 0
 
     report: dict[str, Any] | None = None
