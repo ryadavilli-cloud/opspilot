@@ -15,6 +15,7 @@ import pytest
 pytest.importorskip("sentence_transformers")
 pytest.importorskip("rank_bm25")
 
+from opspilot.config import DISTRACTOR_DIR, KB_DIR  # noqa: E402
 from opspilot.retrieval.corpus import chunk, load_docs  # noqa: E402
 from opspilot.retrieval.retriever import Retriever  # noqa: E402
 
@@ -52,14 +53,14 @@ def scores(retriever):
 
 
 def test_corpus_loads_labeled_and_distractor_docs():
-    docs = load_docs(include_distractors=True)
+    docs = load_docs(KB_DIR, DISTRACTOR_DIR, include_distractors=True)
     assert any(not d.is_distractor for d in docs) and any(d.is_distractor for d in docs)
     assert len([d for d in docs if not d.is_distractor]) == 12  # the KB
     assert len([d for d in docs if d.is_distractor]) >= 15      # the haystack
 
 
 def test_chunking_carries_doc_metadata():
-    doc = next(d for d in load_docs(False) if d.kind == "runbook")
+    doc = next(d for d in load_docs(KB_DIR) if d.kind == "runbook")
     chunks = chunk(doc)
     assert chunks and all(c.doc_id == doc.doc_id and c.kind == "runbook" for c in chunks)
 

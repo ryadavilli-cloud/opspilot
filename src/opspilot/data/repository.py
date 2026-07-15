@@ -10,31 +10,70 @@ from __future__ import annotations
 
 import json
 import os
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-# src/opspilot/data/repository.py -> repo root is four parents up.
-_REPO_ROOT = Path(__file__).resolve().parents[3]
-_DEFAULT_CORPUS = _REPO_ROOT / "data" / "synthetic"
+from opspilot.config import CORPUS_DIR
+
+# The operational corpus files a runtime image must ship. Validated up front so a missing
+# deployment surfaces one complete diagnostic, not a FileNotFoundError on first tool call.
+CORPUS_FILES = (
+    "incidents.json",
+    "alerts.json",
+    "deployments.json",
+    "logs.jsonl",
+    "metrics.json",
+    "dependencies.json",
+)
+
+
+@dataclass(frozen=True)
+class RuntimeAssetStatus:
+    """Which required corpus files are present under a directory, and which are missing."""
+
+    root: Path
+    present: tuple[str, ...]
+    missing: tuple[str, ...]
+
+    @property
+    def ok(self) -> bool:
+        return not self.missing
+
+
+def validate_corpus(corpus_dir: Path) -> RuntimeAssetStatus:
+    """Check every required corpus file once, reporting all that are missing together."""
+    present: list[str] = []
+    missing: list[str] = []
+    for name in CORPUS_FILES:
+        (present if (corpus_dir / name).exists() else missing).append(name)
+    return RuntimeAssetStatus(Path(corpus_dir), tuple(present), tuple(missing))
+
+
+def _resolve_corpus_dir(corpus_dir: Path | str | None) -> Path:
+    if corpus_dir is not None:
+        return Path(corpus_dir)
+    env = os.getenv("OPSPILOT_CORPUS_DIR")
+    return Path(env) if env else CORPUS_DIR
 
 
 def _load(path: Path, key: str) -> list[dict[str, Any]]:
-    if not path.exists():
-        raise FileNotFoundError(f"corpus file missing: {path}")
     return json.loads(path.read_text(encoding="utf-8"))[key]
 
 
 def _load_jsonl(path: Path) -> list[dict[str, Any]]:
-    if not path.exists():
-        raise FileNotFoundError(f"corpus file missing: {path}")
     return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line]
 
 
 class Repository:
     """In-memory view of the corpus. Construct once; query many times."""
 
-    def __init__(self, corpus_dir: Path | None = None) -> None:
-        corpus_dir = corpus_dir or Path(os.getenv("OPSPILOT_CORPUS_DIR", _DEFAULT_CORPUS))
+    def __init__(self, corpus_dir: Path | str | None = None) -> None:
+        corpus_dir = _resolve_corpus_dir(corpus_dir)
+        status = validate_corpus(corpus_dir)
+        if not status.ok:
+            raise FileNotFoundError(
+                f"corpus incomplete at {corpus_dir}: missing {', '.join(status.missing)}")
         self._incidents = _load(corpus_dir / "incidents.json", "incidents")
         self._alerts = _load(corpus_dir / "alerts.json", "alerts")
         self._deployments = _load(corpus_dir / "deployments.json", "deployments")

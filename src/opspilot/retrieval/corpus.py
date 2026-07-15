@@ -1,8 +1,10 @@
-"""Load and chunk the KB corpus (labeled docs) plus the distractor corpus (indexed, never labeled).
+"""Load and chunk the KB corpus (labeled docs) plus an optional distractor corpus.
 
 Chunking is section-level (by markdown header); each chunk carries its doc's id/kind/services and
 is prefixed with the doc title for context. Retrieval ranks chunks and aggregates to doc ids, which
-is what `golden_retrieval.json` labels.
+is what `golden_retrieval.json` labels. Paths are passed in explicitly — there are no module-level
+directory constants — so a runtime image points at `/app/data/kb` and never accidentally indexes
+distractors (`include_distractors` defaults to False; distractors are an evaluation-only device).
 """
 
 from __future__ import annotations
@@ -13,9 +15,6 @@ from pathlib import Path
 
 import yaml
 
-_REPO_ROOT = Path(__file__).resolve().parents[3]
-KB_DIR = _REPO_ROOT / "data" / "kb"
-DISTRACTOR_DIR = _REPO_ROOT / "data" / "distractors"
 _HEADER = re.compile(r"^#{1,6}\s+")
 
 
@@ -56,14 +55,21 @@ def _parse(path: Path, is_distractor: bool) -> Doc | None:
     )
 
 
-def load_docs(include_distractors: bool = True) -> list[Doc]:
+def load_docs(
+    kb_dir: Path | str,
+    distractor_dir: Path | str | None = None,
+    include_distractors: bool = False,
+) -> list[Doc]:
+    """Load labeled KB docs from `kb_dir`. Distractors are indexed only when explicitly enabled
+    (evaluation) — production passes `include_distractors=False` and never mixes them in."""
+    kb_dir = Path(kb_dir)
     docs: list[Doc] = []
     for sub in ("runbooks", "architecture", "postmortems"):
-        for p in sorted((KB_DIR / sub).glob("*.md")):
+        for p in sorted((kb_dir / sub).glob("*.md")):
             if (d := _parse(p, False)) is not None:
                 docs.append(d)
-    if include_distractors and DISTRACTOR_DIR.exists():
-        for p in sorted(DISTRACTOR_DIR.glob("*.md")):
+    if include_distractors and distractor_dir is not None and Path(distractor_dir).exists():
+        for p in sorted(Path(distractor_dir).glob("*.md")):
             if (d := _parse(p, True)) is not None:
                 docs.append(d)
     return docs

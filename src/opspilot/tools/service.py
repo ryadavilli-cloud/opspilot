@@ -25,19 +25,20 @@ from opspilot.tools.metrics import get_metrics
 from opspilot.tools.search import search_past_incidents, search_runbooks
 
 if TYPE_CHECKING:
-    from opspilot.retrieval.retriever import Retriever
+    from opspilot.retrieval.base import SearchRetriever
 
 
 class ToolService:
     def __init__(
         self,
         repo: Repository | None = None,
-        retriever_factory: Callable[[], Retriever] | None = None,
+        retriever_factory: Callable[[], SearchRetriever] | None = None,
     ) -> None:
         self.repo = repo or default_repository()
         self._retriever_factory = retriever_factory
-        self._retriever: Retriever | None = None
-        self._retriever_failed = False
+        self._retriever: SearchRetriever | None = None
+        self._retriever_attempted = False
+        self._retriever_error: str | None = None
         self._registry: dict[str, Callable[..., ToolResult[Any]]] = {
             "get_incident": self.get_incident,
             "get_correlated_alerts": self.get_correlated_alerts,
@@ -69,17 +70,33 @@ class ToolService:
         return get_service_dependencies(self.repo, **kwargs)
 
     # --- retrieval tools (retriever-backed, lazy) ---------------------------------------------
-    def _get_retriever(self) -> Retriever | None:
-        if self._retriever is None and not self._retriever_failed:
+    def _get_retriever(self) -> SearchRetriever | None:
+        if self._retriever is None and not self._retriever_attempted:
+            self._retriever_attempted = True
             try:
                 if self._retriever_factory is not None:
                     self._retriever = self._retriever_factory()
                 else:
-                    from opspilot.retrieval.retriever import Retriever
-                    self._retriever = Retriever(include_distractors=False)
-            except Exception:  # noqa: BLE001 — retrieval extras missing → degrade, don't crash
-                self._retriever_failed = True
+                    from opspilot.retrieval.factory import build_retriever
+                    self._retriever = build_retriever(include_distractors=False)
+            except Exception as exc:  # noqa: BLE001 — degrade, but retain the sanitized reason
+                first_line = (str(exc).splitlines() or [""])[0][:200]
+                self._retriever_error = f"{type(exc).__name__}: {first_line}"
         return self._retriever
+
+    @property
+    def retrieval_backend(self) -> str:
+        """The active retrieval backend for readiness diagnostics: bm25 | hybrid | rerank, or
+        `unavailable` if construction failed (see `retrieval_error` for the reason)."""
+        retriever = self._get_retriever()
+        return getattr(retriever, "backend_name", "unavailable") if retriever else "unavailable"
+
+    @property
+    def retrieval_error(self) -> str | None:
+        """Sanitized retriever-initialization error, if any (class + first line). None when
+        retrieval is healthy — for readiness checks, not tool output."""
+        self._get_retriever()
+        return self._retriever_error
 
     def search_runbooks(self, **kwargs: Any) -> ToolResult[Any]:
         retriever = self._get_retriever()

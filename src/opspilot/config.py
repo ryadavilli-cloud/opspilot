@@ -12,6 +12,30 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 from enum import StrEnum
+from pathlib import Path
+
+# --------------------------------------------------------------------------------------
+# Runtime asset paths + retrieval backend
+# --------------------------------------------------------------------------------------
+# Local-dev defaults resolve relative to the repo. PRODUCTION sets these explicitly via env
+# (the Docker image copies the corpus under /app/data and exports OPSPILOT_*_DIR): production
+# MUST NOT rely on the __file__ -> data relationship, which holds only while the source tree and
+# data tree share a layout. The repo-relative fallback below is a dev convenience only.
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+
+
+def _dir_env(var: str, default: Path) -> Path:
+    value = os.getenv(var)
+    return Path(value) if value else default
+
+
+CORPUS_DIR = _dir_env("OPSPILOT_CORPUS_DIR", _REPO_ROOT / "data" / "synthetic")
+KB_DIR = _dir_env("OPSPILOT_KB_DIR", _REPO_ROOT / "data" / "kb")
+DISTRACTOR_DIR = _dir_env("OPSPILOT_DISTRACTOR_DIR", _REPO_ROOT / "data" / "distractors")
+
+# Retrieval backend: `hybrid` (dense + BM25, local/eval) or `bm25` (lexical-only, the runtime
+# image default — no embedding model download). Selected by env; validated by the factory.
+RETRIEVAL_BACKEND = os.getenv("OPSPILOT_RETRIEVAL_BACKEND", "hybrid")
 
 
 # --------------------------------------------------------------------------------------
