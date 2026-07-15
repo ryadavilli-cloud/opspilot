@@ -30,4 +30,6 @@ ENV OPSPILOT_CORPUS_DIR=/app/data/synthetic \
     OPSPILOT_RETRIEVAL_BACKEND=bm25
 
 EXPOSE 8000
-CMD ["uv", "run", "uvicorn", "opspilot.api:app", "--host", "0.0.0.0", "--port", "8000"]
+# --frozen --no-dev: run against the locked runtime environment exactly as built. Without these,
+# `uv run` re-syncs the dev group at startup (pulling ruff/mypy over the network) — not self-contained.
+CMD ["uv", "run", "--frozen", "--no-dev", "uvicorn", "opspilot.api:app", "--host", "0.0.0.0", "--port", "8000"]
