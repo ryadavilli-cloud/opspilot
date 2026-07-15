@@ -7,8 +7,8 @@ the deliberately-unsupported hypothesis that must be rejected.
 from __future__ import annotations
 
 from opspilot.guardrails.policies import hypothesis_supported, is_read_only, unsupported_citations
-from opspilot.nodes.investigation import safety_validate
-from opspilot.router import after_safety_validate
+from opspilot.nodes.investigation import apply_edit, safety_validate
+from opspilot.router import after_approval, after_safety_validate
 from opspilot.state import EvidenceItem, Intent, InvestigationState
 
 
@@ -59,3 +59,37 @@ def test_safety_validate_passes_grounded_report():
 def test_info_only_reply_is_exempt_from_citation_gate():
     state = InvestigationState(intent=Intent.INFO_ONLY.value, report={"citations": []})
     assert safety_validate(state)["safety"]["passed"] is True
+
+
+def test_after_approval_routes_edit_to_revalidation_not_finalize():
+    assert after_approval(InvestigationState(approval={"decision": "approve"})) == "finalize_report"
+    assert after_approval(InvestigationState(approval={"decision": "edit"})) == "apply_edit"
+    assert after_approval(InvestigationState(approval={"decision": "reject"})) == "escalate"
+    assert after_approval(InvestigationState(approval=None)) == "escalate"  # fail closed
+
+
+def test_edited_report_re_enters_validation_and_an_ungrounded_edit_is_caught():
+    """The edit-revalidation fix: a human edit that cites something never produced this run must
+    be rejected by safety_validate, not published — edit never shortcuts to finalize."""
+    state = InvestigationState(
+        report={"citations": ["logs:a:b"]},
+        evidence_by_id=_evidence("logs", "logs:a:b"),
+        approval={"decision": "edit", "edits": {"citations": ["invented:ref"]}},
+    )
+    edited = state.model_copy(update=apply_edit(state))
+    assert edited.report["citations"] == ["invented:ref"]        # the edit was applied
+    result = safety_validate(edited)
+    assert result["safety"]["passed"] is False                    # re-validation catches it
+    assert after_safety_validate(edited.model_copy(update=result)) == "escalate"
+
+
+def test_edit_that_preserves_grounding_passes_revalidation():
+    state = InvestigationState(
+        report={"citations": ["logs:a:b"]},
+        evidence_by_id=_evidence("logs", "logs:a:b"),
+        approval={"decision": "edit", "edits": {"recommended_next_step": "roll back the deploy"}},
+    )
+    edited = state.model_copy(update=apply_edit(state))
+    result = safety_validate(edited)
+    assert result["safety"]["passed"] is True
+    assert after_safety_validate(edited.model_copy(update=result)) == "hitl_gate"
