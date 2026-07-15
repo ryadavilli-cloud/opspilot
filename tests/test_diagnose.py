@@ -18,7 +18,7 @@ from opspilot.diagnosis.contracts import (  # noqa: E402
     InvestigationPlan,
     ToolCallRequest,
 )
-from opspilot.diagnosis.cycle import run_cycle  # noqa: E402
+from opspilot.diagnosis.cycle import plan_investigation, run_cycle  # noqa: E402
 from opspilot.nodes.investigation import diagnose, ingest, triage_router  # noqa: E402
 from opspilot.state import InvestigationState  # noqa: E402
 from opspilot.tools.service import ToolService  # noqa: E402
@@ -55,14 +55,34 @@ def test_loop_obeys_hard_iteration_limit():
     plan = InvestigationPlan(
         max_iters=2,
         questions=[
-            DiagnosticQuestion(question=f"q{i}",
+            DiagnosticQuestion(key=f"q{i}", question=f"q{i}",
                                call=ToolCallRequest(tool="get_service_dependencies"))
             for i in range(5)
         ],
     )
     ctx = DiagnosisContext(incident_id="inc-006", onset="2026-06-25T16:20:00+00:00")
-    _, observations, stop = run_cycle(ToolService(), ctx, plan)
+    _, observations, stop, _ = run_cycle(ToolService(), ctx, plan)
     assert len(observations) == 2 and stop.reason == "iteration_limit"
+
+
+def test_novel_scenario_reaches_sufficiency_with_counter_evidence():
+    s = _front("inc-006", "Reservation conflicts and oversells at checkout.")
+    assert s.sufficiency is not None and s.sufficiency.ready
+    assert s.sufficiency.evidence_coverage == 1.0
+    # the counter-evidence questions gathered dependency + metric classes, not just deploys/logs
+    classes = set(s.sufficiency.evidence_classes)
+    assert {"deps", "metrics"} <= classes, classes
+
+
+def test_plan_advancement_does_not_reask_answered_questions():
+    ctx = DiagnosisContext(incident_id="inc-006", affected_services=["checkout-api"],
+                           onset="2026-06-25T16:20:00+00:00")
+    plan = plan_investigation(ctx)
+    svc = ToolService()
+    _, obs1, _, answered1 = run_cycle(svc, ctx, plan)
+    assert obs1 and answered1 == {q.key for q in plan.questions}  # first pass answers everything
+    _, obs2, _, answered2 = run_cycle(svc, ctx, plan, answered=answered1)
+    assert obs2 == [] and answered2 == set()  # re-entry re-asks nothing (no spin)
 
 
 def test_diagnosis_is_deterministic():
