@@ -936,6 +936,7 @@ data = [
     { name = "pandas" },
 ]
 dev = [
+    { name = "httpx" },
     { name = "mypy" },
     { name = "pytest" },
     { name = "ruff" },
@@ -963,6 +964,7 @@ data = [
     { name = "pandas", specifier = ">=3.0.3" },
 ]
 dev = [
+    { name = "httpx", specifier = ">=0.27" },
     { name = "mypy", specifier = ">=1.10" },
     { name = "pytest", specifier = ">=8.2" },
     { name = "ruff", specifier = ">=0.5" },
