@@ -6,6 +6,16 @@ incident_id: inc-001
 services: [payment-api, cosmos-db, checkout-api]
 severity: SEV2
 source: "synthetic (RetailEase); structure after real SRE practice"
+# Machine-checkable recurrence signature — the known-issue fast path verifies a candidate match
+# against these before trusting this postmortem's resolution. Mirrors the answer key.
+required_signals:
+  - logs:payment-api:error
+  - metrics:payment-api:p95_latency_ms
+  - metrics:checkout-api:http_5xx_rate
+disqualifying_signals:
+  - metrics:cosmos-db:ru_throttled_rate
+affected_versions:
+  - payment-api@2.4.1
 ---
 
 # Payment authorization timeouts from Cosmos DB connection-pool exhaustion

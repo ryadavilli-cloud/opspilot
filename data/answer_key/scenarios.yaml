@@ -47,6 +47,17 @@ scenarios:
       - runbook:checkout-api-500-errors
       - architecture:service-dependency-map
     resolution: Reverted the connection-pool config to 100 and added an alert on pool saturation.
+    # Machine-checkable recurrence signature (mirrored in the postmortem frontmatter; the fast
+    # path verifies a candidate match against these before trusting the stored resolution).
+    verification:
+      required_signals:            # class-level descriptors — see README "Signal descriptors"
+        - logs:payment-api:error
+        - metrics:payment-api:p95_latency_ms
+        - metrics:checkout-api:http_5xx_rate
+      disqualifying_signals:
+        - metrics:cosmos-db:ru_throttled_rate   # Cosmos throttling means the inc-002 pattern, not pool starvation
+      affected_versions:
+        - payment-api@2.4.1                     # the pool-config deploy (dep-20260512-01)
 
   - id: inc-002
     title: Cosmos DB throttling cascading to reads
@@ -76,6 +87,14 @@ scenarios:
       - architecture:retailease-system-overview
       - architecture:service-dependency-map
     resolution: Added the missing composite index, throttled the import job, and raised the RU floor.
+    verification:
+      required_signals:
+        - metrics:cosmos-db:ru_throttled_rate
+        - logs:inventory-api:error
+      disqualifying_signals:
+        - metrics:redis-cache:evicted_keys_rate  # an eviction storm points at the cache, not RU throttling
+      affected_versions:
+        - catalog-api@1.9.0                      # the bulk-import rollout (dep-20260528-01)
 
   - id: inc-003
     title: Service Bus backlog; order notifications delayed
@@ -104,6 +123,15 @@ scenarios:
       - runbook:deployment-rollback
       - architecture:observability-strategy
     resolution: Rolled back the worker deploy, dead-lettered the poison message, and reprocessed the backlog.
+    verification:
+      required_signals:
+        - metrics:service-bus:active_message_count
+        - metrics:notification-worker:restart_count
+        - logs:notification-worker:error
+      disqualifying_signals:
+        - metrics:checkout-api:http_5xx_rate     # checkout impact contradicts "confined to async notifications"
+      affected_versions:
+        - notification-worker@3.1.0              # the crash-looping revision (dep-20260610-01)
 
   # --------------------------------------------------------------------------------- novel
   - id: inc-004
