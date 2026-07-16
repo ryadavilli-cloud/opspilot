@@ -72,3 +72,13 @@ def test_postmortems_correspond_to_historical_incidents():
         assert ref.split(":", 1)[1] in HISTORICAL, f"{ref} is not a historical incident"
     for inc in HISTORICAL:  # every historical incident must have a postmortem doc
         assert _resolve(f"postmortem:{inc}") is not None, f"no postmortem for {inc}"
+
+
+def test_postmortems_carry_the_verification_data_model():
+    """Every postmortem must expose the machine-checkable recurrence signature the known-issue
+    fast path verifies against (cross-corpus resolution is closure question 7)."""
+    for ref in POSTMORTEM_REFS:
+        fm = _frontmatter(_resolve(ref))
+        assert fm.get("required_signals"), f"{ref}: missing/empty required_signals"
+        assert fm.get("affected_versions"), f"{ref}: missing/empty affected_versions"
+        assert isinstance(fm.get("disqualifying_signals"), list), f"{ref}: bad disqualifying"

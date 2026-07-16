@@ -6,6 +6,16 @@ incident_id: inc-003
 services: [notification-worker, service-bus]
 severity: SEV3
 source: "synthetic (RetailEase); structure after real SRE practice"
+# Machine-checkable recurrence signature — the known-issue fast path verifies a candidate match
+# against these before trusting this postmortem's resolution. Mirrors the answer key.
+required_signals:
+  - metrics:service-bus:active_message_count
+  - metrics:notification-worker:restart_count
+  - logs:notification-worker:error
+disqualifying_signals:
+  - metrics:checkout-api:http_5xx_rate
+affected_versions:
+  - notification-worker@3.1.0
 ---
 
 # Notification backlog from a crash-looping worker stuck on a poison message

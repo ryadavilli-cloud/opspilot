@@ -6,6 +6,15 @@ incident_id: inc-002
 services: [cosmos-db, inventory-api, catalog-api]
 severity: SEV2
 source: "synthetic (RetailEase); structure after real SRE practice"
+# Machine-checkable recurrence signature — the known-issue fast path verifies a candidate match
+# against these before trusting this postmortem's resolution. Mirrors the answer key.
+required_signals:
+  - metrics:cosmos-db:ru_throttled_rate
+  - logs:inventory-api:error
+disqualifying_signals:
+  - metrics:redis-cache:evicted_keys_rate
+affected_versions:
+  - catalog-api@1.9.0
 ---
 
 # Cosmos DB 429 throttling degrades inventory and catalog reads

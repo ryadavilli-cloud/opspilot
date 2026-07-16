@@ -152,3 +152,78 @@ def test_6_postmortem_runbook_crossrefs_resolve():
     for p in (KB / "postmortems").glob("*.md"):
         for ref in set(ref_re.findall(p.read_text(encoding="utf-8"))):
             assert _kb_doc(ref) is not None, f"{p.name} references missing {ref}"
+
+
+# --- closure question 7: recurrence-verification data model ------------------------------------
+# The known-issue fast path trusts a candidate match only after checking the stored issue's
+# required/disqualifying signals + affected versions. These fields must be authored in the answer
+# key, mirrored verbatim in the postmortem frontmatter, and resolvable against real telemetry —
+# otherwise verification could never succeed on a genuine recurrence.
+METRIC_PAIRS = {(s["service"], s["metric"]) for s in METRICS}
+LOG_LEVELS = {(r["service"], r["level"]) for r in LOGS}
+VERIFICATION_FIELDS = ("required_signals", "disqualifying_signals", "affected_versions")
+
+
+def _descriptor_resolves(descriptor: str) -> bool:
+    """Class-level signal descriptor: metrics:<entity>:<metric> | logs:<service>:<level>."""
+    parts = descriptor.split(":")
+    if len(parts) != 3:
+        return False
+    kind, entity, tail = parts
+    if kind == "metrics":
+        return entity in ENTITIES and (entity, tail) in METRIC_PAIRS
+    if kind == "logs":
+        return entity in SERVICES and (entity, tail) in LOG_LEVELS
+    return False
+
+
+def _evidence_entities(scenario: dict) -> set[str]:
+    ents = set()
+    for ref in scenario["expected_evidence"]:
+        src, rest = ref.split(":", 1)
+        if src == "deps":
+            ents.update(rest.split("->"))
+        elif src == "metrics":
+            ents.add(rest.split(":", 1)[0])
+        else:
+            ents.add(rest.rsplit(":", 1)[0])
+    return ents
+
+
+def test_7_verification_blocks_close_against_telemetry_and_postmortems():
+    deploy_versions = {(d["service"], d["version"].split("@", 1)[1]) for d in DEPLOYS}
+    for s in SCENARIOS:
+        if s["type"] != "historical":
+            continue
+        verification = s.get("verification")
+        assert verification, f"{s['id']}: historical scenario missing verification block"
+        assert set(VERIFICATION_FIELDS) <= verification.keys(), f"{s['id']}: incomplete block"
+        assert verification["required_signals"], f"{s['id']}: required_signals empty"
+        assert verification["affected_versions"], f"{s['id']}: affected_versions empty"
+
+        # the postmortem frontmatter mirrors the answer key verbatim (labels are truth)
+        fm = _frontmatter(_kb_doc(f"postmortem:{s['id']}"))
+        for field in VERIFICATION_FIELDS:
+            assert fm.get(field) == verification[field], (
+                f"{s['id']}: postmortem frontmatter {field} drifted from the answer key")
+
+        # every descriptor resolves to a real telemetry signal class
+        for descriptor in verification["required_signals"] + verification["disqualifying_signals"]:
+            assert _descriptor_resolves(descriptor), f"{s['id']}: unresolvable {descriptor!r}"
+
+        # required signals tie to the original incident (on its chain or in its evidence)
+        tied = set(s["impacted_chain"]) | _evidence_entities(s)
+        for descriptor in verification["required_signals"]:
+            entity = descriptor.split(":")[1]
+            assert entity in tied, f"{s['id']}: required signal {descriptor!r} off the incident"
+
+        # affected versions are real deploys; a causal deploy's version must be listed
+        for version in verification["affected_versions"]:
+            svc, _, ver = version.partition("@")
+            assert svc in SERVICES and ver, f"{s['id']}: bad affected_version {version!r}"
+            assert (svc, ver) in deploy_versions, f"{s['id']}: {version!r} not in the deploy feed"
+        causal = [r for r in s["expected_evidence"] if r.startswith("deploys:")]
+        for ref in causal:
+            deploy = DEPLOY_BY_ID[ref.rsplit(":", 1)[1]]
+            assert deploy["version"] in verification["affected_versions"], (
+                f"{s['id']}: causal deploy {deploy['version']} missing from affected_versions")

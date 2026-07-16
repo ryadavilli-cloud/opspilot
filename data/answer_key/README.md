@@ -51,6 +51,27 @@ A retrieved runbook cites as evidence `source=runbook`; a retrieved postmortem c
 `source=past_incident` (`past_incident:<incident_id>`). Architecture docs orient the agent but
 are not themselves cited as evidence.
 
+### Signal descriptors — recurrence verification (`verification:` on historical scenarios)
+
+Class-level signal patterns for the known-issue fast path: a candidate postmortem match is
+trusted only after the *current* incident's signals are checked against the stored issue's
+`required_signals` / `disqualifying_signals` / `affected_versions`. Descriptors are
+**class-level** — they name a signal family, never an incident-specific id (event ids and
+sample timestamps belong to one incident; a recurrence has new ones).
+
+| field | grammar | example |
+| --- | --- | --- |
+| `required_signals` | `metrics:<entity>:<metric>` or `logs:<service>:<level>` | `metrics:service-bus:active_message_count` |
+| `disqualifying_signals` | same | `metrics:checkout-api:http_5xx_rate` |
+| `affected_versions` | `<service>@<version>` (matches the deploy feed's `version`) | `notification-worker@3.1.0` |
+
+Semantics: every `required_signals` entry must be present in the current incident's window for
+the match to hold; any `disqualifying_signals` entry present breaks the match; and
+`affected_versions` names the release(s) that carried the known issue. Each block is authored
+here (the answer key is truth) and **mirrored verbatim in the postmortem's frontmatter** — the
+closure gate fails if they drift, if a descriptor doesn't resolve to a real telemetry signal
+class, or if a causal deploy's version is missing from `affected_versions`.
+
 ## Scenario invariants (enforced by the test)
 
 - 6 scenarios: 3 `historical` + 3 `novel`.
