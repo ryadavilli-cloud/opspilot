@@ -53,7 +53,7 @@ extend-immutable-calls = ["fastapi.Depends"]
 
 [tool.mypy]
 python_version = "3.12"
-packages = ["opspilot"]
+files = ["src/opspilot", "scripts"]
 mypy_path = "src"
 ignore_missing_imports = true
 

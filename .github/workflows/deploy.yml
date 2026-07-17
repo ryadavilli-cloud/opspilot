@@ -63,6 +63,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Sync (dev) — httpx + opspilot for the smoke-test script
+        run: uv sync --group dev
+
       - name: Azure login (OIDC)
         uses: azure/login@v2
         with:
@@ -81,30 +88,19 @@ jobs:
             --identity system \
             --server "${{ vars.ACR_NAME }}.azurecr.io"
 
-      - name: Deploy to Container Apps
+      - name: Deploy infra (image, ingress, probes — declarative)
+        id: deploy
         run: |
-          az containerapp update \
-            --name "${{ vars.CONTAINER_APP_NAME }}" \
+          FQDN=$(az deployment group create \
             --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
-            --image "${{ vars.ACR_NAME }}.azurecr.io/$IMAGE_REPO:${{ github.sha }}"
+            --name "opspilot-${{ github.run_id }}" \
+            --template-file infra/main.bicep \
+            --parameters \
+              acrName="${{ vars.ACR_NAME }}" \
+              containerImage="${{ vars.ACR_NAME }}.azurecr.io/$IMAGE_REPO:${{ github.sha }}" \
+              manageAcrPullRoleAssignment=false \
+            --query properties.outputs.appFqdn.value -o tsv)
+          echo "app_fqdn=$FQDN" >> "$GITHUB_OUTPUT"
 
-      - name: Point ingress at the app port
-        run: |
-          az containerapp ingress update \
-            --name "${{ vars.CONTAINER_APP_NAME }}" \
-            --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
-            --target-port 8000
-
-      - name: Post-deploy smoke test
-        run: |
-          FQDN=$(az containerapp show \
-            --name "${{ vars.CONTAINER_APP_NAME }}" \
-            --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
-            --query properties.configuration.ingress.fqdn -o tsv)
-          echo "Smoke-testing https://$FQDN/health"
-          for i in $(seq 1 12); do
-            code=$(curl -s -o /dev/null -w "%{http_code}" "https://$FQDN/health" || true)
-            if [ "$code" = "200" ]; then echo "health OK ($code)"; exit 0; fi
-            echo "attempt $i: HTTP $code — retrying"; sleep 10
-          done
-          echo "smoke test failed"; exit 1
+      - name: Post-deploy smoke test (real investigation workflow)
+        run: uv run python scripts/smoke_deployment.py "https://${{ steps.deploy.outputs.app_fqdn }}"
