@@ -101,6 +101,9 @@ LOG_EVENTS: dict[str, dict[str, str]] = {
                    "message": "StockReservationConflict; oversell detected on SKU"},
     "evt-006-02": {"service": "checkout-api", "level": "error",
                    "message": "reserve failed: inventory conflict"},
+    "evt-007-01": {"service": "notification-worker", "level": "error",
+                   "message": "Unhandled deserialization exception; restarting "
+                              "(crash loop — same failure mode as inc-003)"},
 }
 
 # Deploys named in evidence (`deploys:<svc>:<deploy_id>`). ts is authored relative to the incident.
@@ -120,6 +123,12 @@ DEPLOYS: dict[str, dict[str, str]] = {
     "dep-20260625-01": {"service": "inventory-api", "ts": "2026-06-25T16:00:00Z",
                         "version": "inventory-api@4.2.0",
                         "note": "dropped cache invalidation on stock writes (causal: inc-006)"},
+    # Same version string as dep-20260610-01 by design: a stale pipeline re-deployed the affected
+    # revision, so inc-003's affected_versions check holds for the inc-007 recurrence.
+    "dep-20260702-01": {"service": "notification-worker", "ts": "2026-07-02T09:10:00Z",
+                        "version": "notification-worker@3.1.0",
+                        "note": "stale-pipeline re-deploy of the poison-message revision "
+                                "(causal: inc-007, recurrence of inc-003)"},
 }
 
 # A few routine, unrelated deploys — deploy-feed noise so "recent deploy" is a hypothesis to test.

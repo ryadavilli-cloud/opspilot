@@ -95,6 +95,20 @@
       "made_sla": false,
       "reassignment_count": 1,
       "is_known_error": false
+    },
+    {
+      "number": "INC0000007",
+      "incident_id": "inc-007",
+      "short_description": "Order notifications delayed again; Service Bus queue depth climbing and not draining.",
+      "category": "messaging",
+      "priority": "3 - Moderate",
+      "impact": "2 - Medium",
+      "urgency": "2 - Medium",
+      "opened_at": "2026-07-02T09:30:00Z",
+      "state": "In Progress",
+      "made_sla": true,
+      "reassignment_count": 0,
+      "is_known_error": false
     }
   ]
 }

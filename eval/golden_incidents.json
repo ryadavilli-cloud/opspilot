@@ -191,5 +191,36 @@
       "architecture:service-dependency-map"
     ],
     "red_herring": null
+  },
+  {
+    "incident_id": "inc-007",
+    "title": "Service Bus backlog again; order notifications delayed (recurrence of inc-003)",
+    "type": "recurrence",
+    "alert": {
+      "summary": "Order notifications delayed again; Service Bus queue depth climbing and not draining.",
+      "signal": "service-bus active message count rising, not draining"
+    },
+    "expected_severity": "SEV3",
+    "expected_category": "messaging",
+    "expected_intent": "known_issue",
+    "expected_match": "postmortem:inc-003",
+    "expected_root_cause": "notification-worker crash-looped again on an undeserializable message — the poison-message handling from inc-003's action items was never shipped, and a re-deploy of the affected revision reintroduced the failure mode. Queue depth grew and order notifications were delayed.",
+    "expected_impacted_chain": [
+      "notification-worker",
+      "service-bus"
+    ],
+    "expected_evidence_refs": [
+      "logs:notification-worker:evt-007-01",
+      "metrics:service-bus:active_message_count@2026-07-02T09:30:00Z",
+      "metrics:notification-worker:restart_count@2026-07-02T09:35:00Z",
+      "deploys:notification-worker:dep-20260702-01",
+      "deps:notification-worker->service-bus"
+    ],
+    "expected_retrieval_ids": [
+      "postmortem:inc-003",
+      "runbook:service-bus-backlog",
+      "runbook:deployment-rollback"
+    ],
+    "red_herring": null
   }
 ]

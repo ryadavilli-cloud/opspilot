@@ -179,6 +179,18 @@
       "title": "checkout-api: http_5xx_rate breached threshold",
       "fired_at": "2026-06-28T10:16:19Z",
       "dedup_key": "checkout-api:http_5xx_rate"
+    },
+    {
+      "alert_id": "alrt-inc-007-notification-worker",
+      "incident_id": "inc-007",
+      "service": "notification-worker",
+      "severity": "medium",
+      "role": "root_cause",
+      "is_trigger": true,
+      "signal": "restart_count breached threshold",
+      "title": "notification-worker: restart_count breached threshold",
+      "fired_at": "2026-07-02T09:30:09Z",
+      "dedup_key": "notification-worker:restart_count"
     }
   ]
 }

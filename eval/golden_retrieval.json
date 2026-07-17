@@ -238,5 +238,45 @@
       "runbook:redis-cache-degradation",
       "architecture:service-dependency-map"
     ]
+  },
+  {
+    "query_id": "inc-007-0",
+    "scenario_id": "inc-007",
+    "query": "Order notifications delayed again; Service Bus queue depth climbing and not draining.",
+    "relevant_doc_ids": [
+      "postmortem:inc-003",
+      "runbook:service-bus-backlog",
+      "runbook:deployment-rollback"
+    ]
+  },
+  {
+    "query_id": "inc-007-1",
+    "scenario_id": "inc-007",
+    "query": "order notification emails delayed again, backlog growing",
+    "relevant_doc_ids": [
+      "postmortem:inc-003",
+      "runbook:service-bus-backlog",
+      "runbook:deployment-rollback"
+    ]
+  },
+  {
+    "query_id": "inc-007-2",
+    "scenario_id": "inc-007",
+    "query": "service bus queue depth rising after a worker deploy",
+    "relevant_doc_ids": [
+      "postmortem:inc-003",
+      "runbook:service-bus-backlog",
+      "runbook:deployment-rollback"
+    ]
+  },
+  {
+    "query_id": "inc-007-3",
+    "scenario_id": "inc-007",
+    "query": "notification worker crash looping again, queue stuck",
+    "relevant_doc_ids": [
+      "postmortem:inc-003",
+      "runbook:service-bus-backlog",
+      "runbook:deployment-rollback"
+    ]
   }
 ]

@@ -23,9 +23,13 @@ def load_golden() -> list[dict[str, Any]]:
     return json.loads(GOLDEN.read_text(encoding="utf-8"))
 
 
-def evaluate(retriever, golden: list[dict], mode: str = "dense", k: int = 5) -> dict[str, Any]:
+def evaluate(
+    retriever, golden: list[dict], mode: str = "dense", k: int = 5, progress: bool = False
+) -> dict[str, Any]:
     ranks, precisions, recalls = [], [], []
-    for ex in golden:
+    for i, ex in enumerate(golden):
+        if progress and i % 5 == 0:  # heartbeat for slow (cross-encoder) modes — flushed so a
+            print(f"  {mode}: {i}/{len(golden)} queries", flush=True)  # background log shows life
         relevant = set(ex["relevant_doc_ids"])
         ranked = [h.doc_id for h in getattr(retriever, mode)(ex["query"], k=k)]
         first = next((i + 1 for i, d in enumerate(ranked) if d in relevant), None)
@@ -41,9 +45,12 @@ def evaluate(retriever, golden: list[dict], mode: str = "dense", k: int = 5) -> 
     }
 
 
-def score_all(retriever, golden: list[dict], k: int = 5) -> dict[str, dict[str, Any]]:
+def score_all(
+    retriever, golden: list[dict], k: int = 5, progress: bool = False
+) -> dict[str, dict[str, Any]]:
     """Score every mode; the shared retriever indexes the corpus once."""
-    return {mode: evaluate(retriever, golden, mode=mode, k=k) for mode in MODES}
+    return {mode: evaluate(retriever, golden, mode=mode, k=k, progress=progress)
+            for mode in MODES}
 
 
 def main(write: bool = True) -> None:
@@ -53,13 +60,13 @@ def main(write: bool = True) -> None:
     from opspilot.retrieval.retriever import Retriever
 
     golden = load_golden()
-    print(f"indexing corpus + distractors, scoring {len(golden)} queries...")
+    print(f"indexing corpus + distractors, scoring {len(golden)} queries...", flush=True)
     retriever = Retriever(include_distractors=True)
-    results = score_all(retriever, golden, k=5)
+    results = score_all(retriever, golden, k=5, progress=True)
     for mode in MODES:
         r = results[mode]
         print(f"  {r['mode']:7s}  MRR={r['MRR']:.4f}  "
-              f"P@5={r['P@5']:.4f}  Recall@5={r['Recall@5']:.4f}")
+              f"P@5={r['P@5']:.4f}  Recall@5={r['Recall@5']:.4f}", flush=True)
 
     best = max(results.values(), key=lambda r: r["MRR"])
 
