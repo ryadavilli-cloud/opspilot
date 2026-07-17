@@ -55,6 +55,13 @@
       "ts": "2026-06-28T09:00:00Z",
       "version": "checkout-api@5.7.2",
       "note": "routine checkout release (RED HERRING: coincidental to inc-004)"
+    },
+    {
+      "deploy_id": "dep-20260702-01",
+      "service": "notification-worker",
+      "ts": "2026-07-02T09:10:00Z",
+      "version": "notification-worker@3.1.0",
+      "note": "stale-pipeline re-deploy of the poison-message revision (causal: inc-007, recurrence of inc-003)"
     }
   ]
 }

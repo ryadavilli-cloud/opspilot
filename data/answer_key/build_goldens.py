@@ -96,6 +96,11 @@ QUERY_VARIANTS: dict[str, list[str]] = {
         "inventory reservation conflicts on orders",
         "stale stock levels causing oversell",
     ],
+    "inc-007": [
+        "order notification emails delayed again, backlog growing",
+        "service bus queue depth rising after a worker deploy",
+        "notification worker crash looping again, queue stuck",
+    ],
 }
 
 

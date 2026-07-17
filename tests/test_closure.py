@@ -227,3 +227,62 @@ def test_7_verification_blocks_close_against_telemetry_and_postmortems():
             deploy = DEPLOY_BY_ID[ref.rsplit(":", 1)[1]]
             assert deploy["version"] in verification["affected_versions"], (
                 f"{s['id']}: causal deploy {deploy['version']} missing from affected_versions")
+
+
+# --- closure question 8: a recurrence must be verifiable against its matched postmortem --------
+# The fast path trusts a candidate only if the current incident satisfies the stored issue's
+# required signals, shows none of its disqualifying signals, and runs an affected version. If the
+# recurrence scenario's own labeled telemetry couldn't pass that check, the fast path would be
+# untestable by construction.
+def _scenario_metric_pairs(s: dict) -> set[tuple[str, str]]:
+    pairs = set()
+    for ref in s["expected_evidence"]:
+        if ref.startswith("metrics:"):
+            _, rest = ref.split(":", 1)
+            svc, tail = rest.split(":", 1)
+            pairs.add((svc, tail.split("@", 1)[0]))
+    return pairs
+
+
+def test_8_recurrence_satisfies_its_matched_postmortems_signature():
+    recurrences = [s for s in SCENARIOS if s["type"] == "recurrence"]
+    assert recurrences, "no recurrence scenario in the answer key"
+    for s in recurrences:
+        matched_id = s["expected_match"].split(":", 1)[1]
+        matched = next(m for m in SCENARIOS if m["id"] == matched_id)
+        verification = matched["verification"]
+
+        # no postmortem of its own — otherwise the fast path could self-match again
+        assert _kb_doc(f"postmortem:{s['id']}") is None, (
+            f"{s['id']}: a recurrence must not have its own postmortem")
+
+        # every required signal is present in the recurrence's labeled telemetry
+        metric_pairs = _scenario_metric_pairs(s)
+        labeled_logs = {(r["service"], r["level"]) for r in LOGS
+                        if r.get("incident_id") == s["id"]}
+        for descriptor in verification["required_signals"]:
+            kind, entity, tail = descriptor.split(":")
+            if kind == "metrics":
+                assert (entity, tail) in metric_pairs, (
+                    f"{s['id']}: required {descriptor!r} not in its labeled evidence")
+            else:  # logs
+                assert (entity, tail) in labeled_logs, (
+                    f"{s['id']}: required {descriptor!r} not in its labeled log rows")
+
+        # no disqualifying signal appears in its evidence or its alert storm
+        storm_services = {a["service"] for a in ALERTS if a["incident_id"] == s["id"]}
+        for descriptor in verification["disqualifying_signals"]:
+            kind, entity, tail = descriptor.split(":")
+            if kind == "metrics":
+                assert (entity, tail) not in metric_pairs, (
+                    f"{s['id']}: disqualifying {descriptor!r} present in evidence")
+            assert entity not in storm_services, (
+                f"{s['id']}: disqualifying entity {entity} alerts in the recurrence storm")
+
+        # the recurrence runs an affected version (its causal deploy is in the known range)
+        causal = [r for r in s["expected_evidence"] if r.startswith("deploys:")]
+        assert causal, f"{s['id']}: recurrence has no causal deploy to version-check"
+        for ref in causal:
+            deploy = DEPLOY_BY_ID[ref.rsplit(":", 1)[1]]
+            assert deploy["version"] in verification["affected_versions"], (
+                f"{s['id']}: deploy {deploy['version']} outside the matched affected_versions")

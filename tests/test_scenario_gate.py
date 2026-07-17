@@ -30,8 +30,8 @@ def scorecard() -> dict:
     return scenario_eval.evaluate()
 
 
-def test_all_six_scenarios_run_through_the_slice(scorecard):
-    assert scorecard["n_scenarios"] == 6
+def test_all_scenarios_run_through_the_slice(scorecard):
+    assert scorecard["n_scenarios"] == 7
 
 
 def test_no_material_regression_vs_baseline(scorecard):

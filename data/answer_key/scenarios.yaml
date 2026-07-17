@@ -224,3 +224,41 @@ scenarios:
       - runbook:redis-cache-degradation
       - architecture:service-dependency-map
     recommended_next_step: Roll back the inventory-api deploy, flush stale stock keys, and reconcile reservations.
+
+  # ---------------------------------------------------------------------------- recurrence
+  - id: inc-007
+    title: Service Bus backlog again; order notifications delayed (recurrence of inc-003)
+    type: recurrence
+    severity: SEV3
+    category: messaging
+    occurred_at: 2026-07-02T09:30:00Z
+    # GENUINE RECURRENCE (Demo 2). A stale release pipeline re-deployed notification-worker@3.1.0
+    # — the same revision line that lacked poison-message handling (inc-003's action item never
+    # shipped) — and the crash loop recurred on a new malformed message. New incident id, no
+    # postmortem of its own: the fast path must match it to postmortem:inc-003 and VERIFY the
+    # match against that postmortem's required/disqualifying signals + affected_versions.
+    alert:
+      summary: Order notifications delayed again; Service Bus queue depth climbing and not draining.
+      signal: service-bus active message count rising, not draining
+    expected_intent: known_issue
+    expected_match: postmortem:inc-003
+    trigger: A stale pipeline re-deployed the notification-worker revision lacking poison-message handling; a new malformed message restarted the crash loop.
+    root_cause: >-
+      notification-worker crash-looped again on an undeserializable message — the poison-message
+      handling from inc-003's action items was never shipped, and a re-deploy of the affected
+      revision reintroduced the failure mode. Queue depth grew and order notifications were delayed.
+    impacted_chain: [notification-worker, service-bus]
+    expected_evidence:
+      - logs:notification-worker:evt-007-01    # deserialization crash loop (again)
+      - metrics:service-bus:active_message_count@2026-07-02T09:30:00Z
+      - metrics:notification-worker:restart_count@2026-07-02T09:35:00Z
+      - deploys:notification-worker:dep-20260702-01   # re-deploy of the affected revision
+      - deps:notification-worker->service-bus
+    expected_retrieval:
+      - postmortem:inc-003
+      - runbook:service-bus-backlog
+      - runbook:deployment-rollback
+    recommended_next_step: >-
+      Match against known error inc-003 and apply its verified resolution: roll the worker back,
+      dead-letter the poison message, reprocess the backlog — and actually ship the
+      poison-message-handling action item this time.

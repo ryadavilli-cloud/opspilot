@@ -52,9 +52,10 @@ def _evidence_entity(ref: str) -> str:
 
 
 def test_scenario_count_and_split():
-    assert len(SCENARIOS) == 6
+    assert len(SCENARIOS) == 7
     assert len(HISTORICAL_IDS) == 3
     assert sum(1 for s in SCENARIOS if s["type"] == "novel") == 3
+    assert sum(1 for s in SCENARIOS if s["type"] == "recurrence") == 1
 
 
 def test_scenarios_have_required_fields_and_controlled_vocab():
@@ -69,7 +70,7 @@ def test_scenarios_have_required_fields_and_controlled_vocab():
         assert not missing, f"{s.get('id')} missing fields: {missing}"
         assert s["id"] not in seen_ids, f"duplicate id {s['id']}"
         seen_ids.add(s["id"])
-        assert s["type"] in {"historical", "novel"}
+        assert s["type"] in {"historical", "novel", "recurrence"}
         assert s["severity"] in SEVERITIES
         assert s["category"] in CATEGORIES, f"{s['id']} unknown category {s['category']}"
 
@@ -79,6 +80,14 @@ def test_intent_and_match_invariants():
         if s["type"] == "historical":
             assert s["expected_intent"] == "known_issue", s["id"]
             assert s["expected_match"] == f"postmortem:{s['id']}", s["id"]
+        elif s["type"] == "recurrence":
+            # A genuine recurrence: the truth is a known issue, matched to ANOTHER incident's
+            # postmortem — matching itself is the untestable loophole this type exists to close.
+            assert s["expected_intent"] == "known_issue", s["id"]
+            match = s["expected_match"]
+            assert match and match.startswith("postmortem:"), s["id"]
+            assert match != f"postmortem:{s['id']}", f"{s['id']}: recurrence must not self-match"
+            assert match.split(":", 1)[1] in HISTORICAL_IDS, s["id"]
         else:
             assert s["expected_intent"] == "novel_investigation", s["id"]
             assert s["expected_match"] is None, s["id"]
