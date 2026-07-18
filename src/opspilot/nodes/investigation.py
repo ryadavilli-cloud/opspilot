@@ -33,6 +33,21 @@ def _svc(config: RunnableConfig | None):
     return ToolService()
 
 
+def _planner(config: RunnableConfig | None):
+    """Resolve the injected diagnosis planner, or default to the deterministic floor.
+
+    Mirrors `_svc`: the planner is injected via LangGraph `config` at the composition root
+    (the eval harness selects it per `implementation`); direct-call tests and the CLI get the
+    deterministic planner, so behavior is unchanged unless a caller opts in."""
+    if config:
+        injected = (config.get("configurable") or {}).get("planner")
+        if injected is not None:
+            return injected
+    from opspilot.diagnosis.planner import DeterministicPlanner
+
+    return DeterministicPlanner()
+
+
 def _evidence_map(items: list[EvidenceItem]) -> dict[str, EvidenceItem]:
     """Key evidence by content hash so the merge reducer dedups it."""
     return {item.content_hash: item for item in items}
@@ -151,7 +166,7 @@ def diagnose(state: InvestigationState, config: RunnableConfig | None = None) ->
     yet — the reasoning agent will later plug into these same contracts and transitions. Computes
     the deterministic sufficiency state that decides whether the loop is allowed to stop."""
     from opspilot.diagnosis.contracts import DiagnosisContext
-    from opspilot.diagnosis.cycle import plan_investigation, run_cycle
+    from opspilot.diagnosis.cycle import run_cycle
     from opspilot.diagnosis.sufficiency import compute_sufficiency
 
     ctx = DiagnosisContext(
@@ -160,8 +175,9 @@ def diagnose(state: InvestigationState, config: RunnableConfig | None = None) ->
         onset=state.onset,
         category=state.category or "",
     )
-    plan = plan_investigation(ctx)
     already = set(state.answered_questions)
+    prior_obs = state.diagnosis.observations if state.diagnosis else []
+    plan = _planner(config).plan(ctx, answered=already, observations=prior_obs)
     hypothesis, observations, stop, newly = run_cycle(_svc(config), ctx, plan, already)
 
     evidence = [EvidenceItem.make(c.source, c.ref, c.note) for c in hypothesis.citations]

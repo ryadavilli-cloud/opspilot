@@ -94,6 +94,20 @@ def resolve_tier(severity: Severity) -> Tier:
 
 
 # --------------------------------------------------------------------------------------
+# LLM provider seam (Stage 4)
+# --------------------------------------------------------------------------------------
+# Dev default = local Ollama (qwen3:8b via DEV_MODEL, the free floor). The `openai` provider
+# reuses the same OpenAI-compatible client with a real key + base_url for gpt-4o-mini / Azure
+# Foundry (the capability headline). `replay` plays back recorded cassettes in CI. Empty base_url
+# means "the provider's default endpoint".
+LLM_PROVIDER = os.getenv("OPSPILOT_LLM_PROVIDER", "ollama")
+LLM_MODEL = os.getenv("OPSPILOT_LLM_MODEL", DEV_MODEL)
+LLM_BASE_URL = os.getenv("OPSPILOT_LLM_BASE_URL", "")
+LLM_API_KEY = os.getenv("OPSPILOT_LLM_API_KEY", "") or os.getenv("OPENAI_API_KEY", "")
+OLLAMA_BASE_URL = os.getenv("OPSPILOT_OLLAMA_BASE_URL", "http://localhost:11434/v1")
+
+
+# --------------------------------------------------------------------------------------
 # Retrieval / embedding models
 # --------------------------------------------------------------------------------------
 EMBEDDING_MODEL = "BAAI/bge-m3"               # dense + sparse in one model

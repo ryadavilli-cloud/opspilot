@@ -32,6 +32,12 @@ dev = [
 eval = [
     "sentence-transformers>=5.6.0",
 ]
+# LLM provider client (Stage 4). OpenAI-compatible SDK fronts qwen via Ollama, gpt-4o-mini, and
+# Azure Foundry. Kept OUT of [project].dependencies so the lean bm25 runtime image stays LLM-free;
+# imported lazily (config.LLM_PROVIDER=replay needs none of it). Prod packaging lands with Azure.
+llm = [
+    "openai>=1.40",
+]
 
 [build-system]
 requires = ["hatchling"]
@@ -62,4 +68,5 @@ pythonpath = ["src"]
 testpaths = ["tests"]
 markers = [
     "reranker: exercises the bge-reranker-v2-m3 cross-encoder (heavy ~2.2GB model; excluded from the CI gate lane with -m 'not reranker')",
+    "llm: hits a live LLM provider (Ollama/OpenAI); excluded from the CI gate lane with -m 'not llm'. Wiring is covered deterministically by cassette replay, which needs no live model.",
 ]
