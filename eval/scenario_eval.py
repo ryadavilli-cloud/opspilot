@@ -109,9 +109,12 @@ def _mcp_parity_ok() -> bool:
 
 
 def evaluate(implementation: str = "deterministic") -> dict[str, Any]:
+    from opspilot.diagnosis.planner import build_planner
+
     app = build_graph()
     svc = ToolService()  # one shared service, injected into every run
-    config = {"configurable": {"tool_service": svc}}
+    planner = build_planner(implementation)  # selects the diagnosis impl; unknown -> ValueError
+    config = {"configurable": {"tool_service": svc, "planner": planner}}
     scenarios = _load_scenarios()
     root_by_incident = {s["id"]: (s.get("impacted_chain") or [None])[0] for s in scenarios}
     per = [

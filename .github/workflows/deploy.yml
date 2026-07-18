@@ -34,7 +34,9 @@ jobs:
       - name: Type-check
         run: uv run mypy
       - name: Tests (ML-gated tests skip here)
-        run: uv run pytest -q
+        # `not llm` excludes the live-Ollama smoke; the LLM seam's wiring is covered
+        # deterministically by the cassette/factory tests, which need no live model.
+        run: uv run pytest -q -m "not llm"
 
   # Full lane: installs the eval group so the retrieval + scenario regression gate actually run
   # (a skipped gate is not a gate). bge-small (~130MB) is cached across runs; the 2.2GB
@@ -53,8 +55,8 @@ jobs:
           key: hf-models-${{ runner.os }}-bge-small-v1
       - name: Sync (dev + data + eval)
         run: uv sync --group dev --group data --group eval
-      - name: Full suite incl. scenario gate (exclude the heavy reranker)
-        run: uv run pytest -q -m "not reranker"
+      - name: Full suite incl. scenario gate (exclude the heavy reranker + live LLM)
+        run: uv run pytest -q -m "not reranker and not llm"
 
   build-and-deploy:
     needs: [core, full]
