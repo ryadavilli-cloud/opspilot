@@ -7,6 +7,8 @@
   "rca_correctness": 0.7143,
   "unsupported_evidence_rate": 0.0,
   "tool_call_validity": 1.0,
+  "tool_selection_accuracy": 0.8571,
+  "loop_termination_accuracy": 1.0,
   "iteration_limit_compliance": 1.0,
   "mcp_parity": true
 }

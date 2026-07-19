@@ -40,8 +40,8 @@ def test_deterministic_planner_ignores_loop_state():
 
 def test_build_planner_known_and_unknown():
     assert isinstance(build_planner("deterministic"), DeterministicPlanner)
-    with pytest.raises(ValueError, match="single_agent"):
-        build_planner("single_agent")  # the LLM planner lands in 4b; fail loud until then
+    # single_agent builds the LLM planner (no network at construction — the client is lazy).
+    assert build_planner("single_agent").name == "single_agent"
     with pytest.raises(ValueError, match="unknown diagnosis implementation"):
         build_planner("nope")
 

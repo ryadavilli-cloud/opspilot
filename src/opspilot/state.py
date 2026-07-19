@@ -79,6 +79,27 @@ def merge_evidence(
     return merged
 
 
+def merge_refs(existing: list[str], incoming: list[str]) -> list[str]:
+    """Reducer: accumulate the tool-produced evidence-ref trail across diagnose turns. The LLM
+    loop executes one question per turn, so a last-write field would drop earlier turns' evidence.
+    Order-preserving union, so the grounding set only ever grows and stays deterministic."""
+    seen = list(existing)
+    known = set(existing)
+    for ref in incoming:
+        if ref not in known:
+            seen.append(ref)
+            known.add(ref)
+    return seen
+
+
+def append_observations(
+    existing: list[ToolObservation], incoming: list[ToolObservation]
+) -> list[ToolObservation]:
+    """Reducer: accumulate the full observation trail across diagnose turns, so a model planner can
+    see all it has already done (and not repeat calls). `diagnosis` holds only the last turn."""
+    return existing + incoming
+
+
 class DiagnosisTrace(BaseModel):
     """The observable trail of one diagnostic cycle — the tool observations and why it stopped.
     The hypothesis it produced is not duplicated here; it lives on the state's `hypothesis`."""
@@ -110,8 +131,16 @@ class InvestigationState(BaseModel):
     # keyed collection — dedup by content hash, never blind-append
     evidence_by_id: Annotated[dict[str, EvidenceItem], merge_evidence] = Field(default_factory=dict)
 
+    # the tool-produced evidence-ref trail (accumulated across diagnose turns) — the grounding set
+    # the safety guardrail validates a hypothesis's citations against. Distinct from evidence_by_id
+    # (built from the *cited* refs): a hypothesis may only cite what a tool actually produced.
+    produced_refs: Annotated[list[str], merge_refs] = Field(default_factory=list)
+
     hypothesis: Hypothesis | None = None       # single source of truth (statement/confidence/cites)
-    diagnosis: DiagnosisTrace | None = None    # observations + stop reason (not the hypothesis)
+    diagnosis: DiagnosisTrace | None = None    # observations + stop reason (last turn only)
+    # full observation history across turns — what a model planner sees so it never repeats a call
+    observation_trail: Annotated[list[ToolObservation], append_observations] = Field(
+        default_factory=list)
     sufficiency: SufficiencyState | None = None  # deterministic stop-rule inputs (per turn)
     answered_questions: list[str] = Field(default_factory=list)  # plan-advancement: keys asked
     diagnose_iters: int = 0
