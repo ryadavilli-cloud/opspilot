@@ -1,0 +1,158 @@
+{
+  "probe": "RCAEval RE1 Online Boutique (held-out); metrics-only; root-service RCA",
+  "n_cases": 25,
+  "deterministic_rca": 0.0,
+  "single_agent_rca": 0.8,
+  "single_agent_per_case": [
+    {
+      "incident": "wild-adservice_cpu-1",
+      "root": "adservice",
+      "implicated": "adservice",
+      "correct": true
+    },
+    {
+      "incident": "wild-adservice_delay-1",
+      "root": "adservice",
+      "implicated": "adservice",
+      "correct": true
+    },
+    {
+      "incident": "wild-adservice_disk-1",
+      "root": "adservice",
+      "implicated": "adservice",
+      "correct": true
+    },
+    {
+      "incident": "wild-adservice_loss-1",
+      "root": "adservice",
+      "implicated": "adservice",
+      "correct": true
+    },
+    {
+      "incident": "wild-adservice_mem-1",
+      "root": "adservice",
+      "implicated": "adservice",
+      "correct": true
+    },
+    {
+      "incident": "wild-cartservice_cpu-1",
+      "root": "cartservice",
+      "implicated": "cartservice",
+      "correct": true
+    },
+    {
+      "incident": "wild-cartservice_delay-1",
+      "root": "cartservice",
+      "implicated": "cartservice",
+      "correct": true
+    },
+    {
+      "incident": "wild-cartservice_disk-1",
+      "root": "cartservice",
+      "implicated": "cartservice",
+      "correct": true
+    },
+    {
+      "incident": "wild-cartservice_loss-1",
+      "root": "cartservice",
+      "implicated": "cartservice",
+      "correct": true
+    },
+    {
+      "incident": "wild-cartservice_mem-1",
+      "root": "cartservice",
+      "implicated": "cartservice",
+      "correct": true
+    },
+    {
+      "incident": "wild-checkoutservice_cpu-1",
+      "root": "checkoutservice",
+      "implicated": "checkoutservice",
+      "correct": true
+    },
+    {
+      "incident": "wild-checkoutservice_delay-1",
+      "root": "checkoutservice",
+      "implicated": "checkoutservice",
+      "correct": true
+    },
+    {
+      "incident": "wild-checkoutservice_disk-1",
+      "root": "checkoutservice",
+      "implicated": "checkoutservice",
+      "correct": true
+    },
+    {
+      "incident": "wild-checkoutservice_loss-1",
+      "root": "checkoutservice",
+      "implicated": "checkoutservice",
+      "correct": true
+    },
+    {
+      "incident": "wild-checkoutservice_mem-1",
+      "root": "checkoutservice",
+      "implicated": "checkoutservice",
+      "correct": true
+    },
+    {
+      "incident": "wild-currencyservice_cpu-1",
+      "root": "currencyservice",
+      "implicated": "currencyservice",
+      "correct": true
+    },
+    {
+      "incident": "wild-currencyservice_delay-1",
+      "root": "currencyservice",
+      "implicated": "currencyservice",
+      "correct": true
+    },
+    {
+      "incident": "wild-currencyservice_disk-1",
+      "root": "currencyservice",
+      "implicated": "currencyservice",
+      "correct": true
+    },
+    {
+      "incident": "wild-currencyservice_loss-1",
+      "root": "currencyservice",
+      "implicated": "currencyservice",
+      "correct": true
+    },
+    {
+      "incident": "wild-currencyservice_mem-1",
+      "root": "currencyservice",
+      "implicated": "currencyservice",
+      "correct": true
+    },
+    {
+      "incident": "wild-productcatalogservice_cpu-1",
+      "root": "productcatalogservice",
+      "implicated": "PassthroughCluster",
+      "correct": false
+    },
+    {
+      "incident": "wild-productcatalogservice_delay-1",
+      "root": "productcatalogservice",
+      "implicated": "adservice",
+      "correct": false
+    },
+    {
+      "incident": "wild-productcatalogservice_disk-1",
+      "root": "productcatalogservice",
+      "implicated": "adservice",
+      "correct": false
+    },
+    {
+      "incident": "wild-productcatalogservice_loss-1",
+      "root": "productcatalogservice",
+      "implicated": "adservice",
+      "correct": false
+    },
+    {
+      "incident": "wild-productcatalogservice_mem-1",
+      "root": "productcatalogservice",
+      "implicated": "PassthroughCluster",
+      "correct": false
+    }
+  ]
+}
