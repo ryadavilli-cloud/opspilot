@@ -21,15 +21,17 @@ def route_by_intent(state: InvestigationState) -> str:
 
 
 def diagnose_continue(state: InvestigationState) -> str:
-    """Deterministic sufficiency gate: the agent may stop only when code says the evidence is
-    sufficient. Exhausting the iteration budget or the plan escalates with a reason, never spins."""
+    """Stop rule. The planner decides when to stop *gathering* (an exhausted plan — the model said
+    `done` or has nothing new to run); code decides whether that stop is *legitimate* — synthesize
+    only when the deterministic sufficiency gate is satisfied, else escalate with a reason. The
+    iteration budget is the circuit breaker. While the plan can still advance and budget remains,
+    the loop keeps gathering even once coverage is met, so a dependency-chain investigation can dive
+    into the implicated service rather than stopping at first sufficiency."""
     s = state.sufficiency
-    if s is not None and s.ready:
-        return "synthesize_report"
-    if state.diagnose_iters >= MAX_DIAGNOSE_ITERS:   # circuit breaker
-        return "escalate"
-    if s is not None and not s.plan_can_advance:      # no unanswered questions remain
-        return "escalate"
+    ready = s is not None and s.ready
+    plan_exhausted = s is not None and not s.plan_can_advance
+    if plan_exhausted or state.diagnose_iters >= MAX_DIAGNOSE_ITERS:
+        return "synthesize_report" if ready else "escalate"
     return "diagnose"
 
 

@@ -14,6 +14,13 @@ from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
 
+from dotenv import load_dotenv
+
+# Load a local, gitignored `.env` before any getenv below (dev convenience for keys like
+# OPENAI_API_KEY). No-op in production, where the container supplies real environment variables and
+# no .env exists. Never network or heavy — just a local file read.
+load_dotenv()
+
 # --------------------------------------------------------------------------------------
 # Runtime asset paths + retrieval backend
 # --------------------------------------------------------------------------------------
@@ -24,8 +31,35 @@ from pathlib import Path
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
+def _env(var: str, default: str = "") -> str:
+    """Read an env var, tolerating a `.env` inline comment (`KEY=val  # note`) and treating a
+    blank value as unset. python-dotenv keeps inline-comment text as the value, so a `.env` line
+    like `OPSPILOT_LLM_MODEL=   # blank -> default` would otherwise poison config. These settings
+    never legitimately contain '#'."""
+    raw = os.getenv(var)
+    if raw is None:
+        return default
+    cleaned = raw.split("#", 1)[0].strip()
+    return cleaned or default
+
+
+def _env_int(var: str, default: int) -> int:
+    value = _env(var)
+    return int(value) if value else default
+
+
+def _env_float(var: str, default: float) -> float:
+    value = _env(var)
+    return float(value) if value else default
+
+
+def _env_flag(var: str, default: bool = False) -> bool:
+    value = _env(var)
+    return value.lower() == "true" if value else default
+
+
 def _dir_env(var: str, default: Path) -> Path:
-    value = os.getenv(var)
+    value = _env(var)
     return Path(value) if value else default
 
 
@@ -35,7 +69,7 @@ DISTRACTOR_DIR = _dir_env("OPSPILOT_DISTRACTOR_DIR", _REPO_ROOT / "data" / "dist
 
 # Retrieval backend: `hybrid` (dense + BM25, local/eval) or `bm25` (lexical-only, the runtime
 # image default — no embedding model download). Selected by env; validated by the factory.
-RETRIEVAL_BACKEND = os.getenv("OPSPILOT_RETRIEVAL_BACKEND", "hybrid")
+RETRIEVAL_BACKEND = _env("OPSPILOT_RETRIEVAL_BACKEND", "hybrid")
 
 
 # --------------------------------------------------------------------------------------
@@ -75,14 +109,14 @@ PROD_MODELS: dict[Tier, str] = {
 # simulates all tiers in dev. NOTE: the larger qwen3.6 (36B MoE, 23 GB) was pulled but
 # won't run on this box (23 GB > 15.5 GB RAM, integrated GPU only). Build/iterate against
 # gpt-4o-mini for tool-call reliability; qwen3:8b is the free local/demo path.
-DEV_MODEL = os.getenv("OPSPILOT_DEV_MODEL", "qwen3:8b")
+DEV_MODEL = _env("OPSPILOT_DEV_MODEL", "qwen3:8b")
 
 # Pinned, cross-vendor judge (>= system strength). Kept fixed so eval scores stay
 # comparable across runs. SEV1 escalates to a two-judge panel if parity is in doubt.
-JUDGE_MODEL = os.getenv("OPSPILOT_JUDGE_MODEL", "gpt-4.1")
+JUDGE_MODEL = _env("OPSPILOT_JUDGE_MODEL", "gpt-4.1")
 
 # Opus tier is OFF by default — reserved, not run in the demo deployment.
-ENABLE_OPUS_SEV1 = os.getenv("OPSPILOT_ENABLE_OPUS_SEV1", "false").lower() == "true"
+ENABLE_OPUS_SEV1 = _env_flag("OPSPILOT_ENABLE_OPUS_SEV1")
 
 
 def resolve_tier(severity: Severity) -> Tier:
@@ -100,11 +134,11 @@ def resolve_tier(severity: Severity) -> Tier:
 # reuses the same OpenAI-compatible client with a real key + base_url for gpt-4o-mini / Azure
 # Foundry (the capability headline). `replay` plays back recorded cassettes in CI. Empty base_url
 # means "the provider's default endpoint".
-LLM_PROVIDER = os.getenv("OPSPILOT_LLM_PROVIDER", "ollama")
-LLM_MODEL = os.getenv("OPSPILOT_LLM_MODEL", DEV_MODEL)
-LLM_BASE_URL = os.getenv("OPSPILOT_LLM_BASE_URL", "")
-LLM_API_KEY = os.getenv("OPSPILOT_LLM_API_KEY", "") or os.getenv("OPENAI_API_KEY", "")
-OLLAMA_BASE_URL = os.getenv("OPSPILOT_OLLAMA_BASE_URL", "http://localhost:11434/v1")
+LLM_PROVIDER = _env("OPSPILOT_LLM_PROVIDER", "ollama")
+LLM_MODEL = _env("OPSPILOT_LLM_MODEL", DEV_MODEL)
+LLM_BASE_URL = _env("OPSPILOT_LLM_BASE_URL")
+LLM_API_KEY = _env("OPSPILOT_LLM_API_KEY") or _env("OPENAI_API_KEY")
+OLLAMA_BASE_URL = _env("OPSPILOT_OLLAMA_BASE_URL", "http://localhost:11434/v1")
 
 
 # --------------------------------------------------------------------------------------
@@ -115,7 +149,7 @@ RERANKER_MODEL = "BAAI/bge-reranker-v2-m3"
 
 # Depth of the first-stage (hybrid) candidate set handed to the cross-encoder reranker.
 # Deeper = higher recall into the rerank stage at a linear cost in cross-encoder calls.
-RERANK_CANDIDATES = int(os.getenv("OPSPILOT_RERANK_CANDIDATES", "30"))
+RERANK_CANDIDATES = _env_int("OPSPILOT_RERANK_CANDIDATES", 30)
 
 
 # --------------------------------------------------------------------------------------
@@ -129,9 +163,9 @@ WORKFLOW_VERSION = "1.0"
 # --------------------------------------------------------------------------------------
 # Agentic loop controls (circuit breakers)
 # --------------------------------------------------------------------------------------
-MAX_DIAGNOSE_ITERS = int(os.getenv("OPSPILOT_MAX_DIAGNOSE_ITERS", "5"))
-CONFIDENCE_THRESHOLD = float(os.getenv("OPSPILOT_CONFIDENCE_THRESHOLD", "0.75"))
-MAX_TOOL_CALLS = int(os.getenv("OPSPILOT_MAX_TOOL_CALLS", "20"))
+MAX_DIAGNOSE_ITERS = _env_int("OPSPILOT_MAX_DIAGNOSE_ITERS", 5)
+CONFIDENCE_THRESHOLD = _env_float("OPSPILOT_CONFIDENCE_THRESHOLD", 0.75)
+MAX_TOOL_CALLS = _env_int("OPSPILOT_MAX_TOOL_CALLS", 20)
 
 
 # --------------------------------------------------------------------------------------
@@ -164,5 +198,5 @@ TARGETS = EvalTargets()
 # --------------------------------------------------------------------------------------
 # Runtime environment
 # --------------------------------------------------------------------------------------
-ENVIRONMENT = os.getenv("OPSPILOT_ENV", "local")  # local | dev | prod
-LANGSMITH_ENABLED = os.getenv("LANGSMITH_TRACING", "false").lower() == "true"
+ENVIRONMENT = _env("OPSPILOT_ENV", "local")  # local | dev | prod
+LANGSMITH_ENABLED = _env_flag("LANGSMITH_TRACING")

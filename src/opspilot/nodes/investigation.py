@@ -145,6 +145,7 @@ def known_issue_fast_path(
     return {
         "hypothesis": hypothesis,
         "evidence_by_id": _evidence_map([EvidenceItem.make("past_incident", ref, resolution)]),
+        "produced_refs": [ref],  # the matched postmortem is real, retrieved evidence
     }
 
 
@@ -158,7 +159,9 @@ def retrieve(state: InvestigationState, config: RunnableConfig | None = None) ->
     for hit in svc.search_past_incidents(query=query, k=3).results:
         inc_id = hit.doc_id.split(":", 1)[1] if ":" in hit.doc_id else hit.doc_id
         items.append(EvidenceItem.make("past_incident", f"past_incident:{inc_id}", hit.title))
-    return {"evidence_by_id": _evidence_map(items)}
+    # Retrieved docs are real, tool-produced evidence — part of the grounding set the safety gate
+    # validates citations against (a report may cite a retrieved runbook or past incident).
+    return {"evidence_by_id": _evidence_map(items), "produced_refs": [it.ref for it in items]}
 
 
 def diagnose(state: InvestigationState, config: RunnableConfig | None = None) -> dict[str, Any]:
@@ -176,23 +179,51 @@ def diagnose(state: InvestigationState, config: RunnableConfig | None = None) ->
         category=state.category or "",
     )
     already = set(state.answered_questions)
-    prior_obs = state.diagnosis.observations if state.diagnosis else []
-    plan = _planner(config).plan(ctx, answered=already, observations=prior_obs)
+    planner = _planner(config)
+    # The planner sees the FULL trail (accumulated across turns), not just the last turn, so a model
+    # planner knows everything it has already gathered and does not repeat calls.
+    plan = planner.plan(ctx, answered=already, observations=state.observation_trail)
     hypothesis, observations, stop, newly = run_cycle(_svc(config), ctx, plan, already)
 
-    evidence = [EvidenceItem.make(c.source, c.ref, c.note) for c in hypothesis.citations]
+    # The grounding set: every ref a tool actually produced, accumulated across turns (the LLM
+    # loop gathers one question per turn). A hypothesis may cite only refs in this trail — this is
+    # what the safety guardrail validates against, so a fabricated citation cannot self-certify.
+    this_turn_refs = {r for o in observations for r in o.evidence_refs}
+    # Two distinct sets: `produced` is the grounding set the safety gate validates citations against
+    # (includes retrieved docs — a report may cite a runbook). `diagnostic_refs` is only the
+    # diagnose-tool evidence (logs/metrics/deps/deploys) — the sufficiency gate must not count a
+    # retrieved runbook as diagnostic coverage, or an unknown incident would look "solved".
+    produced = set(state.produced_refs) | this_turn_refs
+    diagnostic_refs = {r for o in state.observation_trail + observations for r in o.evidence_refs}
     answered = already | newly
-    plan_can_advance = bool({q.key for q in plan.questions} - answered)
-    # Coverage is over everything gathered (the observation trail), not just what is cited.
-    produced_refs = {r for o in observations for r in o.evidence_refs} | {c.ref for c in
-                                                                          hypothesis.citations}
-    sufficiency = compute_sufficiency(state.severity, produced_refs, hypothesis, plan_can_advance)
+    plan_can_advance = planner.wants_to_continue(plan, answered=answered)
+    sufficiency = compute_sufficiency(state.severity, diagnostic_refs, hypothesis, plan_can_advance)
+
+    # The sufficiency gate ends *gathering*; on the stopping turn the planner synthesizes the final
+    # grounded conclusion from the full trail (the model's root cause replaces run_cycle's
+    # provisional hypothesis; the deterministic planner no-ops, so its output is unchanged).
+    stopping = (
+        sufficiency.ready
+        or state.diagnose_iters + 1 >= MAX_DIAGNOSE_ITERS
+        or not plan_can_advance
+    )
+    hypothesis = planner.revise_hypothesis(
+        hypothesis,
+        ctx=ctx,
+        produced_refs=produced,
+        observations=state.observation_trail + observations,
+        final=stopping,
+    )
+
+    evidence = [EvidenceItem.make(c.source, c.ref, c.note) for c in hypothesis.citations]
 
     return {
         "hypothesis": hypothesis,
         "evidence_by_id": _evidence_map(evidence),
+        "produced_refs": sorted(this_turn_refs),
         "diagnose_iters": state.diagnose_iters + 1,
         "diagnosis": DiagnosisTrace(observations=observations, stop_reason=stop),
+        "observation_trail": observations,
         "answered_questions": sorted(answered),
         "sufficiency": sufficiency,
     }
@@ -224,7 +255,9 @@ def safety_validate(state: InvestigationState) -> dict[str, Any]:
         return {"safety": {"passed": True, "violations": [], "exempt": "info_only"}}
 
     citations = (state.report or {}).get("citations", [])
-    produced = set(state.evidence_refs())
+    # Validate against the tool-produced ref trail, NOT evidence_refs() (which is derived from the
+    # cited refs themselves — that would let a fabricated citation certify itself).
+    produced = set(state.produced_refs)
     passed, violations = hypothesis_supported(citations, produced)
     return {"safety": {"passed": passed, "violations": violations}}
 

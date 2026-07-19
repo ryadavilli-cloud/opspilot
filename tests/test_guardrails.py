@@ -50,6 +50,7 @@ def test_safety_validate_passes_grounded_report():
     state = InvestigationState(
         report={"citations": ["logs:a:b"]},
         evidence_by_id=_evidence("logs", "logs:a:b"),
+        produced_refs=["logs:a:b"],  # the citation was actually produced by a tool this run
     )
     result = safety_validate(state)
     assert result["safety"]["passed"] is True
@@ -87,6 +88,7 @@ def test_edit_that_preserves_grounding_passes_revalidation():
     state = InvestigationState(
         report={"citations": ["logs:a:b"]},
         evidence_by_id=_evidence("logs", "logs:a:b"),
+        produced_refs=["logs:a:b"],
         approval={"decision": "edit", "edits": {"recommended_next_step": "roll back the deploy"}},
     )
     edited = state.model_copy(update=apply_edit(state))

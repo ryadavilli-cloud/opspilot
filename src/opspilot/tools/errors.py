@@ -55,6 +55,8 @@ def run_tool(
         request = request_cls(**kwargs)
     except ValidationError as exc:
         return error_result(tool_name, sanitize(exc), started)
+    except Exception:  # noqa: BLE001 — no exception may cross the tool boundary, even from a validator
+        return error_result(tool_name, "invalid request", started)
     try:
         records, evidence_refs = logic(request)
     except Exception:  # noqa: BLE001 — no exception may cross the tool boundary
