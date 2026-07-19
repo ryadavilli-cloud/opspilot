@@ -17,6 +17,7 @@ from typing import Any
 
 from opspilot.config import MAX_DIAGNOSE_ITERS
 from opspilot.graph import _initial_state, build_graph
+from opspilot.state import Intent
 from opspilot.tools.service import ToolService
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -128,13 +129,16 @@ def _mcp_parity_ok() -> bool:
 
 def evaluate(implementation: str = "deterministic", *, model: Any = None) -> dict[str, Any]:
     from opspilot.diagnosis.planner import build_planner
+    from opspilot.triage import build_triager
 
     app = build_graph()
     svc = ToolService()  # one shared service, injected into every run
     # `model` lets the caller inject a chat model for single_agent — a RecordingChatModel to capture
-    # a cassette from the live model, or a ReplayChatModel to score deterministically in CI.
+    # a cassette from the live model, or a ReplayChatModel to score deterministically in CI. Triage
+    # and diagnosis share the model, so one cassette covers both LLM stages.
     planner = build_planner(implementation, model=model)  # unknown impl -> ValueError
-    config = {"configurable": {"tool_service": svc, "planner": planner}}
+    triager = build_triager(implementation, model=model)
+    config = {"configurable": {"tool_service": svc, "planner": planner, "triager": triager}}
     scenarios = _load_scenarios()
     root_by_incident = {s["id"]: (s.get("impacted_chain") or [None])[0] for s in scenarios}
     per = [
@@ -148,12 +152,21 @@ def evaluate(implementation: str = "deterministic", *, model: Any = None) -> dic
     def mean(key: str) -> float:
         return round(sum(p[key] for p in per) / n, 4)
 
+    # evidence_recall is measured only over scenarios that SHOULD be investigated (truth = novel).
+    # A correctly fast-pathed known-issue recurrence gathers no diagnostic evidence by design, so
+    # scoring its recall as 0 would reward the WRONG routing (investigating a known recurrence) —
+    # see inc-007. Recall now measures investigation completeness where investigation is the job.
+    def mean_over_novel(key: str) -> float:
+        vals = [p[key] for p, s in zip(per, scenarios, strict=True)
+                if s.get("expected_intent") == Intent.NOVEL_INVESTIGATION.value]
+        return round(sum(vals) / len(vals), 4) if vals else 1.0
+
     return {
         "implementation": implementation,
         "n_scenarios": n,
         "routing_accuracy": mean("routing_correct"),
         "category_accuracy": mean("category_correct"),
-        "evidence_recall": mean("evidence_recall"),
+        "evidence_recall": mean_over_novel("evidence_recall"),
         "rca_correctness": mean("rca_correct"),
         "unsupported_evidence_rate": mean("unsupported_rate"),
         "tool_call_validity": mean("tool_calls_valid"),

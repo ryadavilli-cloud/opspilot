@@ -3,7 +3,7 @@
   "n_scenarios": 7,
   "routing_accuracy": 0.8571,
   "category_accuracy": 1.0,
-  "evidence_recall": 0.3238,
+  "evidence_recall": 0.4889,
   "rca_correctness": 0.7143,
   "unsupported_evidence_rate": 0.0,
   "tool_call_validity": 1.0,

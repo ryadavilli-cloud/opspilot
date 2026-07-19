@@ -48,6 +48,17 @@ def _planner(config: RunnableConfig | None):
     return DeterministicPlanner()
 
 
+def _triager(config: RunnableConfig | None):
+    """Resolve the injected triager, or default to the deterministic floor (mirrors `_planner`)."""
+    if config:
+        injected = (config.get("configurable") or {}).get("triager")
+        if injected is not None:
+            return injected
+    from opspilot.triage import DeterministicTriager
+
+    return DeterministicTriager()
+
+
 def _evidence_map(items: list[EvidenceItem]) -> dict[str, EvidenceItem]:
     """Key evidence by content hash so the merge reducer dedups it."""
     return {item.content_hash: item for item in items}
@@ -101,17 +112,26 @@ def triage_router(
     affected = sorted({a.service for a in alerts})
     onset = min((a.fired_at for a in alerts), default=record.opened_at)
 
-    # Known vs novel: does a past-incident search surface THIS incident's own postmortem?
-    # (Deterministic baseline; the confidence-floored match verification is a later stage.)
+    # Data extraction stays deterministic; the intent + known-issue candidate is the triager's call
+    # (deterministic self-match baseline, or LLM recurrence detection at 4c).
+    from opspilot.triage import PastCandidate, TriageContext
+
     past = svc.search_past_incidents(query=record.short_description, k=3).results
-    own = f"postmortem:{incident_id}"
-    matched = own if any(h.doc_id == own for h in past) else ""
-    intent = Intent.KNOWN_ISSUE.value if matched else Intent.NOVEL_INVESTIGATION.value
+    ctx = TriageContext(
+        incident_id=incident_id,
+        short_description=record.short_description,
+        category=record.category,
+        affected_services=affected,
+        alert_signals=sorted({a.signal for a in alerts if a.signal}),
+        past_candidates=[PastCandidate(doc_id=h.doc_id, title=h.title) for h in past],
+    )
+    decision = _triager(config).classify(ctx)
+    matched = decision.matched_incident
 
     return {
         "severity": _PRIORITY_TO_SEV.get(record.priority[:1], "SEV3"),
         "category": record.category,
-        "intent": intent,
+        "intent": decision.intent,
         "matched_incident": matched,
         "affected_services": affected,
         "onset": onset.isoformat(),
@@ -121,8 +141,8 @@ def triage_router(
             "affected_services": affected,
             "onset": onset.isoformat(),
             "top_past_incidents": [h.doc_id for h in past],
-            "reason": (f"top past-incident match is this incident's own postmortem ({matched})"
-                       if matched else "no prior postmortem matches this incident"),
+            "reason": (f"known-issue candidate: {matched}" if matched
+                       else "no prior postmortem matched as a recurrence"),
         },
     }
 
