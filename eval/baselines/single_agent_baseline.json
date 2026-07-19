@@ -1,0 +1,14 @@
+{
+  "implementation": "single_agent",
+  "n_scenarios": 7,
+  "routing_accuracy": 0.8571,
+  "category_accuracy": 1.0,
+  "evidence_recall": 0.381,
+  "rca_correctness": 0.7143,
+  "unsupported_evidence_rate": 0.0,
+  "tool_call_validity": 1.0,
+  "tool_selection_accuracy": 1.0,
+  "loop_termination_accuracy": 1.0,
+  "iteration_limit_compliance": 1.0,
+  "mcp_parity": true
+}

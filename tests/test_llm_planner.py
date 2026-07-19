@@ -56,6 +56,25 @@ def test_mutating_tool_is_dropped_fail_closed():
     assert plan.questions == []  # a non-allowlisted tool never becomes an executable question
 
 
+def test_plan_parses_a_batch_and_drops_bad_calls():
+    model = ScriptedModel(
+        '{"tool_calls": ['
+        '{"tool": "get_deployments", "params": {"services": "checkout-api"}},'
+        '{"tool": "query_logs", "params": {"service": "checkout-api", "level": "error"}},'
+        '{"tool": "restart_service", "params": {}}]}'  # non-allowlisted -> dropped
+    )
+    plan = LLMPlanner(model).plan(CTX, answered=set(), observations=[])
+    assert [q.call.tool for q in plan.questions] == ["get_deployments", "query_logs"]
+    assert plan.questions[0].call.params["services"] == ["checkout-api"]  # coerced to a list
+
+
+def test_plan_drops_already_answered_calls_in_batch():
+    model = ScriptedModel('{"tool_calls": [{"tool": "query_logs", "params": {"service": "a"}}]}')
+    key = 'llm:query_logs:{"service":"a"}'
+    plan = LLMPlanner(model).plan(CTX, answered={key}, observations=[])
+    assert plan.questions == []  # an already-answered call is never re-issued
+
+
 def test_done_signal_yields_no_question():
     model = ScriptedModel(
         '{"done": true, "root_cause": "payment-gateway timeout", "citations": []}'

@@ -111,6 +111,8 @@ class GetCorrelatedAlertsRequest(BaseModel):
 
     @model_validator(mode="after")
     def _check_window(self) -> GetCorrelatedAlertsRequest:
+        self.start_time = to_utc(self.start_time) if self.start_time else None
+        self.end_time = to_utc(self.end_time) if self.end_time else None
         if self.start_time and self.end_time and self.end_time < self.start_time:
             raise ValueError("end_time is before start_time")
         return self
@@ -123,6 +125,8 @@ class GetDeploymentsRequest(BaseModel):
 
     @model_validator(mode="after")
     def _check_window(self) -> GetDeploymentsRequest:
+        self.start_time = to_utc(self.start_time)
+        self.end_time = to_utc(self.end_time)
         if self.end_time < self.start_time:
             raise ValueError("end_time is before start_time")
         if (self.end_time - self.start_time).days > MAX_WINDOW_DAYS:
@@ -139,6 +143,8 @@ class GetLogsRequest(BaseModel):
 
     @model_validator(mode="after")
     def _check_window(self) -> GetLogsRequest:
+        self.start_time = to_utc(self.start_time) if self.start_time else None
+        self.end_time = to_utc(self.end_time) if self.end_time else None
         if self.start_time and self.end_time and self.end_time < self.start_time:
             raise ValueError("end_time is before start_time")
         return self
@@ -152,6 +158,8 @@ class GetMetricsRequest(BaseModel):
 
     @model_validator(mode="after")
     def _check_window(self) -> GetMetricsRequest:
+        self.start_time = to_utc(self.start_time) if self.start_time else None
+        self.end_time = to_utc(self.end_time) if self.end_time else None
         if self.start_time and self.end_time and self.end_time < self.start_time:
             raise ValueError("end_time is before start_time")
         return self

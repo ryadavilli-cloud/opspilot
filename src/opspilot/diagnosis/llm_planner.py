@@ -39,6 +39,9 @@ _FENCE_RE = re.compile(r"```(?:json)?\s*(\{.*?\})\s*```", re.DOTALL)
 # We coerce scalar -> [scalar] for exactly these, rather than trusting the model to match shapes.
 _LIST_PARAMS: dict[str, set[str]] = {"get_deployments": {"services"}}
 
+# Cap the tool calls executed per round (the model plans a batch; this bounds a runaway batch).
+_MAX_BATCH = 6
+
 
 def extract_json_object(text: str) -> dict:
     """Pull the decision JSON out of a model response. Tolerates `<think>…</think>` preambles
@@ -93,18 +96,17 @@ def _render_observations(observations: list[ToolObservation]) -> str:
     tools_called: set[str] = set()
     classes: set[str] = set()
     for obs in observations:
-        refs = ", ".join(obs.evidence_refs) or "(no evidence refs)"
-        lines.append(
-            f"- {obs.tool} [{obs.status}] → {obs.result_count} result(s); refs: {refs}"
-        )
+        detail = obs.summary or (", ".join(obs.evidence_refs) or "(no evidence refs)")
+        lines.append(f"- {obs.tool} [{obs.status}]: {detail}")
         tools_called.add(obs.tool)
         classes.update(ref.split(":", 1)[0] for ref in obs.evidence_refs)
-    summary = (
-        f"\nTools already called (do NOT call these again): {', '.join(sorted(tools_called))}."
-        f"\nEvidence classes gathered so far: {', '.join(sorted(classes)) or 'none'}. "
-        "Gather a different class (deploys / logs / metrics / deps) or conclude with `done`."
+    footer = (
+        f"\nAlready called (do NOT repeat): {', '.join(sorted(tools_called))}."
+        f"\nEvidence classes gathered: {', '.join(sorted(classes)) or 'none'}. "
+        "Gather any missing class (deploys / logs / metrics / deps), follow the anomaly into the "
+        "dependency, or conclude."
     )
-    return "\n".join(lines) + summary
+    return "\n".join(lines) + footer
 
 
 class LLMPlanner:
@@ -150,19 +152,33 @@ class LLMPlanner:
         if decision.get("done"):
             return InvestigationPlan(max_iters=MAX_DIAGNOSE_ITERS, questions=[])
 
-        tool = str(decision.get("next_tool", ""))
-        params = decision.get("params") or {}
-        if not isinstance(params, dict) or not is_read_only(tool):
-            # Fail closed: unparseable params or a non-allowlisted tool → no question this turn.
-            return InvestigationPlan(max_iters=MAX_DIAGNOSE_ITERS, questions=[])
+        # A round is a *batch* of tool calls. Accept `tool_calls: [...]`, or a single `next_tool`
+        # (back-compat). Each call is vetted independently and fails closed; already-answered calls
+        # are dropped so the model can't spin by re-proposing them.
+        raw_calls = decision.get("tool_calls")
+        if not isinstance(raw_calls, list):
+            raw_calls = [decision] if decision.get("next_tool") else []
 
-        params = _coerce_params(tool, params)
-        question = DiagnosticQuestion(
-            key=f"llm:{tool}:{_params_key(params)}",
-            question=str(decision.get("why") or f"call {tool}"),
-            call=ToolCallRequest(tool=tool, params=params),
-        )
-        return InvestigationPlan(max_iters=MAX_DIAGNOSE_ITERS, questions=[question])
+        questions: list[DiagnosticQuestion] = []
+        for call in raw_calls[:_MAX_BATCH]:
+            if not isinstance(call, dict):
+                continue
+            tool = str(call.get("tool") or call.get("next_tool") or "")
+            params = call.get("params") or {}
+            if not isinstance(params, dict) or not is_read_only(tool):
+                continue
+            params = _coerce_params(tool, params)
+            key = f"llm:{tool}:{_params_key(params)}"
+            if key in answered or any(q.key == key for q in questions):
+                continue  # never re-issue an answered or duplicate call
+            questions.append(
+                DiagnosticQuestion(
+                    key=key,
+                    question=str(call.get("why") or f"call {tool}"),
+                    call=ToolCallRequest(tool=tool, params=params),
+                )
+            )
+        return InvestigationPlan(max_iters=MAX_DIAGNOSE_ITERS, questions=questions)
 
     def _ground(self, statement: str, raw_cites: object, produced_refs: set[str]) -> Hypothesis:
         """Build a hypothesis, keeping only citations the tools actually produced. A conclusion with

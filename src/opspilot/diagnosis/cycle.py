@@ -30,6 +30,7 @@ from opspilot.diagnosis.contracts import (
     ToolCallRequest,
     ToolObservation,
 )
+from opspilot.diagnosis.observe import summarize
 from opspilot.guardrails.policies import is_read_only
 
 if TYPE_CHECKING:
@@ -127,7 +128,8 @@ def run_cycle(
         result = service.call(q.call.tool, **q.call.params)
         observations.append(ToolObservation(
             question=q.question, tool=q.call.tool, status=result.status,
-            evidence_refs=list(result.evidence_refs), result_count=len(result.results)))
+            evidence_refs=list(result.evidence_refs), result_count=len(result.results),
+            summary=summarize(q.call.tool, result.results, list(result.evidence_refs))))
         newly_answered.add(q.key)
 
         # Citations stay deploy-focused: the deterministic hypothesis names the deploy + a log.

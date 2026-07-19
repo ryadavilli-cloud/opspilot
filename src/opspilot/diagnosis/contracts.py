@@ -37,6 +37,7 @@ class ToolObservation(BaseModel):
     status: str
     evidence_refs: list[str]
     result_count: int
+    summary: str = ""   # compact `signal [ref]` view of the results, for a model planner
 
 
 class Hypothesis(BaseModel):
