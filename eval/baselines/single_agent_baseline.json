@@ -1,9 +1,9 @@
 {
   "implementation": "single_agent",
   "n_scenarios": 7,
-  "routing_accuracy": 0.8571,
+  "routing_accuracy": 1.0,
   "category_accuracy": 1.0,
-  "evidence_recall": 0.381,
+  "evidence_recall": 0.5556,
   "rca_correctness": 0.7143,
   "unsupported_evidence_rate": 0.0,
   "tool_call_validity": 1.0,

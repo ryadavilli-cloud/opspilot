@@ -2,6 +2,94 @@
   "model_id": "gpt-4o-mini",
   "interactions": [
     {
+      "key": "3d824913850a9ef4dd7951fd66e08ff7b51873929f309a1a39d3c7777a9967eb",
+      "request": {
+        "temperature": 0.0,
+        "messages": [
+          {
+            "role": "user",
+            "content": "You are triaging a production incident to decide how to investigate it.\n\n## Incident\n- incident_id: inc-001\n- description: Elevated checkout failures; payment authorizations timing out.\n- category: payment\n- affected services: checkout-api, payment-api\n- alert signals: http_5xx_rate breached threshold; p95_latency_ms breached threshold\n\n## Similar past incidents\nEach candidate is the postmortem of a PRIOR resolved incident. This incident is a recurrence only if\nits failure mode genuinely matches one of them.\n- postmortem:inc-001: Payment authorization timeouts from Cosmos DB connection-pool exhaustion\n- postmortem:inc-002: Cosmos DB 429 throttling degrades inventory and catalog reads\n- postmortem:inc-003: Notification backlog from a crash-looping worker stuck on a poison message\n\n## Decide the intent\n- `known_issue` — this incident is a **recurrence** of one of the candidates: the same service and\n  the same failure mode (not just superficial similarity). Set `matched_incident` to that\n  candidate's exact id (e.g. `postmortem:inc-003`).\n- `novel_investigation` — no candidate is a genuine recurrence; investigate from scratch.\n- `info_only` — the request is informational, not an incident to investigate.\n\nWhen unsure whether a candidate truly matches, prefer `novel_investigation` — a wrong known-issue\nmatch would skip the investigation and reuse the wrong fix.\n\n## Respond\nReturn a single JSON object:\n\n```json\n{\"intent\": \"known_issue|novel_investigation|info_only\", \"matched_incident\": \"<candidate id, or empty>\", \"why\": \"<why it matches or not>\"}\n```"
+          }
+        ]
+      },
+      "response": {
+        "text": "```json\n{\"intent\": \"known_issue\", \"matched_incident\": \"postmortem:inc-001\", \"why\": \"The current incident involves payment authorization timeouts, which matches the failure mode of connection-pool exhaustion in postmortem:inc-001. Both incidents affect the payment process and involve the payment-api.\"}\n```",
+        "model_id": "gpt-4o-mini",
+        "prompt_version": "",
+        "finish_reason": "stop",
+        "usage": {
+          "prompt_tokens": 372,
+          "completion_tokens": 70
+        }
+      }
+    },
+    {
+      "key": "b75578c538ba49b96cb672794abc6651b820bfaba50140b6bb34f228816b7045",
+      "request": {
+        "temperature": 0.0,
+        "messages": [
+          {
+            "role": "user",
+            "content": "You are triaging a production incident to decide how to investigate it.\n\n## Incident\n- incident_id: inc-002\n- description: Inventory and catalog reads failing intermittently with 429s.\n- category: datastore\n- affected services: catalog-api, checkout-api, inventory-api\n- alert signals: anomaly detected; error log rate elevated; p95_latency_ms breached threshold\n\n## Similar past incidents\nEach candidate is the postmortem of a PRIOR resolved incident. This incident is a recurrence only if\nits failure mode genuinely matches one of them.\n- postmortem:inc-002: Cosmos DB 429 throttling degrades inventory and catalog reads\n- postmortem:inc-003: Notification backlog from a crash-looping worker stuck on a poison message\n- postmortem:inc-001: Payment authorization timeouts from Cosmos DB connection-pool exhaustion\n\n## Decide the intent\n- `known_issue` — this incident is a **recurrence** of one of the candidates: the same service and\n  the same failure mode (not just superficial similarity). Set `matched_incident` to that\n  candidate's exact id (e.g. `postmortem:inc-003`).\n- `novel_investigation` — no candidate is a genuine recurrence; investigate from scratch.\n- `info_only` — the request is informational, not an incident to investigate.\n\nWhen unsure whether a candidate truly matches, prefer `novel_investigation` — a wrong known-issue\nmatch would skip the investigation and reuse the wrong fix.\n\n## Respond\nReturn a single JSON object:\n\n```json\n{\"intent\": \"known_issue|novel_investigation|info_only\", \"matched_incident\": \"<candidate id, or empty>\", \"why\": \"<why it matches or not>\"}\n```"
+          }
+        ]
+      },
+      "response": {
+        "text": "```json\n{\"intent\": \"known_issue\", \"matched_incident\": \"postmortem:inc-002\", \"why\": \"This incident is a recurrence of postmortem:inc-002 as it involves Cosmos DB 429 throttling affecting inventory and catalog reads, which matches the same service and failure mode.\"}\n```",
+        "model_id": "gpt-4o-mini",
+        "prompt_version": "",
+        "finish_reason": "stop",
+        "usage": {
+          "prompt_tokens": 377,
+          "completion_tokens": 67
+        }
+      }
+    },
+    {
+      "key": "f868c0deb4e96ce4a8ca3a1676b43b0e73031dac8a39f9ee1bde86cfa22ba3ed",
+      "request": {
+        "temperature": 0.0,
+        "messages": [
+          {
+            "role": "user",
+            "content": "You are triaging a production incident to decide how to investigate it.\n\n## Incident\n- incident_id: inc-003\n- description: Order notifications delayed; Service Bus queue depth climbing.\n- category: messaging\n- affected services: notification-worker\n- alert signals: restart_count breached threshold\n\n## Similar past incidents\nEach candidate is the postmortem of a PRIOR resolved incident. This incident is a recurrence only if\nits failure mode genuinely matches one of them.\n- postmortem:inc-003: Notification backlog from a crash-looping worker stuck on a poison message\n- postmortem:inc-001: Payment authorization timeouts from Cosmos DB connection-pool exhaustion\n- postmortem:inc-002: Cosmos DB 429 throttling degrades inventory and catalog reads\n\n## Decide the intent\n- `known_issue` — this incident is a **recurrence** of one of the candidates: the same service and\n  the same failure mode (not just superficial similarity). Set `matched_incident` to that\n  candidate's exact id (e.g. `postmortem:inc-003`).\n- `novel_investigation` — no candidate is a genuine recurrence; investigate from scratch.\n- `info_only` — the request is informational, not an incident to investigate.\n\nWhen unsure whether a candidate truly matches, prefer `novel_investigation` — a wrong known-issue\nmatch would skip the investigation and reuse the wrong fix.\n\n## Respond\nReturn a single JSON object:\n\n```json\n{\"intent\": \"known_issue|novel_investigation|info_only\", \"matched_incident\": \"<candidate id, or empty>\", \"why\": \"<why it matches or not>\"}\n```"
+          }
+        ]
+      },
+      "response": {
+        "text": "```json\n{\"intent\": \"known_issue\", \"matched_incident\": \"postmortem:inc-003\", \"why\": \"The current incident involves delayed order notifications and a climbing Service Bus queue depth, which aligns with the previous incident where a worker was crash-looping due to a poison message, causing a backlog in notifications.\"}\n```",
+        "model_id": "gpt-4o-mini",
+        "prompt_version": "",
+        "finish_reason": "stop",
+        "usage": {
+          "prompt_tokens": 359,
+          "completion_tokens": 70
+        }
+      }
+    },
+    {
+      "key": "8e2f4db1f0edf30190d6fccb940be8fe5f79a8874b969986896e86867147c937",
+      "request": {
+        "temperature": 0.0,
+        "messages": [
+          {
+            "role": "user",
+            "content": "You are triaging a production incident to decide how to investigate it.\n\n## Incident\n- incident_id: inc-004\n- description: checkout-api returning 500s shortly after this morning's deployment.\n- category: payment\n- affected services: checkout-api, payment-api\n- alert signals: http_5xx_rate breached threshold; p95_latency_ms breached threshold\n\n## Similar past incidents\nEach candidate is the postmortem of a PRIOR resolved incident. This incident is a recurrence only if\nits failure mode genuinely matches one of them.\n- postmortem:inc-002: Cosmos DB 429 throttling degrades inventory and catalog reads\n- postmortem:inc-001: Payment authorization timeouts from Cosmos DB connection-pool exhaustion\n- postmortem:inc-003: Notification backlog from a crash-looping worker stuck on a poison message\n\n## Decide the intent\n- `known_issue` — this incident is a **recurrence** of one of the candidates: the same service and\n  the same failure mode (not just superficial similarity). Set `matched_incident` to that\n  candidate's exact id (e.g. `postmortem:inc-003`).\n- `novel_investigation` — no candidate is a genuine recurrence; investigate from scratch.\n- `info_only` — the request is informational, not an incident to investigate.\n\nWhen unsure whether a candidate truly matches, prefer `novel_investigation` — a wrong known-issue\nmatch would skip the investigation and reuse the wrong fix.\n\n## Respond\nReturn a single JSON object:\n\n```json\n{\"intent\": \"known_issue|novel_investigation|info_only\", \"matched_incident\": \"<candidate id, or empty>\", \"why\": \"<why it matches or not>\"}\n```"
+          }
+        ]
+      },
+      "response": {
+        "text": "```json\n{\"intent\": \"novel_investigation\", \"matched_incident\": \"\", \"why\": \"The current incident involves the checkout-api returning 500s after a deployment, which does not match the failure modes of the past incidents. The previous incidents relate to database throttling, connection-pool exhaustion, and a worker crash-looping, none of which directly correlate with the symptoms observed in this incident.\"}\n```",
+        "model_id": "gpt-4o-mini",
+        "prompt_version": "",
+        "finish_reason": "stop",
+        "usage": {
+          "prompt_tokens": 375,
+          "completion_tokens": 86
+        }
+      }
+    },
+    {
       "key": "a0d5d0a024f5448625e293263666635b55941f68e050362cd7732b94557a36ce",
       "request": {
         "temperature": 0.0,
@@ -13,13 +101,13 @@
         ]
       },
       "response": {
-        "text": "```json\n{\n  \"tool_calls\": [\n    {\n      \"tool\": \"get_deployments\",\n      \"params\": {\n        \"services\": [\"checkout-api\", \"payment-api\"],\n        \"start_time\": \"2026-06-27T10:15:09+00:00\",\n        \"end_time\": \"2026-06-28T10:15:09+00:00\"\n      },\n      \"why\": \"To identify any recent changes that could have affected the services.\"\n    },\n    {\n      \"tool\": \"query_logs\",\n      \"params\": {\n        \"service\": \"checkout-api\",\n        \"level\": \"error\",\n        \"start_time\": \"2026-06-28T10:15:09+00:00\",\n        \"end_time\": \"2026-06-28T11:15:09+00:00\"\n      },\n      \"why\": \"To gather error logs from the failing service to identify specific issues.\"\n    },\n    {\n      \"tool\": \"get_metrics\",\n      \"params\": {\n        \"service\": \"checkout-api\",\n        \"start_time\": \"2026-06-28T10:15:09+00:00\",\n        \"end_time\": \"2026-06-28T11:15:09+00:00\"\n      },\n      \"why\": \"To analyze the performance metrics of the failing service during the incident.\"\n    },\n    {\n      \"tool\": \"get_service_dependencies\",\n      \"params\": {\n        \"service\": \"checkout-api\",\n        \"direction\": \"downstream\"\n      },\n      \"why\": \"To understand which services are dependent on the failing service and may be implicated.\"\n    }\n  ]\n}\n```",
+        "text": "```json\n{\"tool_calls\": [\n    {\"tool\": \"get_deployments\", \"params\": {\"services\": [\"checkout-api\", \"payment-api\"], \"start_time\": \"2026-06-27T10:15:09+00:00\", \"end_time\": \"2026-06-28T10:15:09+00:00\"}, \"why\": \"To identify any recent changes that may have affected the services.\"},\n    {\"tool\": \"query_logs\", \"params\": {\"service\": \"checkout-api\", \"level\": \"error\", \"start_time\": \"2026-06-28T10:15:09+00:00\", \"end_time\": \"2026-06-28T11:15:09+00:00\"}, \"why\": \"To gather error logs from the failing service to identify specific issues.\"},\n    {\"tool\": \"get_metrics\", \"params\": {\"service\": \"checkout-api\", \"start_time\": \"2026-06-28T10:15:09+00:00\", \"end_time\": \"2026-06-28T11:15:09+00:00\"}, \"why\": \"To analyze the performance metrics of the failing service during the incident.\"},\n    {\"tool\": \"get_service_dependencies\", \"params\": {\"service\": \"checkout-api\", \"direction\": \"downstream\"}, \"why\": \"To understand which services are dependent on the failing service and may be affected.\"}\n]}\n```",
         "model_id": "gpt-4o-mini",
         "prompt_version": "",
         "finish_reason": "stop",
         "usage": {
           "prompt_tokens": 705,
-          "completion_tokens": 355
+          "completion_tokens": 307
         }
       }
     },
@@ -35,7 +123,7 @@
         ]
       },
       "response": {
-        "text": "```json\n{\"root_cause\": \"The checkout-api experienced a failure due to an upstream dependency on the payment-api, which resulted in 500 InternalServerError responses.\", \"citations\": [\"logs:checkout-api:evt-004-01\", \"logs:checkout-api:noise-inc-004-checkout-api-227\"]}\n```",
+        "text": "```json\n{\"root_cause\": \"The checkout-api experienced a failure due to an upstream call to the payment-api failing, resulting in 500 InternalServerError responses.\", \"citations\": [\"logs:checkout-api:evt-004-01\", \"logs:checkout-api:noise-inc-004-checkout-api-227\"]}\n```",
         "model_id": "gpt-4o-mini",
         "prompt_version": "",
         "finish_reason": "stop",
@@ -57,7 +145,7 @@
         ]
       },
       "response": {
-        "text": "```json\n{\"tool_calls\": [\n    {\"tool\": \"get_deployments\", \"params\": {\"services\": \"payment-api\", \"start_time\": \"2026-06-27T10:15:09+00:00\", \"end_time\": \"2026-06-28T10:15:09+00:00\"}, \"why\": \"To check for any recent changes to the payment-api that could correlate with the incident.\"},\n    {\"tool\": \"query_logs\", \"params\": {\"service\": \"payment-api\", \"level\": \"error\", \"start_time\": \"2026-06-28T10:15:09+00:00\", \"end_time\": \"2026-06-28T10:45:09+00:00\"}, \"why\": \"To gather error logs from the payment-api during the incident timeframe.\"},\n    {\"tool\": \"get_metrics\", \"params\": {\"service\": \"payment-api\", \"start_time\": \"2026-06-28T10:15:09+00:00\", \"end_time\": \"2026-06-28T10:45:09+00:00\"}, \"why\": \"To analyze the performance metrics of the payment-api during the incident timeframe.\"},\n    {\"tool\": \"get_service_dependencies\", \"params\": {\"service\": \"payment-api\", \"direction\": \"upstream\"}, \"why\": \"To identify any upstream dependencies that could be affecting the payment-api.\"}\n]}\n```",
+        "text": "```json\n{\"tool_calls\": [\n    {\"tool\": \"get_deployments\", \"params\": {\"services\": \"payment-api\", \"start_time\": \"2026-06-27T10:15:09+00:00\", \"end_time\": \"2026-06-28T10:15:09+00:00\"}, \"why\": \"To check for any recent changes to the payment-api that could correlate with the incident.\"},\n    {\"tool\": \"query_logs\", \"params\": {\"service\": \"payment-api\", \"level\": \"error\", \"start_time\": \"2026-06-28T10:15:09+00:00\", \"end_time\": \"2026-06-28T10:45:09+00:00\"}, \"why\": \"To gather error logs from the payment-api during the incident window.\"},\n    {\"tool\": \"get_metrics\", \"params\": {\"service\": \"payment-api\", \"start_time\": \"2026-06-28T10:15:09+00:00\", \"end_time\": \"2026-06-28T10:45:09+00:00\"}, \"why\": \"To analyze the performance metrics of the payment-api during the incident window.\"},\n    {\"tool\": \"get_service_dependencies\", \"params\": {\"service\": \"payment-api\", \"direction\": \"upstream\"}, \"why\": \"To identify any upstream dependencies that could be affecting the payment-api.\"}\n]}\n```",
         "model_id": "gpt-4o-mini",
         "prompt_version": "",
         "finish_reason": "stop",
@@ -134,6 +222,28 @@
       }
     },
     {
+      "key": "fd01d66d93bea5dc5c783e44cf7090f70b97fce1c83f75d8e63327772001f9de",
+      "request": {
+        "temperature": 0.0,
+        "messages": [
+          {
+            "role": "user",
+            "content": "You are triaging a production incident to decide how to investigate it.\n\n## Incident\n- incident_id: inc-005\n- description: Checkout latency up and some carts/sessions dropping.\n- category: cache\n- affected services: checkout-api\n- alert signals: p95_latency_ms breached threshold\n\n## Similar past incidents\nEach candidate is the postmortem of a PRIOR resolved incident. This incident is a recurrence only if\nits failure mode genuinely matches one of them.\n- postmortem:inc-001: Payment authorization timeouts from Cosmos DB connection-pool exhaustion\n- postmortem:inc-003: Notification backlog from a crash-looping worker stuck on a poison message\n- postmortem:inc-002: Cosmos DB 429 throttling degrades inventory and catalog reads\n\n## Decide the intent\n- `known_issue` — this incident is a **recurrence** of one of the candidates: the same service and\n  the same failure mode (not just superficial similarity). Set `matched_incident` to that\n  candidate's exact id (e.g. `postmortem:inc-003`).\n- `novel_investigation` — no candidate is a genuine recurrence; investigate from scratch.\n- `info_only` — the request is informational, not an incident to investigate.\n\nWhen unsure whether a candidate truly matches, prefer `novel_investigation` — a wrong known-issue\nmatch would skip the investigation and reuse the wrong fix.\n\n## Respond\nReturn a single JSON object:\n\n```json\n{\"intent\": \"known_issue|novel_investigation|info_only\", \"matched_incident\": \"<candidate id, or empty>\", \"why\": \"<why it matches or not>\"}\n```"
+          }
+        ]
+      },
+      "response": {
+        "text": "```json\n{\"intent\": \"novel_investigation\", \"matched_incident\": \"\", \"why\": \"The current incident involves checkout latency and session drops, which does not match the failure modes of the past incidents related to payment timeouts, notification backlogs, or Cosmos DB throttling.\"}\n```",
+        "model_id": "gpt-4o-mini",
+        "prompt_version": "",
+        "finish_reason": "stop",
+        "usage": {
+          "prompt_tokens": 361,
+          "completion_tokens": 62
+        }
+      }
+    },
+    {
       "key": "ff511d5130c363cb2d7447f25ae5e1308e0937ef02f38fb44f48ef0825d12ef6",
       "request": {
         "temperature": 0.0,
@@ -167,13 +277,13 @@
         ]
       },
       "response": {
-        "text": "```json\n{\"root_cause\": \"The upstream call to the inventory-api failed, causing the checkout-api to log errors and experience increased latency.\", \"citations\": [\"logs:checkout-api:noise-inc-005-checkout-api-280\", \"metrics:checkout-api:p95_latency_ms@2026-06-22T11:55:00Z\", \"deps:checkout-api->inventory-api\"]}\n```",
+        "text": "```json\n{\"root_cause\": \"The upstream call to the inventory-api failed, causing the checkout-api to log errors and experience increased latency.\", \"citations\": [\"logs:checkout-api:noise-inc-005-checkout-api-280\", \"metrics:checkout-api:p95_latency_ms@2026-06-22T11:55:00Z\"]}\n```",
         "model_id": "gpt-4o-mini",
         "prompt_version": "",
         "finish_reason": "stop",
         "usage": {
           "prompt_tokens": 701,
-          "completion_tokens": 84
+          "completion_tokens": 75
         }
       }
     },
@@ -189,57 +299,13 @@
         ]
       },
       "response": {
-        "text": "```json\n{\"tool_calls\": [\n    {\"tool\": \"get_deployments\", \"params\": {\"services\": \"checkout-api\", \"start_time\": \"2026-06-21T11:45:09+00:00\", \"end_time\": \"2026-06-22T11:45:09+00:00\"}, \"why\": \"To check for any recent deployments to the checkout-api that may have caused the incident.\"},\n    {\"tool\": \"get_metrics\", \"params\": {\"service\": \"checkout-api\", \"start_time\": \"2026-06-22T11:45:09+00:00\", \"end_time\": \"2026-06-22T12:05:00\"}, \"why\": \"To gather metrics for the checkout-api during the incident timeframe.\"},\n    {\"tool\": \"query_logs\", \"params\": {\"service\": \"checkout-api\", \"level\": \"error\", \"start_time\": \"2026-06-22T11:45:09+00:00\", \"end_time\": \"2026-06-22T12:05:00\"}, \"why\": \"To find any additional error logs from the checkout-api during the incident timeframe.\"},\n    {\"tool\": \"get_service_dependencies\", \"params\": {\"service\": \"checkout-api\", \"direction\": \"downstream\"}, \"why\": \"To identify the downstream dependencies of the checkout-api that may be contributing to the errors.\"}\n]}\n```",
+        "text": "```json\n{\"tool_calls\": [\n    {\"tool\": \"get_deployments\", \"params\": {\"services\": \"checkout-api\", \"start_time\": \"2026-06-21T11:45:09+00:00\", \"end_time\": \"2026-06-22T11:45:09+00:00\"}, \"why\": \"To check for any recent deployments to the checkout-api that may correlate with the incident.\"},\n    {\"tool\": \"get_metrics\", \"params\": {\"service\": \"checkout-api\", \"start_time\": \"2026-06-22T11:45:09+00:00\", \"end_time\": \"2026-06-22T12:05:00Z\"}, \"why\": \"To gather the checkout-api's performance metrics during the incident timeframe.\"},\n    {\"tool\": \"query_logs\", \"params\": {\"service\": \"checkout-api\", \"level\": \"error\", \"start_time\": \"2026-06-22T11:45:09+00:00\", \"end_time\": \"2026-06-22T12:05:00Z\"}, \"why\": \"To find any additional error logs from the checkout-api that may provide more context to the incident.\"},\n    {\"tool\": \"get_service_dependencies\", \"params\": {\"service\": \"checkout-api\", \"direction\": \"downstream\"}, \"why\": \"To identify the downstream dependencies of the checkout-api that could be contributing to the errors.\"}\n]}\n```",
         "model_id": "gpt-4o-mini",
         "prompt_version": "",
         "finish_reason": "stop",
         "usage": {
           "prompt_tokens": 1079,
-          "completion_tokens": 303
-        }
-      }
-    },
-    {
-      "key": "fa28165aa794a2dd5c4d0d80fa840aa821d87811f92c931cb969201b745469f3",
-      "request": {
-        "temperature": 0.0,
-        "messages": [
-          {
-            "role": "user",
-            "content": "You are an on-call SRE writing the root-cause conclusion for an incident. The investigation has\ngathered the evidence below. State the **single most likely root cause** and cite the specific\nevidence that supports it. Reason from the evidence — do not introduce anything not shown.\n\n## Incident\n- incident_id: inc-005\n- category: cache\n- affected services: checkout-api\n- symptom onset: 2026-06-22T11:45:09+00:00\n\n## Evidence gathered\n- get_deployments [ok]: no results\n- query_logs [ok]: 14 logs — error ×14: \"upstream call failed; retrying\" [logs:checkout-api:noise-inc-005-checkout-api-280]\n- get_metrics [ok]: cpu_pct: 30.943->33.2469pct, peak 33.2469 at 12:05 [metrics:checkout-api:cpu_pct@2026-06-22T12:05:00Z]; http_5xx_rate: 0.001927->0.002088ratio, peak 0.002088 at 12:05 [metrics:checkout-api:http_5xx_rate@2026-06-22T12:05:00Z]; p95_latency_ms: 1716.17->1833.91ms, peak 1833.91 at 11:55 [metrics:checkout-api:p95_latency_ms@2026-06-22T11:55:00Z]; request_rate: 54.346->57.2964rps, peak 57.2964 at 11:50 [metrics:checkout-api:request_rate@2026-06-22T11:50:00Z]\n- get_service_dependencies [ok]: checkout-api->inventory-api (critical) [deps:checkout-api->inventory-api]; checkout-api->payment-api (critical) [deps:checkout-api->payment-api]; checkout-api->redis-cache [deps:checkout-api->redis-cache]; checkout-api->service-bus [deps:checkout-api->service-bus]\n- get_metrics [ok]: cpu_pct: 31.1195->33.2469pct, peak 33.2469 at 12:05 [metrics:checkout-api:cpu_pct@2026-06-22T12:05:00Z]; http_5xx_rate: 0.001927->0.002088ratio, peak 0.002088 at 12:05 [metrics:checkout-api:http_5xx_rate@2026-06-22T12:05:00Z]; p95_latency_ms: 1725.51->1833.91ms, peak 1833.91 at 11:55 [metrics:checkout-api:p95_latency_ms@2026-06-22T11:55:00Z]; request_rate: 54.8596->57.2964rps, peak 57.2964 at 11:50 [metrics:checkout-api:request_rate@2026-06-22T11:50:00Z]\n- query_logs [ok]: 4 logs — error ×4: \"upstream call failed; retrying\" [logs:checkout-api:noise-inc-005-checkout-api-280]\nAlready called (do NOT repeat): get_deployments, get_metrics, get_service_dependencies, query_logs.\nEvidence classes gathered: deps, logs, metrics. Gather any missing class (deploys / logs / metrics / deps), follow the anomaly into the dependency, or conclude.\n\n## How to conclude\n- Name the **true root cause**, not a coincidence. A deployment near the onset is only the cause if\n  the evidence ties it to the failure; if a downstream dependency's metrics or logs show the real\n  fault (e.g. latency/errors upstream of the symptom), name that instead.\n- Cite only evidence references that appear above, using the frozen grammar exactly as shown\n  (`logs:<svc>:<id>`, `metrics:<svc>:<metric>@<ts>`, `deploys:<svc>:<id>`, `deps:<from>-><to>`).\n- Prefer the citations that most directly support the cause (the degraded metric, the error log at\n  the true fault, the dependency edge) over incidental ones.\n\n## Respond\nReturn a single JSON object:\n\n```json\n{\"root_cause\": \"<one-sentence statement naming the responsible service/component>\", \"citations\": [\"<ref>\", \"<ref>\"]}\n```"
-          }
-        ]
-      },
-      "response": {
-        "text": "```json\n{\"root_cause\": \"The root cause of the incident was a failure in the redis-cache service, which caused the checkout-api to experience upstream call failures.\", \"citations\": [\"logs:checkout-api:noise-inc-005-checkout-api-280\", \"deps:checkout-api->redis-cache\"]}\n```",
-        "model_id": "gpt-4o-mini",
-        "prompt_version": "",
-        "finish_reason": "stop",
-        "usage": {
-          "prompt_tokens": 951,
-          "completion_tokens": 65
-        }
-      }
-    },
-    {
-      "key": "be1bf3e0e90602ec601eb8915252b901b0de2d06063c561ea6d86417314b7bf9",
-      "request": {
-        "temperature": 0.0,
-        "messages": [
-          {
-            "role": "user",
-            "content": "You are an on-call SRE investigating a production incident. Each round you choose a **batch of\nread-only tool calls** to run together, then reason over what they return. You gather evidence, then\ndiagnose from it — you do not guess and you do not fix anything.\n\n## Incident\n- incident_id: inc-005\n- category: cache\n- affected services: checkout-api\n- symptom onset: 2026-06-22T11:45:09+00:00\n\n## What you have gathered so far\nEach line shows what a tool *found* — the values, with the exact evidence reference in `[brackets]`\nto cite. Reason over the values, not just the fact that a tool ran.\n- get_deployments [ok]: no results\n- query_logs [ok]: 14 logs — error ×14: \"upstream call failed; retrying\" [logs:checkout-api:noise-inc-005-checkout-api-280]\n- get_metrics [ok]: cpu_pct: 30.943->33.2469pct, peak 33.2469 at 12:05 [metrics:checkout-api:cpu_pct@2026-06-22T12:05:00Z]; http_5xx_rate: 0.001927->0.002088ratio, peak 0.002088 at 12:05 [metrics:checkout-api:http_5xx_rate@2026-06-22T12:05:00Z]; p95_latency_ms: 1716.17->1833.91ms, peak 1833.91 at 11:55 [metrics:checkout-api:p95_latency_ms@2026-06-22T11:55:00Z]; request_rate: 54.346->57.2964rps, peak 57.2964 at 11:50 [metrics:checkout-api:request_rate@2026-06-22T11:50:00Z]\n- get_service_dependencies [ok]: checkout-api->inventory-api (critical) [deps:checkout-api->inventory-api]; checkout-api->payment-api (critical) [deps:checkout-api->payment-api]; checkout-api->redis-cache [deps:checkout-api->redis-cache]; checkout-api->service-bus [deps:checkout-api->service-bus]\n- get_metrics [ok]: cpu_pct: 31.1195->33.2469pct, peak 33.2469 at 12:05 [metrics:checkout-api:cpu_pct@2026-06-22T12:05:00Z]; http_5xx_rate: 0.001927->0.002088ratio, peak 0.002088 at 12:05 [metrics:checkout-api:http_5xx_rate@2026-06-22T12:05:00Z]; p95_latency_ms: 1725.51->1833.91ms, peak 1833.91 at 11:55 [metrics:checkout-api:p95_latency_ms@2026-06-22T11:55:00Z]; request_rate: 54.8596->57.2964rps, peak 57.2964 at 11:50 [metrics:checkout-api:request_rate@2026-06-22T11:50:00Z]\n- query_logs [ok]: 4 logs — error ×4: \"upstream call failed; retrying\" [logs:checkout-api:noise-inc-005-checkout-api-280]\nAlready called (do NOT repeat): get_deployments, get_metrics, get_service_dependencies, query_logs.\nEvidence classes gathered: deps, logs, metrics. Gather any missing class (deploys / logs / metrics / deps), follow the anomaly into the dependency, or conclude.\n\n## Tools (all read-only)\n- `get_incident(incident_id)` — the incident record.\n- `get_correlated_alerts(incident_id)` — alerts firing in the same window.\n- `get_deployments(services, start_time, end_time)` — deploys to services in a time range.\n- `query_logs(service, level, start_time, end_time)` — logs for a service/level in a window.\n- `get_metrics(service, start_time, end_time)` — metric samples for a service in a window.\n- `get_service_dependencies(service, direction)` — upstream/downstream dependencies.\n- `search_runbooks(query)` / `search_past_incidents(query)` — relevant docs / history.\n\n## Method\n1. **First round — gather broad.** In one batch, get the recent changes AND the failing service's\n   own signal AND its dependencies: `get_deployments` (start ≥ 24h before onset — deploys precede\n   symptoms by hours), `query_logs` + `get_metrics` for the failing service, and\n   `get_service_dependencies` on it.\n2. **Next round — follow the anomaly.** The failing service's errors usually point downstream. Pull\n   `get_metrics` / `query_logs` for the dependency that its logs or the dependency edge implicate —\n   that is where the true fault (e.g. a latency/timeout spike) usually shows.\n3. **A deploy near onset is a suspect, not a verdict.** Attribute the incident to a deploy only if\n   the evidence ties it to the failure; otherwise name the dependency the data implicates.\n4. Do not repeat a call already listed above.\n\n## Discipline\n- Cite only evidence references shown in `[brackets]` above, verbatim (frozen grammar:\n  `logs:<svc>:<id>`, `metrics:<svc>:<metric>@<ts>`, `deploys:<svc>:<id>`, `deps:<from>-><to>`).\n- Causation comes from timestamps and values (\"A preceded B\", \"latency spiked\"), not wording.\n\n## Respond\nReturn a single JSON object. To gather a batch this round:\n\n```json\n{\"tool_calls\": [{\"tool\": \"<name>\", \"params\": {...}, \"why\": \"<what it rules in/out>\"}, ...]}\n```\n\nOnce the evidence identifies the root cause with supporting citations:\n\n```json\n{\"done\": true, \"root_cause\": \"<statement naming the responsible service/component>\", \"citations\": [\"<ref>\", ...]}\n```"
-          }
-        ]
-      },
-      "response": {
-        "text": "```json\n{\"tool_calls\": [\n    {\"tool\": \"get_deployments\", \"params\": {\"services\": \"checkout-api\", \"start_time\": \"2026-06-21T11:45:09+00:00\", \"end_time\": \"2026-06-22T11:45:09+00:00\"}, \"why\": \"To check for any recent deployments that may have affected the checkout-api.\"},\n    {\"tool\": \"query_logs\", \"params\": {\"service\": \"checkout-api\", \"level\": \"error\", \"start_time\": \"2026-06-22T11:45:09+00:00\", \"end_time\": \"2026-06-22T12:45:09+00:00\"}, \"why\": \"To gather more error logs related to the checkout-api during the incident timeframe.\"},\n    {\"tool\": \"get_metrics\", \"params\": {\"service\": \"checkout-api\", \"start_time\": \"2026-06-22T11:45:09+00:00\", \"end_time\": \"2026-06-22T12:45:09+00:00\"}, \"why\": \"To analyze the metrics of the checkout-api during the incident timeframe.\"},\n    {\"tool\": \"get_service_dependencies\", \"params\": {\"service\": \"checkout-api\", \"direction\": \"downstream\"}, \"why\": \"To identify the downstream dependencies that could be causing the errors in the checkout-api.\"}\n]}\n```",
-        "model_id": "gpt-4o-mini",
-        "prompt_version": "",
-        "finish_reason": "stop",
-        "usage": {
-          "prompt_tokens": 1329,
-          "completion_tokens": 308
+          "completion_tokens": 310
         }
       }
     },
@@ -266,6 +332,160 @@
       }
     },
     {
+      "key": "be1bf3e0e90602ec601eb8915252b901b0de2d06063c561ea6d86417314b7bf9",
+      "request": {
+        "temperature": 0.0,
+        "messages": [
+          {
+            "role": "user",
+            "content": "You are an on-call SRE investigating a production incident. Each round you choose a **batch of\nread-only tool calls** to run together, then reason over what they return. You gather evidence, then\ndiagnose from it — you do not guess and you do not fix anything.\n\n## Incident\n- incident_id: inc-005\n- category: cache\n- affected services: checkout-api\n- symptom onset: 2026-06-22T11:45:09+00:00\n\n## What you have gathered so far\nEach line shows what a tool *found* — the values, with the exact evidence reference in `[brackets]`\nto cite. Reason over the values, not just the fact that a tool ran.\n- get_deployments [ok]: no results\n- query_logs [ok]: 14 logs — error ×14: \"upstream call failed; retrying\" [logs:checkout-api:noise-inc-005-checkout-api-280]\n- get_metrics [ok]: cpu_pct: 30.943->33.2469pct, peak 33.2469 at 12:05 [metrics:checkout-api:cpu_pct@2026-06-22T12:05:00Z]; http_5xx_rate: 0.001927->0.002088ratio, peak 0.002088 at 12:05 [metrics:checkout-api:http_5xx_rate@2026-06-22T12:05:00Z]; p95_latency_ms: 1716.17->1833.91ms, peak 1833.91 at 11:55 [metrics:checkout-api:p95_latency_ms@2026-06-22T11:55:00Z]; request_rate: 54.346->57.2964rps, peak 57.2964 at 11:50 [metrics:checkout-api:request_rate@2026-06-22T11:50:00Z]\n- get_service_dependencies [ok]: checkout-api->inventory-api (critical) [deps:checkout-api->inventory-api]; checkout-api->payment-api (critical) [deps:checkout-api->payment-api]; checkout-api->redis-cache [deps:checkout-api->redis-cache]; checkout-api->service-bus [deps:checkout-api->service-bus]\n- get_metrics [ok]: cpu_pct: 31.1195->33.2469pct, peak 33.2469 at 12:05 [metrics:checkout-api:cpu_pct@2026-06-22T12:05:00Z]; http_5xx_rate: 0.001927->0.002088ratio, peak 0.002088 at 12:05 [metrics:checkout-api:http_5xx_rate@2026-06-22T12:05:00Z]; p95_latency_ms: 1725.51->1833.91ms, peak 1833.91 at 11:55 [metrics:checkout-api:p95_latency_ms@2026-06-22T11:55:00Z]; request_rate: 54.8596->57.2964rps, peak 57.2964 at 11:50 [metrics:checkout-api:request_rate@2026-06-22T11:50:00Z]\n- query_logs [ok]: 4 logs — error ×4: \"upstream call failed; retrying\" [logs:checkout-api:noise-inc-005-checkout-api-280]\nAlready called (do NOT repeat): get_deployments, get_metrics, get_service_dependencies, query_logs.\nEvidence classes gathered: deps, logs, metrics. Gather any missing class (deploys / logs / metrics / deps), follow the anomaly into the dependency, or conclude.\n\n## Tools (all read-only)\n- `get_incident(incident_id)` — the incident record.\n- `get_correlated_alerts(incident_id)` — alerts firing in the same window.\n- `get_deployments(services, start_time, end_time)` — deploys to services in a time range.\n- `query_logs(service, level, start_time, end_time)` — logs for a service/level in a window.\n- `get_metrics(service, start_time, end_time)` — metric samples for a service in a window.\n- `get_service_dependencies(service, direction)` — upstream/downstream dependencies.\n- `search_runbooks(query)` / `search_past_incidents(query)` — relevant docs / history.\n\n## Method\n1. **First round — gather broad.** In one batch, get the recent changes AND the failing service's\n   own signal AND its dependencies: `get_deployments` (start ≥ 24h before onset — deploys precede\n   symptoms by hours), `query_logs` + `get_metrics` for the failing service, and\n   `get_service_dependencies` on it.\n2. **Next round — follow the anomaly.** The failing service's errors usually point downstream. Pull\n   `get_metrics` / `query_logs` for the dependency that its logs or the dependency edge implicate —\n   that is where the true fault (e.g. a latency/timeout spike) usually shows.\n3. **A deploy near onset is a suspect, not a verdict.** Attribute the incident to a deploy only if\n   the evidence ties it to the failure; otherwise name the dependency the data implicates.\n4. Do not repeat a call already listed above.\n\n## Discipline\n- Cite only evidence references shown in `[brackets]` above, verbatim (frozen grammar:\n  `logs:<svc>:<id>`, `metrics:<svc>:<metric>@<ts>`, `deploys:<svc>:<id>`, `deps:<from>-><to>`).\n- Causation comes from timestamps and values (\"A preceded B\", \"latency spiked\"), not wording.\n\n## Respond\nReturn a single JSON object. To gather a batch this round:\n\n```json\n{\"tool_calls\": [{\"tool\": \"<name>\", \"params\": {...}, \"why\": \"<what it rules in/out>\"}, ...]}\n```\n\nOnce the evidence identifies the root cause with supporting citations:\n\n```json\n{\"done\": true, \"root_cause\": \"<statement naming the responsible service/component>\", \"citations\": [\"<ref>\", ...]}\n```"
+          }
+        ]
+      },
+      "response": {
+        "text": "```json\n{\"tool_calls\": [\n    {\"tool\": \"get_deployments\", \"params\": {\"services\": \"checkout-api\", \"start_time\": \"2026-06-21T11:45:09+00:00\", \"end_time\": \"2026-06-22T11:45:09+00:00\"}, \"why\": \"To check for any recent deployments that may have affected the checkout-api.\"},\n    {\"tool\": \"get_metrics\", \"params\": {\"service\": \"checkout-api\", \"start_time\": \"2026-06-22T11:45:09+00:00\", \"end_time\": \"2026-06-22T12:05:00\"}, \"why\": \"To gather metrics for the checkout-api during the incident timeframe.\"},\n    {\"tool\": \"query_logs\", \"params\": {\"service\": \"checkout-api\", \"level\": \"error\", \"start_time\": \"2026-06-22T11:45:09+00:00\", \"end_time\": \"2026-06-22T12:05:00\"}, \"why\": \"To find any additional error logs from the checkout-api during the incident timeframe.\"},\n    {\"tool\": \"get_service_dependencies\", \"params\": {\"service\": \"checkout-api\", \"direction\": \"downstream\"}, \"why\": \"To identify the downstream dependencies that may be causing the errors in the checkout-api.\"}\n]}\n```",
+        "model_id": "gpt-4o-mini",
+        "prompt_version": "",
+        "finish_reason": "stop",
+        "usage": {
+          "prompt_tokens": 1329,
+          "completion_tokens": 299
+        }
+      }
+    },
+    {
+      "key": "632d19791743ad00961ba93cae34adbca4ba6c6cd4dbe370a99cc8d558865904",
+      "request": {
+        "temperature": 0.0,
+        "messages": [
+          {
+            "role": "user",
+            "content": "You are an on-call SRE writing the root-cause conclusion for an incident. The investigation has\ngathered the evidence below. State the **single most likely root cause** and cite the specific\nevidence that supports it. Reason from the evidence — do not introduce anything not shown.\n\n## Incident\n- incident_id: inc-005\n- category: cache\n- affected services: checkout-api\n- symptom onset: 2026-06-22T11:45:09+00:00\n\n## Evidence gathered\n- get_deployments [ok]: no results\n- query_logs [ok]: 14 logs — error ×14: \"upstream call failed; retrying\" [logs:checkout-api:noise-inc-005-checkout-api-280]\n- get_metrics [ok]: cpu_pct: 30.943->33.2469pct, peak 33.2469 at 12:05 [metrics:checkout-api:cpu_pct@2026-06-22T12:05:00Z]; http_5xx_rate: 0.001927->0.002088ratio, peak 0.002088 at 12:05 [metrics:checkout-api:http_5xx_rate@2026-06-22T12:05:00Z]; p95_latency_ms: 1716.17->1833.91ms, peak 1833.91 at 11:55 [metrics:checkout-api:p95_latency_ms@2026-06-22T11:55:00Z]; request_rate: 54.346->57.2964rps, peak 57.2964 at 11:50 [metrics:checkout-api:request_rate@2026-06-22T11:50:00Z]\n- get_service_dependencies [ok]: checkout-api->inventory-api (critical) [deps:checkout-api->inventory-api]; checkout-api->payment-api (critical) [deps:checkout-api->payment-api]; checkout-api->redis-cache [deps:checkout-api->redis-cache]; checkout-api->service-bus [deps:checkout-api->service-bus]\n- get_metrics [ok]: cpu_pct: 31.1195->33.2469pct, peak 33.2469 at 12:05 [metrics:checkout-api:cpu_pct@2026-06-22T12:05:00Z]; http_5xx_rate: 0.001927->0.002088ratio, peak 0.002088 at 12:05 [metrics:checkout-api:http_5xx_rate@2026-06-22T12:05:00Z]; p95_latency_ms: 1725.51->1833.91ms, peak 1833.91 at 11:55 [metrics:checkout-api:p95_latency_ms@2026-06-22T11:55:00Z]; request_rate: 54.8596->57.2964rps, peak 57.2964 at 11:50 [metrics:checkout-api:request_rate@2026-06-22T11:50:00Z]\n- query_logs [ok]: 4 logs — error ×4: \"upstream call failed; retrying\" [logs:checkout-api:noise-inc-005-checkout-api-280]\n- get_metrics [ok]: cpu_pct: 31.1195->33.2469pct, peak 33.2469 at 12:05 [metrics:checkout-api:cpu_pct@2026-06-22T12:05:00Z]; http_5xx_rate: 0.001927->0.002088ratio, peak 0.002088 at 12:05 [metrics:checkout-api:http_5xx_rate@2026-06-22T12:05:00Z]; p95_latency_ms: 1725.51->1833.91ms, peak 1833.91 at 11:55 [metrics:checkout-api:p95_latency_ms@2026-06-22T11:55:00Z]; request_rate: 54.8596->57.2964rps, peak 57.2964 at 11:50 [metrics:checkout-api:request_rate@2026-06-22T11:50:00Z]\n- query_logs [ok]: 4 logs — error ×4: \"upstream call failed; retrying\" [logs:checkout-api:noise-inc-005-checkout-api-280]\nAlready called (do NOT repeat): get_deployments, get_metrics, get_service_dependencies, query_logs.\nEvidence classes gathered: deps, logs, metrics. Gather any missing class (deploys / logs / metrics / deps), follow the anomaly into the dependency, or conclude.\n\n## How to conclude\n- Name the **true root cause**, not a coincidence. A deployment near the onset is only the cause if\n  the evidence ties it to the failure; if a downstream dependency's metrics or logs show the real\n  fault (e.g. latency/errors upstream of the symptom), name that instead.\n- Cite only evidence references that appear above, using the frozen grammar exactly as shown\n  (`logs:<svc>:<id>`, `metrics:<svc>:<metric>@<ts>`, `deploys:<svc>:<id>`, `deps:<from>-><to>`).\n- Prefer the citations that most directly support the cause (the degraded metric, the error log at\n  the true fault, the dependency edge) over incidental ones.\n\n## Respond\nReturn a single JSON object:\n\n```json\n{\"root_cause\": \"<one-sentence statement naming the responsible service/component>\", \"citations\": [\"<ref>\", \"<ref>\"]}\n```"
+          }
+        ]
+      },
+      "response": {
+        "text": "```json\n{\"root_cause\": \"The checkout-api experienced upstream call failures due to issues with the redis-cache dependency.\", \"citations\": [\"logs:checkout-api:noise-inc-005-checkout-api-280\", \"deps:checkout-api->redis-cache\"]}\n```",
+        "model_id": "gpt-4o-mini",
+        "prompt_version": "",
+        "finish_reason": "stop",
+        "usage": {
+          "prompt_tokens": 1201,
+          "completion_tokens": 55
+        }
+      }
+    },
+    {
+      "key": "e16ff0b6297e515a876ac3ec40e225253370945462cc749208ebd07bc80c8297",
+      "request": {
+        "temperature": 0.0,
+        "messages": [
+          {
+            "role": "user",
+            "content": "You are an on-call SRE investigating a production incident. Each round you choose a **batch of\nread-only tool calls** to run together, then reason over what they return. You gather evidence, then\ndiagnose from it — you do not guess and you do not fix anything.\n\n## Incident\n- incident_id: inc-005\n- category: cache\n- affected services: checkout-api\n- symptom onset: 2026-06-22T11:45:09+00:00\n\n## What you have gathered so far\nEach line shows what a tool *found* — the values, with the exact evidence reference in `[brackets]`\nto cite. Reason over the values, not just the fact that a tool ran.\n- get_deployments [ok]: no results\n- query_logs [ok]: 14 logs — error ×14: \"upstream call failed; retrying\" [logs:checkout-api:noise-inc-005-checkout-api-280]\n- get_metrics [ok]: cpu_pct: 30.943->33.2469pct, peak 33.2469 at 12:05 [metrics:checkout-api:cpu_pct@2026-06-22T12:05:00Z]; http_5xx_rate: 0.001927->0.002088ratio, peak 0.002088 at 12:05 [metrics:checkout-api:http_5xx_rate@2026-06-22T12:05:00Z]; p95_latency_ms: 1716.17->1833.91ms, peak 1833.91 at 11:55 [metrics:checkout-api:p95_latency_ms@2026-06-22T11:55:00Z]; request_rate: 54.346->57.2964rps, peak 57.2964 at 11:50 [metrics:checkout-api:request_rate@2026-06-22T11:50:00Z]\n- get_service_dependencies [ok]: checkout-api->inventory-api (critical) [deps:checkout-api->inventory-api]; checkout-api->payment-api (critical) [deps:checkout-api->payment-api]; checkout-api->redis-cache [deps:checkout-api->redis-cache]; checkout-api->service-bus [deps:checkout-api->service-bus]\n- get_metrics [ok]: cpu_pct: 31.1195->33.2469pct, peak 33.2469 at 12:05 [metrics:checkout-api:cpu_pct@2026-06-22T12:05:00Z]; http_5xx_rate: 0.001927->0.002088ratio, peak 0.002088 at 12:05 [metrics:checkout-api:http_5xx_rate@2026-06-22T12:05:00Z]; p95_latency_ms: 1725.51->1833.91ms, peak 1833.91 at 11:55 [metrics:checkout-api:p95_latency_ms@2026-06-22T11:55:00Z]; request_rate: 54.8596->57.2964rps, peak 57.2964 at 11:50 [metrics:checkout-api:request_rate@2026-06-22T11:50:00Z]\n- query_logs [ok]: 4 logs — error ×4: \"upstream call failed; retrying\" [logs:checkout-api:noise-inc-005-checkout-api-280]\n- get_metrics [ok]: cpu_pct: 31.1195->33.2469pct, peak 33.2469 at 12:05 [metrics:checkout-api:cpu_pct@2026-06-22T12:05:00Z]; http_5xx_rate: 0.001927->0.002088ratio, peak 0.002088 at 12:05 [metrics:checkout-api:http_5xx_rate@2026-06-22T12:05:00Z]; p95_latency_ms: 1725.51->1833.91ms, peak 1833.91 at 11:55 [metrics:checkout-api:p95_latency_ms@2026-06-22T11:55:00Z]; request_rate: 54.8596->57.2964rps, peak 57.2964 at 11:50 [metrics:checkout-api:request_rate@2026-06-22T11:50:00Z]\n- query_logs [ok]: 4 logs — error ×4: \"upstream call failed; retrying\" [logs:checkout-api:noise-inc-005-checkout-api-280]\nAlready called (do NOT repeat): get_deployments, get_metrics, get_service_dependencies, query_logs.\nEvidence classes gathered: deps, logs, metrics. Gather any missing class (deploys / logs / metrics / deps), follow the anomaly into the dependency, or conclude.\n\n## Tools (all read-only)\n- `get_incident(incident_id)` — the incident record.\n- `get_correlated_alerts(incident_id)` — alerts firing in the same window.\n- `get_deployments(services, start_time, end_time)` — deploys to services in a time range.\n- `query_logs(service, level, start_time, end_time)` — logs for a service/level in a window.\n- `get_metrics(service, start_time, end_time)` — metric samples for a service in a window.\n- `get_service_dependencies(service, direction)` — upstream/downstream dependencies.\n- `search_runbooks(query)` / `search_past_incidents(query)` — relevant docs / history.\n\n## Method\n1. **First round — gather broad.** In one batch, get the recent changes AND the failing service's\n   own signal AND its dependencies: `get_deployments` (start ≥ 24h before onset — deploys precede\n   symptoms by hours), `query_logs` + `get_metrics` for the failing service, and\n   `get_service_dependencies` on it.\n2. **Next round — follow the anomaly.** The failing service's errors usually point downstream. Pull\n   `get_metrics` / `query_logs` for the dependency that its logs or the dependency edge implicate —\n   that is where the true fault (e.g. a latency/timeout spike) usually shows.\n3. **A deploy near onset is a suspect, not a verdict.** Attribute the incident to a deploy only if\n   the evidence ties it to the failure; otherwise name the dependency the data implicates.\n4. Do not repeat a call already listed above.\n\n## Discipline\n- Cite only evidence references shown in `[brackets]` above, verbatim (frozen grammar:\n  `logs:<svc>:<id>`, `metrics:<svc>:<metric>@<ts>`, `deploys:<svc>:<id>`, `deps:<from>-><to>`).\n- Causation comes from timestamps and values (\"A preceded B\", \"latency spiked\"), not wording.\n\n## Respond\nReturn a single JSON object. To gather a batch this round:\n\n```json\n{\"tool_calls\": [{\"tool\": \"<name>\", \"params\": {...}, \"why\": \"<what it rules in/out>\"}, ...]}\n```\n\nOnce the evidence identifies the root cause with supporting citations:\n\n```json\n{\"done\": true, \"root_cause\": \"<statement naming the responsible service/component>\", \"citations\": [\"<ref>\", ...]}\n```"
+          }
+        ]
+      },
+      "response": {
+        "text": "```json\n{\"tool_calls\": [{\"tool\": \"get_deployments\", \"params\": {\"services\": \"checkout-api\", \"start_time\": \"2026-06-21T11:45:09+00:00\", \"end_time\": \"2026-06-22T11:45:09+00:00\"}, \"why\": \"To check for any recent deployments to the checkout-api that may have caused the incident.\"}, {\"tool\": \"query_logs\", \"params\": {\"service\": \"inventory-api\", \"level\": \"error\", \"start_time\": \"2026-06-22T11:45:09+00:00\", \"end_time\": \"2026-06-22T12:45:09+00:00\"}, \"why\": \"To investigate if the inventory-api is experiencing errors that could affect the checkout-api.\"}, {\"tool\": \"get_metrics\", \"params\": {\"service\": \"inventory-api\", \"start_time\": \"2026-06-22T11:45:09+00:00\", \"end_time\": \"2026-06-22T12:45:09+00:00\"}, \"why\": \"To gather performance metrics for the inventory-api to identify any anomalies.\"}, {\"tool\": \"query_logs\", \"params\": {\"service\": \"payment-api\", \"level\": \"error\", \"start_time\": \"2026-06-22T11:45:09+00:00\", \"end_time\": \"2026-06-22T12:45:09+00:00\"}, \"why\": \"To check for any errors in the payment-api that could be impacting the checkout-api.\"}, {\"tool\": \"get_metrics\", \"params\": {\"service\": \"payment-api\", \"start_time\": \"2026-06-22T11:45:09+00:00\", \"end_time\": \"2026-06-22T12:45:09+00:00\"}, \"why\": \"To gather performance metrics for the payment-api to identify any anomalies.\"}]}\n```",
+        "model_id": "gpt-4o-mini",
+        "prompt_version": "",
+        "finish_reason": "stop",
+        "usage": {
+          "prompt_tokens": 1579,
+          "completion_tokens": 429
+        }
+      }
+    },
+    {
+      "key": "2242253dae1fd26485d824976c722d60f47a88e47aa0b0d81ee6166c1b3081ea",
+      "request": {
+        "temperature": 0.0,
+        "messages": [
+          {
+            "role": "user",
+            "content": "You are an on-call SRE writing the root-cause conclusion for an incident. The investigation has\ngathered the evidence below. State the **single most likely root cause** and cite the specific\nevidence that supports it. Reason from the evidence — do not introduce anything not shown.\n\n## Incident\n- incident_id: inc-005\n- category: cache\n- affected services: checkout-api\n- symptom onset: 2026-06-22T11:45:09+00:00\n\n## Evidence gathered\n- get_deployments [ok]: no results\n- query_logs [ok]: 14 logs — error ×14: \"upstream call failed; retrying\" [logs:checkout-api:noise-inc-005-checkout-api-280]\n- get_metrics [ok]: cpu_pct: 30.943->33.2469pct, peak 33.2469 at 12:05 [metrics:checkout-api:cpu_pct@2026-06-22T12:05:00Z]; http_5xx_rate: 0.001927->0.002088ratio, peak 0.002088 at 12:05 [metrics:checkout-api:http_5xx_rate@2026-06-22T12:05:00Z]; p95_latency_ms: 1716.17->1833.91ms, peak 1833.91 at 11:55 [metrics:checkout-api:p95_latency_ms@2026-06-22T11:55:00Z]; request_rate: 54.346->57.2964rps, peak 57.2964 at 11:50 [metrics:checkout-api:request_rate@2026-06-22T11:50:00Z]\n- get_service_dependencies [ok]: checkout-api->inventory-api (critical) [deps:checkout-api->inventory-api]; checkout-api->payment-api (critical) [deps:checkout-api->payment-api]; checkout-api->redis-cache [deps:checkout-api->redis-cache]; checkout-api->service-bus [deps:checkout-api->service-bus]\n- get_metrics [ok]: cpu_pct: 31.1195->33.2469pct, peak 33.2469 at 12:05 [metrics:checkout-api:cpu_pct@2026-06-22T12:05:00Z]; http_5xx_rate: 0.001927->0.002088ratio, peak 0.002088 at 12:05 [metrics:checkout-api:http_5xx_rate@2026-06-22T12:05:00Z]; p95_latency_ms: 1725.51->1833.91ms, peak 1833.91 at 11:55 [metrics:checkout-api:p95_latency_ms@2026-06-22T11:55:00Z]; request_rate: 54.8596->57.2964rps, peak 57.2964 at 11:50 [metrics:checkout-api:request_rate@2026-06-22T11:50:00Z]\n- query_logs [ok]: 4 logs — error ×4: \"upstream call failed; retrying\" [logs:checkout-api:noise-inc-005-checkout-api-280]\n- get_metrics [ok]: cpu_pct: 31.1195->33.2469pct, peak 33.2469 at 12:05 [metrics:checkout-api:cpu_pct@2026-06-22T12:05:00Z]; http_5xx_rate: 0.001927->0.002088ratio, peak 0.002088 at 12:05 [metrics:checkout-api:http_5xx_rate@2026-06-22T12:05:00Z]; p95_latency_ms: 1725.51->1833.91ms, peak 1833.91 at 11:55 [metrics:checkout-api:p95_latency_ms@2026-06-22T11:55:00Z]; request_rate: 54.8596->57.2964rps, peak 57.2964 at 11:50 [metrics:checkout-api:request_rate@2026-06-22T11:50:00Z]\n- query_logs [ok]: 4 logs — error ×4: \"upstream call failed; retrying\" [logs:checkout-api:noise-inc-005-checkout-api-280]\n- query_logs [ok]: 17 logs — error ×17: \"upstream call failed; retrying\" [logs:inventory-api:noise-inc-005-inventory-api-267]\n- get_metrics [ok]: cpu_pct: 30.4992->33.1292pct, peak 33.1292 at 11:50 [metrics:inventory-api:cpu_pct@2026-06-22T11:50:00Z]; p95_latency_ms: 114.427->124.64ms, peak 124.64 at 11:50 [metrics:inventory-api:p95_latency_ms@2026-06-22T11:50:00Z]; request_rate: 52.8313->57.5309rps, peak 57.5309 at 12:10 [metrics:inventory-api:request_rate@2026-06-22T12:10:00Z]; reservation_error_rate: 0.000953->0.001036ratio, peak 0.001036 at 11:50 [metrics:inventory-api:reservation_error_rate@2026-06-22T11:50:00Z]\n- query_logs [ok]: 13 logs — error ×13: \"upstream call failed; retrying\" [logs:payment-api:noise-inc-005-payment-api-45]\n- get_metrics [ok]: cpu_pct: 30.5564->32.3372pct, peak 32.3372 at 12:00 [metrics:payment-api:cpu_pct@2026-06-22T12:00:00Z]; http_5xx_rate: 0.001976->0.002081ratio, peak 0.002081 at 11:50 [metrics:payment-api:http_5xx_rate@2026-06-22T11:50:00Z]; p95_latency_ms: 114.755->125.529ms, peak 125.529 at 12:15 [metrics:payment-api:p95_latency_ms@2026-06-22T12:15:00Z]; request_rate: 52.7494->57.544rps, peak 57.544 at 12:05 [metrics:payment-api:request_rate@2026-06-22T12:05:00Z]\nAlready called (do NOT repeat): get_deployments, get_metrics, get_service_dependencies, query_logs.\nEvidence classes gathered: deps, logs, metrics. Gather any missing class (deploys / logs / metrics / deps), follow the anomaly into the dependency, or conclude.\n\n## How to conclude\n- Name the **true root cause**, not a coincidence. A deployment near the onset is only the cause if\n  the evidence ties it to the failure; if a downstream dependency's metrics or logs show the real\n  fault (e.g. latency/errors upstream of the symptom), name that instead.\n- Cite only evidence references that appear above, using the frozen grammar exactly as shown\n  (`logs:<svc>:<id>`, `metrics:<svc>:<metric>@<ts>`, `deploys:<svc>:<id>`, `deps:<from>-><to>`).\n- Prefer the citations that most directly support the cause (the degraded metric, the error log at\n  the true fault, the dependency edge) over incidental ones.\n\n## Respond\nReturn a single JSON object:\n\n```json\n{\"root_cause\": \"<one-sentence statement naming the responsible service/component>\", \"citations\": [\"<ref>\", \"<ref>\"]}\n```"
+          }
+        ]
+      },
+      "response": {
+        "text": "```json\n{\"root_cause\": \"The incident was caused by the inventory-api experiencing upstream call failures, which affected the checkout-api.\", \"citations\": [\"logs:inventory-api:noise-inc-005-inventory-api-267\", \"logs:checkout-api:noise-inc-005-checkout-api-280\"]}\n```",
+        "model_id": "gpt-4o-mini",
+        "prompt_version": "",
+        "finish_reason": "stop",
+        "usage": {
+          "prompt_tokens": 1689,
+          "completion_tokens": 65
+        }
+      }
+    },
+    {
+      "key": "6dd6b0286102ffbd26896dae32f83b6c0e06b4de7f8dfe8dc6048dff00c20bca",
+      "request": {
+        "temperature": 0.0,
+        "messages": [
+          {
+            "role": "user",
+            "content": "You are an on-call SRE investigating a production incident. Each round you choose a **batch of\nread-only tool calls** to run together, then reason over what they return. You gather evidence, then\ndiagnose from it — you do not guess and you do not fix anything.\n\n## Incident\n- incident_id: inc-005\n- category: cache\n- affected services: checkout-api\n- symptom onset: 2026-06-22T11:45:09+00:00\n\n## What you have gathered so far\nEach line shows what a tool *found* — the values, with the exact evidence reference in `[brackets]`\nto cite. Reason over the values, not just the fact that a tool ran.\n- get_deployments [ok]: no results\n- query_logs [ok]: 14 logs — error ×14: \"upstream call failed; retrying\" [logs:checkout-api:noise-inc-005-checkout-api-280]\n- get_metrics [ok]: cpu_pct: 30.943->33.2469pct, peak 33.2469 at 12:05 [metrics:checkout-api:cpu_pct@2026-06-22T12:05:00Z]; http_5xx_rate: 0.001927->0.002088ratio, peak 0.002088 at 12:05 [metrics:checkout-api:http_5xx_rate@2026-06-22T12:05:00Z]; p95_latency_ms: 1716.17->1833.91ms, peak 1833.91 at 11:55 [metrics:checkout-api:p95_latency_ms@2026-06-22T11:55:00Z]; request_rate: 54.346->57.2964rps, peak 57.2964 at 11:50 [metrics:checkout-api:request_rate@2026-06-22T11:50:00Z]\n- get_service_dependencies [ok]: checkout-api->inventory-api (critical) [deps:checkout-api->inventory-api]; checkout-api->payment-api (critical) [deps:checkout-api->payment-api]; checkout-api->redis-cache [deps:checkout-api->redis-cache]; checkout-api->service-bus [deps:checkout-api->service-bus]\n- get_metrics [ok]: cpu_pct: 31.1195->33.2469pct, peak 33.2469 at 12:05 [metrics:checkout-api:cpu_pct@2026-06-22T12:05:00Z]; http_5xx_rate: 0.001927->0.002088ratio, peak 0.002088 at 12:05 [metrics:checkout-api:http_5xx_rate@2026-06-22T12:05:00Z]; p95_latency_ms: 1725.51->1833.91ms, peak 1833.91 at 11:55 [metrics:checkout-api:p95_latency_ms@2026-06-22T11:55:00Z]; request_rate: 54.8596->57.2964rps, peak 57.2964 at 11:50 [metrics:checkout-api:request_rate@2026-06-22T11:50:00Z]\n- query_logs [ok]: 4 logs — error ×4: \"upstream call failed; retrying\" [logs:checkout-api:noise-inc-005-checkout-api-280]\n- get_metrics [ok]: cpu_pct: 31.1195->33.2469pct, peak 33.2469 at 12:05 [metrics:checkout-api:cpu_pct@2026-06-22T12:05:00Z]; http_5xx_rate: 0.001927->0.002088ratio, peak 0.002088 at 12:05 [metrics:checkout-api:http_5xx_rate@2026-06-22T12:05:00Z]; p95_latency_ms: 1725.51->1833.91ms, peak 1833.91 at 11:55 [metrics:checkout-api:p95_latency_ms@2026-06-22T11:55:00Z]; request_rate: 54.8596->57.2964rps, peak 57.2964 at 11:50 [metrics:checkout-api:request_rate@2026-06-22T11:50:00Z]\n- query_logs [ok]: 4 logs — error ×4: \"upstream call failed; retrying\" [logs:checkout-api:noise-inc-005-checkout-api-280]\n- query_logs [ok]: 17 logs — error ×17: \"upstream call failed; retrying\" [logs:inventory-api:noise-inc-005-inventory-api-267]\n- get_metrics [ok]: cpu_pct: 30.4992->33.1292pct, peak 33.1292 at 11:50 [metrics:inventory-api:cpu_pct@2026-06-22T11:50:00Z]; p95_latency_ms: 114.427->124.64ms, peak 124.64 at 11:50 [metrics:inventory-api:p95_latency_ms@2026-06-22T11:50:00Z]; request_rate: 52.8313->57.5309rps, peak 57.5309 at 12:10 [metrics:inventory-api:request_rate@2026-06-22T12:10:00Z]; reservation_error_rate: 0.000953->0.001036ratio, peak 0.001036 at 11:50 [metrics:inventory-api:reservation_error_rate@2026-06-22T11:50:00Z]\n- query_logs [ok]: 13 logs — error ×13: \"upstream call failed; retrying\" [logs:payment-api:noise-inc-005-payment-api-45]\n- get_metrics [ok]: cpu_pct: 30.5564->32.3372pct, peak 32.3372 at 12:00 [metrics:payment-api:cpu_pct@2026-06-22T12:00:00Z]; http_5xx_rate: 0.001976->0.002081ratio, peak 0.002081 at 11:50 [metrics:payment-api:http_5xx_rate@2026-06-22T11:50:00Z]; p95_latency_ms: 114.755->125.529ms, peak 125.529 at 12:15 [metrics:payment-api:p95_latency_ms@2026-06-22T12:15:00Z]; request_rate: 52.7494->57.544rps, peak 57.544 at 12:05 [metrics:payment-api:request_rate@2026-06-22T12:05:00Z]\nAlready called (do NOT repeat): get_deployments, get_metrics, get_service_dependencies, query_logs.\nEvidence classes gathered: deps, logs, metrics. Gather any missing class (deploys / logs / metrics / deps), follow the anomaly into the dependency, or conclude.\n\n## Tools (all read-only)\n- `get_incident(incident_id)` — the incident record.\n- `get_correlated_alerts(incident_id)` — alerts firing in the same window.\n- `get_deployments(services, start_time, end_time)` — deploys to services in a time range.\n- `query_logs(service, level, start_time, end_time)` — logs for a service/level in a window.\n- `get_metrics(service, start_time, end_time)` — metric samples for a service in a window.\n- `get_service_dependencies(service, direction)` — upstream/downstream dependencies.\n- `search_runbooks(query)` / `search_past_incidents(query)` — relevant docs / history.\n\n## Method\n1. **First round — gather broad.** In one batch, get the recent changes AND the failing service's\n   own signal AND its dependencies: `get_deployments` (start ≥ 24h before onset — deploys precede\n   symptoms by hours), `query_logs` + `get_metrics` for the failing service, and\n   `get_service_dependencies` on it.\n2. **Next round — follow the anomaly.** The failing service's errors usually point downstream. Pull\n   `get_metrics` / `query_logs` for the dependency that its logs or the dependency edge implicate —\n   that is where the true fault (e.g. a latency/timeout spike) usually shows.\n3. **A deploy near onset is a suspect, not a verdict.** Attribute the incident to a deploy only if\n   the evidence ties it to the failure; otherwise name the dependency the data implicates.\n4. Do not repeat a call already listed above.\n\n## Discipline\n- Cite only evidence references shown in `[brackets]` above, verbatim (frozen grammar:\n  `logs:<svc>:<id>`, `metrics:<svc>:<metric>@<ts>`, `deploys:<svc>:<id>`, `deps:<from>-><to>`).\n- Causation comes from timestamps and values (\"A preceded B\", \"latency spiked\"), not wording.\n\n## Respond\nReturn a single JSON object. To gather a batch this round:\n\n```json\n{\"tool_calls\": [{\"tool\": \"<name>\", \"params\": {...}, \"why\": \"<what it rules in/out>\"}, ...]}\n```\n\nOnce the evidence identifies the root cause with supporting citations:\n\n```json\n{\"done\": true, \"root_cause\": \"<statement naming the responsible service/component>\", \"citations\": [\"<ref>\", ...]}\n```"
+          }
+        ]
+      },
+      "response": {
+        "text": "```json\n{\"tool_calls\": [{\"tool\": \"get_deployments\", \"params\": {\"services\": \"checkout-api\", \"start_time\": \"2026-06-21T11:45:09+00:00\", \"end_time\": \"2026-06-22T11:45:09+00:00\"}, \"why\": \"To check for any recent deployments that may have affected the checkout-api.\"}, {\"tool\": \"query_logs\", \"params\": {\"service\": \"checkout-api\", \"level\": \"error\", \"start_time\": \"2026-06-22T11:45:09+00:00\", \"end_time\": \"2026-06-22T12:45:09+00:00\"}, \"why\": \"To gather more error logs from the checkout-api during the incident timeframe.\"}, {\"tool\": \"get_metrics\", \"params\": {\"service\": \"checkout-api\", \"start_time\": \"2026-06-22T11:45:09+00:00\", \"end_time\": \"2026-06-22T12:45:09+00:00\"}, \"why\": \"To collect metrics for the checkout-api during the incident timeframe.\"}, {\"tool\": \"get_service_dependencies\", \"params\": {\"service\": \"checkout-api\", \"direction\": \"downstream\"}, \"why\": \"To identify the downstream services that the checkout-api depends on.\"}]}\n```",
+        "model_id": "gpt-4o-mini",
+        "prompt_version": "",
+        "finish_reason": "stop",
+        "usage": {
+          "prompt_tokens": 2067,
+          "completion_tokens": 297
+        }
+      }
+    },
+    {
+      "key": "2242253dae1fd26485d824976c722d60f47a88e47aa0b0d81ee6166c1b3081ea",
+      "request": {
+        "temperature": 0.0,
+        "messages": [
+          {
+            "role": "user",
+            "content": "You are an on-call SRE writing the root-cause conclusion for an incident. The investigation has\ngathered the evidence below. State the **single most likely root cause** and cite the specific\nevidence that supports it. Reason from the evidence — do not introduce anything not shown.\n\n## Incident\n- incident_id: inc-005\n- category: cache\n- affected services: checkout-api\n- symptom onset: 2026-06-22T11:45:09+00:00\n\n## Evidence gathered\n- get_deployments [ok]: no results\n- query_logs [ok]: 14 logs — error ×14: \"upstream call failed; retrying\" [logs:checkout-api:noise-inc-005-checkout-api-280]\n- get_metrics [ok]: cpu_pct: 30.943->33.2469pct, peak 33.2469 at 12:05 [metrics:checkout-api:cpu_pct@2026-06-22T12:05:00Z]; http_5xx_rate: 0.001927->0.002088ratio, peak 0.002088 at 12:05 [metrics:checkout-api:http_5xx_rate@2026-06-22T12:05:00Z]; p95_latency_ms: 1716.17->1833.91ms, peak 1833.91 at 11:55 [metrics:checkout-api:p95_latency_ms@2026-06-22T11:55:00Z]; request_rate: 54.346->57.2964rps, peak 57.2964 at 11:50 [metrics:checkout-api:request_rate@2026-06-22T11:50:00Z]\n- get_service_dependencies [ok]: checkout-api->inventory-api (critical) [deps:checkout-api->inventory-api]; checkout-api->payment-api (critical) [deps:checkout-api->payment-api]; checkout-api->redis-cache [deps:checkout-api->redis-cache]; checkout-api->service-bus [deps:checkout-api->service-bus]\n- get_metrics [ok]: cpu_pct: 31.1195->33.2469pct, peak 33.2469 at 12:05 [metrics:checkout-api:cpu_pct@2026-06-22T12:05:00Z]; http_5xx_rate: 0.001927->0.002088ratio, peak 0.002088 at 12:05 [metrics:checkout-api:http_5xx_rate@2026-06-22T12:05:00Z]; p95_latency_ms: 1725.51->1833.91ms, peak 1833.91 at 11:55 [metrics:checkout-api:p95_latency_ms@2026-06-22T11:55:00Z]; request_rate: 54.8596->57.2964rps, peak 57.2964 at 11:50 [metrics:checkout-api:request_rate@2026-06-22T11:50:00Z]\n- query_logs [ok]: 4 logs — error ×4: \"upstream call failed; retrying\" [logs:checkout-api:noise-inc-005-checkout-api-280]\n- get_metrics [ok]: cpu_pct: 31.1195->33.2469pct, peak 33.2469 at 12:05 [metrics:checkout-api:cpu_pct@2026-06-22T12:05:00Z]; http_5xx_rate: 0.001927->0.002088ratio, peak 0.002088 at 12:05 [metrics:checkout-api:http_5xx_rate@2026-06-22T12:05:00Z]; p95_latency_ms: 1725.51->1833.91ms, peak 1833.91 at 11:55 [metrics:checkout-api:p95_latency_ms@2026-06-22T11:55:00Z]; request_rate: 54.8596->57.2964rps, peak 57.2964 at 11:50 [metrics:checkout-api:request_rate@2026-06-22T11:50:00Z]\n- query_logs [ok]: 4 logs — error ×4: \"upstream call failed; retrying\" [logs:checkout-api:noise-inc-005-checkout-api-280]\n- query_logs [ok]: 17 logs — error ×17: \"upstream call failed; retrying\" [logs:inventory-api:noise-inc-005-inventory-api-267]\n- get_metrics [ok]: cpu_pct: 30.4992->33.1292pct, peak 33.1292 at 11:50 [metrics:inventory-api:cpu_pct@2026-06-22T11:50:00Z]; p95_latency_ms: 114.427->124.64ms, peak 124.64 at 11:50 [metrics:inventory-api:p95_latency_ms@2026-06-22T11:50:00Z]; request_rate: 52.8313->57.5309rps, peak 57.5309 at 12:10 [metrics:inventory-api:request_rate@2026-06-22T12:10:00Z]; reservation_error_rate: 0.000953->0.001036ratio, peak 0.001036 at 11:50 [metrics:inventory-api:reservation_error_rate@2026-06-22T11:50:00Z]\n- query_logs [ok]: 13 logs — error ×13: \"upstream call failed; retrying\" [logs:payment-api:noise-inc-005-payment-api-45]\n- get_metrics [ok]: cpu_pct: 30.5564->32.3372pct, peak 32.3372 at 12:00 [metrics:payment-api:cpu_pct@2026-06-22T12:00:00Z]; http_5xx_rate: 0.001976->0.002081ratio, peak 0.002081 at 11:50 [metrics:payment-api:http_5xx_rate@2026-06-22T11:50:00Z]; p95_latency_ms: 114.755->125.529ms, peak 125.529 at 12:15 [metrics:payment-api:p95_latency_ms@2026-06-22T12:15:00Z]; request_rate: 52.7494->57.544rps, peak 57.544 at 12:05 [metrics:payment-api:request_rate@2026-06-22T12:05:00Z]\nAlready called (do NOT repeat): get_deployments, get_metrics, get_service_dependencies, query_logs.\nEvidence classes gathered: deps, logs, metrics. Gather any missing class (deploys / logs / metrics / deps), follow the anomaly into the dependency, or conclude.\n\n## How to conclude\n- Name the **true root cause**, not a coincidence. A deployment near the onset is only the cause if\n  the evidence ties it to the failure; if a downstream dependency's metrics or logs show the real\n  fault (e.g. latency/errors upstream of the symptom), name that instead.\n- Cite only evidence references that appear above, using the frozen grammar exactly as shown\n  (`logs:<svc>:<id>`, `metrics:<svc>:<metric>@<ts>`, `deploys:<svc>:<id>`, `deps:<from>-><to>`).\n- Prefer the citations that most directly support the cause (the degraded metric, the error log at\n  the true fault, the dependency edge) over incidental ones.\n\n## Respond\nReturn a single JSON object:\n\n```json\n{\"root_cause\": \"<one-sentence statement naming the responsible service/component>\", \"citations\": [\"<ref>\", \"<ref>\"]}\n```"
+          }
+        ]
+      },
+      "response": {
+        "text": "```json\n{\"root_cause\": \"The incident was caused by the inventory-api experiencing upstream call failures, which affected the checkout-api.\", \"citations\": [\"logs:inventory-api:noise-inc-005-inventory-api-267\", \"logs:checkout-api:noise-inc-005-checkout-api-280\"]}\n```",
+        "model_id": "gpt-4o-mini",
+        "prompt_version": "",
+        "finish_reason": "stop",
+        "usage": {
+          "prompt_tokens": 1689,
+          "completion_tokens": 65
+        }
+      }
+    },
+    {
+      "key": "78f6002e827bb0fccc111cdb84234002c4e829ba4aea51febf98ee330e26b6b3",
+      "request": {
+        "temperature": 0.0,
+        "messages": [
+          {
+            "role": "user",
+            "content": "You are triaging a production incident to decide how to investigate it.\n\n## Incident\n- incident_id: inc-006\n- description: Reservation conflicts and oversells at checkout.\n- category: inventory\n- affected services: checkout-api, inventory-api\n- alert signals: error log rate elevated; reservation_error_rate breached threshold\n\n## Similar past incidents\nEach candidate is the postmortem of a PRIOR resolved incident. This incident is a recurrence only if\nits failure mode genuinely matches one of them.\n- postmortem:inc-001: Payment authorization timeouts from Cosmos DB connection-pool exhaustion\n- postmortem:inc-002: Cosmos DB 429 throttling degrades inventory and catalog reads\n- postmortem:inc-003: Notification backlog from a crash-looping worker stuck on a poison message\n\n## Decide the intent\n- `known_issue` — this incident is a **recurrence** of one of the candidates: the same service and\n  the same failure mode (not just superficial similarity). Set `matched_incident` to that\n  candidate's exact id (e.g. `postmortem:inc-003`).\n- `novel_investigation` — no candidate is a genuine recurrence; investigate from scratch.\n- `info_only` — the request is informational, not an incident to investigate.\n\nWhen unsure whether a candidate truly matches, prefer `novel_investigation` — a wrong known-issue\nmatch would skip the investigation and reuse the wrong fix.\n\n## Respond\nReturn a single JSON object:\n\n```json\n{\"intent\": \"known_issue|novel_investigation|info_only\", \"matched_incident\": \"<candidate id, or empty>\", \"why\": \"<why it matches or not>\"}\n```"
+          }
+        ]
+      },
+      "response": {
+        "text": "```json\n{\"intent\": \"novel_investigation\", \"matched_incident\": \"\", \"why\": \"The current incident involves reservation conflicts and oversells at checkout, which does not match the failure modes of the past incidents related to payment timeouts, Cosmos DB throttling, or notification backlogs.\"}\n```",
+        "model_id": "gpt-4o-mini",
+        "prompt_version": "",
+        "finish_reason": "stop",
+        "usage": {
+          "prompt_tokens": 366,
+          "completion_tokens": 64
+        }
+      }
+    },
+    {
       "key": "8d100aa04ca3c7447fa936f81799efa36de19d35eccf633eb440adeffa0db7c5",
       "request": {
         "temperature": 0.0,
@@ -277,13 +497,13 @@
         ]
       },
       "response": {
-        "text": "```json\n{\n  \"tool_calls\": [\n    {\n      \"tool\": \"get_deployments\",\n      \"params\": {\n        \"services\": [\"checkout-api\", \"inventory-api\"],\n        \"start_time\": \"2026-06-24T16:20:09+00:00\",\n        \"end_time\": \"2026-06-25T16:20:09+00:00\"\n      },\n      \"why\": \"To identify any recent changes that may have affected the services.\"\n    },\n    {\n      \"tool\": \"query_logs\",\n      \"params\": {\n        \"service\": \"checkout-api\",\n        \"level\": \"error\",\n        \"start_time\": \"2026-06-25T16:20:09+00:00\",\n        \"end_time\": \"2026-06-25T17:20:09+00:00\"\n      },\n      \"why\": \"To gather error logs from the failing service for insights into the issue.\"\n    },\n    {\n      \"tool\": \"get_metrics\",\n      \"params\": {\n        \"service\": \"checkout-api\",\n        \"start_time\": \"2026-06-25T16:20:09+00:00\",\n        \"end_time\": \"2026-06-25T17:20:09+00:00\"\n      },\n      \"why\": \"To analyze the performance metrics of the failing service during the incident.\"\n    },\n    {\n      \"tool\": \"get_service_dependencies\",\n      \"params\": {\n        \"service\": \"checkout-api\",\n        \"direction\": \"downstream\"\n      },\n      \"why\": \"To understand which services are dependent on the failing service and may be implicated.\"\n    }\n  ]\n}\n```",
+        "text": "```json\n{\n  \"tool_calls\": [\n    {\n      \"tool\": \"get_deployments\",\n      \"params\": {\n        \"services\": [\"checkout-api\", \"inventory-api\"],\n        \"start_time\": \"2026-06-24T16:20:09+00:00\",\n        \"end_time\": \"2026-06-25T16:20:09+00:00\"\n      },\n      \"why\": \"To identify any recent changes that may have affected the services.\"\n    },\n    {\n      \"tool\": \"query_logs\",\n      \"params\": {\n        \"service\": \"checkout-api\",\n        \"level\": \"error\",\n        \"start_time\": \"2026-06-25T16:20:09+00:00\",\n        \"end_time\": \"2026-06-25T17:20:09+00:00\"\n      },\n      \"why\": \"To gather error logs from the checkout-api to understand the nature of the failures.\"\n    },\n    {\n      \"tool\": \"get_metrics\",\n      \"params\": {\n        \"service\": \"checkout-api\",\n        \"start_time\": \"2026-06-25T16:20:09+00:00\",\n        \"end_time\": \"2026-06-25T17:20:09+00:00\"\n      },\n      \"why\": \"To analyze the performance metrics of the checkout-api during the incident window.\"\n    },\n    {\n      \"tool\": \"get_service_dependencies\",\n      \"params\": {\n        \"service\": \"checkout-api\",\n        \"direction\": \"downstream\"\n      },\n      \"why\": \"To identify any downstream services that the checkout-api relies on, which could be implicated in the incident.\"\n    }\n  ]\n}\n```",
         "model_id": "gpt-4o-mini",
         "prompt_version": "",
         "finish_reason": "stop",
         "usage": {
           "prompt_tokens": 705,
-          "completion_tokens": 356
+          "completion_tokens": 364
         }
       }
     },
@@ -299,13 +519,13 @@
         ]
       },
       "response": {
-        "text": "```json\n{\"root_cause\": \"The root cause of the incident was the dropped cache invalidation on stock writes in the inventory-api deployment, which led to inventory conflicts during checkout.\", \"citations\": [\"deploys:inventory-api:dep-20260625-01\", \"logs:checkout-api:evt-006-02\"]}\n```",
+        "text": "```json\n{\"root_cause\": \"The inventory-api deployment that dropped cache invalidation on stock writes caused inventory conflicts in the checkout-api.\", \"citations\": [\"deploys:inventory-api:dep-20260625-01\", \"logs:checkout-api:evt-006-02\"]}\n```",
         "model_id": "gpt-4o-mini",
         "prompt_version": "",
         "finish_reason": "stop",
         "usage": {
           "prompt_tokens": 777,
-          "completion_tokens": 70
+          "completion_tokens": 61
         }
       }
     },
@@ -321,13 +541,13 @@
         ]
       },
       "response": {
-        "text": "```json\n{\"tool_calls\": [\n    {\"tool\": \"get_deployments\", \"params\": {\"services\": [\"checkout-api\", \"inventory-api\"], \"start_time\": \"2026-06-24T16:20:09+00:00\", \"end_time\": \"2026-06-25T16:20:09+00:00\"}, \"why\": \"To check for any recent changes to the checkout-api and inventory-api that could correlate with the incident.\"},\n    {\"tool\": \"query_logs\", \"params\": {\"service\": \"inventory-api\", \"level\": \"error\", \"start_time\": \"2026-06-25T16:20:09+00:00\", \"end_time\": \"2026-06-25T17:20:09+00:00\"}, \"why\": \"To gather error logs from the inventory-api that may indicate issues related to the incident.\"},\n    {\"tool\": \"get_metrics\", \"params\": {\"service\": \"inventory-api\", \"start_time\": \"2026-06-25T16:20:09+00:00\", \"end_time\": \"2026-06-25T17:20:09+00:00\"}, \"why\": \"To analyze the performance metrics of the inventory-api during the incident timeframe.\"},\n    {\"tool\": \"get_service_dependencies\", \"params\": {\"service\": \"inventory-api\", \"direction\": \"downstream\"}, \"why\": \"To identify any downstream dependencies of the inventory-api that could be contributing to the issue.\"}\n]}\n```",
+        "text": "```json\n{\"tool_calls\": [\n    {\"tool\": \"get_deployments\", \"params\": {\"services\": [\"checkout-api\", \"inventory-api\"], \"start_time\": \"2026-06-24T16:20:09+00:00\", \"end_time\": \"2026-06-25T16:20:09+00:00\"}, \"why\": \"To check for any recent deployments that may have affected the checkout-api and inventory-api.\"},\n    {\"tool\": \"query_logs\", \"params\": {\"service\": \"inventory-api\", \"level\": \"error\", \"start_time\": \"2026-06-25T16:20:09+00:00\", \"end_time\": \"2026-06-25T17:20:09+00:00\"}, \"why\": \"To gather error logs from the inventory-api that may indicate issues related to the incident.\"},\n    {\"tool\": \"get_metrics\", \"params\": {\"service\": \"inventory-api\", \"start_time\": \"2026-06-25T16:20:09+00:00\", \"end_time\": \"2026-06-25T17:20:09+00:00\"}, \"why\": \"To check the performance metrics of the inventory-api during the incident timeframe.\"},\n    {\"tool\": \"get_service_dependencies\", \"params\": {\"service\": \"inventory-api\", \"direction\": \"downstream\"}, \"why\": \"To identify any downstream dependencies of the inventory-api that could be contributing to the issue.\"}\n]}\n```",
         "model_id": "gpt-4o-mini",
         "prompt_version": "",
         "finish_reason": "stop",
         "usage": {
           "prompt_tokens": 1155,
-          "completion_tokens": 322
+          "completion_tokens": 319
         }
       }
     },
@@ -365,13 +585,13 @@
         ]
       },
       "response": {
-        "text": "```json\n{\"tool_calls\": [\n    {\"tool\": \"get_deployments\", \"params\": {\"services\": \"checkout-api\", \"start_time\": \"2026-06-24T16:20:09+00:00\", \"end_time\": \"2026-06-25T16:20:09+00:00\"}, \"why\": \"To check for any recent changes to the checkout-api that may correlate with the incident.\"},\n    {\"tool\": \"query_logs\", \"params\": {\"service\": \"checkout-api\", \"level\": \"error\", \"start_time\": \"2026-06-25T16:20:09+00:00\", \"end_time\": \"2026-06-25T16:50:09+00:00\"}, \"why\": \"To gather more details on the errors occurring in the checkout-api during the incident timeframe.\"},\n    {\"tool\": \"get_metrics\", \"params\": {\"service\": \"checkout-api\", \"start_time\": \"2026-06-25T16:20:09+00:00\", \"end_time\": \"2026-06-25T16:50:09+00:00\"}, \"why\": \"To analyze the performance metrics of the checkout-api during the incident timeframe.\"},\n    {\"tool\": \"get_service_dependencies\", \"params\": {\"service\": \"checkout-api\", \"direction\": \"downstream\"}, \"why\": \"To identify the downstream dependencies of the checkout-api that may be contributing to the issue.\"}\n]}\n```",
+        "text": "```json\n{\n  \"tool_calls\": [\n    {\n      \"tool\": \"get_deployments\",\n      \"params\": {\n        \"services\": \"checkout-api\",\n        \"start_time\": \"2026-06-24T16:20:09+00:00\",\n        \"end_time\": \"2026-06-25T16:20:09+00:00\"\n      },\n      \"why\": \"To check for any recent deployments to the checkout-api that may have affected its behavior.\"\n    },\n    {\n      \"tool\": \"query_logs\",\n      \"params\": {\n        \"service\": \"checkout-api\",\n        \"level\": \"error\",\n        \"start_time\": \"2026-06-25T16:20:09+00:00\",\n        \"end_time\": \"2026-06-25T16:50:09+00:00\"\n      },\n      \"why\": \"To gather more detailed error logs from the checkout-api during the incident timeframe.\"\n    },\n    {\n      \"tool\": \"get_metrics\",\n      \"params\": {\n        \"service\": \"checkout-api\",\n        \"start_time\": \"2026-06-25T16:20:09+00:00\",\n        \"end_time\": \"2026-06-25T16:50:09+00:00\"\n      },\n      \"why\": \"To analyze the performance metrics of the checkout-api during the incident timeframe.\"\n    },\n    {\n      \"tool\": \"get_service_dependencies\",\n      \"params\": {\n        \"service\": \"checkout-api\",\n        \"direction\": \"downstream\"\n      },\n      \"why\": \"To identify any downstream dependencies that may be contributing to the errors in the checkout-api.\"\n    }\n  ]\n}\n```",
         "model_id": "gpt-4o-mini",
         "prompt_version": "",
         "finish_reason": "stop",
         "usage": {
           "prompt_tokens": 1462,
-          "completion_tokens": 315
+          "completion_tokens": 361
         }
       }
     },
@@ -409,7 +629,7 @@
         ]
       },
       "response": {
-        "text": "```json\n{\n  \"tool_calls\": [\n    {\n      \"tool\": \"get_deployments\",\n      \"params\": {\n        \"services\": \"checkout-api\",\n        \"start_time\": \"2026-06-24T16:20:09+00:00\",\n        \"end_time\": \"2026-06-25T16:20:09+00:00\"\n      },\n      \"why\": \"To check for any recent deployments to the checkout-api that may have caused the issue.\"\n    },\n    {\n      \"tool\": \"query_logs\",\n      \"params\": {\n        \"service\": \"checkout-api\",\n        \"level\": \"error\",\n        \"start_time\": \"2026-06-25T16:20:09+00:00\",\n        \"end_time\": \"2026-06-25T16:50:09+00:00\"\n      },\n      \"why\": \"To gather more detailed error logs from the checkout-api during the incident timeframe.\"\n    },\n    {\n      \"tool\": \"get_metrics\",\n      \"params\": {\n        \"service\": \"checkout-api\",\n        \"start_time\": \"2026-06-25T16:20:09+00:00\",\n        \"end_time\": \"2026-06-25T16:50:09+00:00\"\n      },\n      \"why\": \"To analyze the performance metrics of the checkout-api during the incident timeframe.\"\n    },\n    {\n      \"tool\": \"get_service_dependencies\",\n      \"params\": {\n        \"service\": \"checkout-api\",\n        \"direction\": \"downstream\"\n      },\n      \"why\": \"To identify the downstream dependencies of the checkout-api that may be contributing to the issue.\"\n    }\n  ]\n}\n```",
+        "text": "```json\n{\n  \"tool_calls\": [\n    {\n      \"tool\": \"get_deployments\",\n      \"params\": {\n        \"services\": \"checkout-api\",\n        \"start_time\": \"2026-06-24T16:20:09+00:00\",\n        \"end_time\": \"2026-06-25T16:20:09+00:00\"\n      },\n      \"why\": \"To check for any recent changes to the checkout-api that may correlate with the incident.\"\n    },\n    {\n      \"tool\": \"query_logs\",\n      \"params\": {\n        \"service\": \"checkout-api\",\n        \"level\": \"error\",\n        \"start_time\": \"2026-06-25T16:20:09+00:00\",\n        \"end_time\": \"2026-06-25T16:50:09+00:00\"\n      },\n      \"why\": \"To gather more detailed error logs from the checkout-api during the incident timeframe.\"\n    },\n    {\n      \"tool\": \"get_metrics\",\n      \"params\": {\n        \"service\": \"checkout-api\",\n        \"start_time\": \"2026-06-25T16:20:09+00:00\",\n        \"end_time\": \"2026-06-25T16:50:09+00:00\"\n      },\n      \"why\": \"To analyze the performance metrics of the checkout-api during the incident timeframe.\"\n    },\n    {\n      \"tool\": \"get_service_dependencies\",\n      \"params\": {\n        \"service\": \"checkout-api\",\n        \"direction\": \"downstream\"\n      },\n      \"why\": \"To identify any downstream dependencies that may be contributing to the errors in the checkout-api.\"\n    }\n  ]\n}\n```",
         "model_id": "gpt-4o-mini",
         "prompt_version": "",
         "finish_reason": "stop",
@@ -431,233 +651,35 @@
         ]
       },
       "response": {
-        "text": "```json\n{\"root_cause\": \"The inventory conflict errors in the inventory-api caused the checkout-api to fail reservations.\", \"citations\": [\"logs:inventory-api:evt-006-01\", \"logs:checkout-api:evt-006-02\"]}\n```",
+        "text": "```json\n{\"root_cause\": \"The root cause of the incident was the dropped cache invalidation on stock writes in the inventory-api deployment, leading to inventory conflicts during checkout.\", \"citations\": [\"deploys:inventory-api:dep-20260625-01\", \"logs:checkout-api:evt-006-02\"]}\n```",
         "model_id": "gpt-4o-mini",
         "prompt_version": "",
         "finish_reason": "stop",
         "usage": {
           "prompt_tokens": 1361,
-          "completion_tokens": 54
+          "completion_tokens": 69
         }
       }
     },
     {
-      "key": "21d8cd027bd415ba36d47d946fdb121068069a40c3c019c18be949034efcf302",
+      "key": "9d8ff55351f239c64e8e415ca7475abe73016f30c6b2cfe332da683749effca2",
       "request": {
         "temperature": 0.0,
         "messages": [
           {
             "role": "user",
-            "content": "You are an on-call SRE investigating a production incident. Each round you choose a **batch of\nread-only tool calls** to run together, then reason over what they return. You gather evidence, then\ndiagnose from it — you do not guess and you do not fix anything.\n\n## Incident\n- incident_id: inc-007\n- category: messaging\n- affected services: notification-worker\n- symptom onset: 2026-07-02T09:30:09+00:00\n\n## What you have gathered so far\nEach line shows what a tool *found* — the values, with the exact evidence reference in `[brackets]`\nto cite. Reason over the values, not just the fact that a tool ran.\nNothing yet — this is your first step.\n\n## Tools (all read-only)\n- `get_incident(incident_id)` — the incident record.\n- `get_correlated_alerts(incident_id)` — alerts firing in the same window.\n- `get_deployments(services, start_time, end_time)` — deploys to services in a time range.\n- `query_logs(service, level, start_time, end_time)` — logs for a service/level in a window.\n- `get_metrics(service, start_time, end_time)` — metric samples for a service in a window.\n- `get_service_dependencies(service, direction)` — upstream/downstream dependencies.\n- `search_runbooks(query)` / `search_past_incidents(query)` — relevant docs / history.\n\n## Method\n1. **First round — gather broad.** In one batch, get the recent changes AND the failing service's\n   own signal AND its dependencies: `get_deployments` (start ≥ 24h before onset — deploys precede\n   symptoms by hours), `query_logs` + `get_metrics` for the failing service, and\n   `get_service_dependencies` on it.\n2. **Next round — follow the anomaly.** The failing service's errors usually point downstream. Pull\n   `get_metrics` / `query_logs` for the dependency that its logs or the dependency edge implicate —\n   that is where the true fault (e.g. a latency/timeout spike) usually shows.\n3. **A deploy near onset is a suspect, not a verdict.** Attribute the incident to a deploy only if\n   the evidence ties it to the failure; otherwise name the dependency the data implicates.\n4. Do not repeat a call already listed above.\n\n## Discipline\n- Cite only evidence references shown in `[brackets]` above, verbatim (frozen grammar:\n  `logs:<svc>:<id>`, `metrics:<svc>:<metric>@<ts>`, `deploys:<svc>:<id>`, `deps:<from>-><to>`).\n- Causation comes from timestamps and values (\"A preceded B\", \"latency spiked\"), not wording.\n\n## Respond\nReturn a single JSON object. To gather a batch this round:\n\n```json\n{\"tool_calls\": [{\"tool\": \"<name>\", \"params\": {...}, \"why\": \"<what it rules in/out>\"}, ...]}\n```\n\nOnce the evidence identifies the root cause with supporting citations:\n\n```json\n{\"done\": true, \"root_cause\": \"<statement naming the responsible service/component>\", \"citations\": [\"<ref>\", ...]}\n```"
+            "content": "You are triaging a production incident to decide how to investigate it.\n\n## Incident\n- incident_id: inc-007\n- description: Order notifications delayed again; Service Bus queue depth climbing and not draining.\n- category: messaging\n- affected services: notification-worker\n- alert signals: restart_count breached threshold\n\n## Similar past incidents\nEach candidate is the postmortem of a PRIOR resolved incident. This incident is a recurrence only if\nits failure mode genuinely matches one of them.\n- postmortem:inc-003: Notification backlog from a crash-looping worker stuck on a poison message\n- postmortem:inc-001: Payment authorization timeouts from Cosmos DB connection-pool exhaustion\n- postmortem:inc-002: Cosmos DB 429 throttling degrades inventory and catalog reads\n\n## Decide the intent\n- `known_issue` — this incident is a **recurrence** of one of the candidates: the same service and\n  the same failure mode (not just superficial similarity). Set `matched_incident` to that\n  candidate's exact id (e.g. `postmortem:inc-003`).\n- `novel_investigation` — no candidate is a genuine recurrence; investigate from scratch.\n- `info_only` — the request is informational, not an incident to investigate.\n\nWhen unsure whether a candidate truly matches, prefer `novel_investigation` — a wrong known-issue\nmatch would skip the investigation and reuse the wrong fix.\n\n## Respond\nReturn a single JSON object:\n\n```json\n{\"intent\": \"known_issue|novel_investigation|info_only\", \"matched_incident\": \"<candidate id, or empty>\", \"why\": \"<why it matches or not>\"}\n```"
           }
         ]
       },
       "response": {
-        "text": "```json\n{\"tool_calls\": [\n    {\"tool\": \"get_deployments\", \"params\": {\"services\": [\"notification-worker\"], \"start_time\": \"2026-07-01T09:30:09+00:00\", \"end_time\": \"2026-07-02T09:30:09+00:00\"}, \"why\": \"To check for any recent deployments that might have affected the notification-worker.\"},\n    {\"tool\": \"query_logs\", \"params\": {\"service\": \"notification-worker\", \"level\": \"error\", \"start_time\": \"2026-07-02T09:30:09+00:00\", \"end_time\": \"2026-07-02T10:30:09+00:00\"}, \"why\": \"To gather error logs from the notification-worker around the time of the incident.\"},\n    {\"tool\": \"get_metrics\", \"params\": {\"service\": \"notification-worker\", \"start_time\": \"2026-07-02T09:30:09+00:00\", \"end_time\": \"2026-07-02T10:30:09+00:00\"}, \"why\": \"To analyze the performance metrics of the notification-worker during the incident.\"},\n    {\"tool\": \"get_service_dependencies\", \"params\": {\"service\": \"notification-worker\", \"direction\": \"downstream\"}, \"why\": \"To identify any downstream services that the notification-worker depends on, which could be implicated in the incident.\"}\n]}\n```",
+        "text": "```json\n{\"intent\": \"known_issue\", \"matched_incident\": \"postmortem:inc-003\", \"why\": \"The current incident involves delayed order notifications and a climbing Service Bus queue depth, which aligns with the previous incident where a crash-looping worker was stuck on a poison message, causing a backlog in notifications.\"}\n```",
         "model_id": "gpt-4o-mini",
         "prompt_version": "",
         "finish_reason": "stop",
         "usage": {
-          "prompt_tokens": 702,
-          "completion_tokens": 312
-        }
-      }
-    },
-    {
-      "key": "bbd6c96dd0afcb57eb00d9a34ae7938749406ed75aa92508d61f48ae9f5d34fe",
-      "request": {
-        "temperature": 0.0,
-        "messages": [
-          {
-            "role": "user",
-            "content": "You are an on-call SRE writing the root-cause conclusion for an incident. The investigation has\ngathered the evidence below. State the **single most likely root cause** and cite the specific\nevidence that supports it. Reason from the evidence — do not introduce anything not shown.\n\n## Incident\n- incident_id: inc-007\n- category: messaging\n- affected services: notification-worker\n- symptom onset: 2026-07-02T09:30:09+00:00\n\n## Evidence gathered\n- get_deployments [ok]: notification-worker dep-20260702-01 vnotification-worker@3.1.0 at 09:10 (stale-pipeline re-deploy of the poison-message revision (causal: inc-007, recurrence of inc-003)) [deploys:notification-worker:dep-20260702-01]\n- query_logs [ok]: 12 logs — error: \"Unhandled deserialization exception; restarting (crash loop — same failure mode as inc-003)\" [logs:notification-worker:evt-007-01]; error ×11: \"upstream call failed; retrying\" [logs:notification-worker:noise-inc-007-notification-worker-55]\n- get_metrics [ok]: cpu_pct: 30.8815->32.7848pct, peak 32.7848 at 09:40 [metrics:notification-worker:cpu_pct@2026-07-02T09:40:00Z]; msg_processed_rate: 26.6089->28.9275rps, peak 28.9275 at 09:45 [metrics:notification-worker:msg_processed_rate@2026-07-02T09:45:00Z]; restart_count: 5.99134->6.2598count, peak 6.2598 at 09:55 [metrics:notification-worker:restart_count@2026-07-02T09:55:00Z]\n- get_service_dependencies [ok]: notification-worker->email-provider [deps:notification-worker->email-provider]; notification-worker->service-bus [deps:notification-worker->service-bus]\nAlready called (do NOT repeat): get_deployments, get_metrics, get_service_dependencies, query_logs.\nEvidence classes gathered: deploys, deps, logs, metrics. Gather any missing class (deploys / logs / metrics / deps), follow the anomaly into the dependency, or conclude.\n\n## How to conclude\n- Name the **true root cause**, not a coincidence. A deployment near the onset is only the cause if\n  the evidence ties it to the failure; if a downstream dependency's metrics or logs show the real\n  fault (e.g. latency/errors upstream of the symptom), name that instead.\n- Cite only evidence references that appear above, using the frozen grammar exactly as shown\n  (`logs:<svc>:<id>`, `metrics:<svc>:<metric>@<ts>`, `deploys:<svc>:<id>`, `deps:<from>-><to>`).\n- Prefer the citations that most directly support the cause (the degraded metric, the error log at\n  the true fault, the dependency edge) over incidental ones.\n\n## Respond\nReturn a single JSON object:\n\n```json\n{\"root_cause\": \"<one-sentence statement naming the responsible service/component>\", \"citations\": [\"<ref>\", \"<ref>\"]}\n```"
-          }
-        ]
-      },
-      "response": {
-        "text": "```json\n{\"root_cause\": \"The notification-worker experienced a crash loop due to an unhandled deserialization exception, which is a recurrence of the same failure mode as a previous incident (inc-003).\", \"citations\": [\"logs:notification-worker:evt-007-01\", \"deploys:notification-worker:dep-20260702-01\"]}\n```",
-        "model_id": "gpt-4o-mini",
-        "prompt_version": "",
-        "finish_reason": "stop",
-        "usage": {
-          "prompt_tokens": 713,
-          "completion_tokens": 76
-        }
-      }
-    },
-    {
-      "key": "003b28abdbdddd113d6ff39de0d1db3e6c05832cefd78320aad8299b878f0676",
-      "request": {
-        "temperature": 0.0,
-        "messages": [
-          {
-            "role": "user",
-            "content": "You are an on-call SRE investigating a production incident. Each round you choose a **batch of\nread-only tool calls** to run together, then reason over what they return. You gather evidence, then\ndiagnose from it — you do not guess and you do not fix anything.\n\n## Incident\n- incident_id: inc-007\n- category: messaging\n- affected services: notification-worker\n- symptom onset: 2026-07-02T09:30:09+00:00\n\n## What you have gathered so far\nEach line shows what a tool *found* — the values, with the exact evidence reference in `[brackets]`\nto cite. Reason over the values, not just the fact that a tool ran.\n- get_deployments [ok]: notification-worker dep-20260702-01 vnotification-worker@3.1.0 at 09:10 (stale-pipeline re-deploy of the poison-message revision (causal: inc-007, recurrence of inc-003)) [deploys:notification-worker:dep-20260702-01]\n- query_logs [ok]: 12 logs — error: \"Unhandled deserialization exception; restarting (crash loop — same failure mode as inc-003)\" [logs:notification-worker:evt-007-01]; error ×11: \"upstream call failed; retrying\" [logs:notification-worker:noise-inc-007-notification-worker-55]\n- get_metrics [ok]: cpu_pct: 30.8815->32.7848pct, peak 32.7848 at 09:40 [metrics:notification-worker:cpu_pct@2026-07-02T09:40:00Z]; msg_processed_rate: 26.6089->28.9275rps, peak 28.9275 at 09:45 [metrics:notification-worker:msg_processed_rate@2026-07-02T09:45:00Z]; restart_count: 5.99134->6.2598count, peak 6.2598 at 09:55 [metrics:notification-worker:restart_count@2026-07-02T09:55:00Z]\n- get_service_dependencies [ok]: notification-worker->email-provider [deps:notification-worker->email-provider]; notification-worker->service-bus [deps:notification-worker->service-bus]\nAlready called (do NOT repeat): get_deployments, get_metrics, get_service_dependencies, query_logs.\nEvidence classes gathered: deploys, deps, logs, metrics. Gather any missing class (deploys / logs / metrics / deps), follow the anomaly into the dependency, or conclude.\n\n## Tools (all read-only)\n- `get_incident(incident_id)` — the incident record.\n- `get_correlated_alerts(incident_id)` — alerts firing in the same window.\n- `get_deployments(services, start_time, end_time)` — deploys to services in a time range.\n- `query_logs(service, level, start_time, end_time)` — logs for a service/level in a window.\n- `get_metrics(service, start_time, end_time)` — metric samples for a service in a window.\n- `get_service_dependencies(service, direction)` — upstream/downstream dependencies.\n- `search_runbooks(query)` / `search_past_incidents(query)` — relevant docs / history.\n\n## Method\n1. **First round — gather broad.** In one batch, get the recent changes AND the failing service's\n   own signal AND its dependencies: `get_deployments` (start ≥ 24h before onset — deploys precede\n   symptoms by hours), `query_logs` + `get_metrics` for the failing service, and\n   `get_service_dependencies` on it.\n2. **Next round — follow the anomaly.** The failing service's errors usually point downstream. Pull\n   `get_metrics` / `query_logs` for the dependency that its logs or the dependency edge implicate —\n   that is where the true fault (e.g. a latency/timeout spike) usually shows.\n3. **A deploy near onset is a suspect, not a verdict.** Attribute the incident to a deploy only if\n   the evidence ties it to the failure; otherwise name the dependency the data implicates.\n4. Do not repeat a call already listed above.\n\n## Discipline\n- Cite only evidence references shown in `[brackets]` above, verbatim (frozen grammar:\n  `logs:<svc>:<id>`, `metrics:<svc>:<metric>@<ts>`, `deploys:<svc>:<id>`, `deps:<from>-><to>`).\n- Causation comes from timestamps and values (\"A preceded B\", \"latency spiked\"), not wording.\n\n## Respond\nReturn a single JSON object. To gather a batch this round:\n\n```json\n{\"tool_calls\": [{\"tool\": \"<name>\", \"params\": {...}, \"why\": \"<what it rules in/out>\"}, ...]}\n```\n\nOnce the evidence identifies the root cause with supporting citations:\n\n```json\n{\"done\": true, \"root_cause\": \"<statement naming the responsible service/component>\", \"citations\": [\"<ref>\", ...]}\n```"
-          }
-        ]
-      },
-      "response": {
-        "text": "```json\n{\"tool_calls\": [\n    {\"tool\": \"get_incident\", \"params\": {\"incident_id\": \"inc-007\"}, \"why\": \"To gather details about the incident itself.\"},\n    {\"tool\": \"get_correlated_alerts\", \"params\": {\"incident_id\": \"inc-007\"}, \"why\": \"To see if there are any alerts that correlate with the incident timeframe.\"}\n]}\n```",
-        "model_id": "gpt-4o-mini",
-        "prompt_version": "",
-        "finish_reason": "stop",
-        "usage": {
-          "prompt_tokens": 1091,
-          "completion_tokens": 86
-        }
-      }
-    },
-    {
-      "key": "b4ba304458e057f3c1591236d4bcfa8ad0e2b4cc02f4acb1ebb50871cf976fa0",
-      "request": {
-        "temperature": 0.0,
-        "messages": [
-          {
-            "role": "user",
-            "content": "You are an on-call SRE writing the root-cause conclusion for an incident. The investigation has\ngathered the evidence below. State the **single most likely root cause** and cite the specific\nevidence that supports it. Reason from the evidence — do not introduce anything not shown.\n\n## Incident\n- incident_id: inc-007\n- category: messaging\n- affected services: notification-worker\n- symptom onset: 2026-07-02T09:30:09+00:00\n\n## Evidence gathered\n- get_deployments [ok]: notification-worker dep-20260702-01 vnotification-worker@3.1.0 at 09:10 (stale-pipeline re-deploy of the poison-message revision (causal: inc-007, recurrence of inc-003)) [deploys:notification-worker:dep-20260702-01]\n- query_logs [ok]: 12 logs — error: \"Unhandled deserialization exception; restarting (crash loop — same failure mode as inc-003)\" [logs:notification-worker:evt-007-01]; error ×11: \"upstream call failed; retrying\" [logs:notification-worker:noise-inc-007-notification-worker-55]\n- get_metrics [ok]: cpu_pct: 30.8815->32.7848pct, peak 32.7848 at 09:40 [metrics:notification-worker:cpu_pct@2026-07-02T09:40:00Z]; msg_processed_rate: 26.6089->28.9275rps, peak 28.9275 at 09:45 [metrics:notification-worker:msg_processed_rate@2026-07-02T09:45:00Z]; restart_count: 5.99134->6.2598count, peak 6.2598 at 09:55 [metrics:notification-worker:restart_count@2026-07-02T09:55:00Z]\n- get_service_dependencies [ok]: notification-worker->email-provider [deps:notification-worker->email-provider]; notification-worker->service-bus [deps:notification-worker->service-bus]\n- get_incident [ok]: Order notifications delayed again; Service Bus queue depth climbing and not draining. (priority 3 - Moderate, messaging)\n- get_correlated_alerts [ok]: 1 alerts — notification-worker: restart_count breached threshold\nAlready called (do NOT repeat): get_correlated_alerts, get_deployments, get_incident, get_metrics, get_service_dependencies, query_logs.\nEvidence classes gathered: deploys, deps, logs, metrics. Gather any missing class (deploys / logs / metrics / deps), follow the anomaly into the dependency, or conclude.\n\n## How to conclude\n- Name the **true root cause**, not a coincidence. A deployment near the onset is only the cause if\n  the evidence ties it to the failure; if a downstream dependency's metrics or logs show the real\n  fault (e.g. latency/errors upstream of the symptom), name that instead.\n- Cite only evidence references that appear above, using the frozen grammar exactly as shown\n  (`logs:<svc>:<id>`, `metrics:<svc>:<metric>@<ts>`, `deploys:<svc>:<id>`, `deps:<from>-><to>`).\n- Prefer the citations that most directly support the cause (the degraded metric, the error log at\n  the true fault, the dependency edge) over incidental ones.\n\n## Respond\nReturn a single JSON object:\n\n```json\n{\"root_cause\": \"<one-sentence statement naming the responsible service/component>\", \"citations\": [\"<ref>\", \"<ref>\"]}\n```"
-          }
-        ]
-      },
-      "response": {
-        "text": "```json\n{\"root_cause\": \"The notification-worker experienced a crash loop due to an unhandled deserialization exception, which is a recurrence of the same failure mode as incident inc-003.\", \"citations\": [\"logs:notification-worker:evt-007-01\", \"deploys:notification-worker:dep-20260702-01\"]}\n```",
-        "model_id": "gpt-4o-mini",
-        "prompt_version": "",
-        "finish_reason": "stop",
-        "usage": {
-          "prompt_tokens": 774,
-          "completion_tokens": 72
-        }
-      }
-    },
-    {
-      "key": "964bf166ff2a81a5e5b9627b15519f75c0b8696ddea5040dea123f207e04fdf6",
-      "request": {
-        "temperature": 0.0,
-        "messages": [
-          {
-            "role": "user",
-            "content": "You are an on-call SRE investigating a production incident. Each round you choose a **batch of\nread-only tool calls** to run together, then reason over what they return. You gather evidence, then\ndiagnose from it — you do not guess and you do not fix anything.\n\n## Incident\n- incident_id: inc-007\n- category: messaging\n- affected services: notification-worker\n- symptom onset: 2026-07-02T09:30:09+00:00\n\n## What you have gathered so far\nEach line shows what a tool *found* — the values, with the exact evidence reference in `[brackets]`\nto cite. Reason over the values, not just the fact that a tool ran.\n- get_deployments [ok]: notification-worker dep-20260702-01 vnotification-worker@3.1.0 at 09:10 (stale-pipeline re-deploy of the poison-message revision (causal: inc-007, recurrence of inc-003)) [deploys:notification-worker:dep-20260702-01]\n- query_logs [ok]: 12 logs — error: \"Unhandled deserialization exception; restarting (crash loop — same failure mode as inc-003)\" [logs:notification-worker:evt-007-01]; error ×11: \"upstream call failed; retrying\" [logs:notification-worker:noise-inc-007-notification-worker-55]\n- get_metrics [ok]: cpu_pct: 30.8815->32.7848pct, peak 32.7848 at 09:40 [metrics:notification-worker:cpu_pct@2026-07-02T09:40:00Z]; msg_processed_rate: 26.6089->28.9275rps, peak 28.9275 at 09:45 [metrics:notification-worker:msg_processed_rate@2026-07-02T09:45:00Z]; restart_count: 5.99134->6.2598count, peak 6.2598 at 09:55 [metrics:notification-worker:restart_count@2026-07-02T09:55:00Z]\n- get_service_dependencies [ok]: notification-worker->email-provider [deps:notification-worker->email-provider]; notification-worker->service-bus [deps:notification-worker->service-bus]\n- get_incident [ok]: Order notifications delayed again; Service Bus queue depth climbing and not draining. (priority 3 - Moderate, messaging)\n- get_correlated_alerts [ok]: 1 alerts — notification-worker: restart_count breached threshold\nAlready called (do NOT repeat): get_correlated_alerts, get_deployments, get_incident, get_metrics, get_service_dependencies, query_logs.\nEvidence classes gathered: deploys, deps, logs, metrics. Gather any missing class (deploys / logs / metrics / deps), follow the anomaly into the dependency, or conclude.\n\n## Tools (all read-only)\n- `get_incident(incident_id)` — the incident record.\n- `get_correlated_alerts(incident_id)` — alerts firing in the same window.\n- `get_deployments(services, start_time, end_time)` — deploys to services in a time range.\n- `query_logs(service, level, start_time, end_time)` — logs for a service/level in a window.\n- `get_metrics(service, start_time, end_time)` — metric samples for a service in a window.\n- `get_service_dependencies(service, direction)` — upstream/downstream dependencies.\n- `search_runbooks(query)` / `search_past_incidents(query)` — relevant docs / history.\n\n## Method\n1. **First round — gather broad.** In one batch, get the recent changes AND the failing service's\n   own signal AND its dependencies: `get_deployments` (start ≥ 24h before onset — deploys precede\n   symptoms by hours), `query_logs` + `get_metrics` for the failing service, and\n   `get_service_dependencies` on it.\n2. **Next round — follow the anomaly.** The failing service's errors usually point downstream. Pull\n   `get_metrics` / `query_logs` for the dependency that its logs or the dependency edge implicate —\n   that is where the true fault (e.g. a latency/timeout spike) usually shows.\n3. **A deploy near onset is a suspect, not a verdict.** Attribute the incident to a deploy only if\n   the evidence ties it to the failure; otherwise name the dependency the data implicates.\n4. Do not repeat a call already listed above.\n\n## Discipline\n- Cite only evidence references shown in `[brackets]` above, verbatim (frozen grammar:\n  `logs:<svc>:<id>`, `metrics:<svc>:<metric>@<ts>`, `deploys:<svc>:<id>`, `deps:<from>-><to>`).\n- Causation comes from timestamps and values (\"A preceded B\", \"latency spiked\"), not wording.\n\n## Respond\nReturn a single JSON object. To gather a batch this round:\n\n```json\n{\"tool_calls\": [{\"tool\": \"<name>\", \"params\": {...}, \"why\": \"<what it rules in/out>\"}, ...]}\n```\n\nOnce the evidence identifies the root cause with supporting citations:\n\n```json\n{\"done\": true, \"root_cause\": \"<statement naming the responsible service/component>\", \"citations\": [\"<ref>\", ...]}\n```"
-          }
-        ]
-      },
-      "response": {
-        "text": "```json\n{\"tool_calls\": [\n    {\"tool\": \"get_deployments\", \"params\": {\"services\": \"notification-worker\", \"start_time\": \"2026-07-01T09:30:09+00:00\", \"end_time\": \"2026-07-02T09:30:09+00:00\"}, \"why\": \"To check for any recent deployments that may have introduced issues.\"},\n    {\"tool\": \"query_logs\", \"params\": {\"service\": \"notification-worker\", \"level\": \"error\", \"start_time\": \"2026-07-02T09:00:00+00:00\", \"end_time\": \"2026-07-02T09:30:09+00:00\"}, \"why\": \"To gather more detailed error logs from the failing service.\"},\n    {\"tool\": \"get_metrics\", \"params\": {\"service\": \"notification-worker\", \"start_time\": \"2026-07-02T09:00:00+00:00\", \"end_time\": \"2026-07-02T09:30:09+00:00\"}, \"why\": \"To analyze the performance metrics of the failing service during the incident.\"},\n    {\"tool\": \"get_service_dependencies\", \"params\": {\"service\": \"notification-worker\", \"direction\": \"downstream\"}, \"why\": \"To identify the downstream dependencies that could be affecting the notification-worker.\"}\n]}\n```",
-        "model_id": "gpt-4o-mini",
-        "prompt_version": "",
-        "finish_reason": "stop",
-        "usage": {
-          "prompt_tokens": 1152,
-          "completion_tokens": 299
-        }
-      }
-    },
-    {
-      "key": "c006733b7403dc02f27ddfd33d6bd58c0db1e1ebc53d71084c3ffb0885ae2661",
-      "request": {
-        "temperature": 0.0,
-        "messages": [
-          {
-            "role": "user",
-            "content": "You are an on-call SRE writing the root-cause conclusion for an incident. The investigation has\ngathered the evidence below. State the **single most likely root cause** and cite the specific\nevidence that supports it. Reason from the evidence — do not introduce anything not shown.\n\n## Incident\n- incident_id: inc-007\n- category: messaging\n- affected services: notification-worker\n- symptom onset: 2026-07-02T09:30:09+00:00\n\n## Evidence gathered\n- get_deployments [ok]: notification-worker dep-20260702-01 vnotification-worker@3.1.0 at 09:10 (stale-pipeline re-deploy of the poison-message revision (causal: inc-007, recurrence of inc-003)) [deploys:notification-worker:dep-20260702-01]\n- query_logs [ok]: 12 logs — error: \"Unhandled deserialization exception; restarting (crash loop — same failure mode as inc-003)\" [logs:notification-worker:evt-007-01]; error ×11: \"upstream call failed; retrying\" [logs:notification-worker:noise-inc-007-notification-worker-55]\n- get_metrics [ok]: cpu_pct: 30.8815->32.7848pct, peak 32.7848 at 09:40 [metrics:notification-worker:cpu_pct@2026-07-02T09:40:00Z]; msg_processed_rate: 26.6089->28.9275rps, peak 28.9275 at 09:45 [metrics:notification-worker:msg_processed_rate@2026-07-02T09:45:00Z]; restart_count: 5.99134->6.2598count, peak 6.2598 at 09:55 [metrics:notification-worker:restart_count@2026-07-02T09:55:00Z]\n- get_service_dependencies [ok]: notification-worker->email-provider [deps:notification-worker->email-provider]; notification-worker->service-bus [deps:notification-worker->service-bus]\n- get_incident [ok]: Order notifications delayed again; Service Bus queue depth climbing and not draining. (priority 3 - Moderate, messaging)\n- get_correlated_alerts [ok]: 1 alerts — notification-worker: restart_count breached threshold\n- query_logs [ok]: 16 logs — error ×16: \"upstream call failed; retrying\" [logs:notification-worker:noise-inc-007-notification-worker-24]\n- get_metrics [ok]: cpu_pct: 31.3269->32.9401pct, peak 32.9401 at 09:05 [metrics:notification-worker:cpu_pct@2026-07-02T09:05:00Z]; msg_processed_rate: 26.9662->28.4092rps, peak 28.4092 at 09:25 [metrics:notification-worker:msg_processed_rate@2026-07-02T09:25:00Z]; restart_count: 0->5.75877count, peak 5.75877 at 09:30 [metrics:notification-worker:restart_count@2026-07-02T09:30:00Z]\nAlready called (do NOT repeat): get_correlated_alerts, get_deployments, get_incident, get_metrics, get_service_dependencies, query_logs.\nEvidence classes gathered: deploys, deps, logs, metrics. Gather any missing class (deploys / logs / metrics / deps), follow the anomaly into the dependency, or conclude.\n\n## How to conclude\n- Name the **true root cause**, not a coincidence. A deployment near the onset is only the cause if\n  the evidence ties it to the failure; if a downstream dependency's metrics or logs show the real\n  fault (e.g. latency/errors upstream of the symptom), name that instead.\n- Cite only evidence references that appear above, using the frozen grammar exactly as shown\n  (`logs:<svc>:<id>`, `metrics:<svc>:<metric>@<ts>`, `deploys:<svc>:<id>`, `deps:<from>-><to>`).\n- Prefer the citations that most directly support the cause (the degraded metric, the error log at\n  the true fault, the dependency edge) over incidental ones.\n\n## Respond\nReturn a single JSON object:\n\n```json\n{\"root_cause\": \"<one-sentence statement naming the responsible service/component>\", \"citations\": [\"<ref>\", \"<ref>\"]}\n```"
-          }
-        ]
-      },
-      "response": {
-        "text": "```json\n{\"root_cause\": \"The notification-worker experienced a crash loop due to an unhandled deserialization exception, which is a recurrence of the same failure mode as a previous incident (inc-003).\", \"citations\": [\"logs:notification-worker:evt-007-01\", \"deploys:notification-worker:dep-20260702-01\"]}\n```",
-        "model_id": "gpt-4o-mini",
-        "prompt_version": "",
-        "finish_reason": "stop",
-        "usage": {
-          "prompt_tokens": 966,
-          "completion_tokens": 76
-        }
-      }
-    },
-    {
-      "key": "5e63238150f3b3f7963e9b84b6804703b1289144233b3bd897e30eda89e4c92c",
-      "request": {
-        "temperature": 0.0,
-        "messages": [
-          {
-            "role": "user",
-            "content": "You are an on-call SRE investigating a production incident. Each round you choose a **batch of\nread-only tool calls** to run together, then reason over what they return. You gather evidence, then\ndiagnose from it — you do not guess and you do not fix anything.\n\n## Incident\n- incident_id: inc-007\n- category: messaging\n- affected services: notification-worker\n- symptom onset: 2026-07-02T09:30:09+00:00\n\n## What you have gathered so far\nEach line shows what a tool *found* — the values, with the exact evidence reference in `[brackets]`\nto cite. Reason over the values, not just the fact that a tool ran.\n- get_deployments [ok]: notification-worker dep-20260702-01 vnotification-worker@3.1.0 at 09:10 (stale-pipeline re-deploy of the poison-message revision (causal: inc-007, recurrence of inc-003)) [deploys:notification-worker:dep-20260702-01]\n- query_logs [ok]: 12 logs — error: \"Unhandled deserialization exception; restarting (crash loop — same failure mode as inc-003)\" [logs:notification-worker:evt-007-01]; error ×11: \"upstream call failed; retrying\" [logs:notification-worker:noise-inc-007-notification-worker-55]\n- get_metrics [ok]: cpu_pct: 30.8815->32.7848pct, peak 32.7848 at 09:40 [metrics:notification-worker:cpu_pct@2026-07-02T09:40:00Z]; msg_processed_rate: 26.6089->28.9275rps, peak 28.9275 at 09:45 [metrics:notification-worker:msg_processed_rate@2026-07-02T09:45:00Z]; restart_count: 5.99134->6.2598count, peak 6.2598 at 09:55 [metrics:notification-worker:restart_count@2026-07-02T09:55:00Z]\n- get_service_dependencies [ok]: notification-worker->email-provider [deps:notification-worker->email-provider]; notification-worker->service-bus [deps:notification-worker->service-bus]\n- get_incident [ok]: Order notifications delayed again; Service Bus queue depth climbing and not draining. (priority 3 - Moderate, messaging)\n- get_correlated_alerts [ok]: 1 alerts — notification-worker: restart_count breached threshold\n- query_logs [ok]: 16 logs — error ×16: \"upstream call failed; retrying\" [logs:notification-worker:noise-inc-007-notification-worker-24]\n- get_metrics [ok]: cpu_pct: 31.3269->32.9401pct, peak 32.9401 at 09:05 [metrics:notification-worker:cpu_pct@2026-07-02T09:05:00Z]; msg_processed_rate: 26.9662->28.4092rps, peak 28.4092 at 09:25 [metrics:notification-worker:msg_processed_rate@2026-07-02T09:25:00Z]; restart_count: 0->5.75877count, peak 5.75877 at 09:30 [metrics:notification-worker:restart_count@2026-07-02T09:30:00Z]\nAlready called (do NOT repeat): get_correlated_alerts, get_deployments, get_incident, get_metrics, get_service_dependencies, query_logs.\nEvidence classes gathered: deploys, deps, logs, metrics. Gather any missing class (deploys / logs / metrics / deps), follow the anomaly into the dependency, or conclude.\n\n## Tools (all read-only)\n- `get_incident(incident_id)` — the incident record.\n- `get_correlated_alerts(incident_id)` — alerts firing in the same window.\n- `get_deployments(services, start_time, end_time)` — deploys to services in a time range.\n- `query_logs(service, level, start_time, end_time)` — logs for a service/level in a window.\n- `get_metrics(service, start_time, end_time)` — metric samples for a service in a window.\n- `get_service_dependencies(service, direction)` — upstream/downstream dependencies.\n- `search_runbooks(query)` / `search_past_incidents(query)` — relevant docs / history.\n\n## Method\n1. **First round — gather broad.** In one batch, get the recent changes AND the failing service's\n   own signal AND its dependencies: `get_deployments` (start ≥ 24h before onset — deploys precede\n   symptoms by hours), `query_logs` + `get_metrics` for the failing service, and\n   `get_service_dependencies` on it.\n2. **Next round — follow the anomaly.** The failing service's errors usually point downstream. Pull\n   `get_metrics` / `query_logs` for the dependency that its logs or the dependency edge implicate —\n   that is where the true fault (e.g. a latency/timeout spike) usually shows.\n3. **A deploy near onset is a suspect, not a verdict.** Attribute the incident to a deploy only if\n   the evidence ties it to the failure; otherwise name the dependency the data implicates.\n4. Do not repeat a call already listed above.\n\n## Discipline\n- Cite only evidence references shown in `[brackets]` above, verbatim (frozen grammar:\n  `logs:<svc>:<id>`, `metrics:<svc>:<metric>@<ts>`, `deploys:<svc>:<id>`, `deps:<from>-><to>`).\n- Causation comes from timestamps and values (\"A preceded B\", \"latency spiked\"), not wording.\n\n## Respond\nReturn a single JSON object. To gather a batch this round:\n\n```json\n{\"tool_calls\": [{\"tool\": \"<name>\", \"params\": {...}, \"why\": \"<what it rules in/out>\"}, ...]}\n```\n\nOnce the evidence identifies the root cause with supporting citations:\n\n```json\n{\"done\": true, \"root_cause\": \"<statement naming the responsible service/component>\", \"citations\": [\"<ref>\", ...]}\n```"
-          }
-        ]
-      },
-      "response": {
-        "text": "```json\n{\"tool_calls\": [\n    {\"tool\": \"query_logs\", \"params\": {\"service\": \"email-provider\", \"level\": \"error\", \"start_time\": \"2026-07-02T09:00:00Z\", \"end_time\": \"2026-07-02T09:30:09Z\"}, \"why\": \"To check for any errors in the email-provider that could be causing upstream failures.\"},\n    {\"tool\": \"get_metrics\", \"params\": {\"service\": \"email-provider\", \"start_time\": \"2026-07-02T09:00:00Z\", \"end_time\": \"2026-07-02T09:30:09Z\"}, \"why\": \"To gather performance metrics for the email-provider during the incident timeframe.\"},\n    {\"tool\": \"query_logs\", \"params\": {\"service\": \"service-bus\", \"level\": \"error\", \"start_time\": \"2026-07-02T09:00:00Z\", \"end_time\": \"2026-07-02T09:30:09Z\"}, \"why\": \"To check for any errors in the service-bus that could be causing upstream failures.\"},\n    {\"tool\": \"get_metrics\", \"params\": {\"service\": \"service-bus\", \"start_time\": \"2026-07-02T09:00:00Z\", \"end_time\": \"2026-07-02T09:30:09Z\"}, \"why\": \"To gather performance metrics for the service-bus during the incident timeframe.\"}\n]}\n```",
-        "model_id": "gpt-4o-mini",
-        "prompt_version": "",
-        "finish_reason": "stop",
-        "usage": {
-          "prompt_tokens": 1344,
-          "completion_tokens": 328
-        }
-      }
-    },
-    {
-      "key": "5258a231b68a67f931578f6a3c7977c197dd95463aa207920d0132122e226220",
-      "request": {
-        "temperature": 0.0,
-        "messages": [
-          {
-            "role": "user",
-            "content": "You are an on-call SRE writing the root-cause conclusion for an incident. The investigation has\ngathered the evidence below. State the **single most likely root cause** and cite the specific\nevidence that supports it. Reason from the evidence — do not introduce anything not shown.\n\n## Incident\n- incident_id: inc-007\n- category: messaging\n- affected services: notification-worker\n- symptom onset: 2026-07-02T09:30:09+00:00\n\n## Evidence gathered\n- get_deployments [ok]: notification-worker dep-20260702-01 vnotification-worker@3.1.0 at 09:10 (stale-pipeline re-deploy of the poison-message revision (causal: inc-007, recurrence of inc-003)) [deploys:notification-worker:dep-20260702-01]\n- query_logs [ok]: 12 logs — error: \"Unhandled deserialization exception; restarting (crash loop — same failure mode as inc-003)\" [logs:notification-worker:evt-007-01]; error ×11: \"upstream call failed; retrying\" [logs:notification-worker:noise-inc-007-notification-worker-55]\n- get_metrics [ok]: cpu_pct: 30.8815->32.7848pct, peak 32.7848 at 09:40 [metrics:notification-worker:cpu_pct@2026-07-02T09:40:00Z]; msg_processed_rate: 26.6089->28.9275rps, peak 28.9275 at 09:45 [metrics:notification-worker:msg_processed_rate@2026-07-02T09:45:00Z]; restart_count: 5.99134->6.2598count, peak 6.2598 at 09:55 [metrics:notification-worker:restart_count@2026-07-02T09:55:00Z]\n- get_service_dependencies [ok]: notification-worker->email-provider [deps:notification-worker->email-provider]; notification-worker->service-bus [deps:notification-worker->service-bus]\n- get_incident [ok]: Order notifications delayed again; Service Bus queue depth climbing and not draining. (priority 3 - Moderate, messaging)\n- get_correlated_alerts [ok]: 1 alerts — notification-worker: restart_count breached threshold\n- query_logs [ok]: 16 logs — error ×16: \"upstream call failed; retrying\" [logs:notification-worker:noise-inc-007-notification-worker-24]\n- get_metrics [ok]: cpu_pct: 31.3269->32.9401pct, peak 32.9401 at 09:05 [metrics:notification-worker:cpu_pct@2026-07-02T09:05:00Z]; msg_processed_rate: 26.9662->28.4092rps, peak 28.4092 at 09:25 [metrics:notification-worker:msg_processed_rate@2026-07-02T09:25:00Z]; restart_count: 0->5.75877count, peak 5.75877 at 09:30 [metrics:notification-worker:restart_count@2026-07-02T09:30:00Z]\n- query_logs [ok]: no results\n- get_metrics [ok]: no results\n- query_logs [ok]: no results\n- get_metrics [ok]: active_message_count: 24.2481->5397.12count, peak 5397.12 at 09:30 [metrics:service-bus:active_message_count@2026-07-02T09:30:00Z]; incoming_rate: 29.0838->30.6615rps, peak 30.6615 at 09:05 [metrics:service-bus:incoming_rate@2026-07-02T09:05:00Z]\nAlready called (do NOT repeat): get_correlated_alerts, get_deployments, get_incident, get_metrics, get_service_dependencies, query_logs.\nEvidence classes gathered: deploys, deps, logs, metrics. Gather any missing class (deploys / logs / metrics / deps), follow the anomaly into the dependency, or conclude.\n\n## How to conclude\n- Name the **true root cause**, not a coincidence. A deployment near the onset is only the cause if\n  the evidence ties it to the failure; if a downstream dependency's metrics or logs show the real\n  fault (e.g. latency/errors upstream of the symptom), name that instead.\n- Cite only evidence references that appear above, using the frozen grammar exactly as shown\n  (`logs:<svc>:<id>`, `metrics:<svc>:<metric>@<ts>`, `deploys:<svc>:<id>`, `deps:<from>-><to>`).\n- Prefer the citations that most directly support the cause (the degraded metric, the error log at\n  the true fault, the dependency edge) over incidental ones.\n\n## Respond\nReturn a single JSON object:\n\n```json\n{\"root_cause\": \"<one-sentence statement naming the responsible service/component>\", \"citations\": [\"<ref>\", \"<ref>\"]}\n```"
-          }
-        ]
-      },
-      "response": {
-        "text": "```json\n{\"root_cause\": \"The notification-worker experienced a crash loop due to an unhandled deserialization exception, which was a recurrence of the same failure mode as a previous incident (inc-003).\", \"citations\": [\"logs:notification-worker:evt-007-01\", \"logs:notification-worker:noise-inc-007-notification-worker-55\"]}\n```",
-        "model_id": "gpt-4o-mini",
-        "prompt_version": "",
-        "finish_reason": "stop",
-        "usage": {
-          "prompt_tokens": 1102,
-          "completion_tokens": 77
-        }
-      }
-    },
-    {
-      "key": "cebb8edfd432e448ddf2936d932f298d3b435cbf6e86cdb805f35d3bf836b1d5",
-      "request": {
-        "temperature": 0.0,
-        "messages": [
-          {
-            "role": "user",
-            "content": "You are an on-call SRE investigating a production incident. Each round you choose a **batch of\nread-only tool calls** to run together, then reason over what they return. You gather evidence, then\ndiagnose from it — you do not guess and you do not fix anything.\n\n## Incident\n- incident_id: inc-007\n- category: messaging\n- affected services: notification-worker\n- symptom onset: 2026-07-02T09:30:09+00:00\n\n## What you have gathered so far\nEach line shows what a tool *found* — the values, with the exact evidence reference in `[brackets]`\nto cite. Reason over the values, not just the fact that a tool ran.\n- get_deployments [ok]: notification-worker dep-20260702-01 vnotification-worker@3.1.0 at 09:10 (stale-pipeline re-deploy of the poison-message revision (causal: inc-007, recurrence of inc-003)) [deploys:notification-worker:dep-20260702-01]\n- query_logs [ok]: 12 logs — error: \"Unhandled deserialization exception; restarting (crash loop — same failure mode as inc-003)\" [logs:notification-worker:evt-007-01]; error ×11: \"upstream call failed; retrying\" [logs:notification-worker:noise-inc-007-notification-worker-55]\n- get_metrics [ok]: cpu_pct: 30.8815->32.7848pct, peak 32.7848 at 09:40 [metrics:notification-worker:cpu_pct@2026-07-02T09:40:00Z]; msg_processed_rate: 26.6089->28.9275rps, peak 28.9275 at 09:45 [metrics:notification-worker:msg_processed_rate@2026-07-02T09:45:00Z]; restart_count: 5.99134->6.2598count, peak 6.2598 at 09:55 [metrics:notification-worker:restart_count@2026-07-02T09:55:00Z]\n- get_service_dependencies [ok]: notification-worker->email-provider [deps:notification-worker->email-provider]; notification-worker->service-bus [deps:notification-worker->service-bus]\n- get_incident [ok]: Order notifications delayed again; Service Bus queue depth climbing and not draining. (priority 3 - Moderate, messaging)\n- get_correlated_alerts [ok]: 1 alerts — notification-worker: restart_count breached threshold\n- query_logs [ok]: 16 logs — error ×16: \"upstream call failed; retrying\" [logs:notification-worker:noise-inc-007-notification-worker-24]\n- get_metrics [ok]: cpu_pct: 31.3269->32.9401pct, peak 32.9401 at 09:05 [metrics:notification-worker:cpu_pct@2026-07-02T09:05:00Z]; msg_processed_rate: 26.9662->28.4092rps, peak 28.4092 at 09:25 [metrics:notification-worker:msg_processed_rate@2026-07-02T09:25:00Z]; restart_count: 0->5.75877count, peak 5.75877 at 09:30 [metrics:notification-worker:restart_count@2026-07-02T09:30:00Z]\n- query_logs [ok]: no results\n- get_metrics [ok]: no results\n- query_logs [ok]: no results\n- get_metrics [ok]: active_message_count: 24.2481->5397.12count, peak 5397.12 at 09:30 [metrics:service-bus:active_message_count@2026-07-02T09:30:00Z]; incoming_rate: 29.0838->30.6615rps, peak 30.6615 at 09:05 [metrics:service-bus:incoming_rate@2026-07-02T09:05:00Z]\nAlready called (do NOT repeat): get_correlated_alerts, get_deployments, get_incident, get_metrics, get_service_dependencies, query_logs.\nEvidence classes gathered: deploys, deps, logs, metrics. Gather any missing class (deploys / logs / metrics / deps), follow the anomaly into the dependency, or conclude.\n\n## Tools (all read-only)\n- `get_incident(incident_id)` — the incident record.\n- `get_correlated_alerts(incident_id)` — alerts firing in the same window.\n- `get_deployments(services, start_time, end_time)` — deploys to services in a time range.\n- `query_logs(service, level, start_time, end_time)` — logs for a service/level in a window.\n- `get_metrics(service, start_time, end_time)` — metric samples for a service in a window.\n- `get_service_dependencies(service, direction)` — upstream/downstream dependencies.\n- `search_runbooks(query)` / `search_past_incidents(query)` — relevant docs / history.\n\n## Method\n1. **First round — gather broad.** In one batch, get the recent changes AND the failing service's\n   own signal AND its dependencies: `get_deployments` (start ≥ 24h before onset — deploys precede\n   symptoms by hours), `query_logs` + `get_metrics` for the failing service, and\n   `get_service_dependencies` on it.\n2. **Next round — follow the anomaly.** The failing service's errors usually point downstream. Pull\n   `get_metrics` / `query_logs` for the dependency that its logs or the dependency edge implicate —\n   that is where the true fault (e.g. a latency/timeout spike) usually shows.\n3. **A deploy near onset is a suspect, not a verdict.** Attribute the incident to a deploy only if\n   the evidence ties it to the failure; otherwise name the dependency the data implicates.\n4. Do not repeat a call already listed above.\n\n## Discipline\n- Cite only evidence references shown in `[brackets]` above, verbatim (frozen grammar:\n  `logs:<svc>:<id>`, `metrics:<svc>:<metric>@<ts>`, `deploys:<svc>:<id>`, `deps:<from>-><to>`).\n- Causation comes from timestamps and values (\"A preceded B\", \"latency spiked\"), not wording.\n\n## Respond\nReturn a single JSON object. To gather a batch this round:\n\n```json\n{\"tool_calls\": [{\"tool\": \"<name>\", \"params\": {...}, \"why\": \"<what it rules in/out>\"}, ...]}\n```\n\nOnce the evidence identifies the root cause with supporting citations:\n\n```json\n{\"done\": true, \"root_cause\": \"<statement naming the responsible service/component>\", \"citations\": [\"<ref>\", ...]}\n```"
-          }
-        ]
-      },
-      "response": {
-        "text": "```json\n{\"tool_calls\": [{\"tool\": \"get_metrics\", \"params\": {\"service\": \"email-provider\", \"start_time\": \"2026-07-02T09:00:00Z\", \"end_time\": \"2026-07-02T09:30:09Z\"}, \"why\": \"To check for any anomalies in the email-provider metrics that could affect the notification-worker.\"}, {\"tool\": \"query_logs\", \"params\": {\"service\": \"email-provider\", \"level\": \"error\", \"start_time\": \"2026-07-02T09:00:00Z\", \"end_time\": \"2026-07-02T09:30:09Z\"}, \"why\": \"To identify any errors in the email-provider that could be causing issues for the notification-worker.\"}, {\"tool\": \"get_metrics\", \"params\": {\"service\": \"service-bus\", \"start_time\": \"2026-07-02T09:00:00Z\", \"end_time\": \"2026-07-02T09:30:09Z\"}, \"why\": \"To check for any anomalies in the service-bus metrics that could affect the notification-worker.\"}, {\"tool\": \"query_logs\", \"params\": {\"service\": \"service-bus\", \"level\": \"error\", \"start_time\": \"2026-07-02T09:00:00Z\", \"end_time\": \"2026-07-02T09:30:09Z\"}, \"why\": \"To identify any errors in the service-bus that could be causing issues for the notification-worker.\"}]} \n```",
-        "model_id": "gpt-4o-mini",
-        "prompt_version": "",
-        "finish_reason": "stop",
-        "usage": {
-          "prompt_tokens": 1480,
-          "completion_tokens": 336
-        }
-      }
-    },
-    {
-      "key": "5258a231b68a67f931578f6a3c7977c197dd95463aa207920d0132122e226220",
-      "request": {
-        "temperature": 0.0,
-        "messages": [
-          {
-            "role": "user",
-            "content": "You are an on-call SRE writing the root-cause conclusion for an incident. The investigation has\ngathered the evidence below. State the **single most likely root cause** and cite the specific\nevidence that supports it. Reason from the evidence — do not introduce anything not shown.\n\n## Incident\n- incident_id: inc-007\n- category: messaging\n- affected services: notification-worker\n- symptom onset: 2026-07-02T09:30:09+00:00\n\n## Evidence gathered\n- get_deployments [ok]: notification-worker dep-20260702-01 vnotification-worker@3.1.0 at 09:10 (stale-pipeline re-deploy of the poison-message revision (causal: inc-007, recurrence of inc-003)) [deploys:notification-worker:dep-20260702-01]\n- query_logs [ok]: 12 logs — error: \"Unhandled deserialization exception; restarting (crash loop — same failure mode as inc-003)\" [logs:notification-worker:evt-007-01]; error ×11: \"upstream call failed; retrying\" [logs:notification-worker:noise-inc-007-notification-worker-55]\n- get_metrics [ok]: cpu_pct: 30.8815->32.7848pct, peak 32.7848 at 09:40 [metrics:notification-worker:cpu_pct@2026-07-02T09:40:00Z]; msg_processed_rate: 26.6089->28.9275rps, peak 28.9275 at 09:45 [metrics:notification-worker:msg_processed_rate@2026-07-02T09:45:00Z]; restart_count: 5.99134->6.2598count, peak 6.2598 at 09:55 [metrics:notification-worker:restart_count@2026-07-02T09:55:00Z]\n- get_service_dependencies [ok]: notification-worker->email-provider [deps:notification-worker->email-provider]; notification-worker->service-bus [deps:notification-worker->service-bus]\n- get_incident [ok]: Order notifications delayed again; Service Bus queue depth climbing and not draining. (priority 3 - Moderate, messaging)\n- get_correlated_alerts [ok]: 1 alerts — notification-worker: restart_count breached threshold\n- query_logs [ok]: 16 logs — error ×16: \"upstream call failed; retrying\" [logs:notification-worker:noise-inc-007-notification-worker-24]\n- get_metrics [ok]: cpu_pct: 31.3269->32.9401pct, peak 32.9401 at 09:05 [metrics:notification-worker:cpu_pct@2026-07-02T09:05:00Z]; msg_processed_rate: 26.9662->28.4092rps, peak 28.4092 at 09:25 [metrics:notification-worker:msg_processed_rate@2026-07-02T09:25:00Z]; restart_count: 0->5.75877count, peak 5.75877 at 09:30 [metrics:notification-worker:restart_count@2026-07-02T09:30:00Z]\n- query_logs [ok]: no results\n- get_metrics [ok]: no results\n- query_logs [ok]: no results\n- get_metrics [ok]: active_message_count: 24.2481->5397.12count, peak 5397.12 at 09:30 [metrics:service-bus:active_message_count@2026-07-02T09:30:00Z]; incoming_rate: 29.0838->30.6615rps, peak 30.6615 at 09:05 [metrics:service-bus:incoming_rate@2026-07-02T09:05:00Z]\nAlready called (do NOT repeat): get_correlated_alerts, get_deployments, get_incident, get_metrics, get_service_dependencies, query_logs.\nEvidence classes gathered: deploys, deps, logs, metrics. Gather any missing class (deploys / logs / metrics / deps), follow the anomaly into the dependency, or conclude.\n\n## How to conclude\n- Name the **true root cause**, not a coincidence. A deployment near the onset is only the cause if\n  the evidence ties it to the failure; if a downstream dependency's metrics or logs show the real\n  fault (e.g. latency/errors upstream of the symptom), name that instead.\n- Cite only evidence references that appear above, using the frozen grammar exactly as shown\n  (`logs:<svc>:<id>`, `metrics:<svc>:<metric>@<ts>`, `deploys:<svc>:<id>`, `deps:<from>-><to>`).\n- Prefer the citations that most directly support the cause (the degraded metric, the error log at\n  the true fault, the dependency edge) over incidental ones.\n\n## Respond\nReturn a single JSON object:\n\n```json\n{\"root_cause\": \"<one-sentence statement naming the responsible service/component>\", \"citations\": [\"<ref>\", \"<ref>\"]}\n```"
-          }
-        ]
-      },
-      "response": {
-        "text": "```json\n{\"root_cause\": \"The notification-worker experienced a crash loop due to an unhandled deserialization exception, which was a recurrence of the same failure mode as a previous incident (inc-003).\", \"citations\": [\"logs:notification-worker:evt-007-01\", \"get_incident\"]}\n```",
-        "model_id": "gpt-4o-mini",
-        "prompt_version": "",
-        "finish_reason": "stop",
-        "usage": {
-          "prompt_tokens": 1102,
-          "completion_tokens": 66
+          "prompt_tokens": 363,
+          "completion_tokens": 70
         }
       }
     }

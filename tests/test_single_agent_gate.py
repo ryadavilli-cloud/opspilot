@@ -44,11 +44,13 @@ def test_single_agent_replay_reproduces_committed_baseline(monkeypatch):
 
 def test_single_agent_beats_the_deterministic_floor(monkeypatch):
     sc = _replay_scorecard(monkeypatch)
-    # headline: the LLM loop out-recalls the hand-tuned floor and picks tools at least as well
+    # headline: the LLM agent beats the hand-tuned floor on routing (catches the inc-007
+    # recurrence), evidence recall on novel investigations, and tool selection.
+    assert sc["routing_accuracy"] > FLOOR["routing_accuracy"]
     assert sc["evidence_recall"] > FLOOR["evidence_recall"]
-    assert sc["tool_selection_accuracy"] >= FLOOR["tool_selection_accuracy"]
+    assert sc["tool_selection_accuracy"] > FLOOR["tool_selection_accuracy"]
     # and regresses nothing else that matters
     assert sc["rca_correctness"] >= FLOOR["rca_correctness"]
-    assert sc["routing_accuracy"] >= FLOOR["routing_accuracy"]
+    assert sc["category_accuracy"] >= FLOOR["category_accuracy"]
     assert sc["unsupported_evidence_rate"] <= FLOOR["unsupported_evidence_rate"]
     assert sc["tool_call_validity"] >= FLOOR["tool_call_validity"]
