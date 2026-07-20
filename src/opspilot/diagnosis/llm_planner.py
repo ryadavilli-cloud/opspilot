@@ -17,6 +17,8 @@ import json
 import re
 from typing import TYPE_CHECKING
 
+from pydantic import ValidationError
+
 from opspilot.config import MAX_DIAGNOSE_ITERS
 from opspilot.diagnosis.contracts import (
     DiagnosticQuestion,
@@ -27,6 +29,7 @@ from opspilot.diagnosis.contracts import (
 )
 from opspilot.guardrails.policies import is_read_only
 from opspilot.llm.prompts import get_prompt
+from opspilot.llm.schema import PlannerResponse, SynthesisResponse, ToolCallSpec
 
 if TYPE_CHECKING:
     from opspilot.diagnosis.contracts import DiagnosisContext, ToolObservation
@@ -144,51 +147,49 @@ class LLMPlanner:
         result = self._model.complete([ChatMessage(role="user", content=rendered)])
         try:
             decision = extract_json_object(result.text)
-        except ValueError:
+            response = PlannerResponse.model_validate(decision)
+        except (ValueError, ValidationError):
             self.last_decision = None
             return InvestigationPlan(max_iters=MAX_DIAGNOSE_ITERS, questions=[])
         self.last_decision = decision
 
-        if decision.get("done"):
+        if response.done:
             return InvestigationPlan(max_iters=MAX_DIAGNOSE_ITERS, questions=[])
 
-        # A round is a *batch* of tool calls. Accept `tool_calls: [...]`, or a single `next_tool`
-        # (back-compat). Each call is vetted independently and fails closed; already-answered calls
-        # are dropped so the model can't spin by re-proposing them.
-        raw_calls = decision.get("tool_calls")
-        if not isinstance(raw_calls, list):
-            raw_calls = [decision] if decision.get("next_tool") else []
+        # A round is a *batch* of tool calls (`tool_calls: [...]`), or a single `next_tool`
+        # (back-compat). Each call fails closed on a non-allowlisted tool; already-answered or
+        # duplicate calls are dropped so the model can't spin by re-proposing them.
+        calls = response.tool_calls or (
+            [ToolCallSpec(tool=response.next_tool, params=response.params, why=response.why)]
+            if response.next_tool else []
+        )
 
         questions: list[DiagnosticQuestion] = []
-        for call in raw_calls[:_MAX_BATCH]:
-            if not isinstance(call, dict):
+        for call in calls[:_MAX_BATCH]:
+            tool = call.tool
+            if not is_read_only(tool):
                 continue
-            tool = str(call.get("tool") or call.get("next_tool") or "")
-            params = call.get("params") or {}
-            if not isinstance(params, dict) or not is_read_only(tool):
-                continue
-            params = _coerce_params(tool, params)
+            params = _coerce_params(tool, call.params)
             key = f"llm:{tool}:{_params_key(params)}"
             if key in answered or any(q.key == key for q in questions):
                 continue  # never re-issue an answered or duplicate call
             questions.append(
                 DiagnosticQuestion(
                     key=key,
-                    question=str(call.get("why") or f"call {tool}"),
+                    question=call.why or f"call {tool}",
                     call=ToolCallRequest(tool=tool, params=params),
                 )
             )
         return InvestigationPlan(max_iters=MAX_DIAGNOSE_ITERS, questions=questions)
 
-    def _ground(self, statement: str, raw_cites: object, produced_refs: set[str]) -> Hypothesis:
+    def _ground(self, statement: str, cites: list[str], produced_refs: set[str]) -> Hypothesis:
         """Build a hypothesis, keeping only citations the tools actually produced. A conclusion with
         no grounded citation is unsupported on purpose — the safety gate then escalates rather than
         shipping an ungrounded root cause."""
-        cites = raw_cites if isinstance(raw_cites, list) else []
         grounded = [
             EvidenceCitation(source=ref.split(":", 1)[0], ref=ref, note="cited by the model")
             for ref in cites
-            if isinstance(ref, str) and ref in produced_refs
+            if ref in produced_refs
         ]
         if not statement or not grounded:
             return Hypothesis(
@@ -215,15 +216,16 @@ class LLMPlanner:
             decision = extract_json_object(
                 self._model.complete([ChatMessage(role="user", content=rendered)]).text
             )
-        except ValueError:
+            response = SynthesisResponse.model_validate(decision)
+        except (ValueError, ValidationError):
             return Hypothesis(
                 statement="Root cause undetermined; recommend manual review.",
                 confidence=0.2,
                 citations=[],
             )
         return self._ground(
-            str(decision.get("root_cause") or "").strip(),
-            decision.get("citations"),
+            response.root_cause.strip(),
+            response.citations,
             produced_refs,
         )
 

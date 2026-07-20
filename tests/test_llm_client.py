@@ -49,6 +49,24 @@ def test_replay_provider_serves_recorded(tmp_path: Path):
     assert model.complete([ChatMessage("user", "hi")]).text == "ok"
 
 
+def test_azure_provider_constructs_without_network():
+    from opspilot.llm.client import AzureChatModel
+
+    model = build_chat_model("azure", model="gpt-4o-deploy")  # lazy client, no network
+    assert isinstance(model, AzureChatModel)
+    assert model.model_id == "gpt-4o-deploy"
+
+
+def test_fake_chat_model_queues_and_maps():
+    from opspilot.llm.fake import FakeChatModel
+
+    queued = FakeChatModel(["a", "b"])
+    msgs = [ChatMessage("user", "x")]
+    assert [queued.complete(msgs).text for _ in range(3)] == ["a", "b", "b"]  # last repeats
+    mapped = FakeChatModel(lambda m: f"echo:{m[-1].content}")
+    assert mapped.complete([ChatMessage("user", "hi")]).text == "echo:hi"
+
+
 @pytest.mark.llm
 def test_ollama_live_smoke():
     pytest.importorskip("openai")

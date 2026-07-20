@@ -20,7 +20,7 @@ from opspilot import config
 if TYPE_CHECKING:
     from opspilot.llm.base import ChatMessage, ChatModel, ChatResult
 
-_KNOWN = ("ollama", "openai", "replay")
+_KNOWN = ("ollama", "openai", "azure", "replay")
 
 
 class OpenAICompatModel:
@@ -71,6 +71,28 @@ class OpenAICompatModel:
         )
 
 
+class AzureChatModel(OpenAICompatModel):
+    """Azure OpenAI (Foundry) — the production path. `model` is the *deployment* name. The Azure
+    client is imported lazily on first call, like the OpenAI-compatible one."""
+
+    def __init__(
+        self, model_id: str, *, endpoint: str | None, api_version: str, api_key: str
+    ) -> None:
+        super().__init__(model_id, base_url=endpoint, api_key=api_key)
+        self._api_version = api_version
+
+    def _ensure_client(self) -> Any:
+        if self._client is None:
+            from openai import AzureOpenAI  # lazy: optional `llm` dependency group
+
+            self._client = AzureOpenAI(
+                azure_endpoint=self._base_url or "",
+                api_version=self._api_version,
+                api_key=self._api_key,
+            )
+        return self._client
+
+
 def _endpoint(provider: str) -> tuple[str | None, str]:
     """Resolve (base_url, api_key) for a live provider from config/env."""
     if provider == "ollama":
@@ -104,5 +126,13 @@ def build_chat_model(
     if provider in ("ollama", "openai"):
         base_url, api_key = _endpoint(provider)
         return OpenAICompatModel(model or config.LLM_MODEL, base_url=base_url, api_key=api_key)
+
+    if provider == "azure":
+        return AzureChatModel(
+            model or config.LLM_MODEL,
+            endpoint=config.AZURE_OPENAI_ENDPOINT or None,
+            api_version=config.AZURE_OPENAI_API_VERSION,
+            api_key=config.AZURE_OPENAI_API_KEY,
+        )
 
     raise ValueError(f"unknown LLM provider {provider!r}; known: {', '.join(_KNOWN)}")

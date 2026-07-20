@@ -5,6 +5,7 @@
   "category_accuracy": 1.0,
   "evidence_recall": 0.5556,
   "rca_correctness": 0.7143,
+  "red_herring_avoidance": 1.0,
   "unsupported_evidence_rate": 0.0,
   "tool_call_validity": 1.0,
   "tool_selection_accuracy": 1.0,

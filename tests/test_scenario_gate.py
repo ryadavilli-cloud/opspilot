@@ -37,7 +37,8 @@ def test_all_scenarios_run_through_the_slice(scorecard):
 def test_no_material_regression_vs_baseline(scorecard):
     for metric in ("routing_accuracy", "category_accuracy", "evidence_recall",
                    "rca_correctness", "tool_call_validity", "iteration_limit_compliance",
-                   "tool_selection_accuracy", "loop_termination_accuracy"):
+                   "tool_selection_accuracy", "loop_termination_accuracy",
+                   "red_herring_avoidance"):
         assert scorecard[metric] >= BASELINE[metric] - EPS, (
             f"{metric} regressed: {scorecard[metric]} < baseline {BASELINE[metric]}")
     assert scorecard["unsupported_evidence_rate"] <= BASELINE["unsupported_evidence_rate"] + EPS
