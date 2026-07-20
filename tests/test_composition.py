@@ -16,6 +16,10 @@ def test_default_is_deterministic():
 
 
 def test_single_agent_missing_azure_endpoint_falls_back_explicitly(monkeypatch):
+    # Pretend the optional `llm` deps are present so the blocker reaches the Azure-endpoint check —
+    # otherwise, in a lane without the llm group, it stops at "openai SDK missing" first and this
+    # test would assert on the wrong reason.
+    monkeypatch.setattr(composition.importlib.util, "find_spec", lambda name: object())
     monkeypatch.setattr(config, "LLM_PROVIDER", "azure")
     monkeypatch.setattr(config, "AZURE_OPENAI_ENDPOINT", "")
     d = build_diagnosis("single_agent")
