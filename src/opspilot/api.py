@@ -19,6 +19,7 @@ from fastapi import Depends, FastAPI, Response
 from pydantic import BaseModel, Field
 
 from opspilot import __version__, config
+from opspilot.composition import DiagnosisComposition, build_diagnosis
 from opspilot.config import ENVIRONMENT, RETRIEVAL_BACKEND, WORKFLOW_VERSION
 from opspilot.contracts import IncidentReport
 from opspilot.graph import _initial_state, build_graph
@@ -31,6 +32,11 @@ _graph = build_graph()
 # this module never pulls in a retrieval backend.
 _tool_service = None
 
+# One diagnosis implementation (planner + triager) per process, selected by OPSPILOT_IMPLEMENTATION
+# and injected into every graph invocation alongside the ToolService. Built lazily so importing this
+# module never constructs a ChatModel (single_agent) or touches an optional dependency.
+_diagnosis: DiagnosisComposition | None = None
+
 
 def get_service():
     global _tool_service
@@ -39,6 +45,13 @@ def get_service():
 
         _tool_service = ToolService()
     return _tool_service
+
+
+def get_diagnosis() -> DiagnosisComposition:
+    global _diagnosis
+    if _diagnosis is None:
+        _diagnosis = build_diagnosis()
+    return _diagnosis
 
 
 def get_corpus_status():
@@ -82,6 +95,14 @@ class VersionResponse(BaseModel):
     workflow_version: str
     environment: str
     retrieval_backend: str
+    # Diagnosis implementation the running process resolved to. `implementation` is the effective
+    # one; `requested_implementation` + `fallback_reason` make an explicit deterministic fallback
+    # visible (non-null reason ⇒ single_agent was asked for but its model could not be built).
+    implementation: str = "deterministic"
+    requested_implementation: str = "deterministic"
+    provider: str | None = None
+    model_id: str | None = None
+    fallback_reason: str | None = None
 
 
 class SafetyResponse(BaseModel):
@@ -100,6 +121,11 @@ class RuntimeMetadata(BaseModel):
     retrieval_backend: str
     workflow_version: str
     application_version: str
+    # The diagnosis implementation that produced THIS report (single_agent or the deterministic
+    # floor), plus the model that backed it — so a consumer knows how the conclusion was reached.
+    implementation: str = "deterministic"
+    provider: str | None = None
+    model_id: str | None = None
 
 
 class InvestigationResponse(BaseModel):
@@ -127,12 +153,17 @@ def health() -> LivenessResponse:
 
 
 @app.get("/version")
-def version() -> VersionResponse:
+def version(diagnosis=Depends(get_diagnosis)) -> VersionResponse:
     return VersionResponse(
         version=__version__,
         workflow_version=WORKFLOW_VERSION,
         environment=ENVIRONMENT,
         retrieval_backend=RETRIEVAL_BACKEND,
+        implementation=diagnosis.implementation,
+        requested_implementation=diagnosis.requested,
+        provider=diagnosis.provider,
+        model_id=diagnosis.model_id,
+        fallback_reason=diagnosis.fallback_reason,
     )
 
 
@@ -205,10 +236,18 @@ def _safe_backend(svc) -> str:
 # Investigation
 # --------------------------------------------------------------------------------------
 @app.post("/investigate")
-def investigate(alert: Alert, svc=Depends(get_service)) -> InvestigationResponse:
+def investigate(
+    alert: Alert,
+    svc=Depends(get_service),
+    diagnosis=Depends(get_diagnosis),
+) -> InvestigationResponse:
     state = _graph.invoke(
         _initial_state(alert.model_dump()),
-        config={"configurable": {"tool_service": svc}},
+        config={"configurable": {
+            "tool_service": svc,
+            "planner": diagnosis.planner,
+            "triager": diagnosis.triager,
+        }},
     )
     backend = _safe_backend(svc)
 
@@ -250,5 +289,8 @@ def investigate(alert: Alert, svc=Depends(get_service)) -> InvestigationResponse
             retrieval_backend=backend,
             workflow_version=WORKFLOW_VERSION,
             application_version=__version__,
+            implementation=diagnosis.implementation,
+            provider=diagnosis.provider,
+            model_id=diagnosis.model_id,
         ),
     )

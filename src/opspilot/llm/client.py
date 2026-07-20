@@ -73,7 +73,16 @@ class OpenAICompatModel:
 
 class AzureChatModel(OpenAICompatModel):
     """Azure OpenAI (Foundry) — the production path. `model` is the *deployment* name. The Azure
-    client is imported lazily on first call, like the OpenAI-compatible one."""
+    client is imported lazily on first call, like the OpenAI-compatible one.
+
+    Auth is keyless by default: when `api_key` is blank, the client authenticates with an Entra
+    bearer token from the environment's managed identity (the Container App's system-assigned
+    identity in production; `az login` locally) via `DefaultAzureCredential`. A non-empty `api_key`
+    still selects key auth for environments that provide one. Keyless is the deployed path — the
+    Azure OpenAI account has local-auth disabled, so no key exists to leak.
+    """
+
+    _TOKEN_SCOPE = "https://cognitiveservices.azure.com/.default"
 
     def __init__(
         self, model_id: str, *, endpoint: str | None, api_version: str, api_key: str
@@ -85,11 +94,27 @@ class AzureChatModel(OpenAICompatModel):
         if self._client is None:
             from openai import AzureOpenAI  # lazy: optional `llm` dependency group
 
-            self._client = AzureOpenAI(
-                azure_endpoint=self._base_url or "",
-                api_version=self._api_version,
-                api_key=self._api_key,
-            )
+            if self._api_key:
+                self._client = AzureOpenAI(
+                    azure_endpoint=self._base_url or "",
+                    api_version=self._api_version,
+                    api_key=self._api_key,
+                )
+            else:
+                # Keyless: an Entra token from the managed identity, refreshed by the provider.
+                from azure.identity import (  # lazy: optional `llm` dependency group
+                    DefaultAzureCredential,
+                    get_bearer_token_provider,
+                )
+
+                token_provider = get_bearer_token_provider(
+                    DefaultAzureCredential(), self._TOKEN_SCOPE
+                )
+                self._client = AzureOpenAI(
+                    azure_endpoint=self._base_url or "",
+                    api_version=self._api_version,
+                    azure_ad_token_provider=token_provider,
+                )
         return self._client
 
 
@@ -129,7 +154,7 @@ def build_chat_model(
 
     if provider == "azure":
         return AzureChatModel(
-            model or config.LLM_MODEL,
+            model or config.AZURE_OPENAI_DEPLOYMENT or config.LLM_MODEL,
             endpoint=config.AZURE_OPENAI_ENDPOINT or None,
             api_version=config.AZURE_OPENAI_API_VERSION,
             api_key=config.AZURE_OPENAI_API_KEY,

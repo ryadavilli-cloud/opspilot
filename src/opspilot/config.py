@@ -140,10 +140,19 @@ LLM_BASE_URL = _env("OPSPILOT_LLM_BASE_URL")
 LLM_API_KEY = _env("OPSPILOT_LLM_API_KEY") or _env("OPENAI_API_KEY")
 OLLAMA_BASE_URL = _env("OPSPILOT_OLLAMA_BASE_URL", "http://localhost:11434/v1")
 
-# Azure OpenAI (Foundry) — the production LLM path. LLM_MODEL is the *deployment* name.
+# Azure OpenAI (Foundry) — the production LLM path. AZURE_OPENAI_DEPLOYMENT is the *deployment* name
+# the app calls (falls back to LLM_MODEL). AZURE_OPENAI_API_KEY is OPTIONAL: when it is blank the
+# client authenticates keyless via the environment's managed identity (see llm/client.py).
 AZURE_OPENAI_ENDPOINT = _env("AZURE_OPENAI_ENDPOINT") or _env("AZURE_FOUNDRY_ENDPOINT")
 AZURE_OPENAI_API_VERSION = _env("AZURE_OPENAI_API_VERSION", "2024-10-21")
 AZURE_OPENAI_API_KEY = _env("AZURE_OPENAI_API_KEY") or _env("AZURE_FOUNDRY_API_KEY")
+AZURE_OPENAI_DEPLOYMENT = _env("AZURE_OPENAI_DEPLOYMENT")
+
+# Deployed diagnosis implementation: `deterministic` (the hand-tuned floor) or `single_agent` (the
+# LLM planner + triager). The composition root builds and injects the selected pair; deterministic
+# stays an EXPLICIT fallback (surfaced in /version) when single_agent is requested but its model
+# cannot be built (optional `llm` deps absent, provider misconfigured, Azure endpoint unset).
+IMPLEMENTATION = _env("OPSPILOT_IMPLEMENTATION", "deterministic")
 
 
 # --------------------------------------------------------------------------------------
