@@ -90,6 +90,15 @@ def _score_one(scenario: dict, state: dict, root_by_incident: dict[str, str]) ->
     hit_cap = state.get("diagnose_iters", 0) >= MAX_DIAGNOSE_ITERS
     loop_termination = float((not hit_cap) or ready)
 
+    # red-herring avoidance — reasoning quality that plain rca_correctness misses. Some incidents
+    # carry a coincidental cause in the answer key (`red_herring`, e.g. inc-004's checkout deploy);
+    # a good agent does NOT blame it. Scored 1 when the incident has no red herring OR the blamed
+    # entity is not the red-herring's service. This is where the LLM beats the deterministic floor
+    # even when the true (sometimes external) root is un-nameable, so rca_correctness only ties.
+    red_herring = scenario.get("red_herring", "")
+    rh_service = red_herring.split(":")[1] if ":" in red_herring else ""
+    red_herring_avoided = float(not rh_service or implicated != rh_service)
+
     return {
         "routing_correct": float(state.get("intent") == scenario["expected_intent"]),
         "category_correct": float(state.get("category") == scenario["category"]),
@@ -102,6 +111,7 @@ def _score_one(scenario: dict, state: dict, root_by_incident: dict[str, str]) ->
         ),
         "tool_selection": tool_selection,
         "loop_termination": loop_termination,
+        "red_herring_avoided": red_herring_avoided,
         "iteration_ok": float(state.get("diagnose_iters", 0) <= MAX_DIAGNOSE_ITERS),
         # correctness is a SEPARATE axis from grounding: a report can cite real evidence and still
         # name the wrong root entity (inc-004's red herring). Root-entity match vs the answer key.
@@ -168,6 +178,7 @@ def evaluate(implementation: str = "deterministic", *, model: Any = None) -> dic
         "category_accuracy": mean("category_correct"),
         "evidence_recall": mean_over_novel("evidence_recall"),
         "rca_correctness": mean("rca_correct"),
+        "red_herring_avoidance": mean("red_herring_avoided"),
         "unsupported_evidence_rate": mean("unsupported_rate"),
         "tool_call_validity": mean("tool_calls_valid"),
         "tool_selection_accuracy": mean("tool_selection"),

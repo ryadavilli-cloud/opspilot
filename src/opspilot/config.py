@@ -140,6 +140,11 @@ LLM_BASE_URL = _env("OPSPILOT_LLM_BASE_URL")
 LLM_API_KEY = _env("OPSPILOT_LLM_API_KEY") or _env("OPENAI_API_KEY")
 OLLAMA_BASE_URL = _env("OPSPILOT_OLLAMA_BASE_URL", "http://localhost:11434/v1")
 
+# Azure OpenAI (Foundry) — the production LLM path. LLM_MODEL is the *deployment* name.
+AZURE_OPENAI_ENDPOINT = _env("AZURE_OPENAI_ENDPOINT") or _env("AZURE_FOUNDRY_ENDPOINT")
+AZURE_OPENAI_API_VERSION = _env("AZURE_OPENAI_API_VERSION", "2024-10-21")
+AZURE_OPENAI_API_KEY = _env("AZURE_OPENAI_API_KEY") or _env("AZURE_FOUNDRY_API_KEY")
+
 
 # --------------------------------------------------------------------------------------
 # Retrieval / embedding models

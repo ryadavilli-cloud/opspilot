@@ -23,13 +23,6 @@ from opspilot.state import Intent
 if TYPE_CHECKING:
     from opspilot.llm.base import ChatModel
 
-_VALID_INTENTS = {
-    Intent.KNOWN_ISSUE.value,
-    Intent.NOVEL_INVESTIGATION.value,
-    Intent.INFO_ONLY.value,
-}
-
-
 class PastCandidate(BaseModel):
     doc_id: str      # a postmortem ref, e.g. postmortem:inc-003
     title: str = ""
@@ -103,29 +96,30 @@ class LLMTriager:
         self.prompt_version = self._prompt.version
 
     def classify(self, ctx: TriageContext) -> TriageDecision:
+        from pydantic import ValidationError
+
         from opspilot.diagnosis.llm_planner import extract_json_object
         from opspilot.llm.base import ChatMessage
+        from opspilot.llm.schema import TriageResponse
 
         rendered = self._prompt.text.replace(
             "{incident}", _render_context(ctx)
         ).replace("{candidates}", _render_candidates(ctx))
+        # An unparseable response or an unknown `intent` (not in the closed set) fails closed.
         try:
-            response = self._model.complete([ChatMessage(role="user", content=rendered)])
-            decision = extract_json_object(response.text)
-        except ValueError:
-            return TriageDecision(intent=Intent.NOVEL_INVESTIGATION.value)  # fail closed
-
-        intent = str(decision.get("intent", "")).strip()
-        if intent not in _VALID_INTENTS:
+            raw = extract_json_object(self._model.complete([ChatMessage("user", rendered)]).text)
+            decision = TriageResponse.model_validate(raw)
+        except (ValueError, ValidationError):
             return TriageDecision(intent=Intent.NOVEL_INVESTIGATION.value)
-        if intent != Intent.KNOWN_ISSUE.value:
-            return TriageDecision(intent=intent)  # info_only / novel carry no match
+
+        if decision.intent != Intent.KNOWN_ISSUE:
+            return TriageDecision(intent=str(decision.intent))  # info_only / novel carry no match
 
         # known_issue must name a REAL candidate — reject a hallucination, fail closed to novel.
-        matched = str(decision.get("matched_incident") or "").strip()
+        matched = decision.matched_incident.strip()
         if matched not in ctx.candidate_ids():
             return TriageDecision(intent=Intent.NOVEL_INVESTIGATION.value)
-        return TriageDecision(intent=intent, matched_incident=matched)
+        return TriageDecision(intent=str(decision.intent), matched_incident=matched)
 
 
 KNOWN_IMPLEMENTATIONS = ("deterministic", "single_agent")

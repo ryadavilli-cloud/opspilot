@@ -38,7 +38,7 @@ def _replay_scorecard(monkeypatch) -> dict:
 def test_single_agent_replay_reproduces_committed_baseline(monkeypatch):
     sc = _replay_scorecard(monkeypatch)
     for metric in ("evidence_recall", "rca_correctness", "tool_selection_accuracy",
-                   "routing_accuracy", "unsupported_evidence_rate"):
+                   "routing_accuracy", "unsupported_evidence_rate", "red_herring_avoidance"):
         assert sc[metric] == SINGLE[metric], f"{metric} drifted from the recorded cassette"
 
 
@@ -49,6 +49,9 @@ def test_single_agent_beats_the_deterministic_floor(monkeypatch):
     assert sc["routing_accuracy"] > FLOOR["routing_accuracy"]
     assert sc["evidence_recall"] > FLOOR["evidence_recall"]
     assert sc["tool_selection_accuracy"] > FLOOR["tool_selection_accuracy"]
+    # reasoning quality: it avoids the coincidental cause where the floor blames it (inc-004),
+    # the honest win that rca_correctness ties on (the true root is sometimes external).
+    assert sc["red_herring_avoidance"] > FLOOR["red_herring_avoidance"]
     # and regresses nothing else that matters
     assert sc["rca_correctness"] >= FLOOR["rca_correctness"]
     assert sc["category_accuracy"] >= FLOOR["category_accuracy"]
