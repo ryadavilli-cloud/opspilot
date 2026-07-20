@@ -33,10 +33,12 @@ eval = [
     "sentence-transformers>=5.6.0",
 ]
 # LLM provider client (Stage 4). OpenAI-compatible SDK fronts qwen via Ollama, gpt-4o-mini, and
-# Azure Foundry. Kept OUT of [project].dependencies so the lean bm25 runtime image stays LLM-free;
-# imported lazily (config.LLM_PROVIDER=replay needs none of it). Prod packaging lands with Azure.
+# Azure Foundry. `azure-identity` powers keyless Azure OpenAI auth (managed identity) so the
+# deployed image needs no key. Imported lazily (config.LLM_PROVIDER=replay needs none of it); the
+# production image installs this group (Dockerfile `--group llm`) to run the single_agent path.
 llm = [
     "openai>=1.40",
+    "azure-identity>=1.17",
 ]
 
 [build-system]

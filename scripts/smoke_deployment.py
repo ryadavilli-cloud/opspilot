@@ -79,9 +79,27 @@ def check_version(client: httpx.Client) -> VersionResponse:
         f"/version reports backend {version.retrieval_backend!r}, expected 'bm25' "
         "(deployed image forces bm25)",
     )
+    # The whole point of this deploy: Azure must be running the real LLM agent, not the floor. A
+    # non-null fallback_reason means single_agent was requested but its model could not be built.
+    _require(
+        version.implementation == "single_agent",
+        f"/version reports implementation {version.implementation!r} (requested "
+        f"{version.requested_implementation!r}); expected 'single_agent'. "
+        f"fallback_reason={version.fallback_reason!r}",
+    )
+    _require(
+        version.provider == "azure",
+        f"/version reports provider {version.provider!r}, expected 'azure'",
+    )
+    _require(
+        bool(version.model_id),
+        "/version reports no model_id, but single_agent must name its Azure deployment",
+    )
     print(
         f"[smoke] version: application={version.application} version={version.version} "
-        f"workflow_version={version.workflow_version} environment={version.environment}",
+        f"workflow_version={version.workflow_version} environment={version.environment} "
+        f"implementation={version.implementation} provider={version.provider} "
+        f"model_id={version.model_id}",
         flush=True,
     )
     return version
@@ -120,10 +138,22 @@ def run_investigation(client: httpx.Client) -> InvestigationResponse:
         f"investigation ran against backend {investigation.runtime.retrieval_backend!r}, "
         "expected 'bm25'",
     )
+    # Prove THIS investigation was produced by the LLM agent on Azure, not the deterministic floor.
+    _require(
+        investigation.runtime.implementation == "single_agent",
+        f"investigation ran implementation {investigation.runtime.implementation!r}, "
+        "expected 'single_agent'",
+    )
+    _require(
+        investigation.runtime.provider == "azure",
+        f"investigation ran provider {investigation.runtime.provider!r}, expected 'azure'",
+    )
 
     print(
         f"[smoke] investigation: incident_id={investigation.incident_id} "
-        f"status={investigation.status} hypothesis={report.hypothesis!r} "
+        f"status={investigation.status} implementation={investigation.runtime.implementation} "
+        f"provider={investigation.runtime.provider} model_id={investigation.runtime.model_id} "
+        f"hypothesis={report.hypothesis!r} "
         f"evidence={len(report.evidence)} citations={len(report.citations)}",
         flush=True,
     )
