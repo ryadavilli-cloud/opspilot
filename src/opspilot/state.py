@@ -14,9 +14,10 @@ seams an LLM will later plug into are frozen and correct (see docs/code-guidelin
   `hypothesis: Hypothesis`; the old scalar `confidence` and the duplicated `diagnosis`
   hypothesis-dump are gone. `retrieved_sources` is derived from evidence, not stored.
 
-Report / approval / safety / postmortem / alert stay as dicts here; each is typed when its
-own stage lands (report + approval at the HITL stage). This model types the four seams the
-pre-LLM hardening targets, not the whole future state.
+`report` is a typed, frozen `IncidentReport` bound by a `report_hash` (5a). Approval / safety /
+postmortem / alert stay as dicts here; each is typed when its own stage lands (approval at the
+real-HITL stage). This model types the seams the pre-LLM hardening and report stages target, not
+the whole future state.
 """
 
 from __future__ import annotations
@@ -27,6 +28,7 @@ from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, Field
 
+from opspilot.contracts import IncidentReport
 from opspilot.diagnosis.contracts import (
     Hypothesis,
     StopReason,
@@ -145,7 +147,10 @@ class InvestigationState(BaseModel):
     answered_questions: list[str] = Field(default_factory=list)  # plan-advancement: keys asked
     diagnose_iters: int = 0
 
-    report: dict[str, Any] | None = None
+    # The published report is a typed, frozen IncidentReport (5a); report_hash is its content hash,
+    # recomputed on synthesis and on every edit, so an approval can be bound to exact report bytes.
+    report: IncidentReport | None = None
+    report_hash: str = ""
     safety: dict[str, Any] | None = None
     approval: dict[str, Any] | None = None
     postmortem: dict[str, Any] | None = None
