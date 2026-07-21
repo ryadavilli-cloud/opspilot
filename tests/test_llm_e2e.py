@@ -15,16 +15,18 @@ import pytest
 def test_llm_planner_investigates_inc004_end_to_end():
     pytest.importorskip("openai")
     from opspilot.diagnosis.planner import build_planner
-    from opspilot.graph import _initial_state, build_graph
+    from opspilot.graph import _initial_state, build_graph, invoke_auto_approving
     from opspilot.tools.service import ToolService
 
     config = {
         "configurable": {
             "tool_service": ToolService(),
             "planner": build_planner("single_agent"),
+            "thread_id": "llm-e2e-inc-004",
         }
     }
-    result = build_graph().invoke(
+    result = invoke_auto_approving(
+        build_graph(),
         _initial_state({"incident_id": "inc-004", "summary": "checkout-api 500s after deploy"}),
         config=config,
     )

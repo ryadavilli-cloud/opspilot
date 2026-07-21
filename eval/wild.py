@@ -230,7 +230,7 @@ def evaluate_wild(
     """Score RCA generalization on the held-out OB slice: fraction of cases where the agent names
     the injected root service. Returns a note (rca None) if the raw data is absent."""
     from opspilot.diagnosis.planner import build_planner
-    from opspilot.graph import _initial_state, build_graph
+    from opspilot.graph import _initial_state, build_graph, invoke_auto_approving
     from opspilot.tools.service import ToolService
     from opspilot.triage import build_triager
 
@@ -239,6 +239,9 @@ def evaluate_wild(
         return {"implementation": implementation, "n_cases": 0, "rca_correctness": None,
                 "note": f"no RE1 cases under {cache_dir} — download RE1-OB.zip into the cache"}
 
+    # build_graph() now always compiles with a checkpointer — each case gets its own thread_id so
+    # checkpoints never leak across cases sharing `app`, and invoke_auto_approving transparently
+    # resolves the hitl_gate pause each case now hits.
     app = build_graph()
     per_case, correct = [], 0
     for case in cases:
@@ -247,8 +250,10 @@ def evaluate_wild(
             "tool_service": svc,
             "planner": build_planner(implementation, model=model),
             "triager": build_triager(implementation, model=model),
+            "thread_id": f"wild-{case.incident_id}",
         }}
-        state = app.invoke(
+        state = invoke_auto_approving(
+            app,
             _initial_state({"incident_id": case.incident_id, "summary": f"{_ENTRY} degraded"}),
             config=config)
         implicated = _implicated_service(state)

@@ -67,10 +67,17 @@ def _evidence_map(items: list[EvidenceItem]) -> dict[str, EvidenceItem]:
 
 
 def ingest(state: InvestigationState) -> dict[str, Any]:
-    """Normalize the alert; mint a unique investigation_id and derive thread_id from it."""
+    """Normalize the alert; mint a unique investigation_id and derive thread_id from it.
+
+    Honors a caller-supplied `investigation_id` already on state (the async API mints one at
+    `POST /investigations` time and threads it through as the checkpointer's `thread_id` too, so
+    the polled id, the checkpoint namespace, and this state field are one identifier) rather than
+    always minting a fresh one — a bare caller (tests, the eval harness) leaves it unset and gets
+    the old unconditional-mint behavior.
+    """
     alert = state.alert
     incident_id = alert.get("incident_id", "INC-STUB")
-    investigation_id = str(uuid4())
+    investigation_id = state.investigation_id or str(uuid4())
     idem = hashlib.sha256(
         _UNIT_SEP.join((incident_id, alert.get("summary", ""))).encode("utf-8")
     ).hexdigest()
@@ -285,12 +292,43 @@ def safety_validate(state: InvestigationState) -> dict[str, Any]:
 
 
 def hitl_gate(state: InvestigationState) -> dict[str, Any]:
-    # The HITL stage replaces this with a checkpoint-backed interrupt(). For the walking
-    # skeleton we auto-approve so the flow completes without a human in the loop. The approval is
-    # bound to the report it saw (approved_report_hash) — the real interrupt (5c) rejects a stale
-    # approval whose hash no longer matches the current report.
-    return {"approval": {"decision": "approve", "approver": "stub", "edits": None,
-                         "approved_report_hash": state.report_hash}}
+    """A checkpoint-backed pause: `interrupt()` persists state and suspends the graph until a
+    human decision resumes it (`Command(resume=...)`, see `api.py`'s async decision endpoint).
+
+    LangGraph re-executes this node from the top on resume, so everything above the `interrupt()`
+    call runs again harmlessly (it's pure, no side effects) — only the code *after* it, which only
+    ever runs once `interrupt()` has returned the human's decision, may act on that decision.
+    """
+    from langgraph.types import interrupt
+
+    payload = {
+        "kind": "approval_request",
+        "incident_id": state.incident_id,
+        "investigation_id": state.investigation_id,
+        "report": state.report.model_dump() if state.report else None,
+        "report_hash": state.report_hash,
+        "safety": state.safety,
+    }
+    resume = interrupt(payload) or {}
+    decision = resume.get("decision")
+    approver = resume.get("approver", "unknown")
+    edits = resume.get("edits")
+    submitted_hash = resume.get("submitted_report_hash")
+
+    if submitted_hash != state.report_hash:
+        # The decision was made against a report that no longer matches current state (e.g. a
+        # concurrent edit/decision advanced the thread first). "stale_rejected" is neither
+        # "approve" nor "edit", so it already falls into after_approval's fail-closed else-branch.
+        return {"approval": {
+            "decision": "stale_rejected", "approver": approver, "edits": edits,
+            "submitted_report_hash": submitted_hash, "current_report_hash": state.report_hash,
+            "approved_report_hash": None,
+        }}
+
+    return {"approval": {
+        "decision": decision, "approver": approver, "edits": edits,
+        "approved_report_hash": state.report_hash if decision == "approve" else None,
+    }}
 
 
 def apply_edit(state: InvestigationState) -> dict[str, Any]:
@@ -321,8 +359,17 @@ def postmortem(state: InvestigationState) -> dict[str, Any]:
 
 def escalate(state: InvestigationState) -> dict[str, Any]:
     """Terminal hand-off to a human — always with a machine-readable reason, never silent."""
+    approval = state.approval or {}
+    decision = approval.get("decision")
     if state.error:
         reason = state.error
+    elif decision == "stale_rejected":
+        reason = (f"stale_approval: submitted for {approval.get('submitted_report_hash')}, "
+                  f"current is {approval.get('current_report_hash')}")
+    elif decision == "reject":
+        reason = f"human_rejected by {approval.get('approver', 'unknown')}"
+    elif decision == "request_more_evidence":
+        reason = f"human_requested_more_evidence by {approval.get('approver', 'unknown')}"
     elif state.diagnose_iters >= MAX_DIAGNOSE_ITERS:
         reason = f"iteration_budget_exhausted: diagnose_iters={state.diagnose_iters}"
     elif state.sufficiency is not None and not state.sufficiency.plan_can_advance:

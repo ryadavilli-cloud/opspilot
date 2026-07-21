@@ -14,7 +14,8 @@ surfaces the safety-guardrail result. Errors never expose stack traces, local pa
 from __future__ import annotations
 
 import hashlib
-from typing import Literal
+import logging
+from typing import Any, Literal
 from uuid import uuid4
 
 from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Response
@@ -25,7 +26,7 @@ from opspilot.checkpoint import build_checkpointer
 from opspilot.composition import DiagnosisComposition, build_diagnosis
 from opspilot.config import ENVIRONMENT, RETRIEVAL_BACKEND, WORKFLOW_VERSION
 from opspilot.contracts import IncidentReport
-from opspilot.graph import _initial_state, build_graph
+from opspilot.graph import _initial_state, build_graph, invoke_auto_approving
 from opspilot.investigations import (
     InMemoryInvestigationRepository,
     InvestigationRecord,
@@ -33,14 +34,26 @@ from opspilot.investigations import (
     InvestigationStatus,
 )
 
+_log = logging.getLogger("opspilot.api")
+
 _UNIT_SEP = "\x1f"
+# The approver string `invoke_auto_approving` stamps on a sync-path auto-approval — kept as a
+# single constant so `_build_response`'s "is this a real human?" check matches exactly.
+_AUTO_APPROVER = "system:auto-approve"
 
 app = FastAPI(title="OpsPilot", version=__version__)
 
-# One durable checkpointer per process (selected by OPSPILOT_CHECKPOINTER; `none` by default, so the
-# stateless one-shot behavior is unchanged). Compiled into the graph once — when present, every
-# invocation must carry a `thread_id` so the checkpoint is namespaced per investigation.
+# One durable checkpointer per process (selected by OPSPILOT_CHECKPOINTER; `none` by default).
+# `build_graph` upgrades a `None` checkpointer to an in-process `MemorySaver()` internally — real
+# HITL interrupts require *some* checkpointer to pause/resume at all — but that fallback is
+# non-durable: an `awaiting_approval` investigation does not survive a process restart on it.
 _checkpointer = build_checkpointer()
+if _checkpointer is None:
+    _log.warning(
+        "OPSPILOT_CHECKPOINTER=none: hitl_gate interrupts pause on an in-process MemorySaver only "
+        "— an awaiting_approval investigation will not survive a restart. Set sqlite/cosmos for "
+        "durability."
+    )
 _graph = build_graph(_checkpointer)
 
 # Composition root: one ToolService per process, injected via a FastAPI dependency so tests can
@@ -176,7 +189,9 @@ class AcceptedInvestigation(BaseModel):
 
 class InvestigationStatusResponse(BaseModel):
     """The polled resource — status + the ordered transition history, and the full result once
-    terminal (`completed`/`degraded`/`escalated`); `error` is set instead on a `failed` run."""
+    terminal (`completed`/`degraded`/`escalated`); `error` is set instead on a `failed` run.
+    `pending_decision` carries the report/hash/hypothesis awaiting a human decision while
+    `status == "awaiting_approval"`."""
 
     investigation_id: str
     incident_id: str
@@ -184,6 +199,19 @@ class InvestigationStatusResponse(BaseModel):
     history: list[InvestigationStatus]
     result: InvestigationResponse | None = None
     error: str | None = None
+    pending_decision: dict[str, Any] | None = None
+
+
+class InvestigationDecision(BaseModel):
+    """A human's response to a paused `hitl_gate` interrupt, submitted via
+    `POST /investigations/{id}/decision`. `submitted_report_hash` must match the report the
+    decision was actually reviewed against — a mismatch (a concurrent edit/decision moved the
+    thread first) is rejected as stale rather than silently applied to a different report."""
+
+    decision: Literal["approve", "edit", "request_more_evidence", "reject"]
+    approver: str
+    submitted_report_hash: str
+    edits: dict[str, Any] | None = None
 
 
 # --------------------------------------------------------------------------------------
@@ -285,18 +313,26 @@ def _safe_backend(svc) -> str:
 # Investigation
 # --------------------------------------------------------------------------------------
 def _run_and_build(alert: dict, svc, diagnosis) -> InvestigationResponse:
-    """Run the graph for one alert and map its terminal state to the typed response. Shared by the
-    synchronous compatibility endpoint and the async background job, so both agree exactly."""
+    """Run the graph for one alert to a genuinely terminal state — auto-approving any `hitl_gate`
+    pause along the way — and map it to the typed response. Used only by the synchronous
+    `/investigate` compatibility endpoint, which has always returned a complete result inline; the
+    async job API below must NOT auto-approve, so it does not call this."""
     configurable: dict = {
         "tool_service": svc,
         "planner": diagnosis.planner,
         "triager": diagnosis.triager,
+        "thread_id": f"investigate-{uuid4()}",
     }
-    # A compiled-in checkpointer requires a thread_id to namespace the checkpoint. Each run is its
-    # own thread; durable resume/interrupt over this id lands in 5c.
-    if _checkpointer is not None:
-        configurable["thread_id"] = f"investigate-{uuid4()}"
-    state = _graph.invoke(_initial_state(alert), config={"configurable": configurable})
+    state = invoke_auto_approving(
+        _graph, _initial_state(alert),
+        config={"configurable": configurable}, approver=_AUTO_APPROVER,
+    )
+    return _build_response(state, svc, diagnosis)
+
+
+def _build_response(state: dict, svc, diagnosis) -> InvestigationResponse:
+    """Map a genuinely terminal graph state to the typed response. Shared by the sync endpoint
+    (via `_run_and_build`) and the async job path (via `_advance`) — both must agree exactly."""
     backend = _safe_backend(svc)
 
     # Honest terminal status: an escalate carries a machine-readable error; a completed run whose
@@ -320,7 +356,7 @@ def _run_and_build(alert: dict, svc, diagnosis) -> InvestigationResponse:
     approval = None
     approval_state = state.get("approval")
     if approval_state:
-        is_stub = approval_state.get("approver") == "stub"
+        is_stub = approval_state.get("approver") == _AUTO_APPROVER
         approval = ApprovalResponse(
             kind="deterministic_auto_approval" if is_stub else "human",
             decision=str(approval_state.get("decision", "")),
@@ -356,18 +392,68 @@ def _safe_error(exc: Exception) -> str:
     return type(exc).__name__
 
 
-def _run_investigation_job(
-    investigation_id: str, alert: dict, *, repo: InvestigationRepository, svc, diagnosis
+def _advance(
+    investigation_id: str, run, *, repo: InvestigationRepository, svc, diagnosis
 ) -> None:
-    """Background worker: drive the investigation to a terminal state, recording each transition. A
-    fault in the run itself is recorded as `failed` (never a lost 202 or a surfaced 500)."""
-    repo.transition(investigation_id, "running")
+    """Run `run()` (an initial invoke or a decision resume) and record the outcome: a paused
+    `hitl_gate` interrupt becomes `awaiting_approval` with the pending report attached — NOT a
+    completed run — anything else genuinely terminal is mapped and recorded as usual. Shared by
+    the initial job and every decision-resume, so a real reviewer never has a paused run
+    misreported as `completed`, and an `edit` decision that re-interrupts is handled the same way
+    as the first pause."""
     try:
-        response = _run_and_build(alert, svc, diagnosis)
+        state = run()
     except Exception as exc:  # noqa: BLE001 — any run fault becomes a recorded `failed`, not a crash
         repo.transition(investigation_id, "failed", error=_safe_error(exc))
         return
+    pending = state.get("__interrupt__")
+    if pending:
+        repo.transition(investigation_id, "awaiting_approval", pending_interrupt=pending[0].value)
+        return
+    response = _build_response(state, svc, diagnosis)
     repo.transition(investigation_id, response.status, result=response.model_dump(mode="json"))
+
+
+def _configurable_for(investigation_id: str, *, svc, diagnosis) -> dict:
+    """The LangGraph `configurable` for one investigation — `thread_id` is the investigation's own
+    id, so the checkpoint namespace, the poll id, and `state.investigation_id` are one string."""
+    return {
+        "tool_service": svc,
+        "planner": diagnosis.planner,
+        "triager": diagnosis.triager,
+        "thread_id": investigation_id,
+    }
+
+
+def _run_investigation_job(
+    investigation_id: str, alert: dict, *, repo: InvestigationRepository, svc, diagnosis
+) -> None:
+    """Background worker: drive a fresh investigation to its first terminal state or pause,
+    recording each transition."""
+    repo.transition(investigation_id, "running")
+    config = {"configurable": _configurable_for(investigation_id, svc=svc, diagnosis=diagnosis)}
+    initial = _initial_state(alert, investigation_id=investigation_id)
+    _advance(
+        investigation_id,
+        lambda: _graph.invoke(initial, config=config),
+        repo=repo, svc=svc, diagnosis=diagnosis,
+    )
+
+
+def _resume_investigation_job(
+    investigation_id: str, decision: dict, *, repo: InvestigationRepository, svc, diagnosis
+) -> None:
+    """Background worker: resume a paused investigation with a human decision. An `edit` naturally
+    re-enters `awaiting_approval` with a NEW pending report (via `_advance`'s interrupt check) —
+    no special-casing needed here."""
+    from langgraph.types import Command
+
+    config = {"configurable": _configurable_for(investigation_id, svc=svc, diagnosis=diagnosis)}
+    _advance(
+        investigation_id,
+        lambda: _graph.invoke(Command(resume=decision), config=config),
+        repo=repo, svc=svc, diagnosis=diagnosis,
+    )
 
 
 @app.post("/investigations", status_code=202)
@@ -397,6 +483,7 @@ def create_investigation(
         investigation_id=investigation_id,
         incident_id=alert.incident_id or "INC-STUB",
         idempotency_key=idempotency_key,
+        thread_id=investigation_id,
     )
     background.add_task(
         _run_investigation_job,
@@ -414,12 +501,51 @@ def create_investigation(
     )
 
 
+@app.post("/investigations/{investigation_id}/decision", status_code=202)
+def submit_decision(
+    investigation_id: str,
+    decision: InvestigationDecision,
+    background: BackgroundTasks,
+    svc=Depends(get_service),
+    diagnosis=Depends(get_diagnosis),
+    repo: InvestigationRepository = Depends(get_repository),
+) -> AcceptedInvestigation:
+    """Submit a human's decision on a paused investigation and resume it in the background. 404 for
+    an unknown id; 409 if the investigation isn't currently `awaiting_approval` — validated
+    synchronously so a wrong-status submission never silently no-ops in the background."""
+    record = repo.get(investigation_id)
+    if record is None:
+        raise HTTPException(status_code=404, detail="investigation not found")
+    if record.status != "awaiting_approval":
+        raise HTTPException(
+            status_code=409,
+            detail=f"investigation is not awaiting a decision (status={record.status})",
+        )
+    # The only place this transition happens for a resume — _resume_investigation_job must not
+    # repeat it, or history would show a spurious duplicate "running" entry.
+    repo.transition(investigation_id, "running")
+    background.add_task(
+        _resume_investigation_job,
+        investigation_id,
+        decision.model_dump(),
+        repo=repo,
+        svc=svc,
+        diagnosis=diagnosis,
+    )
+    return AcceptedInvestigation(
+        investigation_id=investigation_id,
+        status="running",
+        poll_url=f"/investigations/{investigation_id}",
+    )
+
+
 @app.get("/investigations/{investigation_id}")
 def get_investigation(
     investigation_id: str, repo: InvestigationRepository = Depends(get_repository)
 ) -> InvestigationStatusResponse:
     """Poll an investigation: 404 for an unknown id; otherwise the current status + ordered
-    transition history, and the full typed result once terminal."""
+    transition history, the full typed result once terminal, and the pending report/hash awaiting
+    a decision while paused (`status == "awaiting_approval"`)."""
     record: InvestigationRecord | None = repo.get(investigation_id)
     if record is None:
         raise HTTPException(status_code=404, detail="investigation not found")
@@ -430,6 +556,7 @@ def get_investigation(
         status=record.status,
         history=record.history,
         result=result,
+        pending_decision=record.pending_interrupt,
         error=record.error,
     )
 

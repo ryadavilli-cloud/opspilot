@@ -16,10 +16,15 @@ from typing import Any, Literal, Protocol, runtime_checkable
 
 from pydantic import BaseModel, Field
 
-# queued -> running -> one terminal state. `completed`/`degraded`/`escalated` mirror the graph's own
-# honest terminal statuses; `failed` is a background-task fault (the run itself raised) — distinct
-# from an `escalated` investigation that finished correctly by handing off to a human.
-InvestigationStatus = Literal["queued", "running", "completed", "degraded", "escalated", "failed"]
+# queued -> running -> (awaiting_approval -> running)* -> one terminal state. `completed`/
+# `degraded`/`escalated` mirror the graph's own honest terminal statuses; `failed` is a
+# background-task fault (the run itself raised) — distinct from an `escalated` investigation that
+# finished correctly by handing off to a human. `awaiting_approval` is NOT terminal: the graph is
+# paused at `hitl_gate`'s real interrupt() (5c), holding a durable checkpoint, waiting on a
+# `POST /investigations/{id}/decision` to resume it — a poller must keep polling.
+InvestigationStatus = Literal[
+    "queued", "running", "awaiting_approval", "completed", "degraded", "escalated", "failed"
+]
 
 TERMINAL_STATUSES: frozenset[str] = frozenset(
     {"completed", "degraded", "escalated", "failed"}
@@ -37,10 +42,19 @@ class InvestigationRecord(BaseModel):
     investigation_id: str
     incident_id: str
     idempotency_key: str
+    # The LangGraph checkpointer's `thread_id` for this investigation. Set equal to
+    # `investigation_id` at creation and kept as its own named field (never conflate identifiers,
+    # per this codebase's own convention) — it's what a `POST .../decision` resume must address.
+    thread_id: str = ""
     status: InvestigationStatus = "queued"
     history: list[InvestigationStatus] = Field(default_factory=list)
     result: dict[str, Any] | None = None
     error: str | None = None
+    # The raw interrupt payload from `hitl_gate` while `status == "awaiting_approval"` — the report,
+    # its hash, and the safety result, for a client to review before deciding. Cleared on any
+    # transition out of `awaiting_approval` so a resolved investigation never shows a stale pending
+    # payload.
+    pending_interrupt: dict[str, Any] | None = None
     created_at: datetime = Field(default_factory=_now)
     updated_at: datetime = Field(default_factory=_now)
 
@@ -50,7 +64,7 @@ class InvestigationRepository(Protocol):
     """Persistence seam for async investigations. In-memory now; Cosmos DB later, same interface."""
 
     def create(
-        self, *, investigation_id: str, incident_id: str, idempotency_key: str
+        self, *, investigation_id: str, incident_id: str, idempotency_key: str, thread_id: str = ""
     ) -> InvestigationRecord: ...
 
     def get(self, investigation_id: str) -> InvestigationRecord | None: ...
@@ -62,6 +76,7 @@ class InvestigationRepository(Protocol):
         *,
         result: dict[str, Any] | None = None,
         error: str | None = None,
+        pending_interrupt: dict[str, Any] | None = None,
     ) -> InvestigationRecord: ...
 
     def find_by_idempotency_key(self, idempotency_key: str) -> InvestigationRecord | None: ...
@@ -82,12 +97,13 @@ class InMemoryInvestigationRepository:
         self._lock = threading.Lock()
 
     def create(
-        self, *, investigation_id: str, incident_id: str, idempotency_key: str
+        self, *, investigation_id: str, incident_id: str, idempotency_key: str, thread_id: str = ""
     ) -> InvestigationRecord:
         record = InvestigationRecord(
             investigation_id=investigation_id,
             incident_id=incident_id,
             idempotency_key=idempotency_key,
+            thread_id=thread_id or investigation_id,
             status="queued",
             history=["queued"],
         )
@@ -108,6 +124,7 @@ class InMemoryInvestigationRepository:
         *,
         result: dict[str, Any] | None = None,
         error: str | None = None,
+        pending_interrupt: dict[str, Any] | None = None,
     ) -> InvestigationRecord:
         with self._lock:
             record = self._records.get(investigation_id)
@@ -120,6 +137,9 @@ class InMemoryInvestigationRepository:
                 record.result = result
             if error is not None:
                 record.error = error
+            # Only ever non-null while paused — any transition out of awaiting_approval clears it,
+            # so a resolved investigation never keeps showing a stale pending review.
+            record.pending_interrupt = pending_interrupt if status == "awaiting_approval" else None
             return record.model_copy(deep=True)
 
     def find_by_idempotency_key(self, idempotency_key: str) -> InvestigationRecord | None:

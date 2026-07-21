@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import Any
 
 from opspilot.config import MAX_DIAGNOSE_ITERS
-from opspilot.graph import _initial_state, build_graph
+from opspilot.graph import _initial_state, build_graph, invoke_auto_approving
 from opspilot.state import Intent
 from opspilot.tools.service import ToolService
 
@@ -149,13 +149,24 @@ def evaluate(implementation: str = "deterministic", *, model: Any = None) -> dic
     # and diagnosis share the model, so one cassette covers both LLM stages.
     planner = build_planner(implementation, model=model)  # unknown impl -> ValueError
     triager = build_triager(implementation, model=model)
-    config = {"configurable": {"tool_service": svc, "planner": planner, "triager": triager}}
     scenarios = _load_scenarios()
     root_by_incident = {s["id"]: (s.get("impacted_chain") or [None])[0] for s in scenarios}
+    # build_graph() now always compiles with a checkpointer (see graph.py) — each scenario gets its
+    # own thread_id so checkpoints never leak across scenarios sharing the loop below, and
+    # invoke_auto_approving transparently resolves the hitl_gate pause each scenario now hits.
     per = [
-        _score_one(s, app.invoke(_initial_state(
-            {"incident_id": s["id"], "summary": s["alert"]["summary"]}), config=config),
-            root_by_incident)
+        _score_one(
+            s,
+            invoke_auto_approving(
+                app,
+                _initial_state({"incident_id": s["id"], "summary": s["alert"]["summary"]}),
+                config={"configurable": {
+                    "tool_service": svc, "planner": planner, "triager": triager,
+                    "thread_id": f"scenario-{s['id']}",
+                }},
+            ),
+            root_by_incident,
+        )
         for s in scenarios
     ]
     n = len(per)
