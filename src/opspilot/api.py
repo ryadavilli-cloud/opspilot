@@ -13,10 +13,11 @@ surfaces the safety-guardrail result. Errors never expose stack traces, local pa
 
 from __future__ import annotations
 
+import hashlib
 from typing import Literal
 from uuid import uuid4
 
-from fastapi import Depends, FastAPI, Response
+from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Response
 from pydantic import BaseModel, Field
 
 from opspilot import __version__, config
@@ -25,6 +26,14 @@ from opspilot.composition import DiagnosisComposition, build_diagnosis
 from opspilot.config import ENVIRONMENT, RETRIEVAL_BACKEND, WORKFLOW_VERSION
 from opspilot.contracts import IncidentReport
 from opspilot.graph import _initial_state, build_graph
+from opspilot.investigations import (
+    InMemoryInvestigationRepository,
+    InvestigationRecord,
+    InvestigationRepository,
+    InvestigationStatus,
+)
+
+_UNIT_SEP = "\x1f"
 
 app = FastAPI(title="OpsPilot", version=__version__)
 
@@ -59,6 +68,18 @@ def get_diagnosis() -> DiagnosisComposition:
     if _diagnosis is None:
         _diagnosis = build_diagnosis()
     return _diagnosis
+
+
+# One investigation repository per process (the async resource store). In-memory for this slice;
+# a durable Cosmos-backed implementation can replace it behind the same seam. Overridable in tests.
+_repository: InvestigationRepository | None = None
+
+
+def get_repository() -> InvestigationRepository:
+    global _repository
+    if _repository is None:
+        _repository = InMemoryInvestigationRepository()
+    return _repository
 
 
 def get_corpus_status():
@@ -142,6 +163,27 @@ class InvestigationResponse(BaseModel):
     safety: SafetyResponse
     approval: ApprovalResponse | None
     runtime: RuntimeMetadata
+
+
+# --- async investigation resource --------------------------------------------------------------
+class AcceptedInvestigation(BaseModel):
+    """The 202 body: the minted id, its initial status, and where to poll for the result."""
+
+    investigation_id: str
+    status: InvestigationStatus
+    poll_url: str
+
+
+class InvestigationStatusResponse(BaseModel):
+    """The polled resource — status + the ordered transition history, and the full result once
+    terminal (`completed`/`degraded`/`escalated`); `error` is set instead on a `failed` run."""
+
+    investigation_id: str
+    incident_id: str
+    status: InvestigationStatus
+    history: list[InvestigationStatus]
+    result: InvestigationResponse | None = None
+    error: str | None = None
 
 
 # --------------------------------------------------------------------------------------
@@ -242,25 +284,19 @@ def _safe_backend(svc) -> str:
 # --------------------------------------------------------------------------------------
 # Investigation
 # --------------------------------------------------------------------------------------
-@app.post("/investigate")
-def investigate(
-    alert: Alert,
-    svc=Depends(get_service),
-    diagnosis=Depends(get_diagnosis),
-) -> InvestigationResponse:
+def _run_and_build(alert: dict, svc, diagnosis) -> InvestigationResponse:
+    """Run the graph for one alert and map its terminal state to the typed response. Shared by the
+    synchronous compatibility endpoint and the async background job, so both agree exactly."""
     configurable: dict = {
         "tool_service": svc,
         "planner": diagnosis.planner,
         "triager": diagnosis.triager,
     }
-    # A compiled-in checkpointer requires a thread_id to namespace the checkpoint. Each sync
-    # investigation is its own thread; durable resume/interrupt over this id lands in 5c/5d.
+    # A compiled-in checkpointer requires a thread_id to namespace the checkpoint. Each run is its
+    # own thread; durable resume/interrupt over this id lands in 5c.
     if _checkpointer is not None:
         configurable["thread_id"] = f"investigate-{uuid4()}"
-    state = _graph.invoke(
-        _initial_state(alert.model_dump()),
-        config={"configurable": configurable},
-    )
+    state = _graph.invoke(_initial_state(alert), config={"configurable": configurable})
     backend = _safe_backend(svc)
 
     # Honest terminal status: an escalate carries a machine-readable error; a completed run whose
@@ -306,3 +342,106 @@ def investigate(
             model_id=diagnosis.model_id,
         ),
     )
+
+
+def _idempotency_key(alert: Alert) -> str:
+    """Same derivation as the graph state's idempotency_key: (incident_id, summary). A repeat POST
+    for the same incident + summary returns the existing investigation, not a duplicate run."""
+    raw = _UNIT_SEP.join((alert.incident_id or "INC-STUB", alert.summary or ""))
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+
+def _safe_error(exc: Exception) -> str:
+    """A sanitized, class-level reason — never a stack trace, path, or secret (like readiness)."""
+    return type(exc).__name__
+
+
+def _run_investigation_job(
+    investigation_id: str, alert: dict, *, repo: InvestigationRepository, svc, diagnosis
+) -> None:
+    """Background worker: drive the investigation to a terminal state, recording each transition. A
+    fault in the run itself is recorded as `failed` (never a lost 202 or a surfaced 500)."""
+    repo.transition(investigation_id, "running")
+    try:
+        response = _run_and_build(alert, svc, diagnosis)
+    except Exception as exc:  # noqa: BLE001 — any run fault becomes a recorded `failed`, not a crash
+        repo.transition(investigation_id, "failed", error=_safe_error(exc))
+        return
+    repo.transition(investigation_id, response.status, result=response.model_dump(mode="json"))
+
+
+@app.post("/investigations", status_code=202)
+def create_investigation(
+    alert: Alert,
+    response: Response,
+    background: BackgroundTasks,
+    svc=Depends(get_service),
+    diagnosis=Depends(get_diagnosis),
+    repo: InvestigationRepository = Depends(get_repository),
+) -> AcceptedInvestigation:
+    """The advertised contract: accept an investigation and run it in the background. Returns 202
+    immediately with the minted id + a polling URL, so a client never holds a request open for the
+    whole run. Idempotent on (incident_id, summary): a repeat returns the existing investigation."""
+    idempotency_key = _idempotency_key(alert)
+    existing = repo.find_by_idempotency_key(idempotency_key)
+    if existing is not None:
+        response.headers["Location"] = f"/investigations/{existing.investigation_id}"
+        return AcceptedInvestigation(
+            investigation_id=existing.investigation_id,
+            status=existing.status,
+            poll_url=f"/investigations/{existing.investigation_id}",
+        )
+
+    investigation_id = str(uuid4())
+    repo.create(
+        investigation_id=investigation_id,
+        incident_id=alert.incident_id or "INC-STUB",
+        idempotency_key=idempotency_key,
+    )
+    background.add_task(
+        _run_investigation_job,
+        investigation_id,
+        alert.model_dump(),
+        repo=repo,
+        svc=svc,
+        diagnosis=diagnosis,
+    )
+    response.headers["Location"] = f"/investigations/{investigation_id}"
+    return AcceptedInvestigation(
+        investigation_id=investigation_id,
+        status="queued",
+        poll_url=f"/investigations/{investigation_id}",
+    )
+
+
+@app.get("/investigations/{investigation_id}")
+def get_investigation(
+    investigation_id: str, repo: InvestigationRepository = Depends(get_repository)
+) -> InvestigationStatusResponse:
+    """Poll an investigation: 404 for an unknown id; otherwise the current status + ordered
+    transition history, and the full typed result once terminal."""
+    record: InvestigationRecord | None = repo.get(investigation_id)
+    if record is None:
+        raise HTTPException(status_code=404, detail="investigation not found")
+    result = InvestigationResponse.model_validate(record.result) if record.result else None
+    return InvestigationStatusResponse(
+        investigation_id=record.investigation_id,
+        incident_id=record.incident_id,
+        status=record.status,
+        history=record.history,
+        result=result,
+        error=record.error,
+    )
+
+
+@app.post("/investigate")
+def investigate(
+    alert: Alert,
+    svc=Depends(get_service),
+    diagnosis=Depends(get_diagnosis),
+) -> InvestigationResponse:
+    """Synchronous investigation — kept as a compatibility + test endpoint. The advertised contract
+    is the async resource API above (`POST /investigations` → 202, poll `GET /investigations/{id}`),
+    which doesn't hold a request open for the whole run. This endpoint runs the graph inline and
+    returns the full result directly."""
+    return _run_and_build(alert.model_dump(), svc, diagnosis)
