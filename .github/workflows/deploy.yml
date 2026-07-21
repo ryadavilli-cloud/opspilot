@@ -101,7 +101,6 @@ jobs:
               acrName="${{ vars.ACR_NAME }}" \
               containerImage="${{ vars.ACR_NAME }}.azurecr.io/$IMAGE_REPO:${{ github.sha }}" \
               manageAcrPullRoleAssignment=false \
-              manageOpenAiRoleAssignment=false \
             --query properties.outputs.appFqdn.value -o tsv)
           echo "app_fqdn=$FQDN" >> "$GITHUB_OUTPUT"
 
