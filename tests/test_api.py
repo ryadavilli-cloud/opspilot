@@ -155,6 +155,22 @@ def test_version_reports_application_workflow_and_backend():
     assert body["retrieval_backend"] == RETRIEVAL_BACKEND
 
 
+# --- operator console ---------------------------------------------------------------------------
+def test_console_is_served_same_origin():
+    r = client.get("/console")
+    assert r.status_code == 200
+    assert r.headers["content-type"].startswith("text/html")
+    assert "OpsPilot" in r.text
+    # the no-real-HITL disclosure must be present, not just the happy path
+    assert "auto-approved" in r.text.lower() or "no durable human approval" in r.text.lower()
+
+
+def test_root_redirects_to_the_console():
+    r = client.get("/", follow_redirects=False)
+    assert r.status_code in (307, 308)
+    assert r.headers["location"] == "/console"
+
+
 # --- investigation ----------------------------------------------------------------------------
 def _bm25_service():
     from opspilot.retrieval.factory import build_retriever
@@ -192,4 +208,36 @@ def test_investigation_unknown_incident_does_not_report_success():
     body = r.json()
     assert body["status"] != "completed"  # cannot complete without a real incident
     assert body["report"] is None
+    InvestigationResponse.model_validate(body)
+
+
+def test_escalated_response_surfaces_the_graph_escalation_reason(monkeypatch):
+    # Drives the response-mapping logic directly with a synthetic terminal state, rather than
+    # threading a real investigation through the whole graph into an escalation.
+    fake_state = {
+        "incident_id": "inc-999",
+        "error": "iteration_budget_exhausted: diagnose_iters=5",
+        "report": None,
+        "safety": {"passed": False, "violations": ["no citations"]},
+        "approval": None,
+    }
+    monkeypatch.setattr(api._graph, "invoke", lambda *a, **k: fake_state)
+    _override(_bm25_service)
+    r = client.post("/investigate", json={"incident_id": "inc-999", "summary": "x"})
+    body = r.json()
+    assert body["status"] == "escalated"
+    assert body["reason"] == "iteration_budget_exhausted: diagnose_iters=5"
+    InvestigationResponse.model_validate(body)
+
+
+def test_degraded_response_surfaces_a_reason(monkeypatch):
+    _override(_bm25_service)
+    monkeypatch.setattr(api, "_safe_backend", lambda svc: "unavailable")
+    r = client.post("/investigate", json={
+        "incident_id": "inc-004",
+        "summary": "checkout-api returning 500s shortly after this morning's deployment.",
+    })
+    body = r.json()
+    assert body["status"] == "degraded"
+    assert body["reason"] and "unavailable" in body["reason"]
     InvestigationResponse.model_validate(body)
