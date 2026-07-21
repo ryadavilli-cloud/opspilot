@@ -342,8 +342,20 @@ def apply_edit(state: InvestigationState) -> dict[str, Any]:
 
 
 def finalize_report(state: InvestigationState) -> dict[str, Any]:
-    # Publish the byte-exact object the approval was bound to. Nothing here mutates the report, so
-    # the published bytes (and hash) equal the approved bytes — the property 5c will enforce.
+    """Publish the byte-exact object the approval was bound to.
+
+    `after_approval` only routes here on `decision == "approve"`, which `hitl_gate` only ever sets
+    once `submitted_report_hash == state.report_hash` — so this invariant should be unreachable in
+    practice. It is asserted explicitly anyway rather than left as a comment: a future change to
+    the routing that broke it would otherwise publish a report the approval never saw, silently.
+    """
+    approval = state.approval or {}
+    if approval.get("approved_report_hash") != state.report_hash:
+        raise RuntimeError(
+            "finalize_report invariant violated: approved_report_hash="
+            f"{approval.get('approved_report_hash')!r} does not match report_hash="
+            f"{state.report_hash!r}"
+        )
     return {"report": state.report, "report_hash": state.report_hash}
 
 

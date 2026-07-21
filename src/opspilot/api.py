@@ -381,9 +381,12 @@ def _build_response(state: dict, svc, diagnosis) -> InvestigationResponse:
 
 
 def _idempotency_key(alert: Alert) -> str:
-    """Same derivation as the graph state's idempotency_key: (incident_id, summary). A repeat POST
-    for the same incident + summary returns the existing investigation, not a duplicate run."""
-    raw = _UNIT_SEP.join((alert.incident_id or "INC-STUB", alert.summary or ""))
+    """(incident_id, summary, WORKFLOW_VERSION): a repeat POST for the same incident + summary
+    returns the existing investigation, not a duplicate run — but a workflow/model version bump
+    mints a fresh one instead of returning a run produced under the old version forever.
+    Deliberately NOT the same derivation as the graph state's own `idempotency_key` (`ingest()`,
+    unversioned) — that one identifies a re-entrant graph turn; this one an API resource."""
+    raw = _UNIT_SEP.join((alert.incident_id or "INC-STUB", alert.summary or "", WORKFLOW_VERSION))
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
 
@@ -461,43 +464,42 @@ def create_investigation(
     alert: Alert,
     response: Response,
     background: BackgroundTasks,
+    force_rerun: bool = False,
     svc=Depends(get_service),
     diagnosis=Depends(get_diagnosis),
     repo: InvestigationRepository = Depends(get_repository),
 ) -> AcceptedInvestigation:
     """The advertised contract: accept an investigation and run it in the background. Returns 202
     immediately with the minted id + a polling URL, so a client never holds a request open for the
-    whole run. Idempotent on (incident_id, summary): a repeat returns the existing investigation."""
+    whole run. Idempotent on (incident_id, summary, workflow version): a repeat returns the existing
+    investigation, atomically — `repo.get_or_create` closes the race where two concurrent identical
+    POSTs could each see "not found" and both start a run. Pass `?force_rerun=true` to mint a fresh
+    investigation for the same key anyway (a reopened incident, new telemetry, an operator-requested
+    retry); the superseded investigation stays reachable by its own id, but a later non-forced POST
+    for the same key now returns the rerun instead of it."""
     idempotency_key = _idempotency_key(alert)
-    existing = repo.find_by_idempotency_key(idempotency_key)
-    if existing is not None:
-        response.headers["Location"] = f"/investigations/{existing.investigation_id}"
-        return AcceptedInvestigation(
-            investigation_id=existing.investigation_id,
-            status=existing.status,
-            poll_url=f"/investigations/{existing.investigation_id}",
-        )
-
     investigation_id = str(uuid4())
-    repo.create(
+    record, created = repo.get_or_create(
+        idempotency_key=idempotency_key,
         investigation_id=investigation_id,
         incident_id=alert.incident_id or "INC-STUB",
-        idempotency_key=idempotency_key,
         thread_id=investigation_id,
+        force_rerun=force_rerun,
     )
-    background.add_task(
-        _run_investigation_job,
-        investigation_id,
-        alert.model_dump(),
-        repo=repo,
-        svc=svc,
-        diagnosis=diagnosis,
-    )
-    response.headers["Location"] = f"/investigations/{investigation_id}"
+    if created:
+        background.add_task(
+            _run_investigation_job,
+            record.investigation_id,
+            alert.model_dump(),
+            repo=repo,
+            svc=svc,
+            diagnosis=diagnosis,
+        )
+    response.headers["Location"] = f"/investigations/{record.investigation_id}"
     return AcceptedInvestigation(
-        investigation_id=investigation_id,
-        status="queued",
-        poll_url=f"/investigations/{investigation_id}",
+        investigation_id=record.investigation_id,
+        status=record.status,
+        poll_url=f"/investigations/{record.investigation_id}",
     )
 
 

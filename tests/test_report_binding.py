@@ -116,6 +116,18 @@ def test_approved_bytes_equal_published_bytes():
     assert result["report_hash"] == approved_hash
 
 
+def test_finalize_report_rejects_an_unbound_approval():
+    """Defense-in-depth: `after_approval`'s routing should make this unreachable, but
+    finalize_report must never publish a report its approval doesn't actually match — it fails
+    loud rather than trusting an invariant it cannot itself verify came from the router."""
+    state = _state_with_evidence()
+    state = state.model_copy(update=synthesize_report(state))
+    state = state.model_copy(update={"approval": {"decision": "approve",
+                                                    "approved_report_hash": "not-the-real-hash"}})
+    with pytest.raises(RuntimeError, match="finalize_report invariant violated"):
+        finalize_report(state)
+
+
 def test_stale_approval_is_rejected_and_escalates():
     """A decision submitted against a hash that no longer matches the current report is rejected,
     not silently applied — and routes to escalate with a specific, machine-readable reason."""

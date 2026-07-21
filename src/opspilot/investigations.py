@@ -63,9 +63,15 @@ class InvestigationRecord(BaseModel):
 class InvestigationRepository(Protocol):
     """Persistence seam for async investigations. In-memory now; Cosmos DB later, same interface."""
 
-    def create(
-        self, *, investigation_id: str, incident_id: str, idempotency_key: str, thread_id: str = ""
-    ) -> InvestigationRecord: ...
+    def get_or_create(
+        self,
+        *,
+        idempotency_key: str,
+        investigation_id: str,
+        incident_id: str,
+        thread_id: str = "",
+        force_rerun: bool = False,
+    ) -> tuple[InvestigationRecord, bool]: ...
 
     def get(self, investigation_id: str) -> InvestigationRecord | None: ...
 
@@ -78,8 +84,6 @@ class InvestigationRepository(Protocol):
         error: str | None = None,
         pending_interrupt: dict[str, Any] | None = None,
     ) -> InvestigationRecord: ...
-
-    def find_by_idempotency_key(self, idempotency_key: str) -> InvestigationRecord | None: ...
 
 
 class InvestigationError(Exception):
@@ -96,21 +100,46 @@ class InMemoryInvestigationRepository:
         self._by_idempotency: dict[str, str] = {}  # idempotency_key -> investigation_id
         self._lock = threading.Lock()
 
-    def create(
-        self, *, investigation_id: str, incident_id: str, idempotency_key: str, thread_id: str = ""
-    ) -> InvestigationRecord:
-        record = InvestigationRecord(
-            investigation_id=investigation_id,
-            incident_id=incident_id,
-            idempotency_key=idempotency_key,
-            thread_id=thread_id or investigation_id,
-            status="queued",
-            history=["queued"],
-        )
+    def get_or_create(
+        self,
+        *,
+        idempotency_key: str,
+        investigation_id: str,
+        incident_id: str,
+        thread_id: str = "",
+        force_rerun: bool = False,
+    ) -> tuple[InvestigationRecord, bool]:
+        """Atomically look up `idempotency_key` and create `investigation_id` only if absent — one
+        lock acquisition, so two concurrent identical POSTs cannot each observe "not found" and both
+        create a record (the check-then-act race the plain `create()` + `find_by_idempotency_key()`
+        pair used to have).
+
+        `force_rerun=True` skips the lookup and unconditionally makes `investigation_id` the new
+        record for `idempotency_key` — the explicit rerun affordance for a reopened incident or an
+        operator-requested retry. The superseded record is untouched and still reachable by its own
+        id; only a later non-forced call for the same key now returns the rerun instead of it.
+
+        Returns `(record, created)`: `created=False` means an existing investigation was returned
+        and the caller's `investigation_id` was never stored — no background job may be started for
+        it.
+        """
         with self._lock:
+            if not force_rerun:
+                existing_id = self._by_idempotency.get(idempotency_key)
+                if existing_id is not None:
+                    return self._records[existing_id].model_copy(deep=True), False
+
+            record = InvestigationRecord(
+                investigation_id=investigation_id,
+                incident_id=incident_id,
+                idempotency_key=idempotency_key,
+                thread_id=thread_id or investigation_id,
+                status="queued",
+                history=["queued"],
+            )
             self._records[investigation_id] = record
             self._by_idempotency[idempotency_key] = investigation_id
-            return record.model_copy(deep=True)
+            return record.model_copy(deep=True), True
 
     def get(self, investigation_id: str) -> InvestigationRecord | None:
         with self._lock:
@@ -141,11 +170,3 @@ class InMemoryInvestigationRepository:
             # so a resolved investigation never keeps showing a stale pending review.
             record.pending_interrupt = pending_interrupt if status == "awaiting_approval" else None
             return record.model_copy(deep=True)
-
-    def find_by_idempotency_key(self, idempotency_key: str) -> InvestigationRecord | None:
-        with self._lock:
-            investigation_id = self._by_idempotency.get(idempotency_key)
-            if investigation_id is None:
-                return None
-            record = self._records.get(investigation_id)
-            return record.model_copy(deep=True) if record is not None else None

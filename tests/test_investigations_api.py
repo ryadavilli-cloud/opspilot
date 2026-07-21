@@ -120,6 +120,30 @@ def test_idempotent_repeat_returns_the_same_investigation():
     assert client.get(second["poll_url"]).json()["status"] == "completed"
 
 
+def test_force_rerun_mints_a_new_investigation_and_becomes_the_new_default():
+    _use_service(_bm25_service)
+    first = client.post("/investigations", json=_ALERT).json()
+
+    rerun = client.post("/investigations?force_rerun=true", json=_ALERT).json()
+    assert rerun["investigation_id"] != first["investigation_id"]
+
+    # the original is untouched and still pollable by its own id
+    assert client.get(first["poll_url"]).status_code == 200
+
+    # a later non-forced POST for the same alert now returns the rerun, not the original
+    repeat = client.post("/investigations", json=_ALERT).json()
+    assert repeat["investigation_id"] == rerun["investigation_id"]
+
+
+def test_a_workflow_version_bump_mints_a_new_investigation(monkeypatch):
+    _use_service(_bm25_service)
+    first = client.post("/investigations", json=_ALERT).json()
+
+    monkeypatch.setattr("opspilot.api.WORKFLOW_VERSION", "999.0")
+    bumped = client.post("/investigations", json=_ALERT).json()
+    assert bumped["investigation_id"] != first["investigation_id"]
+
+
 def test_unknown_investigation_is_404():
     r = client.get("/investigations/does-not-exist")
     assert r.status_code == 404
