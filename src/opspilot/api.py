@@ -14,18 +14,25 @@ surfaces the safety-guardrail result. Errors never expose stack traces, local pa
 from __future__ import annotations
 
 from typing import Literal
+from uuid import uuid4
 
 from fastapi import Depends, FastAPI, Response
 from pydantic import BaseModel, Field
 
 from opspilot import __version__, config
+from opspilot.checkpoint import build_checkpointer
 from opspilot.composition import DiagnosisComposition, build_diagnosis
 from opspilot.config import ENVIRONMENT, RETRIEVAL_BACKEND, WORKFLOW_VERSION
 from opspilot.contracts import IncidentReport
 from opspilot.graph import _initial_state, build_graph
 
 app = FastAPI(title="OpsPilot", version=__version__)
-_graph = build_graph()
+
+# One durable checkpointer per process (selected by OPSPILOT_CHECKPOINTER; `none` by default, so the
+# stateless one-shot behavior is unchanged). Compiled into the graph once — when present, every
+# invocation must carry a `thread_id` so the checkpoint is namespaced per investigation.
+_checkpointer = build_checkpointer()
+_graph = build_graph(_checkpointer)
 
 # Composition root: one ToolService per process, injected via a FastAPI dependency so tests can
 # override it with a specific backend or a deliberately-broken service. Built lazily so importing
@@ -241,13 +248,18 @@ def investigate(
     svc=Depends(get_service),
     diagnosis=Depends(get_diagnosis),
 ) -> InvestigationResponse:
+    configurable: dict = {
+        "tool_service": svc,
+        "planner": diagnosis.planner,
+        "triager": diagnosis.triager,
+    }
+    # A compiled-in checkpointer requires a thread_id to namespace the checkpoint. Each sync
+    # investigation is its own thread; durable resume/interrupt over this id lands in 5c/5d.
+    if _checkpointer is not None:
+        configurable["thread_id"] = f"investigate-{uuid4()}"
     state = _graph.invoke(
         _initial_state(alert.model_dump()),
-        config={"configurable": {
-            "tool_service": svc,
-            "planner": diagnosis.planner,
-            "triager": diagnosis.triager,
-        }},
+        config={"configurable": configurable},
     )
     backend = _safe_backend(svc)
 

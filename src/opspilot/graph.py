@@ -9,7 +9,12 @@ Deterministic skeleton wrapping the (currently stubbed) agentic core:
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from langgraph.graph import END, START, StateGraph
+
+if TYPE_CHECKING:
+    from langgraph.checkpoint.base import BaseCheckpointSaver
 
 from opspilot.nodes.investigation import (
     apply_edit,
@@ -34,8 +39,13 @@ from opspilot.router import (
 from opspilot.state import InvestigationState
 
 
-def build_graph():
-    """Build and compile the investigation graph."""
+def build_graph(checkpointer: BaseCheckpointSaver | None = None):
+    """Build and compile the investigation graph.
+
+    `checkpointer` (from the composition root's `build_checkpointer()`) makes the graph durable: it
+    persists a checkpoint per `thread_id`, so an interrupted run can resume from the exact step
+    after a process restart. `None` compiles a checkpointer-less graph (the stateless default).
+    """
     g = StateGraph(InvestigationState)
 
     g.add_node("ingest", ingest)
@@ -86,7 +96,7 @@ def build_graph():
     g.add_edge("postmortem", END)
     g.add_edge("escalate", END)
 
-    return g.compile()
+    return g.compile(checkpointer=checkpointer)
 
 
 def _initial_state(alert: dict) -> dict:

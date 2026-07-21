@@ -167,6 +167,23 @@ RERANK_CANDIDATES = _env_int("OPSPILOT_RERANK_CANDIDATES", 30)
 
 
 # --------------------------------------------------------------------------------------
+# Durable checkpointer seam (Stage 5b)
+# --------------------------------------------------------------------------------------
+# Selects the LangGraph checkpointer the graph compiles with: `none` (stateless one-shot, the
+# default — no behavior change), `memory` (in-process, non-durable — tests), `sqlite` (file-backed,
+# durable across a process restart — local dev), or `cosmos` (Azure Cosmos DB, the production
+# durable store — keyless via managed identity). The factory validates it; unknown -> ValueError.
+CHECKPOINTER_BACKEND = _env("OPSPILOT_CHECKPOINTER", "none")
+# Local sqlite file for the `sqlite` backend. A real path (not :memory:) so it survives a restart.
+CHECKPOINTER_SQLITE_PATH = _env("OPSPILOT_CHECKPOINTER_SQLITE_PATH", ".opspilot/checkpoints.sqlite")
+# Azure Cosmos DB (`cosmos` backend). Keyless: no key setting — the saver falls back to
+# DefaultAzureCredential (the Container App's managed identity) when no key is provided.
+COSMOS_ENDPOINT = _env("AZURE_COSMOS_ENDPOINT")
+COSMOS_DATABASE = _env("AZURE_COSMOS_DATABASE", "opspilot")
+COSMOS_CHECKPOINT_CONTAINER = _env("AZURE_COSMOS_CHECKPOINT_CONTAINER", "checkpoints")
+
+
+# --------------------------------------------------------------------------------------
 # Workflow / state versioning
 # --------------------------------------------------------------------------------------
 # Stamped into every investigation's state; a resuming graph checks this to route a stale
