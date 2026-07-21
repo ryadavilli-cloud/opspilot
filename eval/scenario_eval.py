@@ -70,7 +70,8 @@ def _implicated_entity(state: dict, root_by_incident: dict[str, str]) -> str | N
 def _score_one(scenario: dict, state: dict, root_by_incident: dict[str, str]) -> dict[str, float]:
     expected = set(scenario["expected_evidence"])
     produced = _produced_refs(state)
-    citations = (state.get("report") or {}).get("citations", [])
+    report = state.get("report")
+    citations = list(report.citations) if report else []
     diag = state.get("diagnosis")
     observations = diag.observations if diag is not None else []
     chain = scenario.get("impacted_chain") or []

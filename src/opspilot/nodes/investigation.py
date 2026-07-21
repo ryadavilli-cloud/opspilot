@@ -16,6 +16,8 @@ from uuid import uuid4
 from langchain_core.runnables import RunnableConfig
 
 from opspilot.config import MAX_DIAGNOSE_ITERS, WORKFLOW_VERSION
+from opspilot.contracts import EvidenceItem as ReportEvidence
+from opspilot.contracts import IncidentReport
 from opspilot.diagnosis.contracts import EvidenceCitation, Hypothesis
 from opspilot.state import DiagnosisTrace, EvidenceItem, Intent, InvestigationState
 
@@ -251,19 +253,19 @@ def diagnose(state: InvestigationState, config: RunnableConfig | None = None) ->
 
 def synthesize_report(state: InvestigationState) -> dict[str, Any]:
     hyp = state.hypothesis
-    report = {
-        "incident_id": state.incident_id or "INC-STUB",
-        "severity": state.severity or "SEV3",
-        "category": state.category or "unknown",
-        "hypothesis": hyp.statement if hyp else "",
-        "confidence": hyp.confidence if hyp else 0.0,
+    report = IncidentReport(
+        incident_id=state.incident_id or "INC-STUB",
+        severity=state.severity or "SEV3",
+        category=state.category or "unknown",
+        hypothesis=hyp.statement if hyp else "",
+        confidence=hyp.confidence if hyp else 0.0,
         # published report evidence shape — the internal content_hash stays in state
-        "evidence": [{"source": ev.source, "ref": ev.ref, "content": ev.content}
-                     for ev in state.evidence_by_id.values()],
-        "recommended_next_step": "(stub) roll back the most recent deploy and re-observe.",
-        "citations": state.evidence_refs(),
-    }
-    return {"report": report}
+        evidence=[ReportEvidence(source=ev.source, ref=ev.ref, content=ev.content)
+                  for ev in state.evidence_by_id.values()],
+        recommended_next_step="(stub) roll back the most recent deploy and re-observe.",
+        citations=state.evidence_refs(),
+    )
+    return {"report": report, "report_hash": report.content_hash()}
 
 
 def safety_validate(state: InvestigationState) -> dict[str, Any]:
@@ -274,7 +276,7 @@ def safety_validate(state: InvestigationState) -> dict[str, Any]:
     if state.intent == Intent.INFO_ONLY.value:  # ungrounded informational reply — exempt
         return {"safety": {"passed": True, "violations": [], "exempt": "info_only"}}
 
-    citations = (state.report or {}).get("citations", [])
+    citations = list(state.report.citations) if state.report else []
     # Validate against the tool-produced ref trail, NOT evidence_refs() (which is derived from the
     # cited refs themselves — that would let a fabricated citation certify itself).
     produced = set(state.produced_refs)
@@ -284,20 +286,27 @@ def safety_validate(state: InvestigationState) -> dict[str, Any]:
 
 def hitl_gate(state: InvestigationState) -> dict[str, Any]:
     # The HITL stage replaces this with a checkpoint-backed interrupt(). For the walking
-    # skeleton we auto-approve so the flow completes without a human in the loop.
-    return {"approval": {"decision": "approve", "approver": "stub", "edits": None}}
+    # skeleton we auto-approve so the flow completes without a human in the loop. The approval is
+    # bound to the report it saw (approved_report_hash) — the real interrupt (5c) rejects a stale
+    # approval whose hash no longer matches the current report.
+    return {"approval": {"decision": "approve", "approver": "stub", "edits": None,
+                         "approved_report_hash": state.report_hash}}
 
 
 def apply_edit(state: InvestigationState) -> dict[str, Any]:
-    """Apply the reviewer's edits to the report. The graph routes the result back through
-    safety_validate — an edit never reaches finalize without passing the guardrail again."""
+    """Apply the reviewer's edits to the report, re-validating into a NEW frozen IncidentReport and
+    recomputing its hash. The graph routes the result back through safety_validate — an edit never
+    reaches finalize without passing the guardrail (and being re-bound to its new hash) again."""
     edits = (state.approval or {}).get("edits") or {}
-    report = {**(state.report or {}), **edits}
-    return {"report": report}
+    base = state.report.model_dump() if state.report else {}
+    report = IncidentReport.model_validate({**base, **edits})
+    return {"report": report, "report_hash": report.content_hash()}
 
 
 def finalize_report(state: InvestigationState) -> dict[str, Any]:
-    return {"report": state.report or {}}
+    # Publish the byte-exact object the approval was bound to. Nothing here mutates the report, so
+    # the published bytes (and hash) equal the approved bytes — the property 5c will enforce.
+    return {"report": state.report, "report_hash": state.report_hash}
 
 
 def postmortem(state: InvestigationState) -> dict[str, Any]:
