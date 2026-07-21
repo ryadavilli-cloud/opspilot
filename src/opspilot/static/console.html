@@ -1,0 +1,461 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>OpsPilot — Operator Console</title>
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg: #f7f7f8;
+    --panel: #ffffff;
+    --border: #d9dce1;
+    --text: #1b1f24;
+    --muted: #5b6570;
+    --accent: #2454ff;
+    --ok: #1a7f37;
+    --warn: #9a6700;
+    --bad: #cf222e;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    padding: 0 0 3rem;
+    background: var(--bg);
+    color: var(--text);
+    font: 15px/1.5 -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  header {
+    padding: 1.25rem 1.5rem;
+    border-bottom: 1px solid var(--border);
+    background: var(--panel);
+  }
+  header h1 { margin: 0; font-size: 1.15rem; }
+  header p { margin: 0.25rem 0 0; color: var(--muted); font-size: 0.85rem; }
+
+  .demo-banner {
+    margin: 1rem 1.5rem 0;
+    padding: 0.75rem 1rem;
+    border: 1px solid var(--warn);
+    border-left-width: 4px;
+    background: color-mix(in srgb, var(--warn) 12%, var(--panel));
+    border-radius: 4px;
+    font-size: 0.9rem;
+  }
+  .demo-banner strong { display: block; margin-bottom: 0.15rem; }
+
+  main {
+    max-width: 860px;
+    margin: 0 auto;
+    padding: 0 1.5rem;
+  }
+  section.card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 1.25rem;
+    margin-top: 1.25rem;
+  }
+  h2 { margin: 0 0 0.9rem; font-size: 1rem; }
+  h3 { margin: 1rem 0 0.4rem; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.03em; color: var(--muted); }
+
+  label { display: block; margin-bottom: 0.9rem; font-size: 0.88rem; font-weight: 600; }
+  label span.hint { display: block; font-weight: 400; color: var(--muted); font-size: 0.8rem; margin-top: 0.15rem; }
+  input[type=text], textarea {
+    width: 100%;
+    margin-top: 0.35rem;
+    padding: 0.5rem 0.6rem;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    font: inherit;
+    background: var(--bg);
+    color: var(--text);
+  }
+  textarea { min-height: 4.5rem; resize: vertical; }
+
+  button {
+    font: inherit;
+    cursor: pointer;
+    border-radius: 4px;
+    border: 1px solid var(--accent);
+    background: var(--accent);
+    color: #fff;
+    padding: 0.55rem 1.1rem;
+  }
+  button:disabled { opacity: 0.55; cursor: not-allowed; }
+  button.secondary { background: transparent; color: var(--accent); }
+
+  .badge {
+    display: inline-block;
+    padding: 0.15rem 0.55rem;
+    border-radius: 999px;
+    font-size: 0.78rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+  }
+  .badge-queued, .badge-running { background: #ddeafd; color: #0757c9; }
+  .badge-completed { background: #d8f3dc; color: var(--ok); }
+  .badge-degraded { background: #ffedcf; color: var(--warn); }
+  .badge-escalated, .badge-failed { background: #ffd7d5; color: var(--bad); }
+
+  .history-trail { margin-top: 0.6rem; font-size: 0.82rem; color: var(--muted); }
+  .history-trail span:not(:last-child)::after { content: " \2192 "; }
+
+  .confidence-bar {
+    height: 8px;
+    border-radius: 999px;
+    background: var(--border);
+    overflow: hidden;
+    margin-top: 0.35rem;
+  }
+  .confidence-bar > div { height: 100%; background: var(--accent); }
+
+  .reason-box {
+    margin-top: 0.75rem;
+    padding: 0.65rem 0.85rem;
+    border-radius: 4px;
+    border: 1px solid var(--border);
+    font-size: 0.88rem;
+  }
+  .reason-box.escalated, .reason-box.failed { border-color: var(--bad); background: color-mix(in srgb, var(--bad) 8%, var(--panel)); }
+  .reason-box.degraded { border-color: var(--warn); background: color-mix(in srgb, var(--warn) 8%, var(--panel)); }
+
+  .citation-list { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-top: 0.35rem; }
+  .citation-link {
+    background: var(--bg);
+    color: var(--accent);
+    border: 1px solid var(--border);
+    padding: 0.2rem 0.5rem;
+    font-size: 0.78rem;
+    font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+    border-radius: 4px;
+  }
+  .citation-link:hover { border-color: var(--accent); }
+
+  .evidence-item {
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 0.6rem 0.75rem;
+    margin-top: 0.5rem;
+    transition: background 0.4s ease, border-color 0.4s ease;
+  }
+  .evidence-item.highlight { background: color-mix(in srgb, var(--accent) 12%, var(--panel)); border-color: var(--accent); }
+  .evidence-ref { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 0.78rem; color: var(--muted); }
+  .evidence-content { margin-top: 0.25rem; font-size: 0.88rem; }
+
+  .safety-passed { color: var(--ok); font-weight: 600; }
+  .safety-failed { color: var(--bad); font-weight: 600; }
+  ul.violations { margin: 0.35rem 0 0; padding-left: 1.1rem; color: var(--bad); font-size: 0.85rem; }
+
+  dl.runtime { display: grid; grid-template-columns: max-content 1fr; gap: 0.25rem 1rem; font-size: 0.85rem; margin: 0; }
+  dl.runtime dt { color: var(--muted); }
+  dl.runtime dd { margin: 0; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; }
+
+  .error-text { color: var(--bad); font-size: 0.9rem; }
+  .empty { color: var(--muted); font-size: 0.88rem; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>OpsPilot — Operator Console</h1>
+  <p>Submit an incident, watch it investigate itself, and review the grounded result.</p>
+</header>
+
+<main>
+  <div class="demo-banner">
+    <strong>Demo build — no durable human approval yet.</strong>
+    Every report on this build is auto-approved by a stub (no checkpoint-backed
+    <code>interrupt()</code>, no real reviewer). Treat the "approval" shown below as a placeholder,
+    not evidence that a human reviewed this report.
+  </div>
+
+  <section class="card">
+    <h2>New investigation</h2>
+    <form id="investigate-form">
+      <label>
+        Incident ID
+        <input type="text" id="incident_id" placeholder="e.g. inc-004" required>
+      </label>
+      <label>
+        Summary
+        <textarea id="summary" placeholder="What's happening? e.g. checkout-api returning 500s shortly after this morning's deployment." required></textarea>
+        <span class="hint">Fed to the triager and diagnosis loop as the incident description.</span>
+      </label>
+      <button type="submit" id="submit-btn">Investigate</button>
+      <button type="button" id="reset-btn" class="secondary" hidden>New investigation</button>
+    </form>
+  </section>
+
+  <section class="card" id="status-card" hidden>
+    <h2>Status</h2>
+    <span class="badge" id="status-badge"></span>
+    <div class="history-trail" id="history-trail"></div>
+  </section>
+
+  <section class="card" id="result-card" hidden>
+    <h2>Result</h2>
+    <div id="result-body"></div>
+  </section>
+
+  <section class="card" id="error-card" hidden>
+    <h2>Could not complete</h2>
+    <p class="error-text" id="error-text"></p>
+  </section>
+</main>
+
+<script>
+(function () {
+  "use strict";
+
+  const TERMINAL = new Set(["completed", "degraded", "escalated", "failed"]);
+  const form = document.getElementById("investigate-form");
+  const submitBtn = document.getElementById("submit-btn");
+  const resetBtn = document.getElementById("reset-btn");
+  const statusCard = document.getElementById("status-card");
+  const statusBadge = document.getElementById("status-badge");
+  const historyTrail = document.getElementById("history-trail");
+  const resultCard = document.getElementById("result-card");
+  const resultBody = document.getElementById("result-body");
+  const errorCard = document.getElementById("error-card");
+  const errorText = document.getElementById("error-text");
+
+  let pollTimer = null;
+
+  function el(tag, opts) {
+    const node = document.createElement(tag);
+    opts = opts || {};
+    if (opts.className) node.className = opts.className;
+    if (opts.text !== undefined) node.textContent = opts.text;
+    if (opts.id) node.id = opts.id;
+    return node;
+  }
+
+  function sanitizeId(ref) {
+    return "ev-" + String(ref).replace(/[^a-zA-Z0-9_-]/g, "-");
+  }
+
+  function hide(node) { node.hidden = true; }
+  function show(node) { node.hidden = false; }
+
+  function resetUI() {
+    if (pollTimer) { clearTimeout(pollTimer); pollTimer = null; }
+    hide(statusCard); hide(resultCard); hide(errorCard);
+    statusBadge.textContent = "";
+    statusBadge.className = "badge";
+    historyTrail.textContent = "";
+    resultBody.textContent = "";
+    errorText.textContent = "";
+  }
+
+  function showError(message) {
+    show(errorCard);
+    errorText.textContent = message;
+  }
+
+  function renderStatus(body) {
+    show(statusCard);
+    statusBadge.textContent = body.status;
+    statusBadge.className = "badge badge-" + body.status;
+    historyTrail.textContent = "";
+    (body.history || []).forEach(function (step) {
+      historyTrail.appendChild(el("span", { text: step }));
+    });
+  }
+
+  function renderReason(container, status, reason) {
+    if (!reason) return;
+    const box = el("div", { className: "reason-box " + status });
+    box.appendChild(el("strong", { text: status === "degraded" ? "Degraded: " : "Escalated: " }));
+    box.appendChild(document.createTextNode(reason));
+    container.appendChild(box);
+  }
+
+  function renderEvidence(container, evidence) {
+    container.appendChild(el("h3", { text: "Evidence" }));
+    if (!evidence || evidence.length === 0) {
+      container.appendChild(el("p", { className: "empty", text: "No evidence recorded." }));
+      return;
+    }
+    evidence.forEach(function (item) {
+      const box = el("div", { className: "evidence-item", id: sanitizeId(item.ref) });
+      const ref = el("div", { className: "evidence-ref" });
+      ref.appendChild(document.createTextNode(item.source + " — " + item.ref));
+      box.appendChild(ref);
+      if (item.content) {
+        box.appendChild(el("div", { className: "evidence-content", text: item.content }));
+      }
+      container.appendChild(box);
+    });
+  }
+
+  function renderCitations(container, citations) {
+    container.appendChild(el("h3", { text: "Citations" }));
+    if (!citations || citations.length === 0) {
+      container.appendChild(el("p", { className: "empty", text: "No cited references." }));
+      return;
+    }
+    const list = el("div", { className: "citation-list" });
+    citations.forEach(function (ref) {
+      const btn = el("button", { className: "citation-link", text: ref });
+      btn.type = "button";
+      btn.addEventListener("click", function () {
+        const target = document.getElementById(sanitizeId(ref));
+        if (!target) return;
+        target.scrollIntoView({ behavior: "smooth", block: "center" });
+        target.classList.add("highlight");
+        setTimeout(function () { target.classList.remove("highlight"); }, 1500);
+      });
+      list.appendChild(btn);
+    });
+    container.appendChild(list);
+  }
+
+  function renderSafety(container, safety) {
+    container.appendChild(el("h3", { text: "Safety" }));
+    if (!safety) {
+      container.appendChild(el("p", { className: "empty", text: "No safety result recorded." }));
+      return;
+    }
+    container.appendChild(el("p", {
+      className: safety.passed ? "safety-passed" : "safety-failed",
+      text: safety.passed ? "Passed the citation / unsupported-claim gate" : "Failed the citation / unsupported-claim gate",
+    }));
+    if (safety.violations && safety.violations.length > 0) {
+      const ul = el("ul", { className: "violations" });
+      safety.violations.forEach(function (v) { ul.appendChild(el("li", { text: v })); });
+      container.appendChild(ul);
+    }
+  }
+
+  function renderRuntime(container, runtime) {
+    container.appendChild(el("h3", { text: "Runtime" }));
+    const dl = el("dl", { className: "runtime" });
+    const rows = [
+      ["Implementation", runtime.implementation],
+      ["Provider", runtime.provider || "(deterministic — no model)"],
+      ["Model", runtime.model_id || "(deterministic — no model)"],
+      ["Retrieval backend", runtime.retrieval_backend],
+      ["Workflow version", runtime.workflow_version],
+      ["Application version", runtime.application_version],
+    ];
+    rows.forEach(function (pair) {
+      dl.appendChild(el("dt", { text: pair[0] }));
+      dl.appendChild(el("dd", { text: pair[1] }));
+    });
+    container.appendChild(dl);
+  }
+
+  function renderApproval(container, approval) {
+    if (!approval) return;
+    container.appendChild(el("h3", { text: "Approval" }));
+    const label = approval.kind === "deterministic_auto_approval"
+      ? "Auto-approved by the stub (not a human decision)"
+      : "Approved by a human reviewer";
+    container.appendChild(el("p", { className: "empty", text: label + " — decision: " + approval.decision }));
+  }
+
+  function renderResult(body) {
+    resultBody.textContent = "";
+    show(resultCard);
+
+    if (body.status === "failed") {
+      hide(resultCard);
+      showError(body.error || "The investigation failed with no recorded reason.");
+      return;
+    }
+
+    const result = body.result;
+    if (!result) {
+      resultBody.appendChild(el("p", { className: "empty", text: "No result payload was returned." }));
+      return;
+    }
+
+    renderReason(resultBody, result.status, result.reason);
+
+    const report = result.report;
+    if (report) {
+      resultBody.appendChild(el("h3", { text: "Hypothesis" }));
+      resultBody.appendChild(el("p", { text: report.hypothesis || "(none)" }));
+
+      resultBody.appendChild(el("h3", { text: "Confidence" }));
+      const pct = Math.round((report.confidence || 0) * 100);
+      const barWrap = el("div", { className: "confidence-bar" });
+      const bar = el("div");
+      bar.style.width = pct + "%";
+      barWrap.appendChild(bar);
+      resultBody.appendChild(el("p", { text: pct + "%" }));
+      resultBody.appendChild(barWrap);
+
+      renderEvidence(resultBody, report.evidence);
+      renderCitations(resultBody, report.citations);
+    } else {
+      resultBody.appendChild(el("p", { className: "empty", text: "No report was synthesized for this investigation." }));
+    }
+
+    renderSafety(resultBody, result.safety);
+    renderApproval(resultBody, result.approval);
+    renderRuntime(resultBody, result.runtime);
+  }
+
+  function poll(url) {
+    fetch(url)
+      .then(function (res) {
+        if (!res.ok) throw new Error("poll failed: HTTP " + res.status);
+        return res.json();
+      })
+      .then(function (body) {
+        renderStatus(body);
+        if (TERMINAL.has(body.status)) {
+          renderResult(body);
+          submitBtn.disabled = false;
+          show(resetBtn);
+          return;
+        }
+        pollTimer = setTimeout(function () { poll(url); }, 1500);
+      })
+      .catch(function (err) {
+        showError(String(err.message || err));
+        submitBtn.disabled = false;
+        show(resetBtn);
+      });
+  }
+
+  form.addEventListener("submit", function (event) {
+    event.preventDefault();
+    resetUI();
+    submitBtn.disabled = true;
+    hide(resetBtn);
+
+    const incidentId = document.getElementById("incident_id").value.trim();
+    const summary = document.getElementById("summary").value.trim();
+
+    fetch("/investigations", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ incident_id: incidentId, summary: summary }),
+    })
+      .then(function (res) {
+        if (!res.ok) throw new Error("submit failed: HTTP " + res.status);
+        return res.json();
+      })
+      .then(function (accepted) {
+        renderStatus({ status: accepted.status, history: [accepted.status] });
+        poll(accepted.poll_url);
+      })
+      .catch(function (err) {
+        showError(String(err.message || err));
+        submitBtn.disabled = false;
+      });
+  });
+
+  resetBtn.addEventListener("click", function () {
+    resetUI();
+    form.reset();
+    hide(resetBtn);
+  });
+})();
+</script>
+</body>
+</html>

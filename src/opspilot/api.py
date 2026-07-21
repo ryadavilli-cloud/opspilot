@@ -14,10 +14,12 @@ surfaces the safety-guardrail result. Errors never expose stack traces, local pa
 from __future__ import annotations
 
 import hashlib
+from pathlib import Path
 from typing import Literal
 from uuid import uuid4
 
 from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Response
+from fastapi.responses import HTMLResponse, RedirectResponse
 from pydantic import BaseModel, Field
 
 from opspilot import __version__, config
@@ -36,6 +38,11 @@ from opspilot.investigations import (
 _UNIT_SEP = "\x1f"
 
 app = FastAPI(title="OpsPilot", version=__version__)
+
+# The operator console: a single self-contained, same-origin HTML page (inline CSS/JS, no external
+# requests, no build step) so an operator can drive an investigation without a separate frontend
+# deployment. Read once at import time — it's a packaged asset, not runtime-configurable data.
+_CONSOLE_HTML = (Path(__file__).parent / "static" / "console.html").read_text(encoding="utf-8")
 
 # One durable checkpointer per process (selected by OPSPILOT_CHECKPOINTER; `none` by default, so the
 # stateless one-shot behavior is unchanged). Compiled into the graph once — when present, every
@@ -163,6 +170,10 @@ class InvestigationResponse(BaseModel):
     safety: SafetyResponse
     approval: ApprovalResponse | None
     runtime: RuntimeMetadata
+    # A human-readable cause for a non-"completed" status — None when completed. Escalation carries
+    # the graph's own machine-readable reason (`escalate`'s state.error); degraded is synthesized
+    # here since the graph itself has no separate per-run degradation-reason field yet.
+    reason: str | None = None
 
 
 # --- async investigation resource --------------------------------------------------------------
@@ -184,6 +195,21 @@ class InvestigationStatusResponse(BaseModel):
     history: list[InvestigationStatus]
     result: InvestigationResponse | None = None
     error: str | None = None
+
+
+# --------------------------------------------------------------------------------------
+# Operator console
+# --------------------------------------------------------------------------------------
+@app.get("/", include_in_schema=False)
+def root() -> RedirectResponse:
+    return RedirectResponse("/console")
+
+
+@app.get("/console", response_class=HTMLResponse, include_in_schema=False)
+def console() -> str:
+    """Same-origin operator console: submit an investigation, poll it, review the result. No auth,
+    no admin surface, no historical view — intentionally narrow (see docs/architecture.md §9)."""
+    return _CONSOLE_HTML
 
 
 # --------------------------------------------------------------------------------------
@@ -301,10 +327,13 @@ def _run_and_build(alert: dict, svc, diagnosis) -> InvestigationResponse:
 
     # Honest terminal status: an escalate carries a machine-readable error; a completed run whose
     # retrieval was unavailable is degraded (partial evidence), never a normal-looking success.
+    reason: str | None = None
     if state.get("error"):
         status: Literal["completed", "degraded", "escalated"] = "escalated"
+        reason = str(state["error"])
     elif backend == "unavailable":
         status = "degraded"
+        reason = f"retrieval backend unavailable ({backend}); investigation ran on partial evidence"
     else:
         status = "completed"
 
@@ -333,6 +362,7 @@ def _run_and_build(alert: dict, svc, diagnosis) -> InvestigationResponse:
         report=report,
         safety=safety,
         approval=approval,
+        reason=reason,
         runtime=RuntimeMetadata(
             retrieval_backend=backend,
             workflow_version=WORKFLOW_VERSION,
