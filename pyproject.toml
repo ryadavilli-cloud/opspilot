@@ -16,6 +16,10 @@ dependencies = [
     # Lexical BM25 index — the deterministic runtime retrieval backend. Pure-Python and tiny;
     # unlike the dense/rerank ML stack (eval group) it ships in the runtime image.
     "rank-bm25>=0.2.2",
+    # Durable checkpointer — file-backed SQLite saver (Stage 5b). Small (aiosqlite + stdlib sqlite3);
+    # the local/dev durable backend and what the CI resume gate runs against. The Cosmos prod saver
+    # is the optional `checkpoint` group, lazy-imported, so it stays out of the lean image by default.
+    "langgraph-checkpoint-sqlite>=2.0",
 ]
 
 [dependency-groups]
@@ -39,6 +43,12 @@ eval = [
 llm = [
     "openai>=1.40",
     "azure-identity>=1.17",
+]
+# Production durable checkpointer — Azure Cosmos DB saver for LangGraph (Stage 5b). First-party
+# LangChain; keyless via DefaultAzureCredential (pulls in azure-identity). Lazy-imported by the
+# `cosmos` backend, kept out of the lean image until the Cosmos deploy installs `--group checkpoint`.
+checkpoint = [
+    "langchain-azure-cosmosdb>=1.0",
 ]
 
 [build-system]
