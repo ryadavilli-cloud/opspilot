@@ -221,7 +221,9 @@ def test_escalated_response_surfaces_the_graph_escalation_reason(monkeypatch):
         "safety": {"passed": False, "violations": ["no citations"]},
         "approval": None,
     }
-    monkeypatch.setattr(api._graph, "invoke", lambda *a, **k: fake_state)
+    # `get_graph()` (not the `api._graph` global) — the graph is built lazily, so the global is
+    # still None until something asks for it.
+    monkeypatch.setattr(api.get_graph(), "invoke", lambda *a, **k: fake_state)
     _override(_bm25_service)
     r = client.post("/investigate", json={"incident_id": "inc-999", "summary": "x"})
     body = r.json()

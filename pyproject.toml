@@ -44,11 +44,15 @@ llm = [
     "openai>=1.40",
     "azure-identity>=1.17",
 ]
-# Production durable checkpointer — Azure Cosmos DB saver for LangGraph (Stage 5b). First-party
-# LangChain; keyless via DefaultAzureCredential (pulls in azure-identity). Lazy-imported by the
-# `cosmos` backend, kept out of the lean image until the Cosmos deploy installs `--group checkpoint`.
+# Production durable Cosmos DB backends: the LangGraph checkpointer (Stage 5b, first-party
+# langchain-azure-cosmosdb) and the async job API's InvestigationRepository (Stage 5c,
+# CosmosInvestigationRepository, direct azure-cosmos — already a transitive dep of the former, made
+# explicit since it's now imported directly too). Both keyless via DefaultAzureCredential. Both
+# lazy-imported by their respective `cosmos` backend, kept out of the lean image until the Cosmos
+# deploy installs `--group checkpoint`.
 checkpoint = [
     "langchain-azure-cosmosdb>=1.0",
+    "azure-cosmos>=4.7",
 ]
 
 [build-system]

@@ -1198,6 +1198,7 @@ dependencies = [
 
 [package.dev-dependencies]
 checkpoint = [
+    { name = "azure-cosmos" },
     { name = "langchain-azure-cosmosdb" },
 ]
 data = [
@@ -1233,7 +1234,10 @@ requires-dist = [
 ]
 
 [package.metadata.requires-dev]
-checkpoint = [{ name = "langchain-azure-cosmosdb", specifier = ">=1.0" }]
+checkpoint = [
+    { name = "azure-cosmos", specifier = ">=4.7" },
+    { name = "langchain-azure-cosmosdb", specifier = ">=1.0" },
+]
 data = [
     { name = "numpy", specifier = ">=2.5.0" },
     { name = "pandas", specifier = ">=3.0.3" },

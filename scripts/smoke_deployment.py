@@ -15,7 +15,13 @@ import time
 import httpx
 from pydantic import ValidationError
 
-from opspilot.api import InvestigationResponse, ReadinessResponse, VersionResponse
+from opspilot.api import (
+    AcceptedInvestigation,
+    InvestigationResponse,
+    InvestigationStatusResponse,
+    ReadinessResponse,
+    VersionResponse,
+)
 
 # inc-004: a fixed, answer-keyed incident (data/answer_key/scenarios.yaml) — same fixture
 # used by tests/test_api.py::test_investigation_smoke_path_over_bm25.
@@ -23,6 +29,8 @@ SMOKE_INCIDENT_ID = "inc-004"
 SMOKE_INCIDENT_SUMMARY = "checkout-api returning 500s shortly after this morning's deployment."
 REQUEST_TIMEOUT_S = 10.0
 MAX_POLL_INTERVAL_S = 20.0
+ASYNC_POLL_TIMEOUT_S = 120.0
+ASYNC_POLL_INTERVAL_S = 3.0
 
 
 class SmokeTestFailure(RuntimeError):
@@ -160,6 +168,81 @@ def run_investigation(client: httpx.Client) -> InvestigationResponse:
     return investigation
 
 
+def _poll_until_terminal_or_awaiting(
+    client: httpx.Client, poll_url: str, *, timeout_s: float, poll_interval_s: float
+) -> InvestigationStatusResponse:
+    deadline = time.monotonic() + timeout_s
+    last_status = "unknown"
+    while time.monotonic() < deadline:
+        resp = client.get(poll_url)
+        _require(resp.status_code == 200, f"{poll_url} returned HTTP {resp.status_code}")
+        status = InvestigationStatusResponse.model_validate(resp.json())
+        last_status = status.status
+        if status.status != "queued" and status.status != "running":
+            return status
+        time.sleep(poll_interval_s)
+    raise SmokeTestFailure(
+        f"{poll_url} did not leave queued/running within {timeout_s:.0f}s (last: {last_status!r})"
+    )
+
+
+def run_async_investigation(client: httpx.Client) -> None:
+    """Exercises the async job API end to end — including the real hitl_gate pause and the
+    Cosmos-backed InvestigationRepository behind it in production. `force_rerun` is required: this
+    smoke test always posts the same fixed incident, and without it a repeat deploy would just
+    observe the previous run's already-completed investigation, proving nothing new."""
+    resp = client.post(
+        "/investigations",
+        params={"force_rerun": "true"},
+        json={"incident_id": SMOKE_INCIDENT_ID, "summary": SMOKE_INCIDENT_SUMMARY},
+    )
+    _require(
+        resp.status_code == 202, f"POST /investigations returned HTTP {resp.status_code}: "
+        f"{resp.text[:500]}",
+    )
+    accepted = AcceptedInvestigation.model_validate(resp.json())
+
+    paused = _poll_until_terminal_or_awaiting(
+        client, accepted.poll_url, timeout_s=ASYNC_POLL_TIMEOUT_S,
+        poll_interval_s=ASYNC_POLL_INTERVAL_S,
+    )
+    _require(
+        paused.status == "awaiting_approval",
+        f"async investigation reached {paused.status!r}, expected 'awaiting_approval' "
+        f"(error={paused.error!r})",
+    )
+    _require(bool(paused.pending_decision), "awaiting_approval but pending_decision is empty")
+    assert paused.pending_decision is not None  # narrows for the type checker after _require
+    report_hash = paused.pending_decision["report_hash"]
+
+    decision = client.post(
+        f"{accepted.poll_url}/decision",
+        json={
+            "decision": "approve", "approver": "smoke-test", "submitted_report_hash": report_hash,
+        },
+    )
+    _require(decision.status_code == 202, f"decision POST returned HTTP {decision.status_code}")
+
+    final = _poll_until_terminal_or_awaiting(
+        client, accepted.poll_url, timeout_s=ASYNC_POLL_TIMEOUT_S,
+        poll_interval_s=ASYNC_POLL_INTERVAL_S,
+    )
+    _require(
+        final.status == "completed",
+        f"async investigation ended {final.status!r} after approval, expected 'completed' "
+        f"(error={final.error!r})",
+    )
+    _require(final.result is not None, "completed async investigation has no result")
+    assert final.result is not None  # narrows for the type checker after _require
+    _require(bool(final.result.report and final.result.report.citations),
+             "completed async investigation has no citations")
+    print(
+        f"[smoke] async investigation: investigation_id={accepted.investigation_id} "
+        f"history={final.history}",
+        flush=True,
+    )
+
+
 def main(argv: list[str] | None = None) -> int:
     argv = sys.argv[1:] if argv is None else argv
     base_url = argv[0] if argv else os.environ.get("OPSPILOT_BASE_URL")
@@ -187,6 +270,7 @@ def main(argv: list[str] | None = None) -> int:
             )
             check_version(client)
             run_investigation(client)
+            run_async_investigation(client)
     except SmokeTestFailure as exc:
         print(f"[smoke] FAIL — {exc}", file=sys.stderr)
         return 1
@@ -195,8 +279,8 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
     print(
-        "[smoke] PASS — /health/ready, /version, and /investigate(inc-004) all satisfy "
-        "the deployment gate",
+        "[smoke] PASS — /health/ready, /version, /investigate, and the async "
+        "/investigations + /decision path (inc-004) all satisfy the deployment gate",
         flush=True,
     )
     return 0

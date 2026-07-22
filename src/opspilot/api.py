@@ -30,11 +30,11 @@ from opspilot.config import ENVIRONMENT, RETRIEVAL_BACKEND, WORKFLOW_VERSION
 from opspilot.contracts import IncidentReport
 from opspilot.graph import _initial_state, build_graph, invoke_auto_approving
 from opspilot.investigations import (
-    InMemoryInvestigationRepository,
     InvestigationRecord,
     InvestigationRepository,
     InvestigationStatus,
 )
+from opspilot.repository import build_investigation_repository
 
 _log = logging.getLogger("opspilot.api")
 
@@ -50,20 +50,34 @@ app = FastAPI(title="OpsPilot", version=__version__)
 # deployment. Read once at import time — it's a packaged asset, not runtime-configurable data.
 _CONSOLE_HTML = (Path(__file__).parent / "static" / "console.html").read_text(encoding="utf-8")
 
-# One durable checkpointer per process (selected by OPSPILOT_CHECKPOINTER; `none` by default).
-# `build_graph` upgrades a `None` checkpointer to an in-process `MemorySaver()` internally — real
-# HITL interrupts require *some* checkpointer to pause/resume at all — but that fallback is
-# non-durable: an `awaiting_approval` investigation does not survive a process restart on it.
-# Compiled into the graph once — every invocation must carry a `thread_id` so the checkpoint is
-# namespaced per investigation.
-_checkpointer = build_checkpointer()
-if _checkpointer is None:
-    _log.warning(
-        "OPSPILOT_CHECKPOINTER=none: hitl_gate interrupts pause on an in-process MemorySaver only "
-        "— an awaiting_approval investigation will not survive a restart. Set sqlite/cosmos for "
-        "durability."
-    )
-_graph = build_graph(_checkpointer)
+# One durable checkpointer per process (selected by OPSPILOT_CHECKPOINTER; `none` by default),
+# compiled into one graph — every invocation must carry a `thread_id` so the checkpoint is
+# namespaced per investigation. `build_graph` upgrades a `None` checkpointer to an in-process
+# `MemorySaver()` internally — real HITL interrupts require *some* checkpointer to pause/resume at
+# all — but that fallback is non-durable: an `awaiting_approval` investigation does not survive a
+# process restart on it, which is why production sets `cosmos`.
+#
+# Built lazily, on first use, rather than at import. That is what makes the production `cosmos`
+# setting safe: constructing the Cosmos saver opens a client and provisions its container, so doing
+# it at import time would turn a transient Cosmos outage into a container crash-loop instead of a
+# failed request on an app that is otherwise up and answering /health/live. Same reasoning, and the
+# same shape, as `get_repository()` below.
+_graph = None
+
+
+def get_graph():
+    global _graph
+    if _graph is None:
+        checkpointer = build_checkpointer()
+        if checkpointer is None:
+            _log.warning(
+                "OPSPILOT_CHECKPOINTER=none: hitl_gate interrupts pause on an in-process "
+                "MemorySaver only — an awaiting_approval investigation will not survive a restart. "
+                "Set sqlite/cosmos for durability."
+            )
+        _graph = build_graph(checkpointer)
+    return _graph
+
 
 # Composition root: one ToolService per process, injected via a FastAPI dependency so tests can
 # override it with a specific backend or a deliberately-broken service. Built lazily so importing
@@ -92,15 +106,17 @@ def get_diagnosis() -> DiagnosisComposition:
     return _diagnosis
 
 
-# One investigation repository per process (the async resource store). In-memory for this slice;
-# a durable Cosmos-backed implementation can replace it behind the same seam. Overridable in tests.
+# One investigation repository per process (the async resource store), selected by
+# OPSPILOT_INVESTIGATION_REPOSITORY (`memory` by default; `cosmos` for durability across a restart /
+# redeploy / multiple replicas). Built lazily, once, so importing this module never touches Cosmos.
+# Overridable in tests via the FastAPI dependency.
 _repository: InvestigationRepository | None = None
 
 
 def get_repository() -> InvestigationRepository:
     global _repository
     if _repository is None:
-        _repository = InMemoryInvestigationRepository()
+        _repository = build_investigation_repository()
     return _repository
 
 
@@ -352,7 +368,7 @@ def _run_and_build(alert: dict, svc, diagnosis) -> InvestigationResponse:
         "thread_id": f"investigate-{uuid4()}",
     }
     state = invoke_auto_approving(
-        _graph, _initial_state(alert),
+        get_graph(), _initial_state(alert),
         config={"configurable": configurable}, approver=_AUTO_APPROVER,
     )
     return _build_response(state, svc, diagnosis)
@@ -470,7 +486,7 @@ def _run_investigation_job(
     initial = _initial_state(alert, investigation_id=investigation_id)
     _advance(
         investigation_id,
-        lambda: _graph.invoke(initial, config=config),
+        lambda: get_graph().invoke(initial, config=config),
         repo=repo, svc=svc, diagnosis=diagnosis,
     )
 
@@ -486,7 +502,7 @@ def _resume_investigation_job(
     config = {"configurable": _configurable_for(investigation_id, svc=svc, diagnosis=diagnosis)}
     _advance(
         investigation_id,
-        lambda: _graph.invoke(Command(resume=decision), config=config),
+        lambda: get_graph().invoke(Command(resume=decision), config=config),
         repo=repo, svc=svc, diagnosis=diagnosis,
     )
 

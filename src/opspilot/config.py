@@ -184,6 +184,22 @@ COSMOS_CHECKPOINT_CONTAINER = _env("AZURE_COSMOS_CHECKPOINT_CONTAINER", "checkpo
 
 
 # --------------------------------------------------------------------------------------
+# Durable investigation-repository seam (Stage 5c, pulled forward from Stage 8's shared Cosmos
+# account)
+# --------------------------------------------------------------------------------------
+# Selects the async job API's InvestigationRepository backend: `memory` (in-process, non-durable —
+# the default; loses every accepted/awaiting_approval record on a pod restart or scale-to-zero) or
+# `cosmos` (Azure Cosmos DB — the durable, production store, keyless via managed identity). Same
+# Cosmos account + database as the checkpointer above; two containers of its own. The factory
+# validates it; unknown -> ValueError.
+INVESTIGATION_REPOSITORY_BACKEND = _env("OPSPILOT_INVESTIGATION_REPOSITORY", "memory")
+COSMOS_INVESTIGATION_CONTAINER = _env("AZURE_COSMOS_INVESTIGATION_CONTAINER", "investigations")
+COSMOS_INVESTIGATION_INDEX_CONTAINER = _env(
+    "AZURE_COSMOS_INVESTIGATION_INDEX_CONTAINER", "investigation-index"
+)
+
+
+# --------------------------------------------------------------------------------------
 # Workflow / state versioning
 # --------------------------------------------------------------------------------------
 # Stamped into every investigation's state; a resuming graph checks this to route a stale
