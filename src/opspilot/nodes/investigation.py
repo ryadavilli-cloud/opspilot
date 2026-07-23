@@ -311,22 +311,34 @@ def hitl_gate(state: InvestigationState) -> dict[str, Any]:
     }
     resume = interrupt(payload) or {}
     decision = resume.get("decision")
-    approver = resume.get("approver", "unknown")
     edits = resume.get("edits")
     submitted_hash = resume.get("submitted_report_hash")
+
+    # Identity is stamped by the API from a validated token (G-01) — this node never invents or
+    # defaults it. `auth_method` absent means no identity was proven, which is exactly the
+    # deterministic sync path; `_build_response` degrades that to the auto-approval label rather
+    # than to "human", so an unproven decision can never be reported as human review.
+    identity = {
+        "approver": resume.get("approver", "unknown"),
+        "approver_display_name": resume.get("approver_display_name"),
+        "approver_tenant_id": resume.get("approver_tenant_id"),
+        "auth_method": resume.get("auth_method"),
+    }
 
     if submitted_hash != state.report_hash:
         # The decision was made against a report that no longer matches current state (e.g. a
         # concurrent edit/decision advanced the thread first). "stale_rejected" is neither
         # "approve" nor "edit", so it already falls into after_approval's fail-closed else-branch.
         return {"approval": {
-            "decision": "stale_rejected", "approver": approver, "edits": edits,
+            **identity,
+            "decision": "stale_rejected", "edits": edits,
             "submitted_report_hash": submitted_hash, "current_report_hash": state.report_hash,
             "approved_report_hash": None,
         }}
 
     return {"approval": {
-        "decision": decision, "approver": approver, "edits": edits,
+        **identity,
+        "decision": decision, "edits": edits,
         "approved_report_hash": state.report_hash if decision == "approve" else None,
     }}
 

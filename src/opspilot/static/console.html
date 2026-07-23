@@ -44,6 +44,15 @@
   }
   .demo-banner strong { display: block; margin-bottom: 0.15rem; }
 
+  .decision-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin-top: 1rem;
+  }
+  #identity-card .hint { margin: 0 0 0.6rem; }
+  .identity-name { font-weight: 600; }
+
   main {
     max-width: 860px;
     margin: 0 auto;
@@ -164,12 +173,20 @@
 </header>
 
 <main>
-  <div class="demo-banner">
-    <strong>Demo build — no durable human approval yet.</strong>
-    Every report on this build is auto-approved by a stub (no checkpoint-backed
-    <code>interrupt()</code>, no real reviewer). Treat the "approval" shown below as a placeholder,
-    not evidence that a human reviewed this report.
+  <div class="demo-banner" id="auth-banner" hidden>
+    <strong>Decisions unavailable on this deployment.</strong>
+    No Entra console client is configured, so reports can be viewed but not approved here. A paused
+    investigation will wait until a decision arrives from an authenticated client.
   </div>
+
+  <section class="card" id="identity-card">
+    <h2>Reviewer</h2>
+    <div id="identity-body">
+      <p class="hint" id="identity-text">Checking sign-in…</p>
+      <button type="button" id="signin-btn" hidden>Sign in with Microsoft</button>
+      <button type="button" id="signout-btn" class="secondary" hidden>Sign out</button>
+    </div>
+  </section>
 
   <section class="card">
     <h2>New investigation</h2>
@@ -192,6 +209,24 @@
     <h2>Status</h2>
     <span class="badge" id="status-badge"></span>
     <div class="history-trail" id="history-trail"></div>
+  </section>
+
+  <section class="card" id="decision-card" hidden>
+    <h2>Awaiting your decision</h2>
+    <p class="hint" id="decision-hint"></p>
+    <div id="pending-body"></div>
+    <label id="edit-label" hidden>
+      Revised recommended next step
+      <textarea id="edit-next-step" placeholder="Replace the recommended next step, then submit the edit."></textarea>
+      <span class="hint">An edit re-runs the citation guardrail and returns here for re-approval against a new hash — it never publishes directly.</span>
+    </label>
+    <div class="decision-actions">
+      <button type="button" id="approve-btn">Approve</button>
+      <button type="button" id="edit-btn" class="secondary">Edit</button>
+      <button type="button" id="evidence-btn" class="secondary">Request more evidence</button>
+      <button type="button" id="reject-btn" class="secondary">Reject</button>
+    </div>
+    <p class="error-text" id="decision-error" hidden></p>
   </section>
 
   <section class="card" id="result-card" hidden>
@@ -220,8 +255,212 @@
   const resultBody = document.getElementById("result-body");
   const errorCard = document.getElementById("error-card");
   const errorText = document.getElementById("error-text");
+  const authBanner = document.getElementById("auth-banner");
+  const identityText = document.getElementById("identity-text");
+  const signinBtn = document.getElementById("signin-btn");
+  const signoutBtn = document.getElementById("signout-btn");
+  const decisionCard = document.getElementById("decision-card");
+  const decisionHint = document.getElementById("decision-hint");
+  const pendingBody = document.getElementById("pending-body");
+  const decisionError = document.getElementById("decision-error");
+  const editLabel = document.getElementById("edit-label");
+  const editNextStep = document.getElementById("edit-next-step");
+  const approveBtn = document.getElementById("approve-btn");
+  const editBtn = document.getElementById("edit-btn");
+  const evidenceBtn = document.getElementById("evidence-btn");
+  const rejectBtn = document.getElementById("reject-btn");
 
   let pollTimer = null;
+  let authConfig = null;
+  let currentInvestigationId = null;
+  let currentReportHash = null;
+
+  // ----------------------------------------------------------------------------------
+  // Sign-in — OAuth2 authorization code + PKCE against Entra, written out rather than
+  // pulled from a library. The console is deliberately a single self-contained page with
+  // no build step and no external requests, and vendoring ~200KB of MSAL to obtain one
+  // token would cost more than the flow itself. Nothing security-critical happens here:
+  // the token this produces is validated server-side against Entra's published keys, the
+  // configured audience, and the approver role before any decision is accepted.
+  // ----------------------------------------------------------------------------------
+  const STORE = {
+    token: "opspilot.access_token",
+    expires: "opspilot.token_expires_at",
+    name: "opspilot.display_name",
+    verifier: "opspilot.pkce_verifier",
+    state: "opspilot.oauth_state",
+  };
+
+  function base64url(bytes) {
+    let str = "";
+    new Uint8Array(bytes).forEach(function (b) { str += String.fromCharCode(b); });
+    return btoa(str).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  }
+
+  function randomString() {
+    const bytes = new Uint8Array(32);
+    crypto.getRandomValues(bytes);
+    return base64url(bytes);
+  }
+
+  function challengeFor(verifier) {
+    return crypto.subtle
+      .digest("SHA-256", new TextEncoder().encode(verifier))
+      .then(base64url);
+  }
+
+  function redirectUri() {
+    // Must match a redirect URI registered on the app as type "SPA" (which is also what
+    // lets the browser POST to the token endpoint cross-origin).
+    return window.location.origin + "/console";
+  }
+
+  function storedToken() {
+    const token = sessionStorage.getItem(STORE.token);
+    const expiresAt = Number(sessionStorage.getItem(STORE.expires) || 0);
+    // Treat a token within 60s of expiry as already gone, so a decision is never submitted
+    // with a credential that expires mid-flight.
+    if (!token || Date.now() > expiresAt - 60000) return null;
+    return token;
+  }
+
+  function clearSession() {
+    Object.keys(STORE).forEach(function (k) { sessionStorage.removeItem(STORE[k]); });
+  }
+
+  function beginSignIn() {
+    const verifier = randomString();
+    const state = randomString();
+    sessionStorage.setItem(STORE.verifier, verifier);
+    sessionStorage.setItem(STORE.state, state);
+
+    challengeFor(verifier).then(function (challenge) {
+      const params = new URLSearchParams({
+        client_id: authConfig.client_id,
+        response_type: "code",
+        redirect_uri: redirectUri(),
+        response_mode: "query",
+        scope: authConfig.scope + " openid profile",
+        state: state,
+        code_challenge: challenge,
+        code_challenge_method: "S256",
+      });
+      window.location.assign(
+        "https://login.microsoftonline.com/" + authConfig.tenant_id +
+        "/oauth2/v2.0/authorize?" + params.toString()
+      );
+    });
+  }
+
+  function completeSignIn(code, returnedState) {
+    const expectedState = sessionStorage.getItem(STORE.state);
+    const verifier = sessionStorage.getItem(STORE.verifier);
+    // CSRF defence: a code delivered with a state we did not issue is discarded.
+    if (!expectedState || returnedState !== expectedState || !verifier) {
+      clearSession();
+      return Promise.reject(new Error("sign-in state did not match; please try again"));
+    }
+    sessionStorage.removeItem(STORE.state);
+    sessionStorage.removeItem(STORE.verifier);
+
+    const body = new URLSearchParams({
+      client_id: authConfig.client_id,
+      grant_type: "authorization_code",
+      code: code,
+      redirect_uri: redirectUri(),
+      code_verifier: verifier,
+      scope: authConfig.scope,
+    });
+    return fetch(
+      "https://login.microsoftonline.com/" + authConfig.tenant_id + "/oauth2/v2.0/token",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: body.toString(),
+      }
+    )
+      .then(function (res) {
+        if (!res.ok) throw new Error("sign-in failed: HTTP " + res.status);
+        return res.json();
+      })
+      .then(function (tokens) {
+        sessionStorage.setItem(STORE.token, tokens.access_token);
+        sessionStorage.setItem(
+          STORE.expires, String(Date.now() + (tokens.expires_in || 3600) * 1000)
+        );
+        sessionStorage.setItem(STORE.name, displayNameFrom(tokens.id_token) || "signed in");
+      });
+  }
+
+  function displayNameFrom(idToken) {
+    // Read-only, for a label. The browser does NOT verify this token — the API verifies the
+    // access token it actually receives. Nothing is authorized on the strength of this.
+    if (!idToken) return null;
+    try {
+      const payload = idToken.split(".")[1].replace(/-/g, "+").replace(/_/g, "/");
+      const claims = JSON.parse(atob(payload));
+      return claims.preferred_username || claims.name || null;
+    } catch (err) {
+      return null;
+    }
+  }
+
+  function renderIdentity() {
+    const token = storedToken();
+    if (!authConfig || !authConfig.sign_in_available) {
+      identityText.textContent = "Sign-in is not configured on this deployment.";
+      hide(signinBtn);
+      hide(signoutBtn);
+      return;
+    }
+    if (token) {
+      identityText.innerHTML = "";
+      identityText.appendChild(el("span", {
+        className: "identity-name",
+        text: sessionStorage.getItem(STORE.name) || "signed in",
+      }));
+      hide(signinBtn);
+      show(signoutBtn);
+    } else {
+      identityText.textContent = "Not signed in — you can run investigations, but deciding on one requires sign-in.";
+      show(signinBtn);
+      hide(signoutBtn);
+    }
+  }
+
+  function initAuth() {
+    return fetch("/console/config")
+      .then(function (res) { return res.json(); })
+      .then(function (cfg) {
+        authConfig = cfg;
+        if (!cfg.sign_in_available) show(authBanner);
+
+        const params = new URLSearchParams(window.location.search);
+        const code = params.get("code");
+        if (params.get("error")) {
+          clearSession();
+          window.history.replaceState({}, "", "/console");
+          throw new Error(params.get("error_description") || params.get("error"));
+        }
+        if (code) {
+          return completeSignIn(code, params.get("state")).then(function () {
+            // Drop the code from the address bar so a refresh cannot replay it.
+            window.history.replaceState({}, "", "/console");
+          });
+        }
+      })
+      .then(renderIdentity)
+      .catch(function (err) {
+        renderIdentity();
+        showError(String(err.message || err));
+      });
+  }
+
+  signinBtn.addEventListener("click", beginSignIn);
+  signoutBtn.addEventListener("click", function () {
+    clearSession();
+    renderIdentity();
+  });
 
   function el(tag, opts) {
     const node = document.createElement(tag);
@@ -241,12 +480,19 @@
 
   function resetUI() {
     if (pollTimer) { clearTimeout(pollTimer); pollTimer = null; }
-    hide(statusCard); hide(resultCard); hide(errorCard);
+    hide(statusCard); hide(resultCard); hide(errorCard); hide(decisionCard);
     statusBadge.textContent = "";
     statusBadge.className = "badge";
     historyTrail.textContent = "";
     resultBody.textContent = "";
     errorText.textContent = "";
+    pendingBody.textContent = "";
+    decisionError.textContent = "";
+    hide(decisionError);
+    hide(editLabel);
+    editNextStep.value = "";
+    currentInvestigationId = null;
+    currentReportHash = null;
   }
 
   function showError(message) {
@@ -350,9 +596,15 @@
   function renderApproval(container, approval) {
     if (!approval) return;
     container.appendChild(el("h3", { text: "Approval" }));
-    const label = approval.kind === "deterministic_auto_approval"
-      ? "Auto-approved by the stub (not a human decision)"
-      : "Approved by a human reviewer";
+    let label;
+    if (approval.kind === "human") {
+      const who = approval.approver_display_name || approval.approver;
+      label = "Approved by " + who + " (verified reviewer)";
+    } else if (approval.kind === "service_principal") {
+      label = "Decided by a service principal (" + approval.approver + ") — automated, not human review";
+    } else {
+      label = "Auto-approved by the deterministic path (not a human decision)";
+    }
     container.appendChild(el("p", { className: "empty", text: label + " — decision: " + approval.decision }));
   }
 
@@ -399,6 +651,33 @@
     renderRuntime(resultBody, result.runtime);
   }
 
+  function renderPendingDecision(body) {
+    const pending = body.pending_decision || {};
+    const report = pending.report || {};
+    currentInvestigationId = body.investigation_id;
+    currentReportHash = pending.report_hash || null;
+
+    pendingBody.textContent = "";
+    pendingBody.appendChild(el("h3", { text: "Proposed hypothesis" }));
+    pendingBody.appendChild(el("p", { text: report.hypothesis || "(none)" }));
+    if (report.recommended_next_step) {
+      pendingBody.appendChild(el("h3", { text: "Recommended next step" }));
+      pendingBody.appendChild(el("p", { text: report.recommended_next_step }));
+    }
+    renderCitations(pendingBody, report.citations);
+
+    const signedIn = !!storedToken();
+    decisionHint.textContent = signedIn
+      ? "Your decision is bound to this exact report; a concurrent edit invalidates it."
+      : "Sign in as a reviewer to decide on this investigation.";
+    // The buttons exist only for a signed-in reviewer — the server enforces this regardless,
+    // but showing disabled controls to an anonymous viewer is clearer than a 401 on click.
+    [approveBtn, editBtn, evidenceBtn, rejectBtn].forEach(function (b) {
+      b.disabled = !signedIn || !currentReportHash;
+    });
+    show(decisionCard);
+  }
+
   function poll(url) {
     fetch(url)
       .then(function (res) {
@@ -407,6 +686,13 @@
       })
       .then(function (body) {
         renderStatus(body);
+        if (body.status === "awaiting_approval") {
+          renderPendingDecision(body);
+          submitBtn.disabled = false;
+          pollTimer = setTimeout(function () { poll(url); }, 1500);
+          return;
+        }
+        hide(decisionCard);
         if (TERMINAL.has(body.status)) {
           renderResult(body);
           submitBtn.disabled = false;
@@ -421,6 +707,69 @@
         show(resetBtn);
       });
   }
+
+  function submitDecision(decision, extra) {
+    const token = storedToken();
+    if (!token) {
+      clearSession();
+      renderIdentity();
+      decisionError.textContent = "Your session has expired — sign in again to decide.";
+      show(decisionError);
+      return;
+    }
+    if (!currentInvestigationId || !currentReportHash) return;
+
+    const payload = Object.assign(
+      { decision: decision, submitted_report_hash: currentReportHash }, extra || {}
+    );
+    [approveBtn, editBtn, evidenceBtn, rejectBtn].forEach(function (b) { b.disabled = true; });
+    hide(decisionError);
+
+    fetch("/investigations/" + encodeURIComponent(currentInvestigationId) + "/decision", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": "Bearer " + token,
+      },
+      body: JSON.stringify(payload),
+    })
+      .then(function (res) {
+        if (res.status === 401 || res.status === 403) {
+          throw new Error("Not authorized to decide (HTTP " + res.status + "). Check your reviewer role.");
+        }
+        if (!res.ok) throw new Error("decision failed: HTTP " + res.status);
+        return res.json();
+      })
+      .then(function (accepted) {
+        // The resume runs in the background; keep polling the same investigation, which will
+        // either re-pause (edit) or reach a terminal state.
+        hide(decisionCard);
+        poll(accepted.poll_url);
+      })
+      .catch(function (err) {
+        decisionError.textContent = String(err.message || err);
+        show(decisionError);
+        renderPendingDecision({
+          investigation_id: currentInvestigationId,
+          pending_decision: { report_hash: currentReportHash },
+        });
+      });
+  }
+
+  approveBtn.addEventListener("click", function () { submitDecision("approve"); });
+  rejectBtn.addEventListener("click", function () { submitDecision("reject"); });
+  evidenceBtn.addEventListener("click", function () { submitDecision("request_more_evidence"); });
+  editBtn.addEventListener("click", function () {
+    // First click reveals the edit field; second click (with text) submits it.
+    if (editLabel.hidden) {
+      show(editLabel);
+      editNextStep.focus();
+      return;
+    }
+    const next = editNextStep.value.trim();
+    if (!next) { editNextStep.focus(); return; }
+    submitDecision("edit", { edits: { recommended_next_step: next } });
+  });
 
   form.addEventListener("submit", function (event) {
     event.preventDefault();
@@ -455,6 +804,9 @@
     form.reset();
     hide(resetBtn);
   });
+
+  // Resolve sign-in state (and complete an in-progress redirect) before the operator does anything.
+  initAuth();
 })();
 </script>
 </body>

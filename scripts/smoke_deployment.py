@@ -8,7 +8,9 @@ Usage: uv run python scripts/smoke_deployment.py <base-url>
 
 from __future__ import annotations
 
+import json
 import os
+import subprocess
 import sys
 import time
 
@@ -186,11 +188,40 @@ def _poll_until_terminal_or_awaiting(
     )
 
 
+def _reviewer_token(audience: str) -> str:
+    """A reviewer bearer token for the decision endpoint, acquired as the deploy service principal
+    via the already-authenticated `az` CLI (`az account get-access-token`). This is a WORKLOAD
+    identity — the API accepts it but stamps `kind: service_principal`, never `human` (G-01, code
+    guidelines §15). It works only once the app registration exists and this SP has been granted the
+    approver role (see docs/adr-reviewer-identity)."""
+    try:
+        out = subprocess.run(
+            ["az", "account", "get-access-token", "--resource", audience, "-o", "json"],
+            capture_output=True, text=True, timeout=60, check=True,
+        )
+    except (subprocess.CalledProcessError, subprocess.TimeoutExpired, FileNotFoundError) as exc:
+        detail = getattr(exc, "stderr", "") or str(exc)
+        raise SmokeTestFailure(
+            f"could not acquire a reviewer token for {audience!r}: {detail}"
+        ) from exc
+    token = json.loads(out.stdout).get("accessToken")
+    _require(bool(token), "az returned no accessToken")
+    return token
+
+
 def run_async_investigation(client: httpx.Client) -> None:
-    """Exercises the async job API end to end — including the real hitl_gate pause and the
-    Cosmos-backed InvestigationRepository behind it in production. `force_rerun` is required: this
-    smoke test always posts the same fixed incident, and without it a repeat deploy would just
-    observe the previous run's already-completed investigation, proving nothing new."""
+    """Exercises the async job API end to end — the real hitl_gate pause, the Cosmos-backed
+    InvestigationRepository, and (when configured) the authenticated decision endpoint (G-01).
+
+    `force_rerun` is required: this smoke test always posts the same fixed incident, and without
+    it a repeat deploy would just observe the previous run's already-completed investigation,
+    proving nothing new.
+
+    The decision half needs a reviewer token, which needs the Entra app registration bootstrapped
+    (see the ADR). `OPSPILOT_SMOKE_AUDIENCE` carries that API audience. When it is unset the run
+    stops at the verified pause and says so LOUDLY — it does not silently pass, and it does not
+    fail the deploy before the manual bootstrap is done. Once set, the decision path is exercised
+    for real and asserted to be recorded as a service principal, not human review."""
     resp = client.post(
         "/investigations",
         params={"force_rerun": "true"},
@@ -215,13 +246,39 @@ def run_async_investigation(client: httpx.Client) -> None:
     assert paused.pending_decision is not None  # narrows for the type checker after _require
     report_hash = paused.pending_decision["report_hash"]
 
+    # An unauthenticated decision MUST be refused — this is the property G-01 exists for, and it is
+    # checkable on every deploy regardless of whether the reviewer token is configured yet.
+    anon = client.post(
+        f"{accepted.poll_url}/decision",
+        json={"decision": "approve", "submitted_report_hash": report_hash},
+    )
+    _require(
+        anon.status_code == 401,
+        f"unauthenticated decision returned HTTP {anon.status_code}, expected 401 — the approval "
+        f"gate is not enforcing reviewer identity",
+    )
+
+    audience = os.environ.get("OPSPILOT_SMOKE_AUDIENCE", "").strip()
+    if not audience:
+        print(
+            "[smoke] WARNING: OPSPILOT_SMOKE_AUDIENCE is unset — the authenticated decision "
+            "path is NOT exercised. The pause and its unauthenticated-rejection are verified; "
+            "approval resume is not. Set it once the Entra app registration is bootstrapped "
+            "(see the ADR).",
+            flush=True,
+        )
+        return
+
+    token = _reviewer_token(audience)
     decision = client.post(
         f"{accepted.poll_url}/decision",
-        json={
-            "decision": "approve", "approver": "smoke-test", "submitted_report_hash": report_hash,
-        },
+        headers={"Authorization": f"Bearer {token}"},
+        json={"decision": "approve", "submitted_report_hash": report_hash},
     )
-    _require(decision.status_code == 202, f"decision POST returned HTTP {decision.status_code}")
+    _require(
+        decision.status_code == 202,
+        f"authenticated decision POST returned HTTP {decision.status_code}: {decision.text[:300]}",
+    )
 
     final = _poll_until_terminal_or_awaiting(
         client, accepted.poll_url, timeout_s=ASYNC_POLL_TIMEOUT_S,
@@ -236,9 +293,15 @@ def run_async_investigation(client: httpx.Client) -> None:
     assert final.result is not None  # narrows for the type checker after _require
     _require(bool(final.result.report and final.result.report.citations),
              "completed async investigation has no citations")
+    approval = final.result.approval
+    _require(
+        approval is not None and approval.kind == "service_principal",
+        f"smoke approval recorded as {getattr(approval, 'kind', None)!r}; a workload token must "
+        f"never be reported as human review (§15)",
+    )
     print(
         f"[smoke] async investigation: investigation_id={accepted.investigation_id} "
-        f"history={final.history}",
+        f"history={final.history} approval_kind={approval.kind}",  # type: ignore[union-attr]
         flush=True,
     )
 

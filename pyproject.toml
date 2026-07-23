@@ -20,6 +20,11 @@ dependencies = [
     # the local/dev durable backend and what the CI resume gate runs against. The Cosmos prod saver
     # is the optional `checkpoint` group, lazy-imported, so it stays out of the lean image by default.
     "langgraph-checkpoint-sqlite>=2.0",
+    # Reviewer-identity token validation (Stage 5e, G-01). A CORE dependency, deliberately not an
+    # optional group: the decision endpoint fails closed, so "the auth library isn't installed"
+    # must be impossible rather than a path that degrades to unauthenticated approval. `[crypto]`
+    # pulls in `cryptography` for the RS256 signature check Entra's tokens require.
+    "pyjwt[crypto]>=2.9",
 ]
 
 [dependency-groups]

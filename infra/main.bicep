@@ -58,6 +58,18 @@ param cosmosAccountName string = toLower('${namePrefix}-cosmos-${uniqueString(re
 @description('Create the Cosmos DB Built-in Data Contributor role assignment for the app identity. This is a Microsoft.DocumentDB data-plane role assignment (plain Contributor on the account is enough to create it), unlike the Microsoft.Authorization assignments above — kept as its own guard for symmetry and in case the deploy principal ever needs it bootstrapped imperatively instead.')
 param manageCosmosRoleAssignment bool = true
 
+@description('Entra tenant id that issues reviewer tokens for the HITL decision endpoint (G-01). Injected as AZURE_TENANT_ID. Defaults to the deployment tenant; override only for a cross-tenant setup.')
+param entraTenantId string = tenant().tenantId
+
+@description('This API\'s audience (the "expose an API" Application ID URI, e.g. api://<app-id>). The decision endpoint rejects any token whose aud does not match, so a token for another app cannot approve here. Empty until the app registration is bootstrapped — see docs/adr; the decision endpoint returns 500 (fail-closed) rather than accepting unvalidated tokens while it is unset.')
+param entraApiAudience string = ''
+
+@description('App role a principal must carry to approve (OPSPILOT_APPROVER_ROLE). Authentication proves who; this proves allowed-to-publish.')
+param entraApproverRole string = 'Approver'
+
+@description('Public Entra app (client) id the operator console signs in with (OPSPILOT_CONSOLE_CLIENT_ID). Not a secret — it is served to the browser. Empty disables the console\'s decision controls; the API still validates tokens from any other authenticated client.')
+param entraConsoleClientId string = ''
+
 var logAnalyticsName = '${namePrefix}-logs'
 var environmentName = '${namePrefix}-env'
 var appName = '${namePrefix}-api'
@@ -241,6 +253,27 @@ resource app 'Microsoft.App/containerApps@2024-03-01' = {
             {
               name: 'AZURE_COSMOS_ENDPOINT'
               value: cosmos.properties.documentEndpoint
+            }
+            // Reviewer identity for the HITL decision endpoint (G-01). The tenant + audience are
+            // what a reviewer token is validated against; the approver role is what it must carry
+            // to publish. These are configuration, not secrets — the app holds no client secret,
+            // because reviewers authenticate as themselves and the console is a public PKCE client.
+            // AZURE_OPENAI_API_KEY-style absence of any secret is deliberate and total here too.
+            {
+              name: 'AZURE_TENANT_ID'
+              value: entraTenantId
+            }
+            {
+              name: 'OPSPILOT_API_AUDIENCE'
+              value: entraApiAudience
+            }
+            {
+              name: 'OPSPILOT_APPROVER_ROLE'
+              value: entraApproverRole
+            }
+            {
+              name: 'OPSPILOT_CONSOLE_CLIENT_ID'
+              value: entraConsoleClientId
             }
           ]
           // Port is the app's actual listen port (Dockerfile EXPOSE 8000), independent of the

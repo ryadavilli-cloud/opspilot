@@ -200,6 +200,27 @@ COSMOS_INVESTIGATION_INDEX_CONTAINER = _env(
 
 
 # --------------------------------------------------------------------------------------
+# Reviewer identity (Stage 5e, G-01)
+# --------------------------------------------------------------------------------------
+# Who is allowed to approve a report, and how that is proven. All three are required before the
+# decision endpoint will serve — `build_reviewer_authenticator()` raises rather than defaulting,
+# because every default here would weaken a publication control. There is deliberately no setting
+# that disables authentication; see `auth.py`'s module docstring.
+#
+# AZURE_TENANT_ID is the tenant whose issuer is trusted (exactly one, not a permissive set).
+# OPSPILOT_API_AUDIENCE is this API's own audience (`api://<app-id>`) — it is what stops a token
+# minted for a different app in the same tenant from being replayed here.
+# OPSPILOT_APPROVER_ROLE is the app role a principal must carry to decide; authentication proves
+# who, this proves allowed-to-publish.
+ENTRA_TENANT_ID = _env("AZURE_TENANT_ID")
+ENTRA_API_AUDIENCE = _env("OPSPILOT_API_AUDIENCE")
+ENTRA_APPROVER_ROLE = _env("OPSPILOT_APPROVER_ROLE", "Approver")
+# The Entra app (client) id the operator console signs in with. Public, not a secret — it is
+# embedded in the served HTML so the browser can run the MSAL authorization-code + PKCE flow.
+ENTRA_CONSOLE_CLIENT_ID = _env("OPSPILOT_CONSOLE_CLIENT_ID")
+
+
+# --------------------------------------------------------------------------------------
 # Workflow / state versioning
 # --------------------------------------------------------------------------------------
 # Stamped into every investigation's state; a resuming graph checks this to route a stale
