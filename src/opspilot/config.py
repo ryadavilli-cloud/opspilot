@@ -208,8 +208,10 @@ COSMOS_INVESTIGATION_INDEX_CONTAINER = _env(
 # that disables authentication; see `auth.py`'s module docstring.
 #
 # AZURE_TENANT_ID is the tenant whose issuer is trusted (exactly one, not a permissive set).
-# OPSPILOT_API_AUDIENCE is this API's own audience (`api://<app-id>`) — it is what stops a token
-# minted for a different app in the same tenant from being replayed here.
+# OPSPILOT_API_AUDIENCE is this API's own audience — the API app's application (client) id, which
+# is the `aud` claim Entra puts in the v2.0 tokens it issues for this API. It is what stops a token
+# minted for a different app in the same tenant from being replayed here. (The console requests the
+# scope `<audience>/.default` to obtain such a token.)
 # OPSPILOT_APPROVER_ROLE is the app role a principal must carry to decide; authentication proves
 # who, this proves allowed-to-publish.
 ENTRA_TENANT_ID = _env("AZURE_TENANT_ID")

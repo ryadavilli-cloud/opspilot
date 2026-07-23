@@ -61,7 +61,7 @@ param manageCosmosRoleAssignment bool = true
 @description('Entra tenant id that issues reviewer tokens for the HITL decision endpoint (G-01). Injected as AZURE_TENANT_ID. Defaults to the deployment tenant; override only for a cross-tenant setup.')
 param entraTenantId string = tenant().tenantId
 
-@description('This API\'s audience (the "expose an API" Application ID URI, e.g. api://<app-id>). The decision endpoint rejects any token whose aud does not match, so a token for another app cannot approve here. Empty until the app registration is bootstrapped — see docs/adr; the decision endpoint returns 500 (fail-closed) rather than accepting unvalidated tokens while it is unset.')
+@description('This API\'s audience — the API app-registration\'s application (client) id GUID, which is the aud claim in the v2.0 tokens Entra issues for it (requestedAccessTokenVersion=2). The decision endpoint rejects any token whose aud does not match, so a token for another app cannot approve here. Empty until the app registration is bootstrapped (see the reviewer-identity ADR); while unset the decision endpoint returns 500 (fail-closed) rather than accepting unvalidated tokens.')
 param entraApiAudience string = ''
 
 @description('App role a principal must carry to approve (OPSPILOT_APPROVER_ROLE). Authentication proves who; this proves allowed-to-publish.')

@@ -190,13 +190,15 @@ def _poll_until_terminal_or_awaiting(
 
 def _reviewer_token(audience: str) -> str:
     """A reviewer bearer token for the decision endpoint, acquired as the deploy service principal
-    via the already-authenticated `az` CLI (`az account get-access-token`). This is a WORKLOAD
-    identity — the API accepts it but stamps `kind: service_principal`, never `human` (G-01, code
-    guidelines §15). It works only once the app registration exists and this SP has been granted the
-    approver role (see docs/adr-reviewer-identity)."""
+    via the already-authenticated `az` CLI. This is a WORKLOAD identity — the API accepts it but
+    stamps `kind: service_principal`, never `human` (G-01, code guidelines §15). It works only once
+    the app registration exists and this SP has been granted the approver role (see the ADR).
+
+    `--scope <audience>/.default` (not `--resource`) so the token matches what the API validates: a
+    v2.0 token whose `aud` is the API's app id. `audience` is that app id."""
     try:
         out = subprocess.run(
-            ["az", "account", "get-access-token", "--resource", audience, "-o", "json"],
+            ["az", "account", "get-access-token", "--scope", f"{audience}/.default", "-o", "json"],
             capture_output=True, text=True, timeout=60, check=True,
         )
     except (subprocess.CalledProcessError, subprocess.TimeoutExpired, FileNotFoundError) as exc:
