@@ -20,6 +20,11 @@ dependencies = [
     # the local/dev durable backend and what the CI resume gate runs against. The Cosmos prod saver
     # is the optional `checkpoint` group, lazy-imported, so it stays out of the lean image by default.
     "langgraph-checkpoint-sqlite>=2.0",
+    # Reviewer-identity token validation (Stage 5e, G-01). A CORE dependency, deliberately not an
+    # optional group: the decision endpoint fails closed, so "the auth library isn't installed"
+    # must be impossible rather than a path that degrades to unauthenticated approval. `[crypto]`
+    # pulls in `cryptography` for the RS256 signature check Entra's tokens require.
+    "pyjwt[crypto]>=2.9",
 ]
 
 [dependency-groups]
@@ -44,11 +49,15 @@ llm = [
     "openai>=1.40",
     "azure-identity>=1.17",
 ]
-# Production durable checkpointer — Azure Cosmos DB saver for LangGraph (Stage 5b). First-party
-# LangChain; keyless via DefaultAzureCredential (pulls in azure-identity). Lazy-imported by the
-# `cosmos` backend, kept out of the lean image until the Cosmos deploy installs `--group checkpoint`.
+# Production durable Cosmos DB backends: the LangGraph checkpointer (Stage 5b, first-party
+# langchain-azure-cosmosdb) and the async job API's InvestigationRepository (Stage 5c,
+# CosmosInvestigationRepository, direct azure-cosmos — already a transitive dep of the former, made
+# explicit since it's now imported directly too). Both keyless via DefaultAzureCredential. Both
+# lazy-imported by their respective `cosmos` backend, kept out of the lean image until the Cosmos
+# deploy installs `--group checkpoint`.
 checkpoint = [
     "langchain-azure-cosmosdb>=1.0",
+    "azure-cosmos>=4.7",
 ]
 
 [build-system]

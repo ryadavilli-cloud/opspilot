@@ -8,14 +8,22 @@ Usage: uv run python scripts/smoke_deployment.py <base-url>
 
 from __future__ import annotations
 
+import json
 import os
+import subprocess
 import sys
 import time
 
 import httpx
 from pydantic import ValidationError
 
-from opspilot.api import InvestigationResponse, ReadinessResponse, VersionResponse
+from opspilot.api import (
+    AcceptedInvestigation,
+    InvestigationResponse,
+    InvestigationStatusResponse,
+    ReadinessResponse,
+    VersionResponse,
+)
 
 # inc-004: a fixed, answer-keyed incident (data/answer_key/scenarios.yaml) — same fixture
 # used by tests/test_api.py::test_investigation_smoke_path_over_bm25.
@@ -23,6 +31,8 @@ SMOKE_INCIDENT_ID = "inc-004"
 SMOKE_INCIDENT_SUMMARY = "checkout-api returning 500s shortly after this morning's deployment."
 REQUEST_TIMEOUT_S = 10.0
 MAX_POLL_INTERVAL_S = 20.0
+ASYNC_POLL_TIMEOUT_S = 120.0
+ASYNC_POLL_INTERVAL_S = 3.0
 
 
 class SmokeTestFailure(RuntimeError):
@@ -160,6 +170,144 @@ def run_investigation(client: httpx.Client) -> InvestigationResponse:
     return investigation
 
 
+def _poll_until_terminal_or_awaiting(
+    client: httpx.Client, poll_url: str, *, timeout_s: float, poll_interval_s: float
+) -> InvestigationStatusResponse:
+    deadline = time.monotonic() + timeout_s
+    last_status = "unknown"
+    while time.monotonic() < deadline:
+        resp = client.get(poll_url)
+        _require(resp.status_code == 200, f"{poll_url} returned HTTP {resp.status_code}")
+        status = InvestigationStatusResponse.model_validate(resp.json())
+        last_status = status.status
+        if status.status != "queued" and status.status != "running":
+            return status
+        time.sleep(poll_interval_s)
+    raise SmokeTestFailure(
+        f"{poll_url} did not leave queued/running within {timeout_s:.0f}s (last: {last_status!r})"
+    )
+
+
+def _reviewer_token(audience: str) -> str:
+    """A reviewer bearer token for the decision endpoint, acquired as the deploy service principal
+    via the already-authenticated `az` CLI. This is a WORKLOAD identity — the API accepts it but
+    stamps `kind: service_principal`, never `human` (G-01, code guidelines §15). It works only once
+    the app registration exists and this SP has been granted the approver role (see the ADR).
+
+    `--scope <audience>/.default` (not `--resource`) so the token matches what the API validates: a
+    v2.0 token whose `aud` is the API's app id. `audience` is that app id."""
+    try:
+        out = subprocess.run(
+            ["az", "account", "get-access-token", "--scope", f"{audience}/.default", "-o", "json"],
+            capture_output=True, text=True, timeout=60, check=True,
+        )
+    except (subprocess.CalledProcessError, subprocess.TimeoutExpired, FileNotFoundError) as exc:
+        detail = getattr(exc, "stderr", "") or str(exc)
+        raise SmokeTestFailure(
+            f"could not acquire a reviewer token for {audience!r}: {detail}"
+        ) from exc
+    token = json.loads(out.stdout).get("accessToken")
+    _require(bool(token), "az returned no accessToken")
+    return token
+
+
+def run_async_investigation(client: httpx.Client) -> None:
+    """Exercises the async job API end to end — the real hitl_gate pause, the Cosmos-backed
+    InvestigationRepository, and (when configured) the authenticated decision endpoint (G-01).
+
+    `force_rerun` is required: this smoke test always posts the same fixed incident, and without
+    it a repeat deploy would just observe the previous run's already-completed investigation,
+    proving nothing new.
+
+    The decision half needs a reviewer token, which needs the Entra app registration bootstrapped
+    (see the ADR). `OPSPILOT_SMOKE_AUDIENCE` carries that API audience. When it is unset the run
+    stops at the verified pause and says so LOUDLY — it does not silently pass, and it does not
+    fail the deploy before the manual bootstrap is done. Once set, the decision path is exercised
+    for real and asserted to be recorded as a service principal, not human review."""
+    resp = client.post(
+        "/investigations",
+        params={"force_rerun": "true"},
+        json={"incident_id": SMOKE_INCIDENT_ID, "summary": SMOKE_INCIDENT_SUMMARY},
+    )
+    _require(
+        resp.status_code == 202, f"POST /investigations returned HTTP {resp.status_code}: "
+        f"{resp.text[:500]}",
+    )
+    accepted = AcceptedInvestigation.model_validate(resp.json())
+
+    paused = _poll_until_terminal_or_awaiting(
+        client, accepted.poll_url, timeout_s=ASYNC_POLL_TIMEOUT_S,
+        poll_interval_s=ASYNC_POLL_INTERVAL_S,
+    )
+    _require(
+        paused.status == "awaiting_approval",
+        f"async investigation reached {paused.status!r}, expected 'awaiting_approval' "
+        f"(error={paused.error!r})",
+    )
+    _require(bool(paused.pending_decision), "awaiting_approval but pending_decision is empty")
+    assert paused.pending_decision is not None  # narrows for the type checker after _require
+    report_hash = paused.pending_decision["report_hash"]
+
+    # An unauthenticated decision MUST be refused — this is the property G-01 exists for, and it is
+    # checkable on every deploy regardless of whether the reviewer token is configured yet.
+    anon = client.post(
+        f"{accepted.poll_url}/decision",
+        json={"decision": "approve", "submitted_report_hash": report_hash},
+    )
+    _require(
+        anon.status_code == 401,
+        f"unauthenticated decision returned HTTP {anon.status_code}, expected 401 — the approval "
+        f"gate is not enforcing reviewer identity",
+    )
+
+    audience = os.environ.get("OPSPILOT_SMOKE_AUDIENCE", "").strip()
+    if not audience:
+        print(
+            "[smoke] WARNING: OPSPILOT_SMOKE_AUDIENCE is unset — the authenticated decision "
+            "path is NOT exercised. The pause and its unauthenticated-rejection are verified; "
+            "approval resume is not. Set it once the Entra app registration is bootstrapped "
+            "(see the ADR).",
+            flush=True,
+        )
+        return
+
+    token = _reviewer_token(audience)
+    decision = client.post(
+        f"{accepted.poll_url}/decision",
+        headers={"Authorization": f"Bearer {token}"},
+        json={"decision": "approve", "submitted_report_hash": report_hash},
+    )
+    _require(
+        decision.status_code == 202,
+        f"authenticated decision POST returned HTTP {decision.status_code}: {decision.text[:300]}",
+    )
+
+    final = _poll_until_terminal_or_awaiting(
+        client, accepted.poll_url, timeout_s=ASYNC_POLL_TIMEOUT_S,
+        poll_interval_s=ASYNC_POLL_INTERVAL_S,
+    )
+    _require(
+        final.status == "completed",
+        f"async investigation ended {final.status!r} after approval, expected 'completed' "
+        f"(error={final.error!r})",
+    )
+    _require(final.result is not None, "completed async investigation has no result")
+    assert final.result is not None  # narrows for the type checker after _require
+    _require(bool(final.result.report and final.result.report.citations),
+             "completed async investigation has no citations")
+    approval = final.result.approval
+    _require(
+        approval is not None and approval.kind == "service_principal",
+        f"smoke approval recorded as {getattr(approval, 'kind', None)!r}; a workload token must "
+        f"never be reported as human review (§15)",
+    )
+    print(
+        f"[smoke] async investigation: investigation_id={accepted.investigation_id} "
+        f"history={final.history} approval_kind={approval.kind}",  # type: ignore[union-attr]
+        flush=True,
+    )
+
+
 def main(argv: list[str] | None = None) -> int:
     argv = sys.argv[1:] if argv is None else argv
     base_url = argv[0] if argv else os.environ.get("OPSPILOT_BASE_URL")
@@ -187,6 +335,7 @@ def main(argv: list[str] | None = None) -> int:
             )
             check_version(client)
             run_investigation(client)
+            run_async_investigation(client)
     except SmokeTestFailure as exc:
         print(f"[smoke] FAIL — {exc}", file=sys.stderr)
         return 1
@@ -195,8 +344,8 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
     print(
-        "[smoke] PASS — /health/ready, /version, and /investigate(inc-004) all satisfy "
-        "the deployment gate",
+        "[smoke] PASS — /health/ready, /version, /investigate, and the async "
+        "/investigations + /decision path (inc-004) all satisfy the deployment gate",
         flush=True,
     )
     return 0

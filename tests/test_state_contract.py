@@ -17,13 +17,15 @@ pytest.importorskip("rank_bm25")
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from opspilot.contracts import IncidentReport  # noqa: E402
-from opspilot.graph import _initial_state, build_graph  # noqa: E402
+from opspilot.graph import _initial_state, build_graph, invoke_auto_approving  # noqa: E402
 from opspilot.tools.service import ToolService  # noqa: E402
 
 
 def _run(alert: dict) -> dict:
-    config = {"configurable": {"tool_service": ToolService()}}
-    return build_graph().invoke(_initial_state(alert), config=config)
+    config = {"configurable": {
+        "tool_service": ToolService(), "thread_id": f"state-contract-{alert['incident_id']}",
+    }}
+    return invoke_auto_approving(build_graph(), _initial_state(alert), config=config)
 
 
 def test_novel_scenario_produces_valid_cited_report() -> None:

@@ -46,14 +46,15 @@ def test_no_material_regression_vs_baseline(scorecard):
 
 
 def _run_scenario(inc_id: str) -> dict:
-    from opspilot.graph import _initial_state, build_graph
+    from opspilot.graph import _initial_state, build_graph, invoke_auto_approving
     from opspilot.tools.service import ToolService
 
     by_id = {s["id"]: s for s in scenario_eval._load_scenarios()}
     root = {i: (s.get("impacted_chain") or [None])[0] for i, s in by_id.items()}
-    state = build_graph().invoke(
+    state = invoke_auto_approving(
+        build_graph(),
         _initial_state({"incident_id": inc_id, "summary": by_id[inc_id]["alert"]["summary"]}),
-        config={"configurable": {"tool_service": ToolService()}})
+        config={"configurable": {"tool_service": ToolService(), "thread_id": f"gate-{inc_id}"}})
     return scenario_eval._score_one(by_id[inc_id], state, root)
 
 

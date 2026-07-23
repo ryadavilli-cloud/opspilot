@@ -52,6 +52,24 @@ param azureOpenAiApiVersion string = '2024-10-21'
 @description('Create the Cognitive Services OpenAI User role assignment for the app identity. Set false when the deploy principal lacks RBAC-write (Owner / User Access Administrator) and the grant is bootstrapped imperatively — mirrors manageAcrPullRoleAssignment.')
 param manageOpenAiRoleAssignment bool = true
 
+@description('Cosmos DB account name — the durable store behind the LangGraph checkpointer (Stage 5b) and the async investigation repository (Stage 5c), pulled forward from Stage 8. Must be globally unique; lowercase alphanumeric + hyphens.')
+param cosmosAccountName string = toLower('${namePrefix}-cosmos-${uniqueString(resourceGroup().id)}')
+
+@description('Create the Cosmos DB Built-in Data Contributor role assignment for the app identity. This is a Microsoft.DocumentDB data-plane role assignment (plain Contributor on the account is enough to create it), unlike the Microsoft.Authorization assignments above — kept as its own guard for symmetry and in case the deploy principal ever needs it bootstrapped imperatively instead.')
+param manageCosmosRoleAssignment bool = true
+
+@description('Entra tenant id that issues reviewer tokens for the HITL decision endpoint (G-01). Injected as AZURE_TENANT_ID. Defaults to the deployment tenant; override only for a cross-tenant setup.')
+param entraTenantId string = tenant().tenantId
+
+@description('This API\'s audience — the API app-registration\'s application (client) id GUID, which is the aud claim in the v2.0 tokens Entra issues for it (requestedAccessTokenVersion=2). The decision endpoint rejects any token whose aud does not match, so a token for another app cannot approve here. Empty until the app registration is bootstrapped (see the reviewer-identity ADR); while unset the decision endpoint returns 500 (fail-closed) rather than accepting unvalidated tokens.')
+param entraApiAudience string = ''
+
+@description('App role a principal must carry to approve (OPSPILOT_APPROVER_ROLE). Authentication proves who; this proves allowed-to-publish.')
+param entraApproverRole string = 'Approver'
+
+@description('Public Entra app (client) id the operator console signs in with (OPSPILOT_CONSOLE_CLIENT_ID). Not a secret — it is served to the browser. Empty disables the console\'s decision controls; the API still validates tokens from any other authenticated client.')
+param entraConsoleClientId string = ''
+
 var logAnalyticsName = '${namePrefix}-logs'
 var environmentName = '${namePrefix}-env'
 var appName = '${namePrefix}-api'
@@ -59,6 +77,9 @@ var acrPullRoleId = '7f951dda-4ed3-4680-a7ca-43fe172d538d' // AcrPull built-in r
 // Cognitive Services OpenAI User — data-plane inference (chat/completions), NOT deployment
 // management. Least privilege for a runtime that only calls the model; Bicep owns the deployment.
 var openAiUserRoleId = '5e0bd9bd-7b93-4f28-af87-19fc36ad61bd'
+// Cosmos DB Built-in Data Contributor — the well-known built-in data-plane role id (same value in
+// every Cosmos account; not a subscription-scoped built-in role definition like the two above).
+var cosmosDataContributorRoleId = '00000000-0000-0000-0000-000000000002'
 
 resource logs 'Microsoft.OperationalInsights/workspaces@2023-09-01' = {
   name: logAnalyticsName
@@ -109,6 +130,29 @@ resource chatDeployment 'Microsoft.CognitiveServices/accounts/deployments@2024-1
       version: chatModelVersion
     }
     versionUpgradeOption: 'NoAutoUpgrade'
+  }
+}
+
+// Azure Cosmos DB — the durable store behind both the LangGraph checkpointer (Stage 5b) and the
+// async investigation resource repository (Stage 5c). Serverless: pay-per-request, no fixed base
+// cost at this app's traffic (unlike the ACR Basic tier above, this has none while idle). Keyless:
+// disableLocalAuth means the ONLY way in is an Entra token from the app's managed identity via the
+// data-plane role assignment below. The databases/containers themselves are self-provisioned by the
+// app on first use (CosmosDBSaverSync and CosmosInvestigationRepository both call
+// create_database_if_not_exists / create_container_if_not_exists), so no document schema lives here.
+resource cosmos 'Microsoft.DocumentDB/databaseAccounts@2024-08-15' = {
+  name: cosmosAccountName
+  location: location
+  kind: 'GlobalDocumentDB'
+  properties: {
+    databaseAccountOfferType: 'Standard'
+    locations: [
+      { locationName: location, failoverPriority: 0 }
+    ]
+    capabilities: [
+      { name: 'EnableServerless' }
+    ]
+    disableLocalAuth: true
   }
 }
 
@@ -186,6 +230,51 @@ resource app 'Microsoft.App/containerApps@2024-03-01' = {
               name: 'AZURE_OPENAI_API_VERSION'
               value: azureOpenAiApiVersion
             }
+            // Durable HITL state (Stage 5c, closing G-02). BOTH stores must be durable or the
+            // pause is not really recoverable, and the two halves fail differently:
+            //   - the repository holds the polled resource record. In memory it loses every
+            //     accepted/awaiting_approval record on a restart, redeploy, or (with maxReplicas 3
+            //     below) a poll landing on a replica that never ran the job.
+            //   - the checkpointer holds the paused graph itself. On the default `none` it falls
+            //     back to an in-process MemorySaver, so after a restart the record would still
+            //     report awaiting_approval while the thread it names no longer exists — the API
+            //     would advertise a resumable pause it cannot honour. That is worse than an
+            //     honestly non-durable pause, which is why this is set here and not deferred.
+            // Safe to enable because api.py builds both lazily, on first use: a Cosmos outage
+            // fails the request that needs it instead of crash-looping the container at startup.
+            {
+              name: 'OPSPILOT_INVESTIGATION_REPOSITORY'
+              value: 'cosmos'
+            }
+            {
+              name: 'OPSPILOT_CHECKPOINTER'
+              value: 'cosmos'
+            }
+            {
+              name: 'AZURE_COSMOS_ENDPOINT'
+              value: cosmos.properties.documentEndpoint
+            }
+            // Reviewer identity for the HITL decision endpoint (G-01). The tenant + audience are
+            // what a reviewer token is validated against; the approver role is what it must carry
+            // to publish. These are configuration, not secrets — the app holds no client secret,
+            // because reviewers authenticate as themselves and the console is a public PKCE client.
+            // AZURE_OPENAI_API_KEY-style absence of any secret is deliberate and total here too.
+            {
+              name: 'AZURE_TENANT_ID'
+              value: entraTenantId
+            }
+            {
+              name: 'OPSPILOT_API_AUDIENCE'
+              value: entraApiAudience
+            }
+            {
+              name: 'OPSPILOT_APPROVER_ROLE'
+              value: entraApproverRole
+            }
+            {
+              name: 'OPSPILOT_CONSOLE_CLIENT_ID'
+              value: entraConsoleClientId
+            }
           ]
           // Port is the app's actual listen port (Dockerfile EXPOSE 8000), independent of the
           // bootstrap-only `targetPort` ingress override above — the real image always listens
@@ -256,6 +345,26 @@ resource openAiUser 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (m
   }
 }
 
+// Keyless auth to Cosmos DB: grant the app's managed identity data-plane read/write on the account.
+// Unlike the two assignments above, this is a Microsoft.DocumentDB data-plane role assignment, not
+// a Microsoft.Authorization one — creating it only needs plain Contributor on the Cosmos account
+// (which the deploy principal already has via Contributor on the resource group), not Owner / User
+// Access Administrator. Guard param kept for symmetry with the other two regardless.
+resource cosmosDataContributorRoleDefinition 'Microsoft.DocumentDB/databaseAccounts/sqlRoleDefinitions@2024-08-15' existing = {
+  parent: cosmos
+  name: cosmosDataContributorRoleId
+}
+
+resource cosmosDataContributor 'Microsoft.DocumentDB/databaseAccounts/sqlRoleAssignments@2024-08-15' = if (manageCosmosRoleAssignment) {
+  parent: cosmos
+  name: guid(cosmos.id, app.id, cosmosDataContributorRoleId)
+  properties: {
+    roleDefinitionId: cosmosDataContributorRoleDefinition.id
+    principalId: app.identity.principalId
+    scope: cosmos.id
+  }
+}
+
 output acrLoginServer string = acr.properties.loginServer
 output acrName string = acr.name
 output appName string = app.name
@@ -263,4 +372,6 @@ output appFqdn string = app.properties.configuration.ingress.fqdn
 output environmentName string = env.name
 output openAiEndpoint string = openai.properties.endpoint
 output openAiAccountName string = openai.name
+output cosmosAccountName string = cosmos.name
+output cosmosEndpoint string = cosmos.properties.documentEndpoint
 output implementation string = implementation

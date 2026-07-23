@@ -184,6 +184,45 @@ COSMOS_CHECKPOINT_CONTAINER = _env("AZURE_COSMOS_CHECKPOINT_CONTAINER", "checkpo
 
 
 # --------------------------------------------------------------------------------------
+# Durable investigation-repository seam (Stage 5c, pulled forward from Stage 8's shared Cosmos
+# account)
+# --------------------------------------------------------------------------------------
+# Selects the async job API's InvestigationRepository backend: `memory` (in-process, non-durable —
+# the default; loses every accepted/awaiting_approval record on a pod restart or scale-to-zero) or
+# `cosmos` (Azure Cosmos DB — the durable, production store, keyless via managed identity). Same
+# Cosmos account + database as the checkpointer above; two containers of its own. The factory
+# validates it; unknown -> ValueError.
+INVESTIGATION_REPOSITORY_BACKEND = _env("OPSPILOT_INVESTIGATION_REPOSITORY", "memory")
+COSMOS_INVESTIGATION_CONTAINER = _env("AZURE_COSMOS_INVESTIGATION_CONTAINER", "investigations")
+COSMOS_INVESTIGATION_INDEX_CONTAINER = _env(
+    "AZURE_COSMOS_INVESTIGATION_INDEX_CONTAINER", "investigation-index"
+)
+
+
+# --------------------------------------------------------------------------------------
+# Reviewer identity (Stage 5e, G-01)
+# --------------------------------------------------------------------------------------
+# Who is allowed to approve a report, and how that is proven. All three are required before the
+# decision endpoint will serve — `build_reviewer_authenticator()` raises rather than defaulting,
+# because every default here would weaken a publication control. There is deliberately no setting
+# that disables authentication; see `auth.py`'s module docstring.
+#
+# AZURE_TENANT_ID is the tenant whose issuer is trusted (exactly one, not a permissive set).
+# OPSPILOT_API_AUDIENCE is this API's own audience — the API app's application (client) id, which
+# is the `aud` claim Entra puts in the v2.0 tokens it issues for this API. It is what stops a token
+# minted for a different app in the same tenant from being replayed here. (The console requests the
+# scope `<audience>/.default` to obtain such a token.)
+# OPSPILOT_APPROVER_ROLE is the app role a principal must carry to decide; authentication proves
+# who, this proves allowed-to-publish.
+ENTRA_TENANT_ID = _env("AZURE_TENANT_ID")
+ENTRA_API_AUDIENCE = _env("OPSPILOT_API_AUDIENCE")
+ENTRA_APPROVER_ROLE = _env("OPSPILOT_APPROVER_ROLE", "Approver")
+# The Entra app (client) id the operator console signs in with. Public, not a secret — it is
+# embedded in the served HTML so the browser can run the MSAL authorization-code + PKCE flow.
+ENTRA_CONSOLE_CLIENT_ID = _env("OPSPILOT_CONSOLE_CLIENT_ID")
+
+
+# --------------------------------------------------------------------------------------
 # Workflow / state versioning
 # --------------------------------------------------------------------------------------
 # Stamped into every investigation's state; a resuming graph checks this to route a stale

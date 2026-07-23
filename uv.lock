@@ -1190,6 +1190,7 @@ dependencies = [
     { name = "langgraph-checkpoint-sqlite" },
     { name = "mcp" },
     { name = "pydantic" },
+    { name = "pyjwt", extra = ["crypto"] },
     { name = "python-dotenv" },
     { name = "pyyaml" },
     { name = "rank-bm25" },
@@ -1198,6 +1199,7 @@ dependencies = [
 
 [package.dev-dependencies]
 checkpoint = [
+    { name = "azure-cosmos" },
     { name = "langchain-azure-cosmosdb" },
 ]
 data = [
@@ -1226,6 +1228,7 @@ requires-dist = [
     { name = "langgraph-checkpoint-sqlite", specifier = ">=2.0" },
     { name = "mcp", specifier = ">=1.28.1" },
     { name = "pydantic", specifier = ">=2.7" },
+    { name = "pyjwt", extras = ["crypto"], specifier = ">=2.9" },
     { name = "python-dotenv", specifier = ">=1.0" },
     { name = "pyyaml", specifier = ">=6.0.3" },
     { name = "rank-bm25", specifier = ">=0.2.2" },
@@ -1233,7 +1236,10 @@ requires-dist = [
 ]
 
 [package.metadata.requires-dev]
-checkpoint = [{ name = "langchain-azure-cosmosdb", specifier = ">=1.0" }]
+checkpoint = [
+    { name = "azure-cosmos", specifier = ">=4.7" },
+    { name = "langchain-azure-cosmosdb", specifier = ">=1.0" },
+]
 data = [
     { name = "numpy", specifier = ">=2.5.0" },
     { name = "pandas", specifier = ">=3.0.3" },
