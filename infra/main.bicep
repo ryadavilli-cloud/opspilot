@@ -34,14 +34,14 @@ param implementation string = 'single_agent'
 @description('Azure OpenAI account name. Must be globally unique; lowercase alphanumeric + hyphens.')
 param openAiAccountName string = toLower('${namePrefix}oai${uniqueString(resourceGroup().id)}')
 
-@description('Chat model to deploy (Azure OpenAI catalog name).')
-param chatModelName string = 'gpt-4o-mini'
+@description('Chat model to deploy (Azure OpenAI catalog name). gpt-4.1-mini is the supported successor to gpt-4o-mini, whose 2024-07-18 version is retired (the Bicep preflight failure this replaces). Interim demo tier only; production routing is Claude-on-Foundry (config.PROD_MODELS, G-45).')
+param chatModelName string = 'gpt-4.1-mini'
 
-@description('Chat model version.')
-param chatModelVersion string = '2024-07-18'
+@description('Chat model version. Verify availability in the target region before deploy: az cognitiveservices account list-models --name <aoai-account> -g <rg> --query "[?model.name==''gpt-4.1-mini''].model.version".')
+param chatModelVersion string = '2025-04-14'
 
 @description('Deployment name the app calls (AZURE_OPENAI_DEPLOYMENT). Kept equal to the model name for clarity.')
-param chatDeploymentName string = 'gpt-4o-mini'
+param chatDeploymentName string = 'gpt-4.1-mini'
 
 @description('GlobalStandard capacity for the chat deployment, in thousands of tokens/min (TPM).')
 param chatModelCapacity int = 30
