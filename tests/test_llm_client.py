@@ -67,6 +67,62 @@ def test_fake_chat_model_queues_and_maps():
     assert mapped.complete([ChatMessage("user", "hi")]).text == "echo:hi"
 
 
+class _CaptureClient:
+    """Stub OpenAI client that records the kwargs passed to chat.completions.create."""
+
+    def __init__(self) -> None:
+        self.captured: dict = {}
+        outer = self
+
+        class _Completions:
+            def create(self, **kwargs):
+                outer.captured = kwargs
+                import types
+
+                return types.SimpleNamespace(
+                    choices=[
+                        types.SimpleNamespace(
+                            message=types.SimpleNamespace(content="ok"),
+                            finish_reason="stop",
+                        )
+                    ],
+                    usage=None,
+                )
+
+        import types
+
+        self.chat = types.SimpleNamespace(completions=_Completions())
+
+
+def test_is_reasoning_model_classification():
+    from opspilot.llm.client import _is_reasoning_model
+
+    assert _is_reasoning_model("gpt-5-mini")
+    assert _is_reasoning_model("gpt-5")
+    assert _is_reasoning_model("o3")
+    assert not _is_reasoning_model("gpt-4o-mini")
+    assert not _is_reasoning_model("qwen3:8b")
+
+
+def test_reasoning_model_omits_temperature(monkeypatch):
+    # gpt-5 reasoning models reject an explicit temperature; the client must not send one.
+    model = OpenAICompatModel("gpt-5-mini", base_url=None, api_key="x")
+    client = _CaptureClient()
+    monkeypatch.setattr(model, "_ensure_client", lambda: client)
+    result = model.complete([ChatMessage("user", "hi")], temperature=0.0)
+    assert "temperature" not in client.captured
+    assert client.captured["model"] == "gpt-5-mini"
+    assert result.text == "ok"
+
+
+def test_non_reasoning_model_sends_temperature(monkeypatch):
+    model = OpenAICompatModel("gpt-4o-mini", base_url=None, api_key="x")
+    client = _CaptureClient()
+    monkeypatch.setattr(model, "_ensure_client", lambda: client)
+    model.complete([ChatMessage("user", "hi")], temperature=0.0)
+    assert client.captured["temperature"] == 0.0
+
+
 @pytest.mark.llm
 def test_ollama_live_smoke():
     pytest.importorskip("openai")

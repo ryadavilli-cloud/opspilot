@@ -34,20 +34,20 @@ param implementation string = 'single_agent'
 @description('Azure OpenAI account name. Must be globally unique; lowercase alphanumeric + hyphens.')
 param openAiAccountName string = toLower('${namePrefix}oai${uniqueString(resourceGroup().id)}')
 
-@description('Chat model to deploy (Azure OpenAI catalog name). gpt-4.1-mini is the supported successor to gpt-4o-mini, whose 2024-07-18 version is retired (the Bicep preflight failure this replaces). Interim demo tier only; production routing is Claude-on-Foundry (config.PROD_MODELS, G-45).')
-param chatModelName string = 'gpt-4.1-mini'
+@description('Chat model to deploy (Azure OpenAI catalog name). gpt-5-mini is the currently-GA cheap tier; the entire gpt-4o/gpt-4.1 family is Deprecating in eastus2 and blocked for new deployments. Interim demo tier only; production routing is Claude-on-Foundry (config.PROD_MODELS, G-45).')
+param chatModelName string = 'gpt-5-mini'
 
-@description('Chat model version. Verify the version is offered in the target region before deploy (az cognitiveservices account list-models).')
-param chatModelVersion string = '2025-04-14'
+@description('Chat model version. Verify it is GA in the target region before deploy (az cognitiveservices model list -l <region>).')
+param chatModelVersion string = '2025-08-07'
 
 @description('Deployment name the app calls (AZURE_OPENAI_DEPLOYMENT). Kept equal to the model name for clarity.')
-param chatDeploymentName string = 'gpt-4.1-mini'
+param chatDeploymentName string = 'gpt-5-mini'
 
 @description('GlobalStandard capacity for the chat deployment, in thousands of tokens/min (TPM).')
 param chatModelCapacity int = 30
 
-@description('Azure OpenAI data-plane API version the app calls (AZURE_OPENAI_API_VERSION).')
-param azureOpenAiApiVersion string = '2024-10-21'
+@description('Azure OpenAI data-plane API version the app calls (AZURE_OPENAI_API_VERSION). 2025-04-01-preview supports the gpt-5 reasoning models; 2024-10-21 predates them.')
+param azureOpenAiApiVersion string = '2025-04-01-preview'
 
 @description('Create the Cognitive Services OpenAI User role assignment for the app identity. Set false when the deploy principal lacks RBAC-write (Owner / User Access Administrator) and the grant is bootstrapped imperatively — mirrors manageAcrPullRoleAssignment.')
 param manageOpenAiRoleAssignment bool = true
