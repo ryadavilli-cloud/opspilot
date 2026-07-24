@@ -22,6 +22,16 @@ if TYPE_CHECKING:
 
 _KNOWN = ("ollama", "openai", "azure", "replay")
 
+# Reasoning models (gpt-5*, o1/o3/o4*) reject an explicit `temperature` — only the default (1)
+# is allowed, so sending our eval default of 0.0 is a 400. Detect them by deployment/model id
+# prefix and omit the parameter. The replay key still records the temperature *argument*
+# (cassette.py), so replay determinism is unaffected; only the live request drops it.
+_REASONING_PREFIXES = ("gpt-5", "o1", "o3", "o4")
+
+
+def _is_reasoning_model(model_id: str) -> bool:
+    return model_id.startswith(_REASONING_PREFIXES)
+
 
 class OpenAICompatModel:
     """A `ChatModel` over any OpenAI-compatible endpoint. The `openai` SDK is imported lazily on
@@ -49,11 +59,14 @@ class OpenAICompatModel:
     ) -> ChatResult:
         from opspilot.llm.base import ChatResult
 
-        resp = self._ensure_client().chat.completions.create(
-            model=self.model_id,
-            messages=[{"role": m.role, "content": m.content} for m in messages],
-            temperature=temperature,
-        )
+        payload = [{"role": m.role, "content": m.content} for m in messages]
+        client = self._ensure_client()
+        if _is_reasoning_model(self.model_id):
+            resp = client.chat.completions.create(model=self.model_id, messages=payload)
+        else:
+            resp = client.chat.completions.create(
+                model=self.model_id, messages=payload, temperature=temperature
+            )
         choice = resp.choices[0]
         usage = getattr(resp, "usage", None)
         return ChatResult(
