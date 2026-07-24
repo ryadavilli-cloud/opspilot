@@ -82,15 +82,12 @@ jobs:
       - name: Build image in ACR
         run: az acr build --registry "${{ vars.ACR_NAME }}" --image "$IMAGE_REPO:${{ github.sha }}" .
 
-      - name: Configure ACR pull via managed identity
-        run: |
-          az containerapp registry set \
-            --name "${{ vars.CONTAINER_APP_NAME }}" \
-            --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
-            --identity system \
-            --server "${{ vars.ACR_NAME }}.azurecr.io"
-
-      - name: Deploy infra (image, ingress, probes — declarative)
+      # ACR pull-via-identity is configured declaratively by the Bicep (configureAcrPull=true),
+      # NOT a separate `az containerapp registry set`: that ran BEFORE this declarative deploy, which
+      # (with no registries block) then nulled it out — so the next fresh image failed to pull (401
+      # ImagePullBackOff) and the old cached revision kept serving. The role already exists
+      # (manageAcrPullRoleAssignment=false), so binding in the template is safe and durable.
+      - name: Deploy infra (image, ingress, probes, ACR pull — declarative)
         id: deploy
         run: |
           FQDN=$(az deployment group create \
@@ -101,6 +98,7 @@ jobs:
               acrName="${{ vars.ACR_NAME }}" \
               containerImage="${{ vars.ACR_NAME }}.azurecr.io/$IMAGE_REPO:${{ github.sha }}" \
               manageAcrPullRoleAssignment=false \
+              configureAcrPull=true \
               entraApiAudience="${{ vars.ENTRA_API_AUDIENCE }}" \
               entraConsoleClientId="${{ vars.ENTRA_CONSOLE_CLIENT_ID }}" \
             --query properties.outputs.appFqdn.value -o tsv)

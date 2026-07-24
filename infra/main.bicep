@@ -24,6 +24,9 @@ param minReplicas int = 0
 @description('Create the AcrPull role assignment below. Default true for fresh/reproducible environments. The live environment bootstrapped its identity + AcrPull grant imperatively via az CLI before this template existed (see the acrPull resource comment) — its CD run passes false, since redeclaring the assignment here would collide with the one already outside this template\'s management.')
 param manageAcrPullRoleAssignment bool = true
 
+@description('Include the container app `registries` block (ACR pull via the system identity). MUST be false on a fresh bootstrap: the AcrPull role does not exist/propagate yet, so a registries block races it and times the revision out (the bootstrap runs a public placeholder image instead). Steady-state CD passes TRUE — the role already exists, so the declarative deploy OWNS the registry binding. Without this, a no-registries declarative deploy nulls out the binding a separate `az containerapp registry set` configured, and the next fresh image fails to pull (401 ImagePullBackOff).')
+param configureAcrPull bool = false
+
 @description('Diagnosis implementation the deployed app runs: single_agent (the LLM planner + triager) or deterministic (the hand-tuned floor). Injected as OPSPILOT_IMPLEMENTATION.')
 @allowed([
   'single_agent'
@@ -192,10 +195,19 @@ resource app 'Microsoft.App/containerApps@2024-03-01' = {
         targetPort: targetPort
         transport: 'auto'
       }
-      // No `registries` block here on purpose: the bootstrap image is public, so the
-      // app must NOT try to authenticate to ACR at create time (that races the AcrPull
-      // role below and times out the revision). CD configures ACR pull-via-identity once
-      // the role exists — see .github/workflows/deploy.yml (`az containerapp registry set`).
+      // ACR pull via the app's system identity — declared here (not via a separate imperative
+      // `az containerapp registry set`) so a declarative deploy cannot null it out afterward, which
+      // is exactly what broke the pull before (401 ImagePullBackOff on every fresh image). Gated on
+      // `configureAcrPull`: a fresh bootstrap leaves it EMPTY because the AcrPull role does not exist
+      // yet and a registries block would race the not-yet-propagated grant and time the revision out
+      // (that bootstrap runs a public placeholder image). Steady-state CD passes true; the role
+      // already exists, so binding here is safe and durable.
+      registries: configureAcrPull ? [
+        {
+          server: '${acrName}.azurecr.io'
+          identity: 'system'
+        }
+      ] : []
     }
     template: {
       containers: [
