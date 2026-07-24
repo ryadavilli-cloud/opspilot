@@ -37,7 +37,7 @@ param openAiAccountName string = toLower('${namePrefix}oai${uniqueString(resourc
 @description('Chat model to deploy (Azure OpenAI catalog name). gpt-4.1-mini is the supported successor to gpt-4o-mini, whose 2024-07-18 version is retired (the Bicep preflight failure this replaces). Interim demo tier only; production routing is Claude-on-Foundry (config.PROD_MODELS, G-45).')
 param chatModelName string = 'gpt-4.1-mini'
 
-@description('Chat model version. Verify availability in the target region before deploy: az cognitiveservices account list-models --name <aoai-account> -g <rg> --query "[?model.name==''gpt-4.1-mini''].model.version".')
+@description('Chat model version. Verify the version is offered in the target region before deploy (az cognitiveservices account list-models).')
 param chatModelVersion string = '2025-04-14'
 
 @description('Deployment name the app calls (AZURE_OPENAI_DEPLOYMENT). Kept equal to the model name for clarity.')
