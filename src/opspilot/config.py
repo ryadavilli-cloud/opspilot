@@ -137,6 +137,11 @@ def resolve_tier(severity: Severity) -> Tier:
 LLM_PROVIDER = _env("OPSPILOT_LLM_PROVIDER", "ollama")
 LLM_MODEL = _env("OPSPILOT_LLM_MODEL", DEV_MODEL)
 LLM_BASE_URL = _env("OPSPILOT_LLM_BASE_URL")
+# Reasoning effort for reasoning models (gpt-5*, o*). `low` was too shallow — the planner skipped an
+# evidence class and the sufficiency gate escalated (coverage 0.75); `medium` gives thorough enough
+# tool planning while staying within the /investigate timeout. Env-tunable so the demo can dial it
+# without a code change. Ignored by non-reasoning models.
+REASONING_EFFORT = _env("OPSPILOT_REASONING_EFFORT", "medium")
 LLM_API_KEY = _env("OPSPILOT_LLM_API_KEY") or _env("OPENAI_API_KEY")
 OLLAMA_BASE_URL = _env("OPSPILOT_OLLAMA_BASE_URL", "http://localhost:11434/v1")
 
