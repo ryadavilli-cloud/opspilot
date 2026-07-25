@@ -136,12 +136,20 @@ def run_cycle(
         # Dependency/metric results are gathered (they land in observations and feed the
         # sufficiency gate) but deliberately not cited — the naive baseline ignores them.
         if q.call.tool == "get_deployments" and result.results:
-            latest = max(result.results, key=lambda d: d.ts)  # closest deploy before onset
-            deploy_note = (f"deployment {latest.deploy_id} on {latest.service} "
-                           f"at {latest.ts.isoformat()}")
-            citations.append(EvidenceCitation(
-                source="deploys", ref=f"deploys:{latest.service}:{latest.deploy_id}",
-                note=f"{deploy_note}, preceding onset {ctx.onset}"))
+            onset_dt = _parse(ctx.onset)
+            # G-18: only a deploy at/before onset can have "preceded" it. get_deployments looks up
+            # to onset+15min, so the post-onset tail is in `results`; taking the plain max could
+            # cite a deploy that FOLLOWED onset as causal-by-precedence. Clamp to d.ts <= onset; if
+            # nothing precedes onset, cite no deploy — the hypothesis then falls to "no implicated
+            # deployment" rather than blaming a change that came after the symptoms.
+            pre_onset = [d for d in result.results if onset_dt is not None and d.ts <= onset_dt]
+            if pre_onset:
+                latest = max(pre_onset, key=lambda d: d.ts)  # closest deploy at/before onset
+                deploy_note = (f"deployment {latest.deploy_id} on {latest.service} "
+                               f"at {latest.ts.isoformat()}")
+                citations.append(EvidenceCitation(
+                    source="deploys", ref=f"deploys:{latest.service}:{latest.deploy_id}",
+                    note=f"{deploy_note}, preceding onset {ctx.onset}"))
         elif q.call.tool == "query_logs" and result.evidence_refs:
             citations.append(EvidenceCitation(
                 source="logs", ref=result.evidence_refs[0],
