@@ -242,25 +242,20 @@ resource app 'Microsoft.App/containerApps@2024-03-01' = {
               name: 'AZURE_OPENAI_API_VERSION'
               value: azureOpenAiApiVersion
             }
-            // Durable HITL state (Stage 5c, closing G-02). BOTH stores must be durable or the
-            // pause is not really recoverable, and the two halves fail differently:
-            //   - the repository holds the polled resource record. In memory it loses every
-            //     accepted/awaiting_approval record on a restart, redeploy, or (with maxReplicas 3
-            //     below) a poll landing on a replica that never ran the job.
-            //   - the checkpointer holds the paused graph itself. On the default `none` it falls
-            //     back to an in-process MemorySaver, so after a restart the record would still
-            //     report awaiting_approval while the thread it names no longer exists — the API
-            //     would advertise a resumable pause it cannot honour. That is worse than an
-            //     honestly non-durable pause, which is why this is set here and not deferred.
-            // Safe to enable because api.py builds both lazily, on first use: a Cosmos outage
-            // fails the request that needs it instead of crash-looping the container at startup.
+            // HITL state stores — TEMPORARILY in-memory. The deployed HITL is honestly NON-DURABLE,
+            // which is the actual current state: G-02 is OPEN and #36 shipped a non-durable pause.
+            // Pointing these at `cosmos` was premature — the Cosmos DB/containers and the system
+            // identity's data-plane RBAC are not provisioned yet, so CosmosClient init 500'd every
+            // /investigate. Durable activation (both stores → cosmos, with containers + data-plane
+            // RBAC + create-if-not-exists) is Stage 5f (G-02/G-48): flip BOTH values back to 'cosmos'
+            // there. The Cosmos account is still provisioned below — unused for now; 5f needs it.
             {
               name: 'OPSPILOT_INVESTIGATION_REPOSITORY'
-              value: 'cosmos'
+              value: 'memory'
             }
             {
               name: 'OPSPILOT_CHECKPOINTER'
-              value: 'cosmos'
+              value: 'memory'
             }
             {
               name: 'AZURE_COSMOS_ENDPOINT'
