@@ -8,8 +8,11 @@ fails loudly instead of the demo failing quietly.
 from __future__ import annotations
 
 import hashlib
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
+
+from opspilot.diagnosis.contracts import Acknowledgement, CausalClaim, ReportClaim
 
 
 class EvidenceItem(BaseModel):
@@ -45,3 +48,54 @@ class IncidentReport(BaseModel):
         reviewer edit, a re-synthesis — changes the hash.
         """
         return hashlib.sha256(self.model_dump_json().encode("utf-8")).hexdigest()
+
+
+# --- InvestigationResult: the discriminated result union (Stage 5e, G-49) ----------------------
+# A run's outcome is one of four DISTINCT types, tagged by `result_type`. Only a fully grounded RCA
+# carries a CausalClaim; the degraded rungs (partial / knowledge-only) get their own types so the
+# degradation ladder (Stage 10) can never ship a non-RCA answer under the RCA contract. Today's runs
+# produce only `grounded_rca` and `escalation`; the middle two are defined now so nothing has to be
+# retyped when Stage 10 builds the rungs that return them.
+
+
+class GroundedRcaReport(BaseModel):
+    """A full, grounded root-cause report — the ONLY variant that carries a `CausalClaim`."""
+
+    result_type: Literal["grounded_rca"] = "grounded_rca"
+    report: IncidentReport
+    causal: CausalClaim
+    report_claims: list[ReportClaim] = Field(default_factory=list)
+    acknowledgements: list[Acknowledgement] = Field(default_factory=list)
+
+
+class PartialInvestigationReport(BaseModel):
+    """A degraded rung: evidence was gathered but no grounded root cause was reached (Stage 10)."""
+
+    result_type: Literal["partial"] = "partial"
+    incident_id: str
+    summary: str
+    evidence: list[EvidenceItem] = Field(default_factory=list)
+    reason: str = ""
+
+
+class KnowledgeBriefing(BaseModel):
+    """A degraded rung: a knowledge / `info_only` answer, explicitly NOT an RCA (Stage 10)."""
+
+    result_type: Literal["knowledge_briefing"] = "knowledge_briefing"
+    incident_id: str
+    answer: str
+    citations: list[str] = Field(default_factory=list)
+
+
+class EscalationNotice(BaseModel):
+    """The run stopped and handed off to a human, carrying a machine-readable reason (G-36)."""
+
+    result_type: Literal["escalation"] = "escalation"
+    incident_id: str
+    reason: str
+
+
+InvestigationResult = Annotated[
+    GroundedRcaReport | PartialInvestigationReport | KnowledgeBriefing | EscalationNotice,
+    Field(discriminator="result_type"),
+]
