@@ -62,7 +62,13 @@ class OpenAICompatModel:
         payload = [{"role": m.role, "content": m.content} for m in messages]
         client = self._ensure_client()
         if _is_reasoning_model(self.model_id):
-            resp = client.chat.completions.create(model=self.model_id, messages=payload)
+            # Reasoning models reject an explicit temperature; and left unbounded their reasoning
+            # tokens make each call slow + expensive. `reasoning_effort="low"` keeps latency within
+            # the smoke/HITL round trip and the cost sane on open ingress — the demo tier does not
+            # need deep chain-of-thought for a scripted diagnosis.
+            resp = client.chat.completions.create(
+                model=self.model_id, messages=payload, reasoning_effort="low"
+            )
         else:
             resp = client.chat.completions.create(
                 model=self.model_id, messages=payload, temperature=temperature

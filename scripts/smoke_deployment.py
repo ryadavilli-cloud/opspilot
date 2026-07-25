@@ -30,8 +30,14 @@ from opspilot.api import (
 SMOKE_INCIDENT_ID = "inc-004"
 SMOKE_INCIDENT_SUMMARY = "checkout-api returning 500s shortly after this morning's deployment."
 REQUEST_TIMEOUT_S = 10.0
+# The synchronous /investigate runs a FULL multi-call LLM investigation before it responds, so it
+# needs far more than the 10s default that suits /health and /version — especially with a reasoning
+# model (gpt-5-mini) whose calls are slow. A too-short timeout reads as a ReadTimeout that looks
+# like a hang but is just the client giving up mid-investigation.
+INVESTIGATE_TIMEOUT_S = 180.0
 MAX_POLL_INTERVAL_S = 20.0
-ASYNC_POLL_TIMEOUT_S = 120.0
+# Generous enough for a slow reasoning model to reach awaiting_approval on the async leg.
+ASYNC_POLL_TIMEOUT_S = 300.0
 ASYNC_POLL_INTERVAL_S = 3.0
 
 
@@ -119,6 +125,7 @@ def run_investigation(client: httpx.Client) -> InvestigationResponse:
     resp = client.post(
         "/investigate",
         json={"incident_id": SMOKE_INCIDENT_ID, "summary": SMOKE_INCIDENT_SUMMARY},
+        timeout=INVESTIGATE_TIMEOUT_S,
     )
     _require(
         resp.status_code == 200,
