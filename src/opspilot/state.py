@@ -117,6 +117,7 @@ class InvestigationState(BaseModel):
     incident_id: str = ""
     investigation_id: str = ""   # one attempt; minted at ingest (UUID)
     thread_id: str = ""          # derived from investigation_id
+    trace_id: str = ""           # span correlation id (Stage 5g); defaults to investigation_id
     workflow_version: str = ""
     idempotency_key: str = ""
 

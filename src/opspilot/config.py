@@ -142,6 +142,10 @@ LLM_BASE_URL = _env("OPSPILOT_LLM_BASE_URL")
 # tool planning while staying within the /investigate timeout. Env-tunable so the demo can dial it
 # without a code change. Ignored by non-reasoning models.
 REASONING_EFFORT = _env("OPSPILOT_REASONING_EFFORT", "medium")
+
+# Observability span exporter (Stage 5g): none (default — emission on, no sink until a real one is
+# wired) | memory (tests) | stdout (dev). LangSmith/App Insights sinks land later (obs/tracing.py).
+TRACE_EXPORTER = _env("OPSPILOT_TRACE_EXPORTER", "none")
 LLM_API_KEY = _env("OPSPILOT_LLM_API_KEY") or _env("OPENAI_API_KEY")
 OLLAMA_BASE_URL = _env("OPSPILOT_OLLAMA_BASE_URL", "http://localhost:11434/v1")
 

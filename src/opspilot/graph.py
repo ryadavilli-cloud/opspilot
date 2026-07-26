@@ -9,6 +9,7 @@ Deterministic skeleton wrapping the (currently stubbed) agentic core:
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
 from langgraph.checkpoint.memory import MemorySaver
@@ -33,6 +34,7 @@ from opspilot.nodes.investigation import (
     synthesize_report,
     triage_router,
 )
+from opspilot.obs.tracing import traced_node
 from opspilot.router import (
     after_approval,
     after_safety_validate,
@@ -81,18 +83,26 @@ def build_graph(checkpointer: BaseCheckpointSaver | None = None):
     checkpointer = checkpointer.with_allowlist(_CHECKPOINT_MSGPACK_ALLOWLIST)
     g = StateGraph(InvestigationState)
 
-    g.add_node("ingest", ingest)
-    g.add_node("triage_router", triage_router)
-    g.add_node("known_issue_fast_path", known_issue_fast_path)
-    g.add_node("retrieve", retrieve)
-    g.add_node("diagnose", diagnose)
-    g.add_node("synthesize_report", synthesize_report)
-    g.add_node("safety_validate", safety_validate)
-    g.add_node("hitl_gate", hitl_gate)
-    g.add_node("apply_edit", apply_edit)
-    g.add_node("finalize_report", finalize_report)
-    g.add_node("postmortem", postmortem)
-    g.add_node("escalate", escalate)
+    # Every node is dispatched through the tracing wrapper (Stage 5g / §23) — one seam, so a new
+    # node is traced with no per-site code, behaviour unchanged. The wrapper preserves each node's
+    # runtime (state -> update-dict) contract; langgraph's add_node overloads just don't unify with
+    # a wrapped Callable the way they do a named function, hence the single targeted ignore.
+    _nodes: tuple[tuple[str, Callable[[InvestigationState], dict[str, Any]]], ...] = (
+        ("ingest", ingest),
+        ("triage_router", triage_router),
+        ("known_issue_fast_path", known_issue_fast_path),
+        ("retrieve", retrieve),
+        ("diagnose", diagnose),
+        ("synthesize_report", synthesize_report),
+        ("safety_validate", safety_validate),
+        ("hitl_gate", hitl_gate),
+        ("apply_edit", apply_edit),
+        ("finalize_report", finalize_report),
+        ("postmortem", postmortem),
+        ("escalate", escalate),
+    )
+    for _name, _fn in _nodes:
+        g.add_node(_name, traced_node(_name, _fn))  # type: ignore[call-overload]
 
     g.add_edge(START, "ingest")
     g.add_edge("ingest", "triage_router")

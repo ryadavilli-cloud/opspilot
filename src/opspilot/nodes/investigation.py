@@ -85,6 +85,7 @@ def ingest(state: InvestigationState) -> dict[str, Any]:
         "incident_id": incident_id,
         "investigation_id": investigation_id,
         "thread_id": f"thread-{investigation_id}",
+        "trace_id": investigation_id,  # span correlation id (Stage 5g) == investigation id
         "workflow_version": WORKFLOW_VERSION,
         "idempotency_key": idem,
         "diagnose_iters": 0,
