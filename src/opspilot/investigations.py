@@ -46,6 +46,10 @@ class InvestigationRecord(BaseModel):
     # `investigation_id` at creation and kept as its own named field (never conflate identifiers,
     # per this codebase's own convention) — it's what a `POST .../decision` resume must address.
     thread_id: str = ""
+    # The verified Entra subject (`oid`) that submitted this investigation (Stage 8, G-57) — the
+    # audit trail's submitter, and the key `count_active(subject=...)` groups by for the per-user
+    # concurrency cap. `None` only for investigations pre-dating submit-endpoint auth.
+    submitted_by: str | None = None
     status: InvestigationStatus = "queued"
     history: list[InvestigationStatus] = Field(default_factory=list)
     result: dict[str, Any] | None = None
@@ -71,6 +75,7 @@ class InvestigationRepository(Protocol):
         incident_id: str,
         thread_id: str = "",
         force_rerun: bool = False,
+        submitted_by: str | None = None,
     ) -> tuple[InvestigationRecord, bool]: ...
 
     def get(self, investigation_id: str) -> InvestigationRecord | None: ...
@@ -84,6 +89,12 @@ class InvestigationRepository(Protocol):
         error: str | None = None,
         pending_interrupt: dict[str, Any] | None = None,
     ) -> InvestigationRecord: ...
+
+    def count_active(self, *, subject: str | None = None) -> int:
+        """Count non-terminal investigations (queued/running/awaiting_approval) — every one still
+        occupying a concurrency slot. `subject=None` counts globally; otherwise only investigations
+        `submitted_by` that subject."""
+        ...
 
 
 class InvestigationError(Exception):
@@ -108,6 +119,7 @@ class InMemoryInvestigationRepository:
         incident_id: str,
         thread_id: str = "",
         force_rerun: bool = False,
+        submitted_by: str | None = None,
     ) -> tuple[InvestigationRecord, bool]:
         """Atomically look up `idempotency_key` and create `investigation_id` only if absent — one
         lock acquisition, so two concurrent identical POSTs cannot each observe "not found" and both
@@ -136,6 +148,7 @@ class InMemoryInvestigationRepository:
                 thread_id=thread_id or investigation_id,
                 status="queued",
                 history=["queued"],
+                submitted_by=submitted_by,
             )
             self._records[investigation_id] = record
             self._by_idempotency[idempotency_key] = investigation_id
@@ -170,3 +183,12 @@ class InMemoryInvestigationRepository:
             # so a resolved investigation never keeps showing a stale pending review.
             record.pending_interrupt = pending_interrupt if status == "awaiting_approval" else None
             return record.model_copy(deep=True)
+
+    def count_active(self, *, subject: str | None = None) -> int:
+        with self._lock:
+            return sum(
+                1
+                for record in self._records.values()
+                if record.status not in TERMINAL_STATUSES
+                and (subject is None or record.submitted_by == subject)
+            )

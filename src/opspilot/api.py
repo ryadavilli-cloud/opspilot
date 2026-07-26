@@ -29,6 +29,8 @@ from opspilot.auth import (
     ReviewerAuthError,
     ReviewerPrincipal,
     build_reviewer_authenticator,
+    require_any_role,
+    require_role,
 )
 from opspilot.checkpoint import build_checkpointer
 from opspilot.composition import DiagnosisComposition, build_diagnosis
@@ -142,21 +144,65 @@ def get_authenticator() -> ReviewerAuthenticator:
     return _authenticator
 
 
-def require_reviewer(authorization: str | None, authenticator: ReviewerAuthenticator):
+def _authenticated(
+    authorization: str | None, authenticator: ReviewerAuthenticator
+) -> ReviewerPrincipal:
     """Turn the raw Authorization header into a verified principal, or an HTTP error.
 
     Fail-closed: every path out of here is either a validated `ReviewerPrincipal` or an exception.
     The client-facing detail stays coarse (see `ReviewerAuthError`) while the precise cause is
-    logged here, so operators can diagnose a rejected approval without the endpoint becoming an
-    oracle for probing token validity.
+    logged here, so operators can diagnose a rejected call without the endpoint becoming an oracle
+    for probing token validity.
     """
     try:
         return authenticator.authenticate(authorization)
     except ReviewerAuthError as exc:
-        _log.warning(
-            "reviewer authentication failed (status=%s): %s", exc.status_code, exc.reason
-        )
+        _log.warning("authentication failed (status=%s): %s", exc.status_code, exc.reason)
         raise HTTPException(status_code=exc.status_code, detail=exc.reason) from exc
+
+
+def require_reviewer(
+    authorization: str | None, authenticator: ReviewerAuthenticator
+) -> ReviewerPrincipal:
+    """Authenticate, then authorize for the decide (`ENTRA_APPROVER_ROLE`) role — the seam
+    `submit_decision` calls. 401 for an unproven identity, 403 for a proven one lacking the role."""
+    principal = _authenticated(authorization, authenticator)
+    try:
+        require_role(principal, config.ENTRA_APPROVER_ROLE)
+    except ReviewerAuthError as exc:
+        _log.warning("decide authorization failed (status=%s): %s", exc.status_code, exc.reason)
+        raise HTTPException(status_code=exc.status_code, detail=exc.reason) from exc
+    return principal
+
+
+def require_submitter(
+    authorization: str | None, authenticator: ReviewerAuthenticator
+) -> ReviewerPrincipal:
+    """Authenticate, then authorize for the submit (`ENTRA_SUBMIT_ROLE`) role — Stage 8's
+    pulled-forward ingress auth (G-03/G-57): closes the anonymous-submit exposure."""
+    principal = _authenticated(authorization, authenticator)
+    try:
+        require_role(principal, config.ENTRA_SUBMIT_ROLE)
+    except ReviewerAuthError as exc:
+        _log.warning("submit authorization failed (status=%s): %s", exc.status_code, exc.reason)
+        raise HTTPException(status_code=exc.status_code, detail=exc.reason) from exc
+    return principal
+
+
+def require_reader(
+    authorization: str | None, authenticator: ReviewerAuthenticator
+) -> ReviewerPrincipal:
+    """Authenticate, then authorize for ANY of read/submit/decide — reading an investigation is
+    open to whoever submitted it, whoever may decide on it, or a dedicated reader. Same ingress-auth
+    slice as `require_submitter`."""
+    principal = _authenticated(authorization, authenticator)
+    try:
+        read_roles = (config.ENTRA_READ_ROLE, config.ENTRA_SUBMIT_ROLE, config.ENTRA_APPROVER_ROLE)
+        require_any_role(principal, read_roles)
+    except ReviewerAuthError as exc:
+        _log.warning("read authorization failed (status=%s): %s", exc.status_code, exc.reason)
+        raise HTTPException(status_code=exc.status_code, detail=exc.reason) from exc
+    return principal
 
 
 def get_corpus_status():
@@ -641,9 +687,11 @@ def create_investigation(
     response: Response,
     background: BackgroundTasks,
     force_rerun: bool = False,
+    authorization: str | None = Header(default=None),
     svc=Depends(get_service),
     diagnosis=Depends(get_diagnosis),
     repo: InvestigationRepository = Depends(get_repository),
+    authenticator: ReviewerAuthenticator = Depends(get_authenticator),
 ) -> AcceptedInvestigation:
     """The advertised contract: accept an investigation and run it in the background. Returns 202
     immediately with the minted id + a polling URL, so a client never holds a request open for the
@@ -652,7 +700,15 @@ def create_investigation(
     POSTs could each see "not found" and both start a run. Pass `?force_rerun=true` to mint a fresh
     investigation for the same key anyway (a reopened incident, new telemetry, an operator-requested
     retry); the superseded investigation stays reachable by its own id, but a later non-forced POST
-    for the same key now returns the rerun instead of it."""
+    for the same key now returns the rerun instead of it.
+
+    401/403 for an unproven or unauthorized caller (Stage 8, G-03/G-57 — closes the public-ingress
+    exposure). 429 if dispatching this as a NEW background job would push the global or this
+    caller's concurrency count past its limit — a best-effort check (not a distributed lock),
+    sufficient to bound spend without new infrastructure. Checked only when a job would actually be
+    dispatched: an idempotent repeat starts no new job, so it is never rejected by this check."""
+    principal = require_submitter(authorization, authenticator)
+
     idempotency_key = _idempotency_key(alert)
     investigation_id = str(uuid4())
     record, created = repo.get_or_create(
@@ -661,8 +717,25 @@ def create_investigation(
         incident_id=alert.incident_id or "INC-STUB",
         thread_id=investigation_id,
         force_rerun=force_rerun,
+        submitted_by=principal.subject,
     )
     if created:
+        if repo.count_active() > config.MAX_CONCURRENT_INVESTIGATIONS_GLOBAL:
+            repo.transition(
+                record.investigation_id, "failed", error="global concurrency limit reached"
+            )
+            raise HTTPException(
+                status_code=429, detail="global investigation concurrency limit reached"
+            )
+        user_active = repo.count_active(subject=principal.subject)
+        if user_active > config.MAX_CONCURRENT_INVESTIGATIONS_PER_USER:
+            repo.transition(
+                record.investigation_id, "failed", error="per-user concurrency limit reached"
+            )
+            raise HTTPException(
+                status_code=429, detail="your concurrent investigation limit reached"
+            )
+
         background.add_task(
             _run_investigation_job,
             record.investigation_id,
@@ -740,11 +813,21 @@ def submit_decision(
 
 @app.get("/investigations/{investigation_id}")
 def get_investigation(
-    investigation_id: str, repo: InvestigationRepository = Depends(get_repository)
+    investigation_id: str,
+    authorization: str | None = Header(default=None),
+    repo: InvestigationRepository = Depends(get_repository),
+    authenticator: ReviewerAuthenticator = Depends(get_authenticator),
 ) -> InvestigationStatusResponse:
-    """Poll an investigation: 404 for an unknown id; otherwise the current status + ordered
-    transition history, the full typed result once terminal, and the pending report/hash awaiting
-    a decision while paused (`status == "awaiting_approval"`)."""
+    """Poll an investigation: 401/403 for an unproven or unauthorized caller (Stage 8, G-03/G-57 —
+    open to whoever submitted, may decide, or holds the dedicated read role); 404 for an unknown id;
+    otherwise the current status + ordered transition history, the full typed result once terminal,
+    and the pending report/hash awaiting a decision while paused (`status == "awaiting_approval"`).
+
+    Authentication runs first, before the record is looked up — same id-oracle reasoning as the
+    decision endpoint: an unauthenticated caller must not be able to tell a real id from a fake one
+    by the status code it gets back."""
+    require_reader(authorization, authenticator)
+
     record: InvestigationRecord | None = repo.get(investigation_id)
     if record is None:
         raise HTTPException(status_code=404, detail="investigation not found")
