@@ -80,10 +80,12 @@ def build_diagnosis(implementation: str | None = None) -> DiagnosisComposition:
 
     try:
         from opspilot.diagnosis.planner import build_planner
-        from opspilot.llm.client import build_chat_model
+        from opspilot.llm.client import TracedChatModel, build_chat_model
         from opspilot.triage import build_triager
 
-        model = build_chat_model()  # provider/model resolved from config (azure in prod)
+        # provider/model resolved from config (azure in prod); wrapped so every model call emits a
+        # usage span (Stage 5g) — done here, not in build_chat_model, so factory/eval stay untraced.
+        model = TracedChatModel(build_chat_model())
         planner = build_planner("single_agent", model=model)
         triager = build_triager("single_agent", model=model)
     except Exception as exc:  # noqa: BLE001 — any build failure -> explicit floor, never a broken app

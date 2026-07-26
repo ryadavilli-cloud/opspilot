@@ -92,6 +92,46 @@ def test_traced_node_does_not_pass_config_to_state_only_nodes():
     assert tracing.traced_node("ingest", state_only)(_State(), {"configurable": {}}) == {"ok": True}
 
 
+def test_tool_span_nests_under_node_and_inherits_trace(span_exporter):
+    from pydantic import BaseModel
+
+    from opspilot.tools.errors import run_tool
+
+    class _Req(BaseModel):
+        x: int = 0
+
+    with tracing.span("node.diagnose", trace_id="t-9"):
+        run_tool("get_metrics", _Req, lambda r: ([{"a": 1}], ["metrics:m-1"]), x=1)
+
+    tool = next(s for s in span_exporter.spans if s.name == "tool.get_metrics")
+    node = next(s for s in span_exporter.spans if s.name == "node.diagnose")
+    assert tool.trace_id == "t-9"                 # inherited from the node via the trace context
+    assert tool.parent_span_id == node.span_id    # nested under the node span
+    assert tool.attributes["tool_name"] == "get_metrics"
+    assert tool.attributes["status"] == "ok" and tool.attributes["result_count"] == 1
+
+
+def test_model_span_captures_usage(span_exporter):
+    from opspilot.llm.base import ChatMessage, ChatResult
+    from opspilot.llm.client import TracedChatModel
+
+    class _Model:
+        model_id = "gpt-5-mini"
+
+        def complete(self, messages, *, temperature=0.0):
+            return ChatResult(
+                text="ok", model_id="gpt-5-mini", finish_reason="stop",
+                usage={"prompt_tokens": 12, "completion_tokens": 5},
+            )
+
+    with tracing.span("node.diagnose", trace_id="t-9"):
+        TracedChatModel(_Model()).complete([ChatMessage("user", "hi")])
+
+    model = next(s for s in span_exporter.spans if s.name == "model.complete")
+    assert model.trace_id == "t-9" and model.attributes["model_deployment"] == "gpt-5-mini"
+    assert model.attributes["tokens_in"] == 12 and model.attributes["tokens_out"] == 5
+
+
 def test_traced_node_reflects_error_onto_span(span_exporter: tracing.InMemorySpanExporter):
     wrapped = tracing.traced_node(
         "escalate", lambda s: {"degraded": True, "error": "budget exhausted"}

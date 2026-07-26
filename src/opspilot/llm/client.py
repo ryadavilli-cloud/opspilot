@@ -180,3 +180,26 @@ def build_chat_model(
         )
 
     raise ValueError(f"unknown LLM provider {provider!r}; known: {', '.join(_KNOWN)}")
+
+
+class TracedChatModel:
+    """Wraps any `ChatModel` to emit a model span with normalized usage per call (Stage 5g / §23).
+
+    Applied at the composition root, NOT in `build_chat_model`, so the factory and cassette-replay
+    paths stay untraced (and the factory's `isinstance` contract is unchanged). Capture only — the
+    budget that reads this usage is [G-08] at Stage 6b."""
+
+    def __init__(self, inner: ChatModel) -> None:
+        self._inner = inner
+        self.model_id = inner.model_id
+
+    def complete(self, messages: list[ChatMessage], *, temperature: float = 0.0) -> ChatResult:
+        from opspilot.obs.tracing import span
+
+        with span("model.complete", attributes={"model_deployment": self.model_id}) as sp:
+            result = self._inner.complete(messages, temperature=temperature)
+            usage = result.usage or {}
+            sp.attributes["tokens_in"] = usage.get("prompt_tokens", 0)
+            sp.attributes["tokens_out"] = usage.get("completion_tokens", 0)
+            sp.attributes["finish_reason"] = result.finish_reason
+            return result

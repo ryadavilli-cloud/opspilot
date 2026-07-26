@@ -14,6 +14,7 @@ from typing import Any
 
 from pydantic import BaseModel, ValidationError
 
+from opspilot.obs.tracing import span
 from opspilot.tools.contracts import MAX_RESULTS, ToolMetadata, ToolResult
 
 
@@ -51,19 +52,28 @@ def run_tool(
     **kwargs: Any,
 ) -> ToolResult[Any]:
     started = time.perf_counter()
-    try:
-        request = request_cls(**kwargs)
-    except ValidationError as exc:
-        return error_result(tool_name, sanitize(exc), started)
-    except Exception:  # noqa: BLE001 — no exception may cross the tool boundary, even from a validator
-        return error_result(tool_name, "invalid request", started)
-    try:
-        records, evidence_refs = logic(request)
-    except Exception:  # noqa: BLE001 — no exception may cross the tool boundary
-        return error_result(tool_name, "internal tool error", started)
-    truncated = len(records) > MAX_RESULTS
-    records = records[:MAX_RESULTS]
-    return ToolResult(
-        tool_name=tool_name, status="ok", results=records, evidence_refs=evidence_refs,
-        metadata=_metadata(tool_name, started, len(records), truncated),
-    )
+    # One tool span at the boundary every tool goes through (Stage 5g / §23), nested under the
+    # current node span via the trace context. The result's status is reflected onto the span; no
+    # exception crosses the boundary, so the span always closes with a real status.
+    with span(f"tool.{tool_name}", attributes={"tool_name": tool_name}) as sp:
+        try:
+            request = request_cls(**kwargs)
+        except ValidationError as exc:
+            sp.status = "error"
+            return error_result(tool_name, sanitize(exc), started)
+        except Exception:  # noqa: BLE001 — no exception may cross the boundary, even from a validator
+            sp.status = "error"
+            return error_result(tool_name, "invalid request", started)
+        try:
+            records, evidence_refs = logic(request)
+        except Exception:  # noqa: BLE001 — no exception may cross the tool boundary
+            sp.status = "error"
+            return error_result(tool_name, "internal tool error", started)
+        truncated = len(records) > MAX_RESULTS
+        records = records[:MAX_RESULTS]
+        sp.attributes["status"] = "ok"
+        sp.attributes["result_count"] = len(records)
+        return ToolResult(
+            tool_name=tool_name, status="ok", results=records, evidence_refs=evidence_refs,
+            metadata=_metadata(tool_name, started, len(records), truncated),
+        )
