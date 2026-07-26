@@ -58,6 +58,7 @@ AuthMethod = Literal["entra_jwt", "service_principal", "deterministic_auto_appro
 # trusting anything the caller chose.
 _APP_TOKEN_CLAIM = "idtyp"
 _APP_TOKEN_VALUE = "app"
+_USER_TOKEN_VALUE = "user"
 
 # Clock-skew allowance on exp/nbf. Small deliberately: this is tolerance for drift between Azure and
 # the container host, not a grace period for expired tokens.
@@ -195,7 +196,19 @@ class EntraJwtAuthenticator:
                 status_code=403,
             )
 
-        is_app = claims.get(_APP_TOKEN_CLAIM) == _APP_TOKEN_VALUE
+        # Identity type from the verified `idtyp` claim — the only trustworthy human/workload
+        # signal, configured as an optional access-token claim (with include_user_token) on the API
+        # app so BOTH user (`user`) and app-only (`app`) tokens carry it. Fail CLOSED (§8/§15): a
+        # token that cannot PROVE it is a user is never treated as human review — treating a token
+        # of unknown provenance as human is exactly backwards for a human-signoff control.
+        identity_type = claims.get(_APP_TOKEN_CLAIM)
+        auth_method: AuthMethod
+        if identity_type == _APP_TOKEN_VALUE:
+            auth_method = "service_principal"
+        elif identity_type == _USER_TOKEN_VALUE:
+            auth_method = "entra_jwt"
+        else:
+            raise ReviewerAuthError("token identity type could not be proven")
         display = (
             claims.get("preferred_username")
             or claims.get("name")
@@ -207,7 +220,7 @@ class EntraJwtAuthenticator:
             tenant_id=str(claims.get("tid", "")),
             display_name=str(display),
             roles=roles,
-            auth_method="service_principal" if is_app else "entra_jwt",
+            auth_method=auth_method,
         )
 
 

@@ -71,12 +71,20 @@ def _token(private_key, *, kid: str = "test-key", **overrides) -> str:
         "oid": "11111111-2222-3333-4444-555555555555",
         "tid": "test-tenant-id",
         "preferred_username": "reviewer@example.com",
+        # A real user token carries idtyp="user" once the optional claim is configured with
+        # include_user_token on the API app registration. Tests must model that, not the old unsafe
+        # fallback where a human token simply omitted idtyp. Pass idtyp=None to drop it (missing).
+        "idtyp": "user",
         "roles": [ROLE],
         "iat": now,
         "nbf": now - 10,
         "exp": now + 600,
     }
-    claims.update(overrides)
+    for key, value in overrides.items():
+        if value is None:
+            claims.pop(key, None)
+        else:
+            claims[key] = value
     return jwt.encode(claims, private_key, algorithm="RS256", headers={"kid": kid})
 
 
@@ -114,6 +122,21 @@ def test_an_app_token_is_accepted_but_never_labelled_human(keypair):
     assert principal.auth_method == "service_principal"
     assert not principal.is_human
     assert principal.audit_label().startswith("service_principal:")
+
+
+def test_a_token_without_a_proven_identity_type_is_rejected(keypair):
+    # Fail CLOSED: a token whose idtyp claim is missing cannot prove it is human, so it must NOT be
+    # accepted as human review. This is the bug the smoke gate caught — idtyp was not configured, so
+    # a workload token was labelled human. Treating missing provenance as human is backwards.
+    with pytest.raises(ReviewerAuthError) as exc:
+        _authenticator(keypair).authenticate(_header(_token(keypair, idtyp=None)))
+    assert exc.value.status_code == 401
+
+
+def test_a_token_with_an_unknown_identity_type_is_rejected(keypair):
+    # Any idtyp that is neither `user` nor `app` is unproven → rejected, not assumed human.
+    with pytest.raises(ReviewerAuthError):
+        _authenticator(keypair).authenticate(_header(_token(keypair, idtyp="guest")))
 
 
 # --------------------------------------------------------------------------------------
