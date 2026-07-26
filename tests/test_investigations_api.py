@@ -197,9 +197,13 @@ def test_unknown_investigation_is_404():
 
 def test_investigate_compatibility_endpoint_still_works():
     """The sync compatibility endpoint auto-resolves any hitl_gate pause itself — it must keep
-    returning a complete terminal result inline, unlike the async job API."""
+    returning a complete terminal result inline, unlike the async job API.
+
+    It now also requires the submit role (G-03). Proving submit authority is deliberately NOT
+    reviewer authority: the approval stays labelled `deterministic_auto_approval`, so
+    authenticating the caller cannot quietly promote an auto-approval into human review."""
     _use_service(_bm25_service)
-    r = client.post("/investigate", json=_ALERT)
+    r = client.post("/investigate", json=_ALERT, headers=HUMAN_AUTH)
     assert r.status_code == 200 and r.json()["status"] == "completed"
     assert r.json()["approval"]["kind"] == "deterministic_auto_approval"
 

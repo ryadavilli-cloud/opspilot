@@ -846,11 +846,25 @@ def get_investigation(
 @app.post("/investigate")
 def investigate(
     alert: Alert,
+    authorization: str | None = Header(default=None),
     svc=Depends(get_service),
     diagnosis=Depends(get_diagnosis),
+    authenticator: ReviewerAuthenticator = Depends(get_authenticator),
 ) -> InvestigationResponse:
     """Synchronous investigation — kept as a compatibility + test endpoint. The advertised contract
     is the async resource API above (`POST /investigations` → 202, poll `GET /investigations/{id}`),
     which doesn't hold a request open for the whole run. This endpoint runs the graph inline and
-    returns the full result directly."""
+    returns the full result directly.
+
+    401/403 for an unproven or unauthorized caller. This route carries the SAME submit role as
+    `POST /investigations` because it incurs the same Azure OpenAI spend, and it was the last
+    unauthenticated route on public ingress once #49 closed submit/read (G-03). It is deliberately
+    not given a weaker gate than the async path: a caller who cannot submit a job must not be able
+    to run the identical graph by choosing the older endpoint.
+
+    Note this route is auto-approving (`_run_and_build`), so the resulting approval is still
+    labelled `deterministic_auto_approval`: proving submit authority is not reviewer authority,
+    and authenticating here does not turn an auto-approval into human review.
+    """
+    require_submitter(authorization, authenticator)
     return _run_and_build(alert.model_dump(), svc, diagnosis)

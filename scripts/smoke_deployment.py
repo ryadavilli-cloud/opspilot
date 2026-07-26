@@ -121,11 +121,29 @@ def check_version(client: httpx.Client) -> VersionResponse:
     return version
 
 
-def run_investigation(client: httpx.Client) -> InvestigationResponse:
+def run_investigation(client: httpx.Client, auth: dict[str, str]) -> InvestigationResponse:
+    # The ingress gate, checkable on every deploy: an anonymous caller must not be able to spend
+    # model budget on the sync route either (G-03). Mirrors the unauthenticated-decision check.
+    anon = client.post(
+        "/investigate", json={"incident_id": SMOKE_INCIDENT_ID, "summary": "anon probe"}
+    )
+    _require(
+        anon.status_code == 401,
+        f"unauthenticated /investigate returned HTTP {anon.status_code}, expected 401; public "
+        f"ingress is still open on the synchronous route",
+    )
+
     resp = client.post(
         "/investigate",
+        headers=auth,
         json={"incident_id": SMOKE_INCIDENT_ID, "summary": SMOKE_INCIDENT_SUMMARY},
         timeout=INVESTIGATE_TIMEOUT_S,
+    )
+    _require(
+        resp.status_code != 403,
+        f"/investigate returned 403 for the smoke principal: {resp.text[:300]}. The deploy "
+        f"service principal needs the submit app role granted in Entra. It holds only the "
+        f"approver role from the G-01 bootstrap, which predates the submit role.",
     )
     _require(
         resp.status_code == 200,
@@ -178,12 +196,17 @@ def run_investigation(client: httpx.Client) -> InvestigationResponse:
 
 
 def _poll_until_terminal_or_awaiting(
-    client: httpx.Client, poll_url: str, *, timeout_s: float, poll_interval_s: float
+    client: httpx.Client,
+    poll_url: str,
+    *,
+    auth: dict[str, str],
+    timeout_s: float,
+    poll_interval_s: float,
 ) -> InvestigationStatusResponse:
     deadline = time.monotonic() + timeout_s
     last_status = "unknown"
     while time.monotonic() < deadline:
-        resp = client.get(poll_url)
+        resp = client.get(poll_url, headers=auth)
         _require(resp.status_code == 200, f"{poll_url} returned HTTP {resp.status_code}")
         status = InvestigationStatusResponse.model_validate(resp.json())
         last_status = status.status
@@ -218,7 +241,27 @@ def _reviewer_token(audience: str) -> str:
     return token
 
 
-def run_async_investigation(client: httpx.Client) -> None:
+def _smoke_auth_headers() -> dict[str, str]:
+    """The Authorization header every investigation leg now needs, acquired once per run.
+
+    An unset `OPSPILOT_SMOKE_AUDIENCE` is now FATAL rather than a warning. It used to mean only
+    "skip the decision leg", because submit, poll, and the sync route were all anonymous. Since the
+    ingress-auth slice closed those, a run without a token can exercise nothing beyond `/health`
+    and `/version`, and passing the deploy on health alone is precisely the gate-that-is-not-a-gate
+    that code guidelines §2 forbids. Fail here instead, with the fix named.
+    """
+    audience = os.environ.get("OPSPILOT_SMOKE_AUDIENCE", "").strip()
+    if not audience:
+        raise SmokeTestFailure(
+            "OPSPILOT_SMOKE_AUDIENCE is unset, so no reviewer token can be acquired. Every "
+            "investigation route now requires a proven principal, so this run could only check "
+            "/health and /version, which is not a release gate. Set the repo variable to the "
+            "Entra API audience (see the reviewer-identity ADR)."
+        )
+    return {"Authorization": f"Bearer {_reviewer_token(audience)}"}
+
+
+def run_async_investigation(client: httpx.Client, auth: dict[str, str]) -> None:
     """Exercises the async job API end to end — the real hitl_gate pause, the Cosmos-backed
     InvestigationRepository, and (when configured) the authenticated decision endpoint (G-01).
 
@@ -226,15 +269,29 @@ def run_async_investigation(client: httpx.Client) -> None:
     it a repeat deploy would just observe the previous run's already-completed investigation,
     proving nothing new.
 
-    The decision half needs a reviewer token, which needs the Entra app registration bootstrapped
-    (see the ADR). `OPSPILOT_SMOKE_AUDIENCE` carries that API audience. When it is unset the run
-    stops at the verified pause and says so LOUDLY — it does not silently pass, and it does not
-    fail the deploy before the manual bootstrap is done. Once set, the decision path is exercised
-    for real and asserted to be recorded as a service principal, not human review."""
-    resp = client.post(
+    Every leg here is authenticated: submit, poll, and decide all require a proven principal since
+    the ingress-auth slice. The token is the deploy service principal's, acquired once in `main`;
+    the API stamps it `service_principal`, never `human` (G-01, code guidelines §15)."""
+    anon = client.post(
         "/investigations",
         params={"force_rerun": "true"},
+        json={"incident_id": SMOKE_INCIDENT_ID, "summary": "anon probe"},
+    )
+    _require(
+        anon.status_code == 401,
+        f"unauthenticated POST /investigations returned HTTP {anon.status_code}, expected 401",
+    )
+
+    resp = client.post(
+        "/investigations",
+        headers=auth,
+        params={"force_rerun": "true"},
         json={"incident_id": SMOKE_INCIDENT_ID, "summary": SMOKE_INCIDENT_SUMMARY},
+    )
+    _require(
+        resp.status_code != 403,
+        f"POST /investigations returned 403 for the smoke principal: {resp.text[:300]}. Grant the "
+        f"deploy service principal the submit app role in Entra.",
     )
     _require(
         resp.status_code == 202, f"POST /investigations returned HTTP {resp.status_code}: "
@@ -243,7 +300,7 @@ def run_async_investigation(client: httpx.Client) -> None:
     accepted = AcceptedInvestigation.model_validate(resp.json())
 
     paused = _poll_until_terminal_or_awaiting(
-        client, accepted.poll_url, timeout_s=ASYNC_POLL_TIMEOUT_S,
+        client, accepted.poll_url, auth=auth, timeout_s=ASYNC_POLL_TIMEOUT_S,
         poll_interval_s=ASYNC_POLL_INTERVAL_S,
     )
     _require(
@@ -267,21 +324,9 @@ def run_async_investigation(client: httpx.Client) -> None:
         f"gate is not enforcing reviewer identity",
     )
 
-    audience = os.environ.get("OPSPILOT_SMOKE_AUDIENCE", "").strip()
-    if not audience:
-        print(
-            "[smoke] WARNING: OPSPILOT_SMOKE_AUDIENCE is unset — the authenticated decision "
-            "path is NOT exercised. The pause and its unauthenticated-rejection are verified; "
-            "approval resume is not. Set it once the Entra app registration is bootstrapped "
-            "(see the ADR).",
-            flush=True,
-        )
-        return
-
-    token = _reviewer_token(audience)
     decision = client.post(
         f"{accepted.poll_url}/decision",
-        headers={"Authorization": f"Bearer {token}"},
+        headers=auth,
         json={"decision": "approve", "submitted_report_hash": report_hash},
     )
     _require(
@@ -290,7 +335,7 @@ def run_async_investigation(client: httpx.Client) -> None:
     )
 
     final = _poll_until_terminal_or_awaiting(
-        client, accepted.poll_url, timeout_s=ASYNC_POLL_TIMEOUT_S,
+        client, accepted.poll_url, auth=auth, timeout_s=ASYNC_POLL_TIMEOUT_S,
         poll_interval_s=ASYNC_POLL_INTERVAL_S,
     )
     _require(
@@ -341,8 +386,9 @@ def main(argv: list[str] | None = None) -> int:
                 f"expected bm25 retrieval backend at readiness, got {ready.retrieval_backend!r}",
             )
             check_version(client)
-            run_investigation(client)
-            run_async_investigation(client)
+            auth = _smoke_auth_headers()
+            run_investigation(client, auth)
+            run_async_investigation(client, auth)
     except SmokeTestFailure as exc:
         print(f"[smoke] FAIL — {exc}", file=sys.stderr)
         return 1
