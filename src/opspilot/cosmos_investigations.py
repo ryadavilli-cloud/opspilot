@@ -32,7 +32,12 @@ from azure.core import MatchConditions
 from azure.cosmos import CosmosClient, PartitionKey, exceptions
 from azure.identity import DefaultAzureCredential
 
-from opspilot.investigations import InvestigationError, InvestigationRecord, InvestigationStatus
+from opspilot.investigations import (
+    TERMINAL_STATUSES,
+    InvestigationError,
+    InvestigationRecord,
+    InvestigationStatus,
+)
 
 # Re-reads and reapplies a transition this many times before giving up on the ETag race — a single
 # investigation is resumed/transitioned by one background task at a time in normal operation, so
@@ -78,6 +83,7 @@ class CosmosInvestigationRepository:
         incident_id: str,
         thread_id: str = "",
         force_rerun: bool = False,
+        submitted_by: str | None = None,
     ) -> tuple[InvestigationRecord, bool]:
         record = InvestigationRecord(
             investigation_id=investigation_id,
@@ -86,6 +92,7 @@ class CosmosInvestigationRepository:
             thread_id=thread_id or investigation_id,
             status="queued",
             history=["queued"],
+            submitted_by=submitted_by,
         )
         self._records.create_item(body=record.model_dump(mode="json"))
 
@@ -156,3 +163,20 @@ class CosmosInvestigationRepository:
             f"transition for {investigation_id!r} lost the optimistic-concurrency race "
             f"{_MAX_TRANSITION_RETRIES} times in a row"
         )
+
+    def count_active(self, *, subject: str | None = None) -> int:
+        """Cross-partition query (the records container is partitioned by `investigation_id`, not
+        status or submitter) — acceptable for a "basic" concurrency check on a demo-scale container;
+        a hot path would need a materialized counter instead."""
+        terminal = ", ".join(f'"{status}"' for status in sorted(TERMINAL_STATUSES))
+        query = f"SELECT VALUE COUNT(1) FROM c WHERE NOT ARRAY_CONTAINS([{terminal}], c.status)"
+        params = []
+        if subject is not None:
+            query += " AND c.submitted_by = @subject"
+            params.append({"name": "@subject", "value": subject})
+        results = list(
+            self._records.query_items(
+                query=query, parameters=params, enable_cross_partition_query=True
+            )
+        )
+        return int(results[0]) if results else 0

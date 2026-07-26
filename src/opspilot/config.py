@@ -209,26 +209,41 @@ COSMOS_INVESTIGATION_INDEX_CONTAINER = _env(
 
 
 # --------------------------------------------------------------------------------------
-# Reviewer identity (Stage 5e, G-01)
+# Reviewer / caller identity (Stage 5e G-01 decide role; Stage 8 submit/read roles pulled forward,
+# G-03/G-57)
 # --------------------------------------------------------------------------------------
-# Who is allowed to approve a report, and how that is proven. All three are required before the
-# decision endpoint will serve — `build_reviewer_authenticator()` raises rather than defaulting,
-# because every default here would weaken a publication control. There is deliberately no setting
-# that disables authentication; see `auth.py`'s module docstring.
+# Who is allowed to do what, and how that is proven. Tenant/audience/all three roles are required
+# before ANY of the three auth-gated endpoints will serve — `build_reviewer_authenticator()` raises
+# rather than defaulting, because every default here would weaken an access control. There is
+# deliberately no setting that disables authentication; see `auth.py`'s module docstring.
 #
 # AZURE_TENANT_ID is the tenant whose issuer is trusted (exactly one, not a permissive set).
 # OPSPILOT_API_AUDIENCE is this API's own audience — the API app's application (client) id, which
 # is the `aud` claim Entra puts in the v2.0 tokens it issues for this API. It is what stops a token
 # minted for a different app in the same tenant from being replayed here. (The console requests the
 # scope `<audience>/.default` to obtain such a token.)
-# OPSPILOT_APPROVER_ROLE is the app role a principal must carry to decide; authentication proves
-# who, this proves allowed-to-publish.
+# Each *_ROLE below is an app role a principal must carry to perform that one action; authentication
+# proves who, `auth.require_role`/`require_any_role` prove allowed-to-do-this-specific-thing.
 ENTRA_TENANT_ID = _env("AZURE_TENANT_ID")
 ENTRA_API_AUDIENCE = _env("OPSPILOT_API_AUDIENCE")
 ENTRA_APPROVER_ROLE = _env("OPSPILOT_APPROVER_ROLE", "Approver")
+ENTRA_SUBMIT_ROLE = _env("OPSPILOT_SUBMIT_ROLE", "Submitter")
+ENTRA_READ_ROLE = _env("OPSPILOT_READ_ROLE", "Reader")
 # The Entra app (client) id the operator console signs in with. Public, not a secret — it is
 # embedded in the served HTML so the browser can run the MSAL authorization-code + PKCE flow.
 ENTRA_CONSOLE_CLIENT_ID = _env("OPSPILOT_CONSOLE_CLIENT_ID")
+
+
+# --------------------------------------------------------------------------------------
+# Ingress admission control (Stage 8, pulled forward, G-03/G-57 — basic slice only)
+# --------------------------------------------------------------------------------------
+# A coarse cap on concurrently *running* investigations (queued/running/awaiting_approval — not yet
+# terminal), checked at submission time. Bounds unbounded Azure OpenAI spend from a single caller or
+# from aggregate traffic; it is deliberately a soft, best-effort check (count-then-create, not a
+# distributed lock) rather than the fuller admission-control system G-57 describes — sufficient to
+# close the "anyone can drive unlimited spend" gap without new infrastructure.
+MAX_CONCURRENT_INVESTIGATIONS_PER_USER = _env_int("OPSPILOT_MAX_CONCURRENT_PER_USER", 3)
+MAX_CONCURRENT_INVESTIGATIONS_GLOBAL = _env_int("OPSPILOT_MAX_CONCURRENT_GLOBAL", 20)
 
 
 # --------------------------------------------------------------------------------------

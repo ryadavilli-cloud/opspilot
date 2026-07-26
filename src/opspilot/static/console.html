@@ -174,9 +174,9 @@
 
 <main>
   <div class="demo-banner" id="auth-banner" hidden>
-    <strong>Decisions unavailable on this deployment.</strong>
-    No Entra console client is configured, so reports can be viewed but not approved here. A paused
-    investigation will wait until a decision arrives from an authenticated client.
+    <strong>Console unavailable on this deployment.</strong>
+    No Entra console client is configured, so this page cannot sign in and every action here — submit,
+    poll, and decide — requires an authenticated, role-authorized caller.
   </div>
 
   <section class="card" id="identity-card">
@@ -411,6 +411,7 @@
       identityText.textContent = "Sign-in is not configured on this deployment.";
       hide(signinBtn);
       hide(signoutBtn);
+      submitBtn.disabled = true;
       return;
     }
     if (token) {
@@ -421,10 +422,12 @@
       }));
       hide(signinBtn);
       show(signoutBtn);
+      submitBtn.disabled = false;
     } else {
-      identityText.textContent = "Not signed in — you can run investigations, but deciding on one requires sign-in.";
+      identityText.textContent = "Not signed in — submitting, polling, and deciding all require sign-in and an authorized role.";
       show(signinBtn);
       hide(signoutBtn);
+      submitBtn.disabled = true;
     }
   }
 
@@ -679,8 +682,12 @@
   }
 
   function poll(url) {
-    fetch(url)
+    const token = storedToken();
+    fetch(url, { headers: token ? { "Authorization": "Bearer " + token } : {} })
       .then(function (res) {
+        if (res.status === 401 || res.status === 403) {
+          throw new Error("Not authorized to view this investigation (HTTP " + res.status + "). Sign in with a reader/submitter role.");
+        }
         if (!res.ok) throw new Error("poll failed: HTTP " + res.status);
         return res.json();
       })
@@ -773,6 +780,11 @@
 
   form.addEventListener("submit", function (event) {
     event.preventDefault();
+    const token = storedToken();
+    if (!token) {
+      showError("Sign in with a submitter-authorized account to start an investigation.");
+      return;
+    }
     resetUI();
     submitBtn.disabled = true;
     hide(resetBtn);
@@ -782,10 +794,19 @@
 
     fetch("/investigations", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": "Bearer " + token,
+      },
       body: JSON.stringify({ incident_id: incidentId, summary: summary }),
     })
       .then(function (res) {
+        if (res.status === 401 || res.status === 403) {
+          throw new Error("Not authorized to submit (HTTP " + res.status + "). Check your submitter role.");
+        }
+        if (res.status === 429) {
+          throw new Error("Concurrency limit reached — try again shortly.");
+        }
         if (!res.ok) throw new Error("submit failed: HTTP " + res.status);
         return res.json();
       })

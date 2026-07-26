@@ -18,7 +18,13 @@ import jwt
 import pytest
 from cryptography.hazmat.primitives.asymmetric import rsa
 
-from opspilot.auth import EntraJwtAuthenticator, ReviewerAuthError
+from opspilot.auth import (
+    EntraJwtAuthenticator,
+    ReviewerAuthError,
+    ReviewerPrincipal,
+    require_any_role,
+    require_role,
+)
 
 ISSUER = "https://login.microsoftonline.com/test-tenant-id/v2.0"
 AUDIENCE = "api://opspilot-test"
@@ -57,7 +63,6 @@ def _authenticator(private_key) -> EntraJwtAuthenticator:
     return EntraJwtAuthenticator(
         issuer=ISSUER,
         audience=AUDIENCE,
-        approver_role=ROLE,
         signing_key_resolver=_StaticJwks(private_key),
     )
 
@@ -203,20 +208,56 @@ def test_an_unknown_signing_key_fails_closed(keypair):
 
 
 # --------------------------------------------------------------------------------------
-# Authorization is separate from authentication
+# Authorization is separate from authentication — `authenticate()` only proves identity now;
+# `require_role`/`require_any_role` are the separate, call-site authorization step (Stage 8,
+# G-03/G-57), so the same authenticator can gate submit/read/decide with different roles.
 # --------------------------------------------------------------------------------------
+def test_authenticate_no_longer_enforces_any_role(keypair):
+    # A token with an unrelated role still authenticates — role enforcement moved to require_role.
+    token = _token(keypair, roles=["Reader"])
+    principal = _authenticator(keypair).authenticate(_header(token))
+    assert principal.roles == ("Reader",)
+
+
 def test_an_authenticated_principal_without_the_role_gets_403(keypair):
     # Signed in to the tenant is not consent to publish a production RCA.
     token = _token(keypair, roles=["Reader"])
+    principal = _authenticator(keypair).authenticate(_header(token))
     with pytest.raises(ReviewerAuthError) as exc:
-        _authenticator(keypair).authenticate(_header(token))
+        require_role(principal, ROLE)
     assert exc.value.status_code == 403
 
 
 def test_a_token_with_no_roles_claim_at_all_gets_403(keypair):
     token = _token(keypair, roles=[])
+    principal = _authenticator(keypair).authenticate(_header(token))
     with pytest.raises(ReviewerAuthError) as exc:
-        _authenticator(keypair).authenticate(_header(token))
+        require_role(principal, ROLE)
+    assert exc.value.status_code == 403
+
+
+def test_require_role_fails_closed_on_a_blank_required_role():
+    principal = ReviewerPrincipal(
+        subject="s", tenant_id="t", display_name="d", roles=("Approver",), auth_method="entra_jwt",
+    )
+    with pytest.raises(ReviewerAuthError) as exc:
+        require_role(principal, "")
+    assert exc.value.status_code == 403
+
+
+def test_require_any_role_passes_when_any_one_role_matches():
+    principal = ReviewerPrincipal(
+        subject="s", tenant_id="t", display_name="d", roles=("Reader",), auth_method="entra_jwt",
+    )
+    require_any_role(principal, ("Submitter", "Reader", "Approver"))  # does not raise
+
+
+def test_require_any_role_rejects_when_none_match():
+    principal = ReviewerPrincipal(
+        subject="s", tenant_id="t", display_name="d", roles=("Guest",), auth_method="entra_jwt",
+    )
+    with pytest.raises(ReviewerAuthError) as exc:
+        require_any_role(principal, ("Submitter", "Reader", "Approver"))
     assert exc.value.status_code == 403
 
 
@@ -248,8 +289,25 @@ def test_the_factory_refuses_to_build_when_unconfigured(monkeypatch):
     monkeypatch.setattr(config, "ENTRA_TENANT_ID", "")
     monkeypatch.setattr(config, "ENTRA_API_AUDIENCE", "")
     monkeypatch.setattr(config, "ENTRA_APPROVER_ROLE", "Approver")
+    monkeypatch.setattr(config, "ENTRA_SUBMIT_ROLE", "Submitter")
+    monkeypatch.setattr(config, "ENTRA_READ_ROLE", "Reader")
 
     with pytest.raises(ValueError, match="AZURE_TENANT_ID"):
+        auth.build_reviewer_authenticator()
+
+
+def test_the_factory_refuses_to_build_when_a_role_is_blank(monkeypatch):
+    # The submit/read roles are just as load-bearing as the approver role — a blank one must fail
+    # the same way, not silently admit everyone to that action.
+    from opspilot import auth, config
+
+    monkeypatch.setattr(config, "ENTRA_TENANT_ID", "test-tenant-id")
+    monkeypatch.setattr(config, "ENTRA_API_AUDIENCE", AUDIENCE)
+    monkeypatch.setattr(config, "ENTRA_APPROVER_ROLE", "Approver")
+    monkeypatch.setattr(config, "ENTRA_SUBMIT_ROLE", "")
+    monkeypatch.setattr(config, "ENTRA_READ_ROLE", "Reader")
+
+    with pytest.raises(ValueError, match="OPSPILOT_SUBMIT_ROLE"):
         auth.build_reviewer_authenticator()
 
 

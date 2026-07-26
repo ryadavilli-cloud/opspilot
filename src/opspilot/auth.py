@@ -1,9 +1,17 @@
-"""Reviewer identity — who approved a report, proven rather than asserted (Stage 5e, G-01).
+"""Verified Entra identity — who is calling, proven rather than asserted (Stage 5e G-01; generalized
+in Stage 8's pulled-forward submit/read ingress auth, G-03/G-57).
 
-The HITL gate is v1's publication control, and a control that anyone can satisfy controls nothing.
-Before this module, `InvestigationDecision.approver` was a client-supplied string: `curl -d
+The HITL gate was v1's first publication control, and a control that anyone can satisfy controls
+nothing. Before this module, `InvestigationDecision.approver` was a client-supplied string: `curl -d
 '{"approver": "someone"}'` produced an approval record indistinguishable from real human review.
-Here the approver is *derived from a validated Entra token* and the client cannot influence it.
+Here the approver — and now the submitter/reader — is *derived from a validated Entra token* and the
+client cannot influence it.
+
+`authenticate()` only proves *who* is calling; it no longer also decides *what they may do*. Role
+authorization (submit / read / decide) is a separate, explicit check at the call site
+(`require_role` below) against the caller-relevant role for that endpoint — the same principal and
+the same token can carry different roles for different actions, so baking one fixed role into the
+validator stopped being correct the moment a second endpoint needed gating.
 
 **Why not the app's managed identity.** Managed identity answers "which workload is calling Azure?"
 — it is how this app reaches Azure OpenAI and Cosmos. It has no human behind it, so signing an
@@ -20,16 +28,18 @@ production (see `tests/test_auth.py`). An env-gated bypass would put an unauthen
 path in the shipped image, guarded by nothing but a string comparison — precisely the fail-open
 shape §21 prohibits.
 
-**What is verified**, all of it fail-closed — any failure raises `ReviewerAuthError` and the
-endpoint answers 401/403, never a default principal:
+**What `authenticate()` verifies**, all of it fail-closed — any failure raises `ReviewerAuthError`
+and the endpoint answers 401, never a default principal:
   - the signature, against the issuer's published JWKS (RS256; `alg` is pinned, so a token cannot
     downgrade itself to `none` or to a symmetric algorithm verified with a public key);
   - `iss` — exactly the configured tenant's issuer;
   - `aud` — this API's own audience, so a token minted for a *different* app in the same tenant
     cannot be replayed here;
-  - `exp` / `nbf`, with a small leeway for clock skew;
-  - the approver role: authentication proves *who*, authorization proves *allowed to publish*.
-    Signing in to the tenant is not consent to publish a production RCA.
+  - `exp` / `nbf`, with a small leeway for clock skew.
+
+**What `require_role()` verifies**, separately, and only after authentication succeeds: that the
+verified principal carries the specific role its endpoint requires (403 if not). Signing in to the
+tenant is not consent to submit, read, or publish — each is its own grantable role.
 
 `subject` is the token's `oid` (immutable per user per tenant), never `preferred_username` or
 `email`, which are display values and can be reassigned. The audit record binds the subject, not the
@@ -116,6 +126,28 @@ class ReviewerAuthenticator(Protocol):
     def authenticate(self, authorization_header: str | None) -> ReviewerPrincipal: ...
 
 
+def require_role(principal: ReviewerPrincipal, role: str) -> None:
+    """Authorize an already-authenticated principal for one role. Fail-closed on a blank `role` too
+    — an unconfigured role requirement must reject everyone, not silently admit anyone, matching
+    `build_reviewer_authenticator`'s refusal to build against a blank role setting."""
+    if not role or role not in principal.roles:
+        raise ReviewerAuthError(
+            f"principal lacks the {role!r} role required for this action", status_code=403
+        )
+
+
+def require_any_role(principal: ReviewerPrincipal, roles: tuple[str, ...]) -> None:
+    """Authorize an already-authenticated principal for any one of several roles — e.g. reading an
+    investigation is open to whoever submitted it, whoever may decide on it, or a dedicated
+    reader."""
+    if not roles or not (set(roles) & set(principal.roles)):
+        wanted = ", ".join(repr(role) for role in roles)
+        raise ReviewerAuthError(
+            f"principal carries none of the roles required for this action ({wanted})",
+            status_code=403,
+        )
+
+
 def _bearer_token(authorization_header: str | None) -> str:
     """Extract the bearer token, rejecting anything malformed before it reaches the JWT library."""
     if not authorization_header:
@@ -139,12 +171,10 @@ class EntraJwtAuthenticator:
         *,
         issuer: str,
         audience: str,
-        approver_role: str,
         signing_key_resolver: Any,
     ) -> None:
         self._issuer = issuer
         self._audience = audience
-        self._approver_role = approver_role
         self._keys = signing_key_resolver
 
     def authenticate(self, authorization_header: str | None) -> ReviewerPrincipal:
@@ -188,13 +218,6 @@ class EntraJwtAuthenticator:
             raise ReviewerAuthError("token carries no subject claim")
 
         roles = tuple(claims.get("roles") or ())
-        if self._approver_role not in roles:
-            # Authenticated, but not permitted — 403, and deliberately distinguished from 401 so a
-            # legitimate reviewer missing a role assignment gets an actionable answer.
-            raise ReviewerAuthError(
-                f"principal lacks the {self._approver_role!r} role required to decide",
-                status_code=403,
-            )
 
         # Identity type from the verified `idtyp` claim — the only trustworthy human/workload
         # signal, configured as an optional access-token claim (with include_user_token) on the API
@@ -251,22 +274,25 @@ class _CachedJwks:
 
 
 def build_reviewer_authenticator() -> ReviewerAuthenticator:
-    """Build the authenticator from config. Every required setting is validated here so a
-    misconfigured deployment fails at the first decision request with a clear error, rather than
-    silently accepting tokens it should have rejected.
+    """Build the one shared authenticator from config. Validates every role setting up front, even
+    though the authenticator itself no longer takes a role — `submit`/`read`/`decide` all share
+    this single instance (see `api.get_authenticator`), so a misconfigured role fails here, at
+    first use, rather than surfacing later as an inexplicable 403 on whichever endpoint hits it
+    first.
 
     There is no `none`/`insecure` backend by design — see the module docstring.
     """
     tenant = config.ENTRA_TENANT_ID
     audience = config.ENTRA_API_AUDIENCE
-    role = config.ENTRA_APPROVER_ROLE
 
     missing = [
         name
         for name, value in (
             ("AZURE_TENANT_ID", tenant),
             ("OPSPILOT_API_AUDIENCE", audience),
-            ("OPSPILOT_APPROVER_ROLE", role),
+            ("OPSPILOT_APPROVER_ROLE", config.ENTRA_APPROVER_ROLE),
+            ("OPSPILOT_SUBMIT_ROLE", config.ENTRA_SUBMIT_ROLE),
+            ("OPSPILOT_READ_ROLE", config.ENTRA_READ_ROLE),
         )
         if not value
     ]
@@ -283,7 +309,6 @@ def build_reviewer_authenticator() -> ReviewerAuthenticator:
     return EntraJwtAuthenticator(
         issuer=issuer,
         audience=audience,
-        approver_role=role,
         signing_key_resolver=_CachedJwks(jwks_uri),
     )
 
@@ -295,4 +320,6 @@ __all__ = [
     "ReviewerAuthenticator",
     "ReviewerPrincipal",
     "build_reviewer_authenticator",
+    "require_any_role",
+    "require_role",
 ]
