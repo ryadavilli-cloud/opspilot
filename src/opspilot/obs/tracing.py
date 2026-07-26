@@ -97,6 +97,11 @@ _exporter: SpanExporter = _NoopExporter()
 _current_span: contextvars.ContextVar[str | None] = contextvars.ContextVar(
     "opspilot_current_span", default=None
 )
+# The run's trace_id, propagated down the call tree so nested primitives (tool / model / MCP spans)
+# inherit it without threading state through every call. The node wrapper establishes it from state.
+_current_trace_id: contextvars.ContextVar[str] = contextvars.ContextVar(
+    "opspilot_current_trace_id", default=""
+)
 
 
 def configure_exporter(exporter: SpanExporter | None = None) -> SpanExporter:
@@ -128,18 +133,24 @@ def standard_attributes(state: Any) -> dict[str, Any]:
 
 
 @contextlib.contextmanager
-def span(name: str, *, trace_id: str, attributes: dict[str, Any] | None = None) -> Iterator[Span]:
-    """Emit one span under the current parent (contextvar-nested). Exported on exit, with `status`
+def span(
+    name: str, *, trace_id: str = "", attributes: dict[str, Any] | None = None
+) -> Iterator[Span]:
+    """Emit one span under the current parent (contextvar-nested). `trace_id` defaults to the
+    current run's id from the context, so nested primitive spans (tool/model/MCP) inherit it —
+    pass it explicitly only at the root (the node wrapper). Exported on exit, with `status`
     flipped to `error` if the body raised (the exception still propagates)."""
+    resolved_trace = trace_id or _current_trace_id.get()
     sp = Span(
-        trace_id=trace_id or "",
+        trace_id=resolved_trace,
         span_id=_new_id(),
         parent_span_id=_current_span.get(),
         name=name,
         attributes=dict(attributes or {}),
         start_ms=time.monotonic() * 1000.0,
     )
-    token = _current_span.set(sp.span_id)
+    span_token = _current_span.set(sp.span_id)
+    trace_token = _current_trace_id.set(resolved_trace)
     try:
         yield sp
     except BaseException:
@@ -148,7 +159,8 @@ def span(name: str, *, trace_id: str, attributes: dict[str, Any] | None = None) 
     finally:
         sp.end_ms = time.monotonic() * 1000.0
         sp.attributes.setdefault("latency_ms", sp.latency_ms)
-        _current_span.reset(token)
+        _current_span.reset(span_token)
+        _current_trace_id.reset(trace_token)
         _exporter.export(sp)
 
 
