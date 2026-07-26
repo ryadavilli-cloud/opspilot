@@ -144,7 +144,8 @@ LLM_BASE_URL = _env("OPSPILOT_LLM_BASE_URL")
 REASONING_EFFORT = _env("OPSPILOT_REASONING_EFFORT", "medium")
 
 # Observability span exporter (Stage 5g): none (default — emission on, no sink until a real one is
-# wired) | memory (tests) | stdout (dev). LangSmith/App Insights sinks land later (obs/tracing.py).
+# wired) | memory (tests) | stdout (dev). Real sinks land on a schedule, not "later": LangSmith
+# Developer at Stage 8, App Insights at Stage 11 (obs/tracing.py; G-61).
 TRACE_EXPORTER = _env("OPSPILOT_TRACE_EXPORTER", "none")
 LLM_API_KEY = _env("OPSPILOT_LLM_API_KEY") or _env("OPENAI_API_KEY")
 OLLAMA_BASE_URL = _env("OPSPILOT_OLLAMA_BASE_URL", "http://localhost:11434/v1")

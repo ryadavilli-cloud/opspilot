@@ -18,7 +18,9 @@ from langchain_core.runnables import RunnableConfig
 from opspilot.config import MAX_DIAGNOSE_ITERS, WORKFLOW_VERSION
 from opspilot.contracts import EvidenceItem as ReportEvidence
 from opspilot.contracts import IncidentReport
+from opspilot.diagnosis.admission import entities_from_refs
 from opspilot.diagnosis.contracts import EvidenceCitation, Hypothesis
+from opspilot.diagnosis.render import render_report_claim_statement
 from opspilot.state import DiagnosisTrace, EvidenceItem, Intent, InvestigationState
 
 _UNIT_SEP = "\x1f"
@@ -256,18 +258,26 @@ def diagnose(state: InvestigationState, config: RunnableConfig | None = None) ->
         or state.diagnose_iters + 1 >= MAX_DIAGNOSE_ITERS
         or not plan_can_advance
     )
-    hypothesis = planner.revise_hypothesis(
+    # The entities a claim may blame: those named in refs the tools actually produced, plus the
+    # triaged affected services. A claim about anything else is about something this run never
+    # observed, so admission refuses it (Stage 5e; topology-version validation is G-42 at 6a).
+    known_entities = entities_from_refs(produced) | set(state.affected_services)
+    conclusion = planner.conclude(
         hypothesis,
         ctx=ctx,
         produced_refs=produced,
         observations=state.observation_trail + observations,
+        known_entities=known_entities,
         final=stopping,
     )
+    hypothesis = conclusion.hypothesis
 
     evidence = [EvidenceItem.make(c.source, c.ref, c.note) for c in hypothesis.citations]
 
     return {
         "hypothesis": hypothesis,
+        "causal": conclusion.causal,
+        "report_claims": conclusion.report_claims,
         "evidence_by_id": _evidence_map(evidence),
         "produced_refs": sorted(this_turn_refs),
         "diagnose_iters": state.diagnose_iters + 1,
@@ -280,8 +290,19 @@ def diagnose(state: InvestigationState, config: RunnableConfig | None = None) ->
     }
 
 
+# Used only when the run produced no `recommendation` claim of its own. Deliberately NOT a
+# rollback: hard-coding rollback as the recommendation for every incident is a prohibited pattern
+# (code guidelines §21), and it is wrong whenever the cause is a dependency or an external fault.
+_NO_RECOMMENDATION = "No specific next step was derived; hand to the on-call engineer for triage."
+
+
 def synthesize_report(state: InvestigationState) -> dict[str, Any]:
     hyp = state.hypothesis
+    claims = state.report_claims
+    # A recommendation the run actually derived, rendered from its structured claim, replaces the
+    # old fixed rollback string. Falls back to an explicit "nothing derived" rather than inventing
+    # an action, so an empty result reads as empty instead of as advice.
+    recommendation = next((c for c in claims if c.kind == "recommendation"), None)
     report = IncidentReport(
         incident_id=state.incident_id or "INC-STUB",
         severity=state.severity or "SEV3",
@@ -291,8 +312,12 @@ def synthesize_report(state: InvestigationState) -> dict[str, Any]:
         # published report evidence shape — the internal content_hash stays in state
         evidence=[ReportEvidence(source=ev.source, ref=ev.ref, content=ev.content)
                   for ev in state.evidence_by_id.values()],
-        recommended_next_step="(stub) roll back the most recent deploy and re-observe.",
+        recommended_next_step=(
+            render_report_claim_statement(recommendation) if recommendation
+            else _NO_RECOMMENDATION
+        ),
         citations=state.evidence_refs(),
+        report_claims=claims,
     )
     return {"report": report, "report_hash": report.content_hash()}
 
@@ -305,7 +330,13 @@ def safety_validate(state: InvestigationState) -> dict[str, Any]:
     if state.intent == Intent.INFO_ONLY.value:  # ungrounded informational reply — exempt
         return {"safety": {"passed": True, "violations": [], "exempt": "info_only"}}
 
-    citations = list(state.report.citations) if state.report else []
+    report = state.report
+    # Every published claim is checked, not just the headline citations (G-51). A report-level
+    # claim whose support ref was never produced is exactly the ungrounded assertion the "every
+    # claim cites tool-produced evidence" guarantee promises does not ship.
+    citations = list(report.citations) if report else []
+    if report:
+        citations += [ref for claim in report.report_claims for ref in claim.support_refs]
     # Validate against the tool-produced ref trail, NOT evidence_refs() (which is derived from the
     # cited refs themselves — that would let a fabricated citation certify itself).
     produced = set(state.produced_refs)

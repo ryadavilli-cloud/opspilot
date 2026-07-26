@@ -20,13 +20,16 @@ from typing import TYPE_CHECKING
 from pydantic import ValidationError
 
 from opspilot.config import MAX_DIAGNOSE_ITERS
+from opspilot.diagnosis.admission import admit_causal_claim, admit_report_claims
 from opspilot.diagnosis.contracts import (
+    Conclusion,
     DiagnosticQuestion,
     EvidenceCitation,
     Hypothesis,
     InvestigationPlan,
     ToolCallRequest,
 )
+from opspilot.diagnosis.render import render_causal_statement
 from opspilot.guardrails.policies import is_read_only
 from opspilot.llm.prompts import get_prompt
 from opspilot.llm.schema import PlannerResponse, SynthesisResponse, ToolCallSpec
@@ -204,9 +207,15 @@ class LLMPlanner:
         ctx: DiagnosisContext,
         observations: list[ToolObservation],
         produced_refs: set[str],
-    ) -> Hypothesis:
+        known_entities: set[str],
+    ) -> Conclusion:
         """One LLM call that reads the full evidence trail and names the grounded root cause. Run
-        when the loop stops (the sufficiency gate ends *gathering*; this ends *reasoning*)."""
+        when the loop stops (the sufficiency gate ends *gathering*; this ends *reasoning*).
+
+        The model proposes both the prose root cause and the structured claim; `admission` decides
+        which of that is admissible. When the structure is refused the prose hypothesis still
+        stands, so the run degrades to an ungrounded-but-honest conclusion instead of publishing a
+        typed claim nothing verified."""
         from opspilot.llm.base import ChatMessage
 
         rendered = self._synth_prompt.text.replace(
@@ -218,31 +227,54 @@ class LLMPlanner:
             )
             response = SynthesisResponse.model_validate(decision)
         except (ValueError, ValidationError):
-            return Hypothesis(
-                statement="Root cause undetermined; recommend manual review.",
-                confidence=0.2,
-                citations=[],
+            return Conclusion(
+                hypothesis=Hypothesis(
+                    statement="Root cause undetermined; recommend manual review.",
+                    confidence=0.2,
+                    citations=[],
+                )
             )
-        return self._ground(
-            response.root_cause.strip(),
-            response.citations,
-            produced_refs,
+
+        causal = admit_causal_claim(
+            response.causal,
+            produced_refs=produced_refs,
+            known_entities=known_entities,
+            fallback_onset=ctx.onset,
+        )
+        # The published sentence is rendered from the admitted structure, never taken from the
+        # model's prose, so the two cannot disagree (G-50). Only when nothing was admitted does the
+        # model's own sentence stand, and then it is carrying no structured claim to contradict.
+        statement = (
+            render_causal_statement(causal) if causal is not None else response.root_cause.strip()
+        )
+        return Conclusion(
+            hypothesis=self._ground(statement, response.citations, produced_refs),
+            causal=causal,
+            report_claims=admit_report_claims(
+                response.report_claims, produced_refs=produced_refs
+            ),
         )
 
-    def revise_hypothesis(
+    def conclude(
         self,
         base: Hypothesis,
         *,
         ctx: DiagnosisContext | None = None,
         produced_refs: set[str] | None = None,
         observations: list[ToolObservation] | None = None,
+        known_entities: set[str] | None = None,
         final: bool = False,
-    ) -> Hypothesis:
+    ) -> Conclusion:
         """While gathering, the provisional (run_cycle) hypothesis stands. On the stopping turn
         (`final`), synthesize the model's grounded conclusion from the full trail."""
         if final and ctx is not None:
-            return self.synthesize(ctx, list(observations or ()), set(produced_refs or ()))
-        return base
+            return self.synthesize(
+                ctx,
+                list(observations or ()),
+                set(produced_refs or ()),
+                set(known_entities or ()),
+            )
+        return Conclusion(hypothesis=base)
 
     def wants_to_continue(self, plan: InvestigationPlan, *, answered: set[str]) -> bool:
         """Continue while the model is still proposing a step (a non-empty plan). An empty plan

@@ -15,6 +15,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
+from opspilot.diagnosis.contracts import Conclusion
 from opspilot.diagnosis.cycle import plan_investigation
 
 if TYPE_CHECKING:
@@ -46,18 +47,25 @@ class Planner(Protocol):
         observations: list[ToolObservation],
     ) -> InvestigationPlan: ...
 
-    def revise_hypothesis(
+    def conclude(
         self,
         base: Hypothesis,
         *,
         ctx: DiagnosisContext | None = None,
         produced_refs: set[str] | None = None,
         observations: list[ToolObservation] | None = None,
+        known_entities: set[str] | None = None,
         final: bool = False,
-    ) -> Hypothesis:
+    ) -> Conclusion:
         """Revise the run_cycle hypothesis from the evidence gathered so far. On the stopping turn
         (`final`) a model planner synthesizes its grounded conclusion from `observations`; any
         citation must be in `produced_refs`. The deterministic planner returns `base` unchanged.
+
+        Returns a `Conclusion` rather than a bare `Hypothesis` (Stage 5e): the typed `CausalClaim`
+        and the report-level claims are part of what concluding produces, and threading them back
+        through a side channel would put the same fact in two places. `known_entities` bounds which
+        entity a claim may blame; a planner that proposes no structure returns `causal=None`, which
+        the caller degrades on rather than publishing an unadmitted claim.
         """
         ...
 
@@ -88,17 +96,23 @@ class DeterministicPlanner:
     ) -> InvestigationPlan:
         return plan_investigation(ctx)
 
-    def revise_hypothesis(
+    def conclude(
         self,
         base: Hypothesis,
         *,
         ctx: DiagnosisContext | None = None,
         produced_refs: set[str] | None = None,
         observations: list[ToolObservation] | None = None,
+        known_entities: set[str] | None = None,
         final: bool = False,
-    ) -> Hypothesis:
-        """No-op: the deterministic hypothesis is exactly what run_cycle formed."""
-        return base
+    ) -> Conclusion:
+        """No-op: the deterministic hypothesis is exactly what run_cycle formed.
+
+        `causal` stays None deliberately. The floor reaches its hypothesis by a fixed rule rather
+        than by reasoning about a mechanism, so synthesizing a `CausalClaim` here would manufacture
+        a structured causal assertion nothing actually decided. The floor keeps producing exactly
+        what it always did, which is also what keeps its committed scorecard byte-identical."""
+        return Conclusion(hypothesis=base)
 
     def wants_to_continue(self, plan: InvestigationPlan, *, answered: set[str]) -> bool:
         """Continue while the front-loaded plan still has unanswered questions (original rule)."""

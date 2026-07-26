@@ -56,6 +56,12 @@ _CHECKPOINT_MSGPACK_ALLOWLIST: tuple[tuple[str, str], ...] = (
     ("opspilot.contracts", "IncidentReport"),
     ("opspilot.diagnosis.contracts", "Hypothesis"),
     ("opspilot.diagnosis.contracts", "EvidenceCitation"),
+    # Stage 5e conclusion contracts, reachable from a checkpointed state via `causal`,
+    # `report_claims`, and the report's own claims, so they need entries like the rest.
+    ("opspilot.diagnosis.contracts", "CausalClaim"),
+    ("opspilot.diagnosis.contracts", "OnsetWindow"),
+    ("opspilot.diagnosis.contracts", "ReportClaim"),
+    ("opspilot.diagnosis.contracts", "Acknowledgement"),
     ("opspilot.diagnosis.contracts", "ToolObservation"),
     ("opspilot.diagnosis.contracts", "StopReason"),
     ("opspilot.diagnosis.contracts", "SufficiencyState"),
