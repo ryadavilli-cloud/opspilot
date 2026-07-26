@@ -66,6 +66,25 @@ def _evidence_map(items: list[EvidenceItem]) -> dict[str, EvidenceItem]:
     return {item.content_hash: item for item in items}
 
 
+def _gathering_block_reason(sufficiency, *, iters: int) -> str:
+    """Why this gathering turn blocks, named at the moment the block is decided (G-36).
+
+    Mirrors `diagnose_continue`'s escalate branch: the router picks the edge, this names the cause.
+    Returns "" when the turn is not blocking, which also clears any earlier turn's stamp: a run
+    that recovers must not carry a stale reason into a later, different escalation.
+    """
+    if sufficiency.ready:
+        return ""
+    if iters >= MAX_DIAGNOSE_ITERS:
+        return f"iteration_budget_exhausted: diagnose_iters={iters}"
+    if not sufficiency.plan_can_advance:
+        return (
+            f"plan_exhausted_insufficient: coverage={sufficiency.evidence_coverage} "
+            f"classes={sufficiency.evidence_classes} required={sufficiency.required_classes}"
+        )
+    return ""
+
+
 def ingest(state: InvestigationState) -> dict[str, Any]:
     """Normalize the alert; mint a unique investigation_id and derive thread_id from it.
 
@@ -256,6 +275,8 @@ def diagnose(state: InvestigationState, config: RunnableConfig | None = None) ->
         "observation_trail": observations,
         "answered_questions": sorted(answered),
         "sufficiency": sufficiency,
+        # Stamped here, not inferred later (G-36). Empty on a turn that keeps gathering.
+        "error": _gathering_block_reason(sufficiency, iters=state.diagnose_iters + 1),
     }
 
 
@@ -289,7 +310,18 @@ def safety_validate(state: InvestigationState) -> dict[str, Any]:
     # cited refs themselves — that would let a fabricated citation certify itself).
     produced = set(state.produced_refs)
     passed, violations = hypothesis_supported(citations, produced)
-    return {"safety": {"passed": passed, "violations": violations}}
+    if passed:
+        return {"safety": {"passed": True, "violations": violations}}
+    # Stamp the guardrail as the cause at the moment it blocks (G-36). Without this the run
+    # escalates with whatever reason `escalate()` happened to probe for first, which reported a
+    # citation-gate block as an exhausted iteration budget: specific, confident, and wrong.
+    return {
+        "safety": {"passed": False, "violations": violations},
+        "error": (
+            f"guardrail_blocked: unsupported_citations ({len(violations)}): "
+            f"{'; '.join(violations[:3])}"
+        ),
+    }
 
 
 def hitl_gate(state: InvestigationState) -> dict[str, Any]:
@@ -330,18 +362,34 @@ def hitl_gate(state: InvestigationState) -> dict[str, Any]:
         # The decision was made against a report that no longer matches current state (e.g. a
         # concurrent edit/decision advanced the thread first). "stale_rejected" is neither
         # "approve" nor "edit", so it already falls into after_approval's fail-closed else-branch.
-        return {"approval": {
-            **identity,
-            "decision": "stale_rejected", "edits": edits,
-            "submitted_report_hash": submitted_hash, "current_report_hash": state.report_hash,
-            "approved_report_hash": None,
-        }}
+        return {
+            "approval": {
+                **identity,
+                "decision": "stale_rejected", "edits": edits,
+                "submitted_report_hash": submitted_hash, "current_report_hash": state.report_hash,
+                "approved_report_hash": None,
+            },
+            "error": (
+                f"stale_approval: submitted for {submitted_hash}, "
+                f"current is {state.report_hash}"
+            ),
+        }
 
-    return {"approval": {
-        **identity,
-        "decision": decision, "edits": edits,
-        "approved_report_hash": state.report_hash if decision == "approve" else None,
-    }}
+    # A human decision that ends the run carries its own reason, stamped here rather than
+    # re-derived by `escalate()` (G-36). `approve` and `edit` continue, so they stamp nothing.
+    who = identity["approver"]
+    blocked = {
+        "reject": f"human_rejected by {who}",
+        "request_more_evidence": f"human_requested_more_evidence by {who}",
+    }
+    return {
+        "approval": {
+            **identity,
+            "decision": decision, "edits": edits,
+            "approved_report_hash": state.report_hash if decision == "approve" else None,
+        },
+        "error": blocked.get(str(decision), ""),
+    }
 
 
 def apply_edit(state: InvestigationState) -> dict[str, Any]:
@@ -383,24 +431,21 @@ def postmortem(state: InvestigationState) -> dict[str, Any]:
 
 
 def escalate(state: InvestigationState) -> dict[str, Any]:
-    """Terminal hand-off to a human — always with a machine-readable reason, never silent."""
-    approval = state.approval or {}
-    decision = approval.get("decision")
-    if state.error:
-        reason = state.error
-    elif decision == "stale_rejected":
-        reason = (f"stale_approval: submitted for {approval.get('submitted_report_hash')}, "
-                  f"current is {approval.get('current_report_hash')}")
-    elif decision == "reject":
-        reason = f"human_rejected by {approval.get('approver', 'unknown')}"
-    elif decision == "request_more_evidence":
-        reason = f"human_requested_more_evidence by {approval.get('approver', 'unknown')}"
-    elif state.diagnose_iters >= MAX_DIAGNOSE_ITERS:
-        reason = f"iteration_budget_exhausted: diagnose_iters={state.diagnose_iters}"
-    elif state.sufficiency is not None and not state.sufficiency.plan_can_advance:
-        s = state.sufficiency
-        reason = (f"plan_exhausted_insufficient: coverage={s.evidence_coverage} "
-                  f"classes={s.evidence_classes} required={s.required_classes}")
-    else:
-        reason = "escalated to human"
-    return {"degraded": True, "error": reason}
+    """Terminal hand-off to a human, always with a machine-readable reason, never silent.
+
+    This node REPORTS the reason the blocking node stamped; it no longer derives one (G-36). The
+    old version probed state in a fixed order (`error` -> approval decision -> iteration budget ->
+    plan advancement -> a generic fallback), so any cause it did not test for was reported as
+    whichever probe matched first. A guardrail block, which set nothing at all, surfaced as
+    `plan_exhausted_insufficient` or `iteration_budget_exhausted`: a confident, specific, wrong
+    reason. And since `InvestigationResponse.reason` is public API, a published falsehood.
+
+    Inference cannot be repaired by adding probes, because the next unprobed cause repeats the
+    failure. The fix is that every path into this node names its own cause first. An empty stamp is
+    therefore a defect in the caller, and is reported as one rather than papered over with a
+    plausible guess.
+    """
+    return {
+        "degraded": True,
+        "error": state.error or "unattributed_escalation: no blocking node stamped a reason",
+    }
