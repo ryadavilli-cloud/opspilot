@@ -39,6 +39,8 @@ MAX_POLL_INTERVAL_S = 20.0
 # Generous enough for a slow reasoning model to reach awaiting_approval on the async leg.
 ASYNC_POLL_TIMEOUT_S = 300.0
 ASYNC_POLL_INTERVAL_S = 3.0
+# A restarted revision has to pull, boot, and re-validate the corpus before it answers.
+RESTART_READY_TIMEOUT_S = 300.0
 
 
 class SmokeTestFailure(RuntimeError):
@@ -241,6 +243,50 @@ def _reviewer_token(audience: str) -> str:
     return token
 
 
+def restart_app_and_wait(client: httpx.Client) -> str:
+    """Kill the replica serving the paused investigation, then wait for a fresh one.
+
+    This is the whole point of G-02. A pause that only lives in an in-process `MemorySaver` and an
+    in-memory repository looks identical to a durable one until the process goes away, so the gate
+    has to actually take the process away. `az containerapp revision restart` replaces the running
+    replica of the active revision, which is the closest thing to the real failure modes this
+    defends against: a redeploy, a crash, or a scale-to-zero reclaim while a reviewer is deciding.
+
+    Returns the restarted revision name, for the log.
+    """
+    app_name = os.environ.get("OPSPILOT_SMOKE_APP_NAME", "").strip()
+    resource_group = os.environ.get("OPSPILOT_SMOKE_RESOURCE_GROUP", "").strip()
+    if not app_name or not resource_group:
+        raise SmokeTestFailure(
+            "OPSPILOT_SMOKE_APP_NAME / OPSPILOT_SMOKE_RESOURCE_GROUP are unset, so the "
+            "durable-pause "
+            "check cannot restart the app. Without the restart this run proves nothing about G-02 "
+            "(an in-memory pause passes every other assertion), so it fails here rather than "
+            "reporting a durability guarantee it never tested."
+        )
+
+    try:
+        revision = subprocess.run(
+            ["az", "containerapp", "revision", "list", "--name", app_name,
+             "--resource-group", resource_group, "--query",
+             "[?properties.active].name | [0]", "-o", "tsv"],
+            capture_output=True, text=True, timeout=120, check=True,
+        ).stdout.strip()
+        _require(bool(revision), "no active revision found to restart")
+        subprocess.run(
+            ["az", "containerapp", "revision", "restart", "--name", app_name,
+             "--resource-group", resource_group, "--revision", revision],
+            capture_output=True, text=True, timeout=300, check=True,
+        )
+    except (subprocess.CalledProcessError, subprocess.TimeoutExpired, FileNotFoundError) as exc:
+        detail = getattr(exc, "stderr", "") or str(exc)
+        raise SmokeTestFailure(f"could not restart the container app: {detail}") from exc
+
+    print(f"[smoke] restarted revision {revision} while the investigation was paused", flush=True)
+    wait_for_ready(client, timeout_s=RESTART_READY_TIMEOUT_S, poll_interval_s=5.0)
+    return revision
+
+
 def _smoke_auth_headers() -> dict[str, str]:
     """The Authorization header every investigation leg now needs, acquired once per run.
 
@@ -311,6 +357,31 @@ def run_async_investigation(client: httpx.Client, auth: dict[str, str]) -> None:
     _require(bool(paused.pending_decision), "awaiting_approval but pending_decision is empty")
     assert paused.pending_decision is not None  # narrows for the type checker after _require
     report_hash = paused.pending_decision["report_hash"]
+
+    # --- G-02: the pause must survive losing the process that created it --------------------------
+    # Everything above this line passes just as happily against an in-memory saver. Everything below
+    # runs against a replica that has never seen this investigation, so it can only pass if both
+    # stores are genuinely durable: the repository for the poll, the checkpointer for the resume.
+    restart_app_and_wait(client)
+
+    after_restart = _poll_until_terminal_or_awaiting(
+        client, accepted.poll_url, auth=auth, timeout_s=ASYNC_POLL_TIMEOUT_S,
+        poll_interval_s=ASYNC_POLL_INTERVAL_S,
+    )
+    _require(
+        after_restart.status == "awaiting_approval",
+        f"after the restart the investigation is {after_restart.status!r}, expected still "
+        f"'awaiting_approval' (error={after_restart.error!r}). The record did not survive the "
+        f"replica it was created on, so the investigation repository is not durable.",
+    )
+    resumed_decision = after_restart.pending_decision
+    _require(
+        resumed_decision is not None and resumed_decision["report_hash"] == report_hash,
+        "the pending report changed across the restart; the approval would bind different bytes "
+        "than the reviewer saw",
+    )
+    print("[smoke] pause survived the restart: still awaiting_approval, same report hash",
+          flush=True)
 
     # An unauthenticated decision MUST be refused — this is the property G-01 exists for, and it is
     # checkable on every deploy regardless of whether the reviewer token is configured yet.

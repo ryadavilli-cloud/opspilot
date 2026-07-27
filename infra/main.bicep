@@ -61,6 +61,18 @@ param cosmosAccountName string = toLower('${namePrefix}-cosmos-${uniqueString(re
 @description('Create the Cosmos DB Built-in Data Contributor role assignment for the app identity. This is a Microsoft.DocumentDB data-plane role assignment (plain Contributor on the account is enough to create it), unlike the Microsoft.Authorization assignments above — kept as its own guard for symmetry and in case the deploy principal ever needs it bootstrapped imperatively instead.')
 param manageCosmosRoleAssignment bool = true
 
+@description('Cosmos SQL database holding every OpsPilot container. Must match AZURE_COSMOS_DATABASE (config.COSMOS_DATABASE).')
+param cosmosDatabaseName string = 'opspilot'
+
+@description('Container for LangGraph checkpoints — what makes an awaiting_approval pause survive a restart (G-02). Partition key is fixed at /partition_key by CosmosDBSaverSync.')
+param cosmosCheckpointContainerName string = 'checkpoints'
+
+@description('Container for the async investigation records the poll endpoint reads. Partitioned by /investigation_id.')
+param cosmosInvestigationContainerName string = 'investigations'
+
+@description('Idempotency index for (incident_id, summary, workflow version). Partitioned by /id, which IS the idempotency key, making create-if-not-exists an atomic compare-and-swap.')
+param cosmosInvestigationIndexContainerName string = 'investigation-index'
+
 @description('Entra tenant id that issues reviewer tokens for the HITL decision endpoint (G-01). Injected as AZURE_TENANT_ID. Defaults to the deployment tenant; override only for a cross-tenant setup.')
 param entraTenantId string = tenant().tenantId
 
@@ -140,9 +152,15 @@ resource chatDeployment 'Microsoft.CognitiveServices/accounts/deployments@2024-1
 // async investigation resource repository (Stage 5c). Serverless: pay-per-request, no fixed base
 // cost at this app's traffic (unlike the ACR Basic tier above, this has none while idle). Keyless:
 // disableLocalAuth means the ONLY way in is an Entra token from the app's managed identity via the
-// data-plane role assignment below. The databases/containers themselves are self-provisioned by the
-// app on first use (CosmosDBSaverSync and CosmosInvestigationRepository both call
-// create_database_if_not_exists / create_container_if_not_exists), so no document schema lives here.
+// data-plane role assignment below.
+//
+// The database and containers ARE declared here (Stage 5f, G-02) rather than left to the app. Both
+// clients call create_*_if_not_exists, which reads first and only creates on a 404 — but the app
+// authenticates with the Cosmos Built-in Data Contributor role, and that is a DATA-plane role:
+// it grants item operations, queries, change feed, and readMetadata, NOT container creation, which
+// is a management-plane action. So the app can never create these; it can only find them. Declaring
+// them here is what makes the read path succeed, and it is also the first slice of the G-48
+// container split (each workload its own container + partition key), rather than one opaque store.
 resource cosmos 'Microsoft.DocumentDB/databaseAccounts@2024-08-15' = {
   name: cosmosAccountName
   location: location
@@ -158,6 +176,54 @@ resource cosmos 'Microsoft.DocumentDB/databaseAccounts@2024-08-15' = {
     disableLocalAuth: true
   }
 }
+
+resource cosmosDb 'Microsoft.DocumentDB/databaseAccounts/sqlDatabases@2024-08-15' = {
+  parent: cosmos
+  name: cosmosDatabaseName
+  properties: {
+    resource: {
+      id: cosmosDatabaseName
+    }
+  }
+}
+
+// One container per workload, each with the partition key its client actually writes (G-48's
+// "several workloads modeled as one store" is why these are separate rather than a single blob):
+//
+//  - checkpoints:          /partition_key      LangGraph CosmosDBSaverSync's own key path. Not a
+//                                              free choice — the saver queries `c.partition_key`,
+//                                              so a different path silently breaks every read.
+//  - investigations:       /investigation_id   one logical partition per attempt.
+//  - investigation-index:  /id                 idempotency index; `id = idempotency_key` makes
+//                                              create-if-not-exists an atomic compare-and-swap.
+//
+// TTL is ENABLED with no default expiry (-1) rather than left off. Off would mean a later TTL
+// change needs a container rebuild; -1 keeps items forever today while letting G-48 set a real
+// per-workload TTL (checkpoints bounded by the longest legitimate pause, investigations unbounded)
+// as a property update. A checkpoint that expired under a long pause would silently destroy the
+// durability this stage exists to prove, so no expiry is set here.
+var cosmosContainers = [
+  { name: cosmosCheckpointContainerName, partitionKey: '/partition_key' }
+  { name: cosmosInvestigationContainerName, partitionKey: '/investigation_id' }
+  { name: cosmosInvestigationIndexContainerName, partitionKey: '/id' }
+]
+
+resource cosmosContainerResources 'Microsoft.DocumentDB/databaseAccounts/sqlDatabases/containers@2024-08-15' = [
+  for c in cosmosContainers: {
+    parent: cosmosDb
+    name: c.name
+    properties: {
+      resource: {
+        id: c.name
+        partitionKey: {
+          paths: [c.partitionKey]
+          kind: 'Hash'
+        }
+        defaultTtl: -1
+      }
+    }
+  }
+]
 
 resource env 'Microsoft.App/managedEnvironments@2024-03-01' = {
   name: environmentName
@@ -242,24 +308,43 @@ resource app 'Microsoft.App/containerApps@2024-03-01' = {
               name: 'AZURE_OPENAI_API_VERSION'
               value: azureOpenAiApiVersion
             }
-            // HITL state stores — TEMPORARILY in-memory. The deployed HITL is honestly NON-DURABLE,
-            // which is the actual current state: G-02 is OPEN and #36 shipped a non-durable pause.
-            // Pointing these at `cosmos` was premature — the Cosmos DB/containers and the system
-            // identity's data-plane RBAC are not provisioned yet, so CosmosClient init 500'd every
-            // /investigate. Durable activation (both stores → cosmos, with containers + data-plane
-            // RBAC + create-if-not-exists) is Stage 5f (G-02/G-48): flip BOTH values back to 'cosmos'
-            // there. The Cosmos account is still provisioned below — unused for now; 5f needs it.
+            // HITL state stores — DURABLE (Stage 5f, G-02). Both are Cosmos-backed, keyless via the
+            // app's managed identity. BOTH must be cosmos for the pause to survive a restart: the
+            // checkpointer holds the LangGraph state the graph resumes from, and the repository
+            // holds the record `GET /investigations/{id}` reads. Either one left in memory loses
+            // half the round trip — an interrupt that cannot resume, or a resume nobody can poll.
+            //
+            // #41 reverted these to memory because the containers and the data-plane role assignment
+            // did not exist yet, so CosmosClient init 500'd every request. Both now exist above, and
+            // the containers are declared rather than self-provisioned because the data-plane role
+            // cannot create them.
             {
               name: 'OPSPILOT_INVESTIGATION_REPOSITORY'
-              value: 'memory'
+              value: 'cosmos'
             }
             {
               name: 'OPSPILOT_CHECKPOINTER'
-              value: 'memory'
+              value: 'cosmos'
             }
             {
               name: 'AZURE_COSMOS_ENDPOINT'
               value: cosmos.properties.documentEndpoint
+            }
+            {
+              name: 'AZURE_COSMOS_DATABASE'
+              value: cosmosDatabaseName
+            }
+            {
+              name: 'AZURE_COSMOS_CHECKPOINT_CONTAINER'
+              value: cosmosCheckpointContainerName
+            }
+            {
+              name: 'AZURE_COSMOS_INVESTIGATION_CONTAINER'
+              value: cosmosInvestigationContainerName
+            }
+            {
+              name: 'AZURE_COSMOS_INVESTIGATION_INDEX_CONTAINER'
+              value: cosmosInvestigationIndexContainerName
             }
             // Reviewer identity for the HITL decision endpoint (G-01). The tenant + audience are
             // what a reviewer token is validated against; the approver role is what it must carry

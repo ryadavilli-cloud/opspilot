@@ -26,7 +26,7 @@ Keyless: `DefaultAzureCredential`, mirroring `checkpoint.py`'s `cosmos` backend 
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, cast
 
 from azure.core import MatchConditions
 from azure.cosmos import CosmosClient, PartitionKey, exceptions
@@ -50,9 +50,14 @@ def _now() -> datetime:
 
 
 class CosmosInvestigationRepository:
-    """A Cosmos DB-backed repository. Databases/containers are self-provisioned on first use (like
-    `CosmosDBSaverSync`), so nothing about this document schema lives in `infra/main.bicep` — only
-    the account and its data-plane RBAC grant do."""
+    """A Cosmos DB-backed repository.
+
+    The `*_if_not_exists` calls below read first and only create on a 404, and in the deployed
+    environment they always take the read path: the app authenticates with the Cosmos Built-in Data
+    Contributor role, which is a DATA-plane role and cannot create containers. `infra/main.bicep`
+    declares the database and both containers with these exact partition keys (Stage 5f, G-02).
+    They are kept as `if_not_exists` so a local or test run against an empty emulator, where the
+    caller does have management rights, still works."""
 
     def __init__(
         self,
@@ -170,7 +175,7 @@ class CosmosInvestigationRepository:
         a hot path would need a materialized counter instead."""
         terminal = ", ".join(f'"{status}"' for status in sorted(TERMINAL_STATUSES))
         query = f"SELECT VALUE COUNT(1) FROM c WHERE NOT ARRAY_CONTAINS([{terminal}], c.status)"
-        params = []
+        params: list[dict[str, object]] = []
         if subject is not None:
             query += " AND c.submitted_by = @subject"
             params.append({"name": "@subject", "value": subject})
@@ -179,4 +184,6 @@ class CosmosInvestigationRepository:
                 query=query, parameters=params, enable_cross_partition_query=True
             )
         )
-        return int(results[0]) if results else 0
+        # `SELECT VALUE COUNT(1)` projects a bare scalar, but the SDK types every row as a dict, so
+        # the cast is asserting what Cosmos actually returns rather than papering over a mismatch.
+        return int(cast("int", results[0])) if results else 0
