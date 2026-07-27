@@ -46,6 +46,7 @@ def behaviour_manifest(*, model_id: str) -> dict[str, str]:
         "model_id": model_id,
         "reasoning_effort": config.REASONING_EFFORT,
         "azure_api_version": config.AZURE_OPENAI_API_VERSION,
+        "sampling_seed": str(config.LLM_SEED),
         "prompt_versions": ",".join(f"{n}={v}" for n, v in sorted(resolved_versions().items())),
     }
 

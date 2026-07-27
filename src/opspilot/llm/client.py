@@ -70,8 +70,14 @@ class OpenAICompatModel:
                 model=self.model_id, messages=payload, reasoning_effort=config.REASONING_EFFORT
             )
         else:
+            # `seed` rides alongside `temperature` because both are rejected by reasoning models.
+            # temperature=0 alone is not determinism (see config.LLM_SEED); the seed is what makes
+            # a cassette re-record reproducible enough for a scorecard delta to mean something.
             resp = client.chat.completions.create(
-                model=self.model_id, messages=payload, temperature=temperature
+                model=self.model_id,
+                messages=payload,
+                temperature=temperature,
+                seed=config.LLM_SEED,
             )
         choice = resp.choices[0]
         usage = getattr(resp, "usage", None)
