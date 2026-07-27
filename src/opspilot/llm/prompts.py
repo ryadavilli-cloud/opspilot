@@ -35,6 +35,17 @@ def _discover(prompts_dir: Path) -> dict[str, dict[int, Path]]:
     return found
 
 
+def resolved_versions(prompts_dir: Path | None = None) -> dict[str, str]:
+    """Every prompt in the registry mapped to the version `get_prompt` resolves by default.
+
+    Versioning is append-only, so adding `foo.v2` silently re-points `get_prompt("foo")` at new
+    text. Pinning these into the cassette manifest (see `llm/manifest.py`) turns that from an
+    invisible behaviour change into a required re-record.
+    """
+    directory = prompts_dir or _PROMPTS_DIR
+    return {name: f"{name}.v{max(vs)}" for name, vs in _discover(directory).items()}
+
+
 def get_prompt(
     name: str,
     *,

@@ -39,6 +39,12 @@ class IncidentReport(BaseModel):
     evidence: list[EvidenceItem]
     recommended_next_step: str
     citations: list[str]
+    # Secondary structured claims (onset / blast radius / ruled out / recommendation ...), each
+    # carrying its own support refs (G-51). They live INSIDE the report rather than beside it so
+    # they are part of the bytes the approval hash binds, and so `safety_validate` checks their
+    # grounding along with the headline citations. Defaulted, so a run that produces none (the
+    # deterministic floor, the known-issue path) builds an unchanged report.
+    report_claims: list[ReportClaim] = Field(default_factory=list)
 
     def content_hash(self) -> str:
         """Stable sha256 over the report's canonical JSON — the identity an approval binds to.

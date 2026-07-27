@@ -35,7 +35,15 @@ from opspilot.auth import (
 from opspilot.checkpoint import build_checkpointer
 from opspilot.composition import DiagnosisComposition, build_diagnosis
 from opspilot.config import ENVIRONMENT, RETRIEVAL_BACKEND, WORKFLOW_VERSION
-from opspilot.contracts import IncidentReport
+from opspilot.contracts import (
+    EscalationNotice,
+    GroundedRcaReport,
+    IncidentReport,
+    InvestigationResult,
+    KnowledgeBriefing,
+    PartialInvestigationReport,
+)
+from opspilot.diagnosis.contracts import CausalClaim
 from opspilot.graph import _initial_state, build_graph, invoke_auto_approving
 from opspilot.investigations import (
     InvestigationRecord,
@@ -43,6 +51,7 @@ from opspilot.investigations import (
     InvestigationStatus,
 )
 from opspilot.repository import build_investigation_repository
+from opspilot.state import Intent
 
 _log = logging.getLogger("opspilot.api")
 
@@ -300,6 +309,12 @@ class InvestigationResponse(BaseModel):
     safety: SafetyResponse
     approval: ApprovalResponse | None
     runtime: RuntimeMetadata
+    # The typed outcome (G-49): a consumer reads `outcome.result_type` to tell a grounded RCA from
+    # a briefing or an escalation, instead of inferring it from prose. `report` is retained as the
+    # flattened legacy view that the console and smoke gate still read; it is the same object
+    # carried inside a `grounded_rca`/`partial` outcome, and is scheduled for removal once those
+    # two callers migrate (5f), rather than being dropped mid-flight here.
+    outcome: InvestigationResult | None = None
     # A human-readable cause for a non-"completed" status — None when completed. Escalation carries
     # the graph's own machine-readable reason (`escalate`'s state.error); degraded is synthesized
     # here since the graph itself has no separate per-run degradation-reason field yet.
@@ -515,6 +530,45 @@ def _run_and_build(alert: dict, svc, diagnosis) -> InvestigationResponse:
     return _build_response(state, svc, diagnosis)
 
 
+def _build_outcome(
+    state: dict, report: IncidentReport | None, *, status: str, reason: str | None
+) -> InvestigationResult:
+    """Classify a terminal run into the typed result union (G-49).
+
+    The distinction that matters: only a run carrying an ADMITTED `CausalClaim` is a
+    `grounded_rca`. A completed run without one still has a report and passed the citation gate,
+    but nothing structured was verified, so it is `partial`. The deterministic floor lands here by
+    design. Calling it a grounded RCA would be the euphemism the union exists to prevent.
+    """
+    incident_id = str(state.get("incident_id", ""))
+    if status == "escalated":
+        return EscalationNotice(incident_id=incident_id, reason=reason or "escalated")
+
+    if report is None:
+        return PartialInvestigationReport(
+            incident_id=incident_id, summary="", reason=reason or "no report was produced"
+        )
+
+    if state.get("intent") == Intent.INFO_ONLY.value:
+        return KnowledgeBriefing(
+            incident_id=incident_id, answer=report.hypothesis, citations=list(report.citations)
+        )
+
+    causal_state = state.get("causal")
+    if causal_state is None:
+        return PartialInvestigationReport(
+            incident_id=incident_id,
+            summary=report.hypothesis,
+            evidence=list(report.evidence),
+            reason="no structured causal claim was admitted for this run",
+        )
+    return GroundedRcaReport(
+        report=report,
+        causal=CausalClaim.model_validate(causal_state),
+        report_claims=list(report.report_claims),
+    )
+
+
 def _build_response(state: dict, svc, diagnosis) -> InvestigationResponse:
     """Map a genuinely terminal graph state to the typed response. Shared by the sync endpoint
     (via `_run_and_build`) and the async job path (via `_advance`) — both must agree exactly."""
@@ -572,6 +626,7 @@ def _build_response(state: dict, svc, diagnosis) -> InvestigationResponse:
         safety=safety,
         approval=approval,
         reason=reason,
+        outcome=_build_outcome(state, report, status=status, reason=reason),
         runtime=RuntimeMetadata(
             retrieval_backend=backend,
             workflow_version=WORKFLOW_VERSION,
@@ -846,11 +901,25 @@ def get_investigation(
 @app.post("/investigate")
 def investigate(
     alert: Alert,
+    authorization: str | None = Header(default=None),
     svc=Depends(get_service),
     diagnosis=Depends(get_diagnosis),
+    authenticator: ReviewerAuthenticator = Depends(get_authenticator),
 ) -> InvestigationResponse:
     """Synchronous investigation — kept as a compatibility + test endpoint. The advertised contract
     is the async resource API above (`POST /investigations` → 202, poll `GET /investigations/{id}`),
     which doesn't hold a request open for the whole run. This endpoint runs the graph inline and
-    returns the full result directly."""
+    returns the full result directly.
+
+    401/403 for an unproven or unauthorized caller. This route carries the SAME submit role as
+    `POST /investigations` because it incurs the same Azure OpenAI spend, and it was the last
+    unauthenticated route on public ingress once #49 closed submit/read (G-03). It is deliberately
+    not given a weaker gate than the async path: a caller who cannot submit a job must not be able
+    to run the identical graph by choosing the older endpoint.
+
+    Note this route is auto-approving (`_run_and_build`), so the resulting approval is still
+    labelled `deterministic_auto_approval`: proving submit authority is not reviewer authority,
+    and authenticating here does not turn an auto-approval into human review.
+    """
+    require_submitter(authorization, authenticator)
     return _run_and_build(alert.model_dump(), svc, diagnosis)

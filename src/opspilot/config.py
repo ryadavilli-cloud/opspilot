@@ -142,9 +142,25 @@ LLM_BASE_URL = _env("OPSPILOT_LLM_BASE_URL")
 # tool planning while staying within the /investigate timeout. Env-tunable so the demo can dial it
 # without a code change. Ignored by non-reasoning models.
 REASONING_EFFORT = _env("OPSPILOT_REASONING_EFFORT", "medium")
+# Sampling seed sent alongside temperature=0 on non-reasoning models. temperature=0 is NOT
+# determinism: re-recording the eval against gpt-4o-mini produced byte-identical planner prompts
+# and different responses.
+#
+# MEASURED, 2026-07-26: the seed does NOT fix that. Two recordings at this same seed produced
+# different cassettes and different scorecards (evidence_recall 0.6222 vs 0.5111). OpenAI documents
+# `seed` as best-effort, and on this model it is not effective. It is kept because it costs nothing,
+# it is the documented mechanism if their determinism improves, and pinning it in the replay
+# manifest records what was in effect. Do NOT re-run this experiment expecting a stable
+# scorecard. The real instability is the sample size (3 novel scenarios, G-35) amplified by the
+# planner's batched tool calls (G-22): one sampling wobble rewrites up to _MAX_BATCH actions.
+#
+# Note this does not make CI flaky: the committed cassette replays deterministically. The variance
+# only appears when someone RE-RECORDS.
+LLM_SEED = _env_int("OPSPILOT_LLM_SEED", 20260726)
 
 # Observability span exporter (Stage 5g): none (default — emission on, no sink until a real one is
-# wired) | memory (tests) | stdout (dev). LangSmith/App Insights sinks land later (obs/tracing.py).
+# wired) | memory (tests) | stdout (dev). Real sinks land on a schedule, not "later": LangSmith
+# Developer at Stage 8, App Insights at Stage 11 (obs/tracing.py; G-61).
 TRACE_EXPORTER = _env("OPSPILOT_TRACE_EXPORTER", "none")
 LLM_API_KEY = _env("OPSPILOT_LLM_API_KEY") or _env("OPENAI_API_KEY")
 OLLAMA_BASE_URL = _env("OPSPILOT_OLLAMA_BASE_URL", "http://localhost:11434/v1")

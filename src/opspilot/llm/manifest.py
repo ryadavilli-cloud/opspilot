@@ -1,0 +1,68 @@
+"""The cassette replay manifest: every behaviour-affecting input other than the messages.
+
+The replay key used to be `(model_id, messages, temperature)`. The recorded response is a function
+of far more than that, so a change to anything outside those three shifted real behaviour while the
+key stayed identical: CI then replayed a response the current inputs would never produce and passed
+green on a lie (G-54).
+
+This is not hypothetical. `#45` changed `reasoning_effort` from `low` to `medium` precisely because
+the model was not gathering all the evidence at `low`. Every cassette key was unchanged, so the
+committed scorecard kept certifying responses recorded under the old setting.
+
+What the manifest covers, and what it deliberately does not:
+
+- **Prompt text** is substituted into the messages, so a prompt edit already changes the key. The
+  resolved prompt *versions* are still recorded, because the registry is append-only: adding
+  `diagnose_synthesize.v2` silently re-points `get_prompt` at new text, and pinning the versions
+  turns that into a loud cache miss.
+- **Provider identity is excluded on purpose.** Replay legitimately runs under the `replay`
+  provider while the recording ran under `ollama` or `azure`, so comparing it would fail every
+  time and teach everyone to ignore the check. The provider *knobs* that shape output are compared
+  instead.
+- **`max_tokens`, stop sequences, and safety settings** are not sent by this codebase yet. They
+  join the manifest with the request that starts sending them, not before: a field pinned to a
+  constant nobody sets is coverage theatre.
+- **Hosting mode** (Azure OpenAI chat-completions vs the Anthropic Messages API) lands with the
+  provider split (G-45), which is the change that first makes it vary.
+"""
+
+from __future__ import annotations
+
+import hashlib
+import json
+
+from opspilot import config
+from opspilot.llm.prompts import resolved_versions
+
+
+def behaviour_manifest(*, model_id: str) -> dict[str, str]:
+    """The behaviour-affecting configuration a recorded response depends on.
+
+    `model_id` is passed in rather than read from config so replay can rebuild the manifest around
+    the model the cassette was actually recorded against, while every other field reflects what the
+    current code would send.
+    """
+    return {
+        "model_id": model_id,
+        "reasoning_effort": config.REASONING_EFFORT,
+        "azure_api_version": config.AZURE_OPENAI_API_VERSION,
+        "sampling_seed": str(config.LLM_SEED),
+        "prompt_versions": ",".join(f"{n}={v}" for n, v in sorted(resolved_versions().items())),
+    }
+
+
+def manifest_digest(manifest: dict[str, str]) -> str:
+    """Stable hash of a manifest, used as the per-request key's prefix component."""
+    blob = json.dumps(manifest, sort_keys=True, ensure_ascii=False)
+    return hashlib.sha256(blob.encode("utf-8")).hexdigest()
+
+
+def manifest_drift(recorded: dict[str, str], current: dict[str, str]) -> list[str]:
+    """Human-readable description of every field that differs, so a stale cassette says WHICH
+    input moved rather than only that a lookup missed. Empty when the two agree."""
+    drift = []
+    for key in sorted(set(recorded) | set(current)):
+        was, now = recorded.get(key, "(absent)"), current.get(key, "(absent)")
+        if was != now:
+            drift.append(f"{key}: recorded {was!r}, current {now!r}")
+    return drift

@@ -108,6 +108,20 @@ class ReportClaim(BaseModel):
     support_refs: list[str] = Field(default_factory=list)
 
 
+class Conclusion(BaseModel):
+    """What the planner produces when the loop stops reasoning: the prose hypothesis the report has
+    always carried, plus the typed claim the 6b checks interrogate.
+
+    `causal` is None whenever the model proposed nothing admissible. That is a real outcome, not an
+    error: an unsupported or entity-unresolvable claim must NOT become a `GroundedRcaReport`, and
+    the caller degrades rather than publishing a structure code could not admit.
+    """
+
+    hypothesis: Hypothesis
+    causal: CausalClaim | None = None
+    report_claims: list[ReportClaim] = Field(default_factory=list)
+
+
 class StopReason(BaseModel):
     reason: Literal["hypothesis_supported", "iteration_limit", "no_more_questions"]
     detail: str = ""

@@ -113,7 +113,7 @@ def test_synthesize_keeps_only_grounded_citations():
         '{"root_cause": "payment-gateway latency spike",'
         ' "citations": ["logs:payment-api:evt-004-02", "logs:ghost:hallucinated"]}'
     )
-    hyp = LLMPlanner(model).synthesize(CTX, [], {"logs:payment-api:evt-004-02"})
+    hyp = LLMPlanner(model).synthesize(CTX, [], {"logs:payment-api:evt-004-02"}, set()).hypothesis
     assert hyp.statement == "payment-gateway latency spike"
     assert [c.ref for c in hyp.citations] == ["logs:payment-api:evt-004-02"]  # hallucination gone
     assert hyp.citations[0].source == "logs"
@@ -121,26 +121,70 @@ def test_synthesize_keeps_only_grounded_citations():
 
 def test_synthesize_ungrounded_conclusion_is_unsupported():
     model = ScriptedModel('{"root_cause": "guessed cause", "citations": ["logs:ghost:x"]}')
-    hyp = LLMPlanner(model).synthesize(CTX, [], {"logs:real:1"})
+    hyp = LLMPlanner(model).synthesize(CTX, [], {"logs:real:1"}, set()).hypothesis
     assert hyp.citations == []  # no grounded citation -> safety gate will escalate
 
 
-def test_revise_hypothesis_passthrough_while_investigating():
+def test_conclude_passthrough_while_investigating():
     # Not the stopping turn (final=False): the provisional hypothesis stands, no model call.
     model = ScriptedModel('{"next_tool": "get_metrics", "params": {"service": "payment-api"}}')
     planner = LLMPlanner(model)
-    assert planner.revise_hypothesis(_BASE, ctx=CTX, produced_refs=set(), final=False) is _BASE
+    assert planner.conclude(_BASE, ctx=CTX, produced_refs=set(), final=False).hypothesis is _BASE
 
 
-def test_revise_hypothesis_synthesizes_on_final_turn():
+def test_conclude_synthesizes_on_final_turn():
     model = ScriptedModel(
         '{"root_cause": "payment-api timeouts", "citations": ["metrics:payment-api:p95@t"]}'
     )
     planner = LLMPlanner(model)
-    hyp = planner.revise_hypothesis(
+    conclusion = planner.conclude(
         _BASE, ctx=CTX, produced_refs={"metrics:payment-api:p95@t"}, observations=[], final=True)
-    assert hyp is not _BASE
-    assert hyp.statement == "payment-api timeouts"
+    assert conclusion.hypothesis is not _BASE
+    assert conclusion.hypothesis.statement == "payment-api timeouts"
+    # No `causal` block was proposed, so nothing is admitted and the prose stands alone. This is
+    # the degrade path, not a failure: a run with no structured claim must not look grounded.
+    assert conclusion.causal is None
+
+
+# --- structured conclusion (Stage 5e, G-29/G-50) ------------------------------------------------
+_CAUSAL = (
+    '{"root_cause": "the model prose, which must NOT be published",'
+    ' "citations": ["metrics:payment-api:p95@t"],'
+    ' "causal": {"cause_type": "dependency_failure", "cause_entity": "payment-api",'
+    ' "cause_event_ref": "", "onset_start": "2026-03-01T10:00:00+00:00", "onset_end": "",'
+    ' "affected_entities": ["checkout-api"], "support_refs": ["metrics:payment-api:p95@t"],'
+    ' "counter_refs": []},'
+    ' "report_claims": [{"kind": "recommendation", "statement": "fail over the gateway",'
+    ' "support_refs": ["metrics:payment-api:p95@t"]}]}'
+)
+
+
+def _conclude_with_causal(known=("payment-api", "checkout-api")):
+    return LLMPlanner(ScriptedModel(_CAUSAL)).synthesize(
+        CTX, [], {"metrics:payment-api:p95@t"}, set(known)
+    )
+
+
+def test_an_admitted_claim_renders_the_statement_and_discards_the_model_prose():
+    """G-50: the published sentence is rendered from the typed fields, so it cannot name an entity
+    the claim does not. The model's own prose is deliberately not what ships."""
+    conclusion = _conclude_with_causal()
+    assert conclusion.causal is not None
+    assert conclusion.causal.cause_entity == "payment-api"
+    assert "payment-api" in conclusion.hypothesis.statement
+    assert "must NOT be published" not in conclusion.hypothesis.statement
+
+
+def test_a_claim_naming_an_unresolvable_entity_fails_closed():
+    """The entity is not one this run touched, so the claim is about nothing and is refused."""
+    conclusion = _conclude_with_causal(known=("some-other-service",))
+    assert conclusion.causal is None
+
+
+def test_report_claims_are_admitted_and_carry_their_support_refs():
+    claims = _conclude_with_causal().report_claims
+    assert [c.kind for c in claims] == ["recommendation"]
+    assert claims[0].support_refs == ["metrics:payment-api:p95@t"]
 
 
 @pytest.mark.llm

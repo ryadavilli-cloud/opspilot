@@ -109,3 +109,47 @@ def test_edit_that_preserves_grounding_passes_revalidation():
     result = safety_validate(edited)
     assert result["safety"]["passed"] is True
     assert after_safety_validate(edited.model_copy(update=result)) == "hitl_gate"
+
+
+# --- escalation attribution (G-36) --------------------------------------------------------------
+# The blocking node names the cause; `escalate` reports what it was told. The old `escalate`
+# inferred the cause by probing state in a fixed order, so a citation-gate block (which set
+# nothing) surfaced as an exhausted iteration budget: specific, confident, and wrong.
+def test_a_guardrail_block_escalates_with_a_guardrail_reason_not_a_budget_reason():
+    from opspilot.config import MAX_DIAGNOSE_ITERS
+    from opspilot.diagnosis.contracts import SufficiencyState
+    from opspilot.nodes.investigation import escalate
+
+    # State that would ALSO satisfy both budget probes the old inference tried first, so a wrong
+    # attribution is observable rather than merely possible.
+    state = InvestigationState(
+        report=_report(["invented:ref"]),
+        produced_refs=["logs:a:b"],
+        diagnose_iters=MAX_DIAGNOSE_ITERS,
+        sufficiency=SufficiencyState(
+            evidence_classes=[], required_classes=["logs"], evidence_coverage=0.0,
+            citation_coverage=0.0, plan_can_advance=False,
+        ),
+    )
+    blocked = state.model_copy(update=safety_validate(state))
+    assert after_safety_validate(blocked) == "escalate"
+
+    reason = escalate(blocked)["error"]
+    assert reason.startswith("guardrail_blocked: unsupported_citations")
+    assert "iteration_budget_exhausted" not in reason
+    assert "plan_exhausted_insufficient" not in reason
+
+
+def test_escalate_reports_the_stamped_reason_verbatim():
+    from opspilot.nodes.investigation import escalate
+
+    stamped = InvestigationState(error="human_rejected by entra_jwt:oid-1")
+    assert escalate(stamped)["error"] == "human_rejected by entra_jwt:oid-1"
+
+
+def test_an_unstamped_escalation_is_reported_as_a_defect_not_a_plausible_guess():
+    """The fallback must be obviously wrong, not plausibly right. A generic 'escalated to human'
+    reads as a real cause and hides the missing stamp; this one names the defect."""
+    from opspilot.nodes.investigation import escalate
+
+    assert escalate(InvestigationState())["error"].startswith("unattributed_escalation")

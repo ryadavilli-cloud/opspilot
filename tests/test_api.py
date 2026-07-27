@@ -18,13 +18,43 @@ from opspilot import api  # noqa: E402
 from opspilot.api import (  # noqa: E402
     InvestigationResponse,
     app,
+    get_authenticator,
     get_corpus_status,
     get_service,
 )
+from opspilot.auth import ReviewerAuthError, ReviewerPrincipal  # noqa: E402
 from opspilot.config import RETRIEVAL_BACKEND  # noqa: E402
 from opspilot.data.repository import CORPUS_FILES, RuntimeAssetStatus  # noqa: E402
 
 client = TestClient(app)
+
+# `/investigate` carries the submit role (G-03). Same fake-authenticator shape as the async API
+# tests: identity only, so the endpoint's own role check is what these tests exercise.
+_SUBMITTER = ReviewerPrincipal(
+    subject="oid-submitter-1", tenant_id="test-tenant", display_name="submitter@example.com",
+    roles=("Submitter",), auth_method="entra_jwt",
+)
+_NO_ROLE = ReviewerPrincipal(
+    subject="oid-guest-1", tenant_id="test-tenant", display_name="guest@example.com",
+    roles=(), auth_method="entra_jwt",
+)
+_PRINCIPALS = {"submit-token": _SUBMITTER, "no-role-token": _NO_ROLE}
+
+SUBMIT_AUTH = {"Authorization": "Bearer submit-token"}
+NO_ROLE_AUTH = {"Authorization": "Bearer no-role-token"}
+
+
+class _FakeAuthenticator:
+    """Fail-closed like the real validator: an absent or unknown token raises rather than
+    defaulting to a principal."""
+
+    def authenticate(self, authorization_header: str | None) -> ReviewerPrincipal:
+        if not authorization_header or not authorization_header.lower().startswith("bearer "):
+            raise ReviewerAuthError("an Authorization header is required")
+        token = authorization_header.split(" ", 1)[1].strip()
+        if token not in _PRINCIPALS:
+            raise ReviewerAuthError("token is not valid for this API")
+        return _PRINCIPALS[token]
 
 
 # --- fakes ------------------------------------------------------------------------------------
@@ -66,6 +96,9 @@ def _override(service_factory=None, corpus_factory=None):
 
 @pytest.fixture(autouse=True)
 def _clear_overrides():
+    # The authenticator is overridden, not disabled: `/investigate` still runs its real role
+    # check, so a missing header or a role-less principal is rejected by the endpoint itself.
+    app.dependency_overrides[get_authenticator] = _FakeAuthenticator
     yield
     app.dependency_overrides.clear()
 
@@ -181,7 +214,7 @@ def _bm25_service():
 
 def test_investigation_smoke_path_over_bm25():
     _override(_bm25_service)
-    r = client.post("/investigate", json={
+    r = client.post("/investigate", headers=SUBMIT_AUTH, json={
         "incident_id": "inc-004",
         "summary": "checkout-api returning 500s shortly after this morning's deployment.",
     })
@@ -200,7 +233,7 @@ def test_investigation_smoke_path_over_bm25():
 
 def test_investigation_unknown_incident_does_not_report_success():
     _override(_bm25_service)
-    r = client.post("/investigate", json={
+    r = client.post("/investigate", headers=SUBMIT_AUTH, json={
         "incident_id": "inc-does-not-exist",
         "summary": "unknown incident with no corpus record.",
     })
@@ -225,7 +258,9 @@ def test_escalated_response_surfaces_the_graph_escalation_reason(monkeypatch):
     # still None until something asks for it.
     monkeypatch.setattr(api.get_graph(), "invoke", lambda *a, **k: fake_state)
     _override(_bm25_service)
-    r = client.post("/investigate", json={"incident_id": "inc-999", "summary": "x"})
+    r = client.post(
+        "/investigate", headers=SUBMIT_AUTH, json={"incident_id": "inc-999", "summary": "x"}
+    )
     body = r.json()
     assert body["status"] == "escalated"
     assert body["reason"] == "iteration_budget_exhausted: diagnose_iters=5"
@@ -235,7 +270,7 @@ def test_escalated_response_surfaces_the_graph_escalation_reason(monkeypatch):
 def test_degraded_response_surfaces_a_reason(monkeypatch):
     _override(_bm25_service)
     monkeypatch.setattr(api, "_safe_backend", lambda svc: "unavailable")
-    r = client.post("/investigate", json={
+    r = client.post("/investigate", headers=SUBMIT_AUTH, json={
         "incident_id": "inc-004",
         "summary": "checkout-api returning 500s shortly after this morning's deployment.",
     })
@@ -243,3 +278,20 @@ def test_degraded_response_surfaces_a_reason(monkeypatch):
     assert body["status"] == "degraded"
     assert body["reason"] and "unavailable" in body["reason"]
     InvestigationResponse.model_validate(body)
+
+
+# --- /investigate ingress auth (G-03) ----------------------------------------------------------
+# The sync endpoint runs the same graph and spends the same model budget as `POST /investigations`,
+# so it carries the same submit role. These two cases are the exposure that stayed open after #49.
+def test_an_unauthenticated_caller_cannot_run_the_sync_investigation():
+    _override(_bm25_service)
+    r = client.post("/investigate", json={"incident_id": "inc-004", "summary": "x"})
+    assert r.status_code == 401
+
+
+def test_a_principal_without_the_submit_role_cannot_run_the_sync_investigation():
+    _override(_bm25_service)
+    r = client.post(
+        "/investigate", headers=NO_ROLE_AUTH, json={"incident_id": "inc-004", "summary": "x"}
+    )
+    assert r.status_code == 403

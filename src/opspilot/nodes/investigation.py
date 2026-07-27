@@ -18,7 +18,9 @@ from langchain_core.runnables import RunnableConfig
 from opspilot.config import MAX_DIAGNOSE_ITERS, WORKFLOW_VERSION
 from opspilot.contracts import EvidenceItem as ReportEvidence
 from opspilot.contracts import IncidentReport
+from opspilot.diagnosis.admission import entities_from_refs
 from opspilot.diagnosis.contracts import EvidenceCitation, Hypothesis
+from opspilot.diagnosis.render import render_report_claim_statement
 from opspilot.state import DiagnosisTrace, EvidenceItem, Intent, InvestigationState
 
 _UNIT_SEP = "\x1f"
@@ -64,6 +66,25 @@ def _triager(config: RunnableConfig | None):
 def _evidence_map(items: list[EvidenceItem]) -> dict[str, EvidenceItem]:
     """Key evidence by content hash so the merge reducer dedups it."""
     return {item.content_hash: item for item in items}
+
+
+def _gathering_block_reason(sufficiency, *, iters: int) -> str:
+    """Why this gathering turn blocks, named at the moment the block is decided (G-36).
+
+    Mirrors `diagnose_continue`'s escalate branch: the router picks the edge, this names the cause.
+    Returns "" when the turn is not blocking, which also clears any earlier turn's stamp: a run
+    that recovers must not carry a stale reason into a later, different escalation.
+    """
+    if sufficiency.ready:
+        return ""
+    if iters >= MAX_DIAGNOSE_ITERS:
+        return f"iteration_budget_exhausted: diagnose_iters={iters}"
+    if not sufficiency.plan_can_advance:
+        return (
+            f"plan_exhausted_insufficient: coverage={sufficiency.evidence_coverage} "
+            f"classes={sufficiency.evidence_classes} required={sufficiency.required_classes}"
+        )
+    return ""
 
 
 def ingest(state: InvestigationState) -> dict[str, Any]:
@@ -237,18 +258,26 @@ def diagnose(state: InvestigationState, config: RunnableConfig | None = None) ->
         or state.diagnose_iters + 1 >= MAX_DIAGNOSE_ITERS
         or not plan_can_advance
     )
-    hypothesis = planner.revise_hypothesis(
+    # The entities a claim may blame: those named in refs the tools actually produced, plus the
+    # triaged affected services. A claim about anything else is about something this run never
+    # observed, so admission refuses it (Stage 5e; topology-version validation is G-42 at 6a).
+    known_entities = entities_from_refs(produced) | set(state.affected_services)
+    conclusion = planner.conclude(
         hypothesis,
         ctx=ctx,
         produced_refs=produced,
         observations=state.observation_trail + observations,
+        known_entities=known_entities,
         final=stopping,
     )
+    hypothesis = conclusion.hypothesis
 
     evidence = [EvidenceItem.make(c.source, c.ref, c.note) for c in hypothesis.citations]
 
     return {
         "hypothesis": hypothesis,
+        "causal": conclusion.causal,
+        "report_claims": conclusion.report_claims,
         "evidence_by_id": _evidence_map(evidence),
         "produced_refs": sorted(this_turn_refs),
         "diagnose_iters": state.diagnose_iters + 1,
@@ -256,11 +285,24 @@ def diagnose(state: InvestigationState, config: RunnableConfig | None = None) ->
         "observation_trail": observations,
         "answered_questions": sorted(answered),
         "sufficiency": sufficiency,
+        # Stamped here, not inferred later (G-36). Empty on a turn that keeps gathering.
+        "error": _gathering_block_reason(sufficiency, iters=state.diagnose_iters + 1),
     }
+
+
+# Used only when the run produced no `recommendation` claim of its own. Deliberately NOT a
+# rollback: hard-coding rollback as the recommendation for every incident is a prohibited pattern
+# (code guidelines §21), and it is wrong whenever the cause is a dependency or an external fault.
+_NO_RECOMMENDATION = "No specific next step was derived; hand to the on-call engineer for triage."
 
 
 def synthesize_report(state: InvestigationState) -> dict[str, Any]:
     hyp = state.hypothesis
+    claims = state.report_claims
+    # A recommendation the run actually derived, rendered from its structured claim, replaces the
+    # old fixed rollback string. Falls back to an explicit "nothing derived" rather than inventing
+    # an action, so an empty result reads as empty instead of as advice.
+    recommendation = next((c for c in claims if c.kind == "recommendation"), None)
     report = IncidentReport(
         incident_id=state.incident_id or "INC-STUB",
         severity=state.severity or "SEV3",
@@ -270,8 +312,12 @@ def synthesize_report(state: InvestigationState) -> dict[str, Any]:
         # published report evidence shape — the internal content_hash stays in state
         evidence=[ReportEvidence(source=ev.source, ref=ev.ref, content=ev.content)
                   for ev in state.evidence_by_id.values()],
-        recommended_next_step="(stub) roll back the most recent deploy and re-observe.",
+        recommended_next_step=(
+            render_report_claim_statement(recommendation) if recommendation
+            else _NO_RECOMMENDATION
+        ),
         citations=state.evidence_refs(),
+        report_claims=claims,
     )
     return {"report": report, "report_hash": report.content_hash()}
 
@@ -284,12 +330,29 @@ def safety_validate(state: InvestigationState) -> dict[str, Any]:
     if state.intent == Intent.INFO_ONLY.value:  # ungrounded informational reply — exempt
         return {"safety": {"passed": True, "violations": [], "exempt": "info_only"}}
 
-    citations = list(state.report.citations) if state.report else []
+    report = state.report
+    # Every published claim is checked, not just the headline citations (G-51). A report-level
+    # claim whose support ref was never produced is exactly the ungrounded assertion the "every
+    # claim cites tool-produced evidence" guarantee promises does not ship.
+    citations = list(report.citations) if report else []
+    if report:
+        citations += [ref for claim in report.report_claims for ref in claim.support_refs]
     # Validate against the tool-produced ref trail, NOT evidence_refs() (which is derived from the
     # cited refs themselves — that would let a fabricated citation certify itself).
     produced = set(state.produced_refs)
     passed, violations = hypothesis_supported(citations, produced)
-    return {"safety": {"passed": passed, "violations": violations}}
+    if passed:
+        return {"safety": {"passed": True, "violations": violations}}
+    # Stamp the guardrail as the cause at the moment it blocks (G-36). Without this the run
+    # escalates with whatever reason `escalate()` happened to probe for first, which reported a
+    # citation-gate block as an exhausted iteration budget: specific, confident, and wrong.
+    return {
+        "safety": {"passed": False, "violations": violations},
+        "error": (
+            f"guardrail_blocked: unsupported_citations ({len(violations)}): "
+            f"{'; '.join(violations[:3])}"
+        ),
+    }
 
 
 def hitl_gate(state: InvestigationState) -> dict[str, Any]:
@@ -330,18 +393,34 @@ def hitl_gate(state: InvestigationState) -> dict[str, Any]:
         # The decision was made against a report that no longer matches current state (e.g. a
         # concurrent edit/decision advanced the thread first). "stale_rejected" is neither
         # "approve" nor "edit", so it already falls into after_approval's fail-closed else-branch.
-        return {"approval": {
-            **identity,
-            "decision": "stale_rejected", "edits": edits,
-            "submitted_report_hash": submitted_hash, "current_report_hash": state.report_hash,
-            "approved_report_hash": None,
-        }}
+        return {
+            "approval": {
+                **identity,
+                "decision": "stale_rejected", "edits": edits,
+                "submitted_report_hash": submitted_hash, "current_report_hash": state.report_hash,
+                "approved_report_hash": None,
+            },
+            "error": (
+                f"stale_approval: submitted for {submitted_hash}, "
+                f"current is {state.report_hash}"
+            ),
+        }
 
-    return {"approval": {
-        **identity,
-        "decision": decision, "edits": edits,
-        "approved_report_hash": state.report_hash if decision == "approve" else None,
-    }}
+    # A human decision that ends the run carries its own reason, stamped here rather than
+    # re-derived by `escalate()` (G-36). `approve` and `edit` continue, so they stamp nothing.
+    who = identity["approver"]
+    blocked = {
+        "reject": f"human_rejected by {who}",
+        "request_more_evidence": f"human_requested_more_evidence by {who}",
+    }
+    return {
+        "approval": {
+            **identity,
+            "decision": decision, "edits": edits,
+            "approved_report_hash": state.report_hash if decision == "approve" else None,
+        },
+        "error": blocked.get(str(decision), ""),
+    }
 
 
 def apply_edit(state: InvestigationState) -> dict[str, Any]:
@@ -383,24 +462,21 @@ def postmortem(state: InvestigationState) -> dict[str, Any]:
 
 
 def escalate(state: InvestigationState) -> dict[str, Any]:
-    """Terminal hand-off to a human — always with a machine-readable reason, never silent."""
-    approval = state.approval or {}
-    decision = approval.get("decision")
-    if state.error:
-        reason = state.error
-    elif decision == "stale_rejected":
-        reason = (f"stale_approval: submitted for {approval.get('submitted_report_hash')}, "
-                  f"current is {approval.get('current_report_hash')}")
-    elif decision == "reject":
-        reason = f"human_rejected by {approval.get('approver', 'unknown')}"
-    elif decision == "request_more_evidence":
-        reason = f"human_requested_more_evidence by {approval.get('approver', 'unknown')}"
-    elif state.diagnose_iters >= MAX_DIAGNOSE_ITERS:
-        reason = f"iteration_budget_exhausted: diagnose_iters={state.diagnose_iters}"
-    elif state.sufficiency is not None and not state.sufficiency.plan_can_advance:
-        s = state.sufficiency
-        reason = (f"plan_exhausted_insufficient: coverage={s.evidence_coverage} "
-                  f"classes={s.evidence_classes} required={s.required_classes}")
-    else:
-        reason = "escalated to human"
-    return {"degraded": True, "error": reason}
+    """Terminal hand-off to a human, always with a machine-readable reason, never silent.
+
+    This node REPORTS the reason the blocking node stamped; it no longer derives one (G-36). The
+    old version probed state in a fixed order (`error` -> approval decision -> iteration budget ->
+    plan advancement -> a generic fallback), so any cause it did not test for was reported as
+    whichever probe matched first. A guardrail block, which set nothing at all, surfaced as
+    `plan_exhausted_insufficient` or `iteration_budget_exhausted`: a confident, specific, wrong
+    reason. And since `InvestigationResponse.reason` is public API, a published falsehood.
+
+    Inference cannot be repaired by adding probes, because the next unprobed cause repeats the
+    failure. The fix is that every path into this node names its own cause first. An empty stamp is
+    therefore a defect in the caller, and is reported as one rather than papered over with a
+    plausible guess.
+    """
+    return {
+        "degraded": True,
+        "error": state.error or "unattributed_escalation: no blocking node stamped a reason",
+    }

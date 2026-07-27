@@ -30,7 +30,9 @@ from pydantic import BaseModel, Field
 
 from opspilot.contracts import IncidentReport
 from opspilot.diagnosis.contracts import (
+    CausalClaim,
     Hypothesis,
+    ReportClaim,
     StopReason,
     SufficiencyState,
     ToolObservation,
@@ -140,6 +142,10 @@ class InvestigationState(BaseModel):
     produced_refs: Annotated[list[str], merge_refs] = Field(default_factory=list)
 
     hypothesis: Hypothesis | None = None       # single source of truth (statement/confidence/cites)
+    # Stage 5e structured conclusion — the typed claim the 6b checks validate and the report is
+    # rendered from. None until the synth prompt produces it (3b); the prose hypothesis is the base.
+    causal: CausalClaim | None = None
+    report_claims: list[ReportClaim] = Field(default_factory=list)
     diagnosis: DiagnosisTrace | None = None    # observations + stop reason (last turn only)
     # full observation history across turns — what a model planner sees so it never repeats a call
     observation_trail: Annotated[list[ToolObservation], append_observations] = Field(
