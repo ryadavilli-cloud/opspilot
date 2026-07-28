@@ -49,6 +49,17 @@ def _now() -> datetime:
     return datetime.now(UTC)
 
 
+def _as_document(record: InvestigationRecord) -> dict[str, Any]:
+    """Serialize a record as a Cosmos document.
+
+    Cosmos requires an `id` on every document, and `InvestigationRecord` has no such field: it is
+    keyed by `investigation_id`. Every read here uses `item=investigation_id`, so `id` MUST equal
+    it, and writing the bare `model_dump()` fails with `BadRequest: the required properties - 'id'
+    - are missing`. Setting it in one place keeps the create and the replace paths from drifting.
+    """
+    return {**record.model_dump(mode="json"), "id": record.investigation_id}
+
+
 class CosmosInvestigationRepository:
     """A Cosmos DB-backed repository.
 
@@ -99,7 +110,7 @@ class CosmosInvestigationRepository:
             history=["queued"],
             submitted_by=submitted_by,
         )
-        self._records.create_item(body=record.model_dump(mode="json"))
+        self._records.create_item(body=_as_document(record))
 
         if force_rerun:
             self._index.upsert_item({"id": idempotency_key, "investigation_id": investigation_id})
@@ -156,7 +167,7 @@ class CosmosInvestigationRepository:
             try:
                 self._records.replace_item(
                     item=investigation_id,
-                    body=record.model_dump(mode="json"),
+                    body=_as_document(record),
                     etag=etag,
                     match_condition=MatchConditions.IfNotModified,
                 )
