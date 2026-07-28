@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import hashlib
 import logging
+import threading
 from pathlib import Path
 from typing import Any, Literal
 from uuid import uuid4
@@ -83,18 +84,28 @@ _CONSOLE_HTML = (Path(__file__).parent / "static" / "console.html").read_text(en
 # same shape, as `get_repository()` below.
 _graph = None
 
+# Every lazy singleton below is built under this lock (G-37). The old `if x is None: x = build()`
+# is a check-then-act race: two concurrent first requests both observe None and both construct.
+# That is not merely wasteful now that the stores are Cosmos-backed: it opens a second CosmosClient
+# and a second checkpointer against the same containers, and for the graph it means two compiled
+# graphs disagreeing about which saver they hold. Double-checked: the unlocked read is the fast path
+# (a plain attribute load, safe in CPython), the lock only serializes the construction itself.
+_singleton_lock = threading.Lock()
+
 
 def get_graph():
     global _graph
     if _graph is None:
-        checkpointer = build_checkpointer()
-        if checkpointer is None:
-            _log.warning(
-                "OPSPILOT_CHECKPOINTER=none: hitl_gate interrupts pause on an in-process "
-                "MemorySaver only — an awaiting_approval investigation will not survive a restart. "
-                "Set sqlite/cosmos for durability."
-            )
-        _graph = build_graph(checkpointer)
+        with _singleton_lock:
+            if _graph is None:
+                checkpointer = build_checkpointer()
+                if checkpointer is None:
+                    _log.warning(
+                        "OPSPILOT_CHECKPOINTER=none: hitl_gate interrupts pause on an "
+                        "in-process MemorySaver only, so an awaiting_approval "
+                        "investigation will not survive a restart. Set sqlite/cosmos."
+                    )
+                _graph = build_graph(checkpointer)
     return _graph
 
 
@@ -112,16 +123,20 @@ _diagnosis: DiagnosisComposition | None = None
 def get_service():
     global _tool_service
     if _tool_service is None:
-        from opspilot.tools.service import ToolService
+        with _singleton_lock:
+            if _tool_service is None:
+                from opspilot.tools.service import ToolService
 
-        _tool_service = ToolService()
+                _tool_service = ToolService()
     return _tool_service
 
 
 def get_diagnosis() -> DiagnosisComposition:
     global _diagnosis
     if _diagnosis is None:
-        _diagnosis = build_diagnosis()
+        with _singleton_lock:
+            if _diagnosis is None:
+                _diagnosis = build_diagnosis()
     return _diagnosis
 
 
@@ -135,7 +150,9 @@ _repository: InvestigationRepository | None = None
 def get_repository() -> InvestigationRepository:
     global _repository
     if _repository is None:
-        _repository = build_investigation_repository()
+        with _singleton_lock:
+            if _repository is None:
+                _repository = build_investigation_repository()
     return _repository
 
 
@@ -149,7 +166,9 @@ _authenticator: ReviewerAuthenticator | None = None
 def get_authenticator() -> ReviewerAuthenticator:
     global _authenticator
     if _authenticator is None:
-        _authenticator = build_reviewer_authenticator()
+        with _singleton_lock:
+            if _authenticator is None:
+                _authenticator = build_reviewer_authenticator()
     return _authenticator
 
 
