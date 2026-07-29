@@ -14,6 +14,7 @@ surfaces the safety-guardrail result. Errors never expose stack traces, local pa
 from __future__ import annotations
 
 import hashlib
+import json
 import logging
 import threading
 from pathlib import Path
@@ -47,9 +48,12 @@ from opspilot.contracts import (
 from opspilot.diagnosis.contracts import CausalClaim
 from opspilot.graph import _initial_state, build_graph, invoke_auto_approving
 from opspilot.investigations import (
+    CommittedDecision,
+    DecisionNotPendingError,
     InvestigationRecord,
     InvestigationRepository,
     InvestigationStatus,
+    StaleReportError,
 )
 from opspilot.repository import build_investigation_repository
 from opspilot.state import Intent
@@ -394,13 +398,33 @@ class InvestigationDecision(BaseModel):
     leave a plausible-looking field that means nothing. `extra="forbid"` makes that explicit — a
     client still sending `approver` gets a 422 rather than having it silently ignored, so an
     integration built against the old shape fails loudly instead of appearing to still work.
+
+    `decision_id` is the client-minted idempotency key (G-32) and is **required**, on the same
+    reasoning: an optional idempotency key silently means nothing when omitted, which is exactly
+    the plausible-looking-field failure above. A reviewer double-clicking, or a client retrying a
+    timed-out POST, must not resume the graph twice.
     """
 
     model_config = {"extra": "forbid"}
 
+    decision_id: str = Field(min_length=1)
     decision: Literal["approve", "edit", "request_more_evidence", "reject"]
     submitted_report_hash: str
     edits: dict[str, Any] | None = None
+
+    def fingerprint(self, principal: ReviewerPrincipal) -> str:
+        """An opaque digest of this decision plus the verified reviewer, stored alongside the
+        committed `decision_id` so a retry can be told from a *different* decision reusing the id.
+
+        The reviewer is part of it deliberately: another identity reusing someone's decision_id is
+        a conflict to surface, not a retry to replay. `edits` is canonicalized with sorted keys so
+        an equivalent body that serializes differently still reads as the same decision.
+        """
+        edits = json.dumps(self.edits or {}, sort_keys=True, separators=(",", ":"))
+        raw = _UNIT_SEP.join(
+            (self.decision, self.submitted_report_hash, edits, principal.audit_label())
+        )
+        return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
 
 # --------------------------------------------------------------------------------------
@@ -846,43 +870,94 @@ def submit_decision(
     **Authentication runs first, before the record is even looked up.** Order matters: probing this
     endpoint without a valid token must not reveal which investigation ids exist, so an anonymous
     caller cannot tell 404 from 409 from a real pause.
+
+    Two more 409s, both G-32, and both leaving the run exactly as it was:
+
+    - `stale_report`: the decision was made against a report that is no longer the one awaiting
+      review (a concurrent edit or decision advanced the thread first). The response carries the
+      current hash so the client can re-review and resubmit, and the investigation **stays
+      `awaiting_approval`**. This replaces #36's behaviour, where a stale hash escalated the run:
+      losing a race is a concurrency conflict, not an investigation failure, and burning a human's
+      paused investigation over one is the wrong trade.
+    - `decision_conflict`: this `decision_id` was already committed with a *different* body.
+
+    A retry of an already-committed `decision_id` with the *same* body replays the stored response
+    verbatim (202) whatever the current status is, since a retry naturally arrives after the run
+    has moved on. The graph is never resumed twice for it.
     """
     principal = require_reviewer(authorization, authenticator)
 
     record = repo.get(investigation_id)
     if record is None:
         raise HTTPException(status_code=404, detail="investigation not found")
-    if record.status != "awaiting_approval":
+
+    response = AcceptedInvestigation(
+        investigation_id=investigation_id,
+        status="running",
+        poll_url=f"/investigations/{investigation_id}",
+    )
+    candidate = CommittedDecision(
+        decision_id=decision.decision_id,
+        fingerprint=decision.fingerprint(principal),
+        decision=decision.decision,
+        submitted_report_hash=decision.submitted_report_hash,
+        approver=principal.audit_label(),
+        response=response.model_dump(mode="json"),
+    )
+
+    # The commit point. Recording the decision and moving awaiting_approval -> running happen in
+    # ONE conditional write inside the repository, which also decides the replay/status/stale
+    # preconditions against the same state it commits against. Checking them out here first would
+    # be a check-then-act race that lets two concurrent decisions both reach the resume below.
+    try:
+        committed, created = repo.commit_decision(investigation_id, decision=candidate)
+    except StaleReportError as exc:
         raise HTTPException(
             status_code=409,
-            detail=f"investigation is not awaiting a decision (status={record.status})",
-        )
+            detail={
+                "error": "stale_report",
+                "message": "the report you decided on is no longer the one awaiting review",
+                "submitted_report_hash": decision.submitted_report_hash,
+                "current_report_hash": exc.current_report_hash,
+                "status": "awaiting_approval",
+            },
+        ) from exc
+    except DecisionNotPendingError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
 
-    # The resume payload is assembled HERE, server-side, from the validated body plus the verified
-    # principal — the client contributes the decision and the hash it reviewed, never the identity.
-    resume = _resume_payload(decision, principal)
+    if not created:
+        if committed.fingerprint != candidate.fingerprint:
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "error": "decision_conflict",
+                    "message": "decision_id was already committed with a different decision",
+                    "decision_id": decision.decision_id,
+                },
+            )
+        # A genuine retry: replay the committed response, resume nothing.
+        _log.info(
+            "decision %s on %s replayed (decision_id=%s)",
+            committed.decision, investigation_id, committed.decision_id,
+        )
+        return AcceptedInvestigation.model_validate(committed.response)
 
     _log.info(
         "decision %s on %s by %s (kind=%s)",
         decision.decision, investigation_id, principal.audit_label(), principal.auth_method,
     )
 
-    # The only place this transition happens for a resume — _resume_investigation_job must not
-    # repeat it, or history would show a spurious duplicate "running" entry.
-    repo.transition(investigation_id, "running")
+    # The resume payload is assembled HERE, server-side, from the validated body plus the verified
+    # principal. The client contributes the decision and the hash it reviewed, never the identity.
     background.add_task(
         _resume_investigation_job,
         investigation_id,
-        resume,
+        _resume_payload(decision, principal),
         repo=repo,
         svc=svc,
         diagnosis=diagnosis,
     )
-    return AcceptedInvestigation(
-        investigation_id=investigation_id,
-        status="running",
-        poll_url=f"/investigations/{investigation_id}",
-    )
+    return response
 
 
 @app.get("/investigations/{investigation_id}")

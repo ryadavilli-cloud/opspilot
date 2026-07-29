@@ -715,6 +715,15 @@
       });
   }
 
+  // crypto.randomUUID needs a secure context; the console is also served over plain http for
+  // local dev, so fall back to a random-enough key rather than throwing there.
+  function newDecisionId() {
+    if (window.crypto && typeof window.crypto.randomUUID === "function") {
+      return window.crypto.randomUUID();
+    }
+    return "dec-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 10);
+  }
+
   function submitDecision(decision, extra) {
     const token = storedToken();
     if (!token) {
@@ -726,8 +735,15 @@
     }
     if (!currentInvestigationId || !currentReportHash) return;
 
+    // A fresh idempotency key per submit attempt (G-32). The server commits it with the decision,
+    // so if this exact request is retried the graph is not resumed a second time.
     const payload = Object.assign(
-      { decision: decision, submitted_report_hash: currentReportHash }, extra || {}
+      {
+        decision_id: newDecisionId(),
+        decision: decision,
+        submitted_report_hash: currentReportHash,
+      },
+      extra || {}
     );
     [approveBtn, editBtn, evidenceBtn, rejectBtn].forEach(function (b) { b.disabled = true; });
     hide(decisionError);
@@ -744,10 +760,30 @@
         if (res.status === 401 || res.status === 403) {
           throw new Error("Not authorized to decide (HTTP " + res.status + "). Check your reviewer role.");
         }
+        // 409 carries a structured reason (G-32). A stale report is the recoverable one: the run
+        // is STILL awaiting a decision, just on a newer report, so reload it rather than treating
+        // this as a dead end.
+        if (res.status === 409) {
+          return res.json().then(function (body) {
+            const detail = (body && body.detail) || {};
+            if (detail.error === "stale_report") {
+              return { staleReport: true };
+            }
+            throw new Error(detail.message || detail || "decision conflict (HTTP 409)");
+          });
+        }
         if (!res.ok) throw new Error("decision failed: HTTP " + res.status);
         return res.json();
       })
       .then(function (accepted) {
+        if (accepted.staleReport) {
+          decisionError.textContent =
+            "This report changed while you were reviewing it. Reloading the current one - "
+            + "please review again before deciding.";
+          show(decisionError);
+          poll("/investigations/" + encodeURIComponent(currentInvestigationId));
+          return;
+        }
         // The resume runs in the background; keep polling the same investigation, which will
         // either re-pause (edit) or reach a terminal state.
         hide(decisionCard);

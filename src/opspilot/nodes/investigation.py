@@ -393,6 +393,13 @@ def hitl_gate(state: InvestigationState) -> dict[str, Any]:
         # The decision was made against a report that no longer matches current state (e.g. a
         # concurrent edit/decision advanced the thread first). "stale_rejected" is neither
         # "approve" nor "edit", so it already falls into after_approval's fail-closed else-branch.
+        #
+        # As of G-32 this branch is unreachable from the decision endpoint: the stale check moved
+        # into the repository's atomic commit, which rejects a stale hash with a 409 and leaves the
+        # run `awaiting_approval` - it never resumes the graph, so this node never sees it. It is
+        # kept anyway, for the same reason `finalize_report` asserts its invariant rather than
+        # trusting the routing: the alternative to failing closed here is applying a human decision
+        # to a report they did not review. The sync path always submits the current hash.
         return {
             "approval": {
                 **identity,

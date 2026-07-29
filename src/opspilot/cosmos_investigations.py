@@ -34,9 +34,12 @@ from azure.identity import DefaultAzureCredential
 
 from opspilot.investigations import (
     TERMINAL_STATUSES,
+    CommittedDecision,
+    DecisionNotPendingError,
     InvestigationError,
     InvestigationRecord,
     InvestigationStatus,
+    StaleReportError,
 )
 
 # Re-reads and reapplies a transition this many times before giving up on the ETag race — a single
@@ -177,6 +180,69 @@ class CosmosInvestigationRepository:
 
         raise InvestigationError(
             f"transition for {investigation_id!r} lost the optimistic-concurrency race "
+            f"{_MAX_TRANSITION_RETRIES} times in a row"
+        )
+
+    def commit_decision(
+        self,
+        investigation_id: str,
+        *,
+        decision: CommittedDecision,
+    ) -> tuple[CommittedDecision, bool]:
+        """See `InvestigationRepository.commit_decision`.
+
+        The decision lives as a field INSIDE the investigation document, not in a container of its
+        own keyed by `decision_id`. That keeps this to one read plus one conditional write in a
+        single partition: the ETag `replace_item` below is the cross-replica compare-and-set that
+        makes the whole commit atomic, so the replay lookup, both precondition checks, and the
+        `awaiting_approval -> running` transition all decide against the state actually written.
+        A separate container would reintroduce this module's two-write ordering hazard for a key
+        that is only ever read in the context of an investigation already fetched here, and would
+        make `decision_id` globally unique when the scope that is actually wanted is per-run.
+        """
+        for _ in range(_MAX_TRANSITION_RETRIES):
+            try:
+                doc = self._records.read_item(
+                    item=investigation_id, partition_key=investigation_id
+                )
+            except exceptions.CosmosResourceNotFoundError as exc:
+                raise InvestigationError(f"unknown investigation {investigation_id!r}") from exc
+
+            etag = doc["_etag"]
+            record = InvestigationRecord.model_validate(doc)
+
+            existing = record.decisions.get(decision.decision_id)
+            if existing is not None:
+                return existing, False
+
+            if record.status != "awaiting_approval":
+                raise DecisionNotPendingError(record.status)
+
+            current_hash = (record.pending_interrupt or {}).get("report_hash")
+            if decision.submitted_report_hash != current_hash:
+                raise StaleReportError(
+                    submitted=decision.submitted_report_hash, current_report_hash=current_hash
+                )
+
+            record.decisions[decision.decision_id] = decision
+            record.status = "running"
+            record.history.append("running")
+            record.pending_interrupt = None
+            record.updated_at = _now()
+
+            try:
+                self._records.replace_item(
+                    item=investigation_id,
+                    body=_as_document(record),
+                    etag=etag,
+                    match_condition=MatchConditions.IfNotModified,
+                )
+                return decision, True
+            except exceptions.CosmosAccessConditionFailedError:
+                continue  # lost the race - re-read and re-decide against the winner's state
+
+        raise InvestigationError(
+            f"decision commit for {investigation_id!r} lost the optimistic-concurrency race "
             f"{_MAX_TRANSITION_RETRIES} times in a row"
         )
 
