@@ -39,6 +39,7 @@ from opspilot.investigations import (
     InvestigationError,
     InvestigationRecord,
     InvestigationStatus,
+    PublicationConflictError,
     StaleReportError,
 )
 
@@ -243,6 +244,65 @@ class CosmosInvestigationRepository:
 
         raise InvestigationError(
             f"decision commit for {investigation_id!r} lost the optimistic-concurrency race "
+            f"{_MAX_TRANSITION_RETRIES} times in a row"
+        )
+
+    def publish(
+        self,
+        investigation_id: str,
+        *,
+        publication_id: str,
+        status: InvestigationStatus,
+        result: dict[str, Any],
+    ) -> tuple[InvestigationRecord, bool]:
+        """See `InvestigationRepository.publish`.
+
+        Same shape as `commit_decision`: the already-published check is decided against the state
+        the ETag `replace_item` commits against, so it is a compare-and-set across replicas rather
+        than a check-then-act each replica can pass. Two workers handed the same recovered run
+        therefore produce exactly one publication between them, which is the property the queue's
+        at-least-once delivery will lean on.
+        """
+        if status not in TERMINAL_STATUSES:
+            raise ValueError(f"publish is a terminal write; got status={status!r}")
+        for _ in range(_MAX_TRANSITION_RETRIES):
+            try:
+                doc = self._records.read_item(
+                    item=investigation_id, partition_key=investigation_id
+                )
+            except exceptions.CosmosResourceNotFoundError as exc:
+                raise InvestigationError(f"unknown investigation {investigation_id!r}") from exc
+
+            etag = doc["_etag"]
+            record = InvestigationRecord.model_validate(doc)
+
+            if record.publication_id is not None:
+                if record.publication_id != publication_id:
+                    raise PublicationConflictError(
+                        published=record.publication_id, attempted=publication_id
+                    )
+                return record, False
+
+            record.publication_id = publication_id
+            record.status = status
+            record.history.append(status)
+            record.result = result
+            record.pending_interrupt = None
+            record.updated_at = _now()
+
+            try:
+                self._records.replace_item(
+                    item=investigation_id,
+                    body=_as_document(record),
+                    etag=etag,
+                    match_condition=MatchConditions.IfNotModified,
+                )
+                return record, True
+            except exceptions.CosmosAccessConditionFailedError:
+                continue  # lost the race - re-read; the winner's publication_id now decides
+
+        raise InvestigationError(
+            f"publication of {investigation_id!r} lost the optimistic-concurrency race "
             f"{_MAX_TRANSITION_RETRIES} times in a row"
         )
 

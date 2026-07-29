@@ -156,6 +156,46 @@ def test_lifecycle_queued_running_awaiting_approval_then_completed():
     assert final["pending_decision"] is None  # cleared once resolved
 
 
+def test_an_approved_run_is_recorded_through_the_publication_sink():
+    """G-58 end to end: a real approve carries a derived publication_id onto the record, so the
+    "has this already published?" question has a durable answer after a process restart."""
+    _use_service(_bm25_service)
+    posted = client.post("/investigations", json=_ALERT, headers=HUMAN_AUTH).json()
+    pending = client.get(posted["poll_url"], headers=HUMAN_AUTH).json()
+    _approve(posted["investigation_id"], pending["pending_decision"]["report_hash"])
+
+    repo = app.dependency_overrides[get_repository]()
+    record = repo.get(posted["investigation_id"])
+    assert record.status == "completed"
+    assert record.publication_id  # stamped by finalize_report, committed by publish()
+
+
+def test_a_re_executed_terminal_leg_publishes_once():
+    """The checkpoint-recovery case the sink exists for, at the seam that will meet an
+    at-least-once queue (G-34): `_advance` is handed the SAME terminal state twice, as a re-driven
+    worker would be. The second pass must not re-record the result or the history entry."""
+    from opspilot.api import _advance, get_diagnosis
+
+    repo = app.dependency_overrides[get_repository]()
+    repo.get_or_create(idempotency_key="k", investigation_id="inv-1", incident_id="inc-004")
+    repo.transition("inv-1", "running")
+    terminal = {
+        "incident_id": "inc-004",
+        "safety": {"passed": True, "violations": []},
+        "publication_id": "derived-pub-1",
+    }
+    deps = {"repo": repo, "svc": _bm25_service(), "diagnosis": get_diagnosis()}
+
+    _advance("inv-1", lambda: terminal, **deps)
+    first = repo.get("inv-1")
+    _advance("inv-1", lambda: terminal, **deps)
+    second = repo.get("inv-1")
+
+    assert second.history.count(first.status) == 1  # not published a second time
+    assert second.result == first.result
+    assert second.updated_at == first.updated_at
+
+
 def test_failure_is_recorded_not_raised():
     _use_service(lambda: _BoomService())
     posted = client.post("/investigations", json=_ALERT, headers=HUMAN_AUTH)

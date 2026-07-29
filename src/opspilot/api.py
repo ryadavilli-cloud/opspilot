@@ -53,6 +53,7 @@ from opspilot.investigations import (
     InvestigationRecord,
     InvestigationRepository,
     InvestigationStatus,
+    PublicationConflictError,
     StaleReportError,
 )
 from opspilot.repository import build_investigation_repository
@@ -704,7 +705,12 @@ def _advance(
     completed run — anything else genuinely terminal is mapped and recorded as usual. Shared by
     the initial job and every decision-resume, so a real reviewer never has a paused run
     misreported as `completed`, and an `edit` decision that re-interrupts is handled the same way
-    as the first pause."""
+    as the first pause.
+
+    A run that reached `finalize_report` carries a `publication_id` and is recorded through the
+    idempotent sink instead of a plain transition (G-58), so a re-executed terminal leg publishes
+    once. Runs that never published (escalated, rejected, failed) have no id and keep the ordinary
+    last-write-wins transition."""
     try:
         state = run()
     except Exception as exc:  # noqa: BLE001 — any run fault becomes a recorded `failed`, not a crash
@@ -715,7 +721,28 @@ def _advance(
         repo.transition(investigation_id, "awaiting_approval", pending_interrupt=pending[0].value)
         return
     response = _build_response(state, svc, diagnosis)
-    repo.transition(investigation_id, response.status, result=response.model_dump(mode="json"))
+    result = response.model_dump(mode="json")
+    publication_id = state.get("publication_id") or ""
+    if not publication_id:
+        repo.transition(investigation_id, response.status, result=result)
+        return
+    try:
+        _, created = repo.publish(
+            investigation_id,
+            publication_id=publication_id,
+            status=response.status,
+            result=result,
+        )
+    except PublicationConflictError:
+        # Fail closed and stay loud: the already-published record is left exactly as it is, since
+        # replacing the bytes an approval was bound to is the outcome the sink exists to prevent.
+        _log.exception("refused a conflicting publication for %s", investigation_id)
+        return
+    if not created:
+        _log.info(
+            "publication %s for %s already committed; second write suppressed",
+            publication_id, investigation_id,
+        )
 
 
 def _configurable_for(investigation_id: str, *, svc, diagnosis) -> dict:

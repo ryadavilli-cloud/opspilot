@@ -158,6 +158,10 @@ class InvestigationState(BaseModel):
     # recomputed on synthesis and on every edit, so an approval can be bound to exact report bytes.
     report: IncidentReport | None = None
     report_hash: str = ""
+    # Stamped by `finalize_report` and DERIVED, never minted (G-58): re-executing the terminal leg
+    # after a checkpoint recovery must produce the same value, which is what lets the sink refuse
+    # the second write. Empty on every run that never reached finalize (escalated, rejected).
+    publication_id: str = ""
     safety: dict[str, Any] | None = None
     approval: dict[str, Any] | None = None
     postmortem: dict[str, Any] | None = None

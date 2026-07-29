@@ -441,12 +441,21 @@ def apply_edit(state: InvestigationState) -> dict[str, Any]:
 
 
 def finalize_report(state: InvestigationState) -> dict[str, Any]:
-    """Publish the byte-exact object the approval was bound to.
+    """Publish the byte-exact object the approval was bound to, under a stable `publication_id`.
 
     `after_approval` only routes here on `decision == "approve"`, which `hitl_gate` only ever sets
     once `submitted_report_hash == state.report_hash` — so this invariant should be unreachable in
     practice. It is asserted explicitly anyway rather than left as a comment: a future change to
     the routing that broke it would otherwise publish a report the approval never saw, silently.
+
+    The `publication_id` is **derived from (investigation_id, report_hash), never minted** (G-58).
+    That is the whole mechanism: LangGraph re-executes an interrupted node from the top, so a
+    checkpoint-recovered run runs this node a second time, and a `uuid4()` here would hand the
+    sink a fresh key each time and publish the same report twice. Deriving it means the second
+    execution presents the key the first one already committed, and the sink refuses it. Binding
+    it to `report_hash` rather than the run alone is deliberate: an `edit` produces different
+    approved bytes, which is a genuinely different publication and must not be suppressed as a
+    replay of the first.
     """
     approval = state.approval or {}
     if approval.get("approved_report_hash") != state.report_hash:
@@ -455,7 +464,12 @@ def finalize_report(state: InvestigationState) -> dict[str, Any]:
             f"{approval.get('approved_report_hash')!r} does not match report_hash="
             f"{state.report_hash!r}"
         )
-    return {"report": state.report, "report_hash": state.report_hash}
+    raw = _UNIT_SEP.join((state.investigation_id or "", state.report_hash))
+    return {
+        "report": state.report,
+        "report_hash": state.report_hash,
+        "publication_id": hashlib.sha256(raw.encode("utf-8")).hexdigest(),
+    }
 
 
 def postmortem(state: InvestigationState) -> dict[str, Any]:

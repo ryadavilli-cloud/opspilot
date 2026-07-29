@@ -89,6 +89,10 @@ class InvestigationRecord(BaseModel):
     # response, not conflict against the approve. Scoped per-investigation on purpose - a client
     # reusing a decision_id on a different investigation is isolated, not a collision.
     decisions: dict[str, CommittedDecision] = Field(default_factory=dict)
+    # Set once, by the first publication to land (G-58). Its presence IS the "already published"
+    # flag the sink checks, which is why it lives on the record rather than in memory: the
+    # duplicate it must refuse is a re-execution after a process restart.
+    publication_id: str | None = None
     created_at: datetime = Field(default_factory=_now)
     updated_at: datetime = Field(default_factory=_now)
 
@@ -146,6 +150,35 @@ class InvestigationRepository(Protocol):
         """
         ...
 
+    def publish(
+        self,
+        investigation_id: str,
+        *,
+        publication_id: str,
+        status: InvestigationStatus,
+        result: dict[str, Any],
+    ) -> tuple[InvestigationRecord, bool]:
+        """The idempotent publication sink (G-58): commit the terminal result under
+        `publication_id`, at most once.
+
+        Returns `(record, created)`. `created=False` means this exact `publication_id` was already
+        published and NOTHING was written a second time - not the result, not the status, not the
+        history entry. That is the guarantee the caller needs once delivery is at-least-once: a
+        checkpoint-recovered run re-executes `finalize_report`, presents the same derived id, and
+        is absorbed here instead of publishing twice.
+
+        Raises `PublicationConflictError` if a DIFFERENT `publication_id` was already published for
+        this investigation. That is not a replay - it is a second, different report published over
+        a run that already published one - so it fails closed rather than overwriting. It should be
+        unreachable: an `edit` re-pauses instead of publishing, so exactly one publication is
+        reachable per run.
+
+        This is deliberately not `transition(...)`: a plain transition is last-write-wins by
+        design (it is how a run moves queued -> running -> awaiting_approval), and a terminal
+        publication is the one write where last-write-wins is the wrong rule.
+        """
+        ...
+
     def count_active(self, *, subject: str | None = None) -> int:
         """Count non-terminal investigations (queued/running/awaiting_approval) — every one still
         occupying a concurrency slot. `subject=None` counts globally; otherwise only investigations
@@ -186,6 +219,23 @@ class StaleReportError(DecisionError):
         super().__init__(
             f"stale_report: decision submitted for {submitted}, "
             f"current is {current_report_hash}"
+        )
+
+
+class PublicationConflictError(Exception):
+    """A second, DIFFERENT publication was attempted on an already-published investigation (G-58).
+
+    Distinct from the harmless replay the sink absorbs: the same `publication_id` arriving twice is
+    a re-execution and is a no-op, while a different one means two different sets of approved bytes
+    were published for one run. Raised rather than overwritten, because the record a reviewer's
+    approval is bound to is exactly the thing that must not be silently replaced.
+    """
+
+    def __init__(self, *, published: str, attempted: str) -> None:
+        self.published = published
+        self.attempted = attempted
+        super().__init__(
+            f"investigation already published as {published}, refusing to publish {attempted}"
         )
 
 
@@ -304,6 +354,38 @@ class InMemoryInvestigationRepository:
             record.pending_interrupt = None
             record.updated_at = _now()
             return decision.model_copy(deep=True), True
+
+    def publish(
+        self,
+        investigation_id: str,
+        *,
+        publication_id: str,
+        status: InvestigationStatus,
+        result: dict[str, Any],
+    ) -> tuple[InvestigationRecord, bool]:
+        """See `InvestigationRepository.publish`. One lock acquisition covers the already-published
+        check and the write, so two threads publishing the same run cannot both pass the check."""
+        if status not in TERMINAL_STATUSES:
+            raise ValueError(f"publish is a terminal write; got status={status!r}")
+        with self._lock:
+            record = self._records.get(investigation_id)
+            if record is None:
+                raise InvestigationError(f"unknown investigation {investigation_id!r}")
+
+            if record.publication_id is not None:
+                if record.publication_id != publication_id:
+                    raise PublicationConflictError(
+                        published=record.publication_id, attempted=publication_id
+                    )
+                return record.model_copy(deep=True), False
+
+            record.publication_id = publication_id
+            record.status = status
+            record.history.append(status)
+            record.result = result
+            record.pending_interrupt = None
+            record.updated_at = _now()
+            return record.model_copy(deep=True), True
 
     def count_active(self, *, subject: str | None = None) -> int:
         with self._lock:

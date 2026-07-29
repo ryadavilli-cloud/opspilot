@@ -14,6 +14,7 @@ from opspilot.investigations import (
     CommittedDecision,
     DecisionNotPendingError,
     InMemoryInvestigationRepository,
+    PublicationConflictError,
     StaleReportError,
 )
 
@@ -196,3 +197,114 @@ def test_concurrent_distinct_decisions_commit_exactly_once():
     record = repo.get(investigation_id)
     assert record is not None
     assert list(record.decisions) == committed  # only the winner was ever recorded
+
+
+# --- publish: the idempotent publication sink (G-58) ---------------------------------------------
+_RESULT = {"investigation_id": "id-1", "status": "completed", "reason": None}
+
+
+def _running(repo: InMemoryInvestigationRepository, investigation_id: str = "id-1") -> str:
+    repo.get_or_create(
+        idempotency_key=f"k-{investigation_id}",
+        investigation_id=investigation_id,
+        incident_id="inc-1",
+    )
+    repo.transition(investigation_id, "running")
+    return investigation_id
+
+
+def test_publish_commits_the_terminal_result_under_its_publication_id():
+    repo = InMemoryInvestigationRepository()
+    investigation_id = _running(repo)
+
+    record, created = repo.publish(
+        investigation_id, publication_id="pub-1", status="completed", result=_RESULT
+    )
+
+    assert created
+    assert record.publication_id == "pub-1"
+    assert record.status == "completed"
+    assert record.result == _RESULT
+
+
+def test_republishing_the_same_id_writes_nothing_a_second_time():
+    """The re-execution case: a checkpoint-recovered run re-runs finalize_report, derives the same
+    id, and must be absorbed. Not just "no duplicate result" - no duplicate history entry either,
+    since a second `completed` in the history is itself a record of a publication that must not
+    have happened."""
+    repo = InMemoryInvestigationRepository()
+    investigation_id = _running(repo)
+    first, _ = repo.publish(
+        investigation_id, publication_id="pub-1", status="completed", result=_RESULT
+    )
+
+    replayed, created = repo.publish(
+        investigation_id,
+        publication_id="pub-1",
+        status="completed",
+        result={"investigation_id": "id-1", "status": "completed", "reason": "a re-execution"},
+    )
+
+    assert not created
+    assert replayed.result == _RESULT  # the original bytes, not the re-execution's
+    assert replayed.history == first.history
+    assert replayed.updated_at == first.updated_at  # nothing was touched at all
+
+
+def test_a_different_publication_on_a_published_run_fails_closed():
+    repo = InMemoryInvestigationRepository()
+    investigation_id = _running(repo)
+    repo.publish(investigation_id, publication_id="pub-1", status="completed", result=_RESULT)
+
+    with pytest.raises(PublicationConflictError) as excinfo:
+        repo.publish(
+            investigation_id, publication_id="pub-2", status="completed", result={"other": True}
+        )
+
+    assert excinfo.value.published == "pub-1"
+    record = repo.get(investigation_id)
+    assert record is not None
+    assert record.result == _RESULT  # the approved bytes were not replaced
+
+
+def test_publish_refuses_a_non_terminal_status():
+    """Publication is the terminal write. Accepting `running` here would leave a run flagged as
+    published while still moving, and that flag is what every later publication is refused
+    against."""
+    repo = InMemoryInvestigationRepository()
+    investigation_id = _running(repo)
+
+    with pytest.raises(ValueError):
+        repo.publish(
+            investigation_id, publication_id="pub-1", status="running", result=_RESULT
+        )
+
+
+def test_concurrent_publications_of_one_id_commit_exactly_once():
+    """N workers handed the same recovered run: exactly one publishes, the rest are absorbed as
+    replays. This is what at-least-once delivery (G-34) will lean on."""
+    repo = InMemoryInvestigationRepository()
+    investigation_id = _running(repo)
+    n = 16
+    start = threading.Barrier(n)
+    created_flags: list[bool] = []
+    lock = threading.Lock()
+
+    def call() -> None:
+        start.wait(timeout=10)
+        _, created = repo.publish(
+            investigation_id, publication_id="pub-1", status="completed", result=_RESULT
+        )
+        with lock:
+            created_flags.append(created)
+
+    threads = [threading.Thread(target=call) for _ in range(n)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    assert created_flags.count(True) == 1
+    record = repo.get(investigation_id)
+    assert record is not None
+    assert record.history.count("completed") == 1
