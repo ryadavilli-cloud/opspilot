@@ -7,6 +7,8 @@ for its config guard (a live Cosmos test would need Azure + the optional `checkp
 
 from __future__ import annotations
 
+import threading
+from concurrent.futures import ThreadPoolExecutor
 from typing import TypedDict
 
 import pytest
@@ -26,6 +28,16 @@ def _tiny_graph(checkpointer):
     g.add_node("set", lambda _s: {"value": "persisted"})
     g.add_edge(START, "set")
     g.add_edge("set", END)
+    return g.compile(checkpointer=checkpointer)
+
+
+def _echo_graph(checkpointer):
+    """Like `_tiny_graph`, but the stamped value derives from the input, so a checkpoint read
+    back proves *which* caller wrote it. That is what the concurrency test needs."""
+    g = StateGraph(_S)
+    g.add_node("stamp", lambda s: {"value": f"{s['value']}-done"})
+    g.add_edge(START, "stamp")
+    g.add_edge("stamp", END)
     return g.compile(checkpointer=checkpointer)
 
 
@@ -80,6 +92,45 @@ def test_a_fresh_thread_has_no_state(tmp_path):
         {"configurable": {"thread_id": "does-not-exist"}}
     )
     assert other.values == {}
+
+
+def test_concurrent_threads_share_one_sqlite_saver(tmp_path):
+    """G-37: the dev-path shape. ONE process-wide saver behind ONE compiled graph (api.py's
+    `get_graph()` singleton), driven from many threads at once, because FastAPI runs the sync
+    background investigation jobs on its worker threadpool.
+
+    The saver holds a single `check_same_thread=False` connection, so this is the regression
+    test for `SqliteSaver` losing its internal serialization (see `checkpoint.py`). Verified to
+    discriminate: with that lock stubbed out, every worker here faults with an
+    `sqlite3.InterfaceError`. Each worker asserts on its OWN namespace, so a cross-thread write
+    fails the assertion rather than passing by coincidence.
+    """
+    saver = build_checkpointer("sqlite", sqlite_path=str(tmp_path / "checkpoints.sqlite"))
+    graph = _echo_graph(saver)
+
+    workers, turns = 8, 5
+    start = threading.Barrier(workers)  # release all threads together: maximize the overlap
+    errors: list[Exception] = []
+
+    def drive(i: int) -> None:
+        cfg = {"configurable": {"thread_id": f"inc-{i}"}}
+        try:
+            start.wait(timeout=10)
+            for turn in range(turns):
+                result = graph.invoke({"value": f"inc-{i}-turn-{turn}"}, cfg)
+                assert result["value"] == f"inc-{i}-turn-{turn}-done"
+        except Exception as exc:  # noqa: BLE001 (collected so the assertion reports the real fault)
+            errors.append(exc)
+
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        list(pool.map(drive, range(workers)))
+
+    assert errors == [], f"concurrent checkpoint writes faulted: {errors!r}"
+
+    # Every namespace survived holding its own last turn: no lost or cross-written checkpoints.
+    for i in range(workers):
+        snapshot = graph.get_state({"configurable": {"thread_id": f"inc-{i}"}})
+        assert snapshot.values["value"] == f"inc-{i}-turn-{turns - 1}-done"
 
 
 def test_hitl_interrupt_resumes_across_a_fresh_checkpointer_instance(tmp_path):

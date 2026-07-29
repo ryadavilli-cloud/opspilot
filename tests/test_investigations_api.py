@@ -9,6 +9,8 @@ ToolService; a failure is forced with a service that raises.
 
 from __future__ import annotations
 
+from uuid import uuid4
+
 import pytest
 
 pytest.importorskip("httpx")  # FastAPI's TestClient transport
@@ -111,12 +113,22 @@ def test_post_returns_202_with_id_status_and_poll_url():
     assert r.headers["location"] == body["poll_url"]  # 202 Location convention
 
 
-def _approve(investigation_id: str, report_hash: str, *, headers=None, **overrides) -> None:
-    body = {"decision": "approve", "submitted_report_hash": report_hash}
+def _decision(decision: str, report_hash: str, **overrides) -> dict:
+    """A decision body carrying a fresh `decision_id` (G-32: required, client-minted). Tests that
+    are not specifically about replay want a distinct key per submission."""
+    body = {
+        "decision_id": str(uuid4()),
+        "decision": decision,
+        "submitted_report_hash": report_hash,
+    }
     body.update(overrides)
+    return body
+
+
+def _approve(investigation_id: str, report_hash: str, *, headers=None, **overrides) -> None:
     r = client.post(
         f"/investigations/{investigation_id}/decision",
-        json=body, headers=headers or HUMAN_AUTH,
+        json=_decision("approve", report_hash, **overrides), headers=headers or HUMAN_AUTH,
     )
     assert r.status_code == 202, r.text
 
@@ -142,6 +154,46 @@ def test_lifecycle_queued_running_awaiting_approval_then_completed():
     assert final["result"] and final["result"]["report"]["citations"]
     assert final["error"] is None
     assert final["pending_decision"] is None  # cleared once resolved
+
+
+def test_an_approved_run_is_recorded_through_the_publication_sink():
+    """G-58 end to end: a real approve carries a derived publication_id onto the record, so the
+    "has this already published?" question has a durable answer after a process restart."""
+    _use_service(_bm25_service)
+    posted = client.post("/investigations", json=_ALERT, headers=HUMAN_AUTH).json()
+    pending = client.get(posted["poll_url"], headers=HUMAN_AUTH).json()
+    _approve(posted["investigation_id"], pending["pending_decision"]["report_hash"])
+
+    repo = app.dependency_overrides[get_repository]()
+    record = repo.get(posted["investigation_id"])
+    assert record.status == "completed"
+    assert record.publication_id  # stamped by finalize_report, committed by publish()
+
+
+def test_a_re_executed_terminal_leg_publishes_once():
+    """The checkpoint-recovery case the sink exists for, at the seam that will meet an
+    at-least-once queue (G-34): `_advance` is handed the SAME terminal state twice, as a re-driven
+    worker would be. The second pass must not re-record the result or the history entry."""
+    from opspilot.api import _advance, get_diagnosis
+
+    repo = app.dependency_overrides[get_repository]()
+    repo.get_or_create(idempotency_key="k", investigation_id="inv-1", incident_id="inc-004")
+    repo.transition("inv-1", "running")
+    terminal = {
+        "incident_id": "inc-004",
+        "safety": {"passed": True, "violations": []},
+        "publication_id": "derived-pub-1",
+    }
+    deps = {"repo": repo, "svc": _bm25_service(), "diagnosis": get_diagnosis()}
+
+    _advance("inv-1", lambda: terminal, **deps)
+    first = repo.get("inv-1")
+    _advance("inv-1", lambda: terminal, **deps)
+    second = repo.get("inv-1")
+
+    assert second.history.count(first.status) == 1  # not published a second time
+    assert second.result == first.result
+    assert second.updated_at == first.updated_at
 
 
 def test_failure_is_recorded_not_raised():
@@ -212,7 +264,7 @@ def test_investigate_compatibility_endpoint_still_works():
 def test_decision_unknown_investigation_is_404():
     r = client.post(
         "/investigations/does-not-exist/decision",
-        json={"decision": "approve", "submitted_report_hash": "h"}, headers=HUMAN_AUTH,
+        json=_decision("approve", "h"), headers=HUMAN_AUTH,
     )
     assert r.status_code == 404
 
@@ -224,9 +276,9 @@ def test_decision_against_a_resolved_investigation_is_409():
     report_hash = pending["pending_decision"]["report_hash"]
     _approve(posted["investigation_id"], report_hash)  # resolves it -> completed
 
-    body = {"decision": "approve", "submitted_report_hash": report_hash}
     r = client.post(
-        f"/investigations/{posted['investigation_id']}/decision", json=body, headers=HUMAN_AUTH,
+        f"/investigations/{posted['investigation_id']}/decision",
+        json=_decision("approve", report_hash), headers=HUMAN_AUTH,
     )
     assert r.status_code == 409
 
@@ -239,7 +291,7 @@ def test_reject_decision_escalates():
 
     r = client.post(
         f"/investigations/{posted['investigation_id']}/decision",
-        json={"decision": "reject", "submitted_report_hash": report_hash}, headers=HUMAN_AUTH,
+        json=_decision("reject", report_hash), headers=HUMAN_AUTH,
     )
     assert r.status_code == 202
 
@@ -247,20 +299,36 @@ def test_reject_decision_escalates():
     assert final["status"] == "escalated"
 
 
-def test_stale_hash_decision_is_rejected_and_escalates():
+def test_a_stale_hash_is_409_and_the_run_stays_reviewable():
+    """G-32, replacing #36's escalate-on-stale. A decision submitted against a report that is no
+    longer the one awaiting review is a CONCURRENCY CONFLICT, not an investigation failure: it is
+    refused synchronously, the graph is never resumed, and the run stays `awaiting_approval` so
+    the reviewer can re-read the current report and decide again. Escalation is reserved for
+    repeated policy failures; burning a human's paused investigation over a lost race is not
+    that."""
     _use_service(_bm25_service)
     posted = client.post("/investigations", json=_ALERT, headers=HUMAN_AUTH).json()
-    client.get(posted["poll_url"], headers=HUMAN_AUTH)  # ensure it's paused before deciding
+    pending = client.get(posted["poll_url"], headers=HUMAN_AUTH).json()
+    real_hash = pending["pending_decision"]["report_hash"]
 
     r = client.post(
         f"/investigations/{posted['investigation_id']}/decision",
-        json={"decision": "approve", "submitted_report_hash": "not-the-real-hash"},
+        json=_decision("approve", "not-the-real-hash"),
         headers=HUMAN_AUTH,
     )
-    assert r.status_code == 202  # accepted for resume; the rejection happens inside the graph
+    assert r.status_code == 409
+    detail = r.json()["detail"]
+    assert detail["error"] == "stale_report"
+    # The current hash comes back, so the client can re-review and resubmit without guessing.
+    assert detail["current_report_hash"] == real_hash
 
-    final = client.get(posted["poll_url"], headers=HUMAN_AUTH).json()
-    assert final["status"] == "escalated"
+    # The run is untouched: still paused, still on the same report, and still decidable.
+    after = client.get(posted["poll_url"], headers=HUMAN_AUTH).json()
+    assert after["status"] == "awaiting_approval"
+    assert after["pending_decision"]["report_hash"] == real_hash
+
+    _approve(posted["investigation_id"], real_hash)
+    assert client.get(posted["poll_url"], headers=HUMAN_AUTH).json()["status"] == "completed"
 
 
 def test_edit_decision_re_pauses_with_a_new_hash_then_approves():
@@ -271,8 +339,8 @@ def test_edit_decision_re_pauses_with_a_new_hash_then_approves():
 
     r = client.post(
         f"/investigations/{posted['investigation_id']}/decision",
-        json={"decision": "edit", "submitted_report_hash": first_hash,
-              "edits": {"recommended_next_step": "roll back the deploy"}},
+        json=_decision("edit", first_hash,
+                       edits={"recommended_next_step": "roll back the deploy"}),
         headers=HUMAN_AUTH,
     )
     assert r.status_code == 202
@@ -286,6 +354,130 @@ def test_edit_decision_re_pauses_with_a_new_hash_then_approves():
     final = client.get(posted["poll_url"], headers=HUMAN_AUTH).json()
     assert final["status"] == "completed"
     assert final["result"]["report"]["recommended_next_step"] == "roll back the deploy"
+
+
+# --- decision idempotency (G-32) -----------------------------------------------------------------
+# A reviewer double-clicking, or a client retrying a POST that timed out after the server had
+# already committed, must not resume the graph twice. The key is client-minted and REQUIRED.
+def _pause_and_hash() -> tuple[str, str]:
+    _use_service(_bm25_service)
+    posted = client.post("/investigations", json=_ALERT, headers=HUMAN_AUTH).json()
+    pending = client.get(posted["poll_url"], headers=HUMAN_AUTH).json()
+    return posted["investigation_id"], pending["pending_decision"]["report_hash"]
+
+
+def test_a_decision_without_a_decision_id_is_422():
+    """Required, not optional: an idempotency key that silently means nothing when omitted is the
+    same plausible-looking-field failure that `approver` was removed for."""
+    investigation_id, report_hash = _pause_and_hash()
+    r = client.post(
+        f"/investigations/{investigation_id}/decision",
+        json={"decision": "approve", "submitted_report_hash": report_hash},
+        headers=HUMAN_AUTH,
+    )
+    assert r.status_code == 422
+    assert _get(investigation_id)["status"] == "awaiting_approval"
+
+
+def test_a_retried_decision_replays_the_committed_response_without_resuming_twice():
+    investigation_id, report_hash = _pause_and_hash()
+    body = _decision("approve", report_hash)
+
+    first = client.post(
+        f"/investigations/{investigation_id}/decision", json=body, headers=HUMAN_AUTH
+    )
+    assert first.status_code == 202
+    after_first = _get(investigation_id)
+    assert after_first["status"] == "completed"
+
+    # The identical request again: the committed response comes back verbatim...
+    second = client.post(
+        f"/investigations/{investigation_id}/decision", json=body, headers=HUMAN_AUTH
+    )
+    assert second.status_code == 202
+    assert second.json() == first.json()
+
+    # ...and the graph was resumed exactly once. A second resume would append another `running`
+    # to the history, which is the observable signature of a double-applied decision.
+    after_second = _get(investigation_id)
+    assert after_second["history"] == after_first["history"]
+    assert after_second["history"].count("running") == 2  # one for the run, one for the resume
+
+
+def test_the_same_decision_id_with_a_different_body_is_409():
+    """Not a silent overwrite: reusing a consumed key for a *different* decision is a conflict."""
+    investigation_id, report_hash = _pause_and_hash()
+    body = _decision("approve", report_hash)
+    assert client.post(
+        f"/investigations/{investigation_id}/decision", json=body, headers=HUMAN_AUTH
+    ).status_code == 202
+
+    conflicting = {**body, "decision": "reject"}
+    r = client.post(
+        f"/investigations/{investigation_id}/decision", json=conflicting, headers=HUMAN_AUTH
+    )
+    assert r.status_code == 409
+    assert r.json()["detail"]["error"] == "decision_conflict"
+    # The committed approve stands; the conflicting reject changed nothing.
+    assert _get(investigation_id)["status"] == "completed"
+
+
+def test_another_reviewer_reusing_a_decision_id_is_a_conflict_not_a_replay():
+    """The fingerprint binds the verified reviewer, so a second identity reusing someone's key
+    surfaces rather than silently replaying their decision as its own."""
+    investigation_id, report_hash = _pause_and_hash()
+    body = _decision("approve", report_hash)
+    assert client.post(
+        f"/investigations/{investigation_id}/decision", json=body, headers=HUMAN_AUTH
+    ).status_code == 202
+
+    r = client.post(
+        f"/investigations/{investigation_id}/decision", json=body, headers=SERVICE_AUTH
+    )
+    assert r.status_code == 409
+    assert r.json()["detail"]["error"] == "decision_conflict"
+    assert _get(investigation_id)["result"]["approval"]["approver"] == "entra_jwt:oid-human-1"
+
+
+def test_a_second_distinct_decision_on_a_consumed_pause_is_409():
+    """Two different decision_ids cannot both commit: the first moves the run out of
+    `awaiting_approval` in the same atomic write that records it."""
+    investigation_id, report_hash = _pause_and_hash()
+    assert client.post(
+        f"/investigations/{investigation_id}/decision",
+        json=_decision("approve", report_hash), headers=HUMAN_AUTH,
+    ).status_code == 202
+
+    r = client.post(
+        f"/investigations/{investigation_id}/decision",
+        json=_decision("reject", report_hash), headers=HUMAN_AUTH,
+    )
+    assert r.status_code == 409
+    assert _get(investigation_id)["status"] == "completed"
+
+
+def test_each_pause_of_an_edited_run_is_decided_under_its_own_key():
+    """An `edit` re-pauses, so one investigation commits several decisions. Replaying the edit's
+    key after the approve committed must return the EDIT's response, not conflict against the
+    approve, which is why decisions are stored keyed by id rather than as a single last-write."""
+    investigation_id, first_hash = _pause_and_hash()
+    edit = _decision("edit", first_hash, edits={"recommended_next_step": "roll back the deploy"})
+    edit_response = client.post(
+        f"/investigations/{investigation_id}/decision", json=edit, headers=HUMAN_AUTH
+    )
+    assert edit_response.status_code == 202
+
+    repaused = _get(investigation_id)
+    assert repaused["status"] == "awaiting_approval"
+    second_hash = repaused["pending_decision"]["report_hash"]
+    _approve(investigation_id, second_hash)
+    assert _get(investigation_id)["status"] == "completed"
+
+    replayed = client.post(
+        f"/investigations/{investigation_id}/decision", json=edit, headers=HUMAN_AUTH
+    )
+    assert replayed.status_code == 202
+    assert replayed.json() == edit_response.json()
 
 
 # --- reviewer identity (G-01) --------------------------------------------------------------------
@@ -307,7 +499,7 @@ def test_an_unauthenticated_decision_is_rejected():
 
     r = client.post(
         f"/investigations/{investigation_id}/decision",
-        json={"decision": "approve", "submitted_report_hash": report_hash},
+        json=_decision("approve", report_hash),
     )
     assert r.status_code == 401
     # And the investigation is untouched — a rejected decision must not advance the run.
@@ -319,7 +511,7 @@ def test_an_authenticated_principal_without_the_role_is_rejected():
 
     r = client.post(
         f"/investigations/{investigation_id}/decision",
-        json={"decision": "approve", "submitted_report_hash": report_hash},
+        json=_decision("approve", report_hash),
         headers={"Authorization": "Bearer no-role-token"},
     )
     assert r.status_code == 403
@@ -333,11 +525,7 @@ def test_a_client_supplied_approver_is_refused_outright():
 
     r = client.post(
         f"/investigations/{investigation_id}/decision",
-        json={
-            "decision": "approve",
-            "submitted_report_hash": report_hash,
-            "approver": "someone-else",
-        },
+        json=_decision("approve", report_hash, approver="someone-else"),
         headers=HUMAN_AUTH,
     )
     assert r.status_code == 422
@@ -369,7 +557,7 @@ def test_a_service_principal_decision_is_never_reported_as_human():
 def test_authentication_precedes_existence_so_the_endpoint_is_not_an_id_oracle():
     # An unauthenticated caller must not be able to distinguish a real investigation from a
     # fabricated id by the status code it gets back.
-    body = {"decision": "approve", "submitted_report_hash": "h"}
+    body = _decision("approve", "h")
     real_id, _ = _pause_one()
 
     unknown = client.post("/investigations/does-not-exist/decision", json=body)

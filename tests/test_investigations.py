@@ -8,7 +8,15 @@ from __future__ import annotations
 
 import threading
 
-from opspilot.investigations import InMemoryInvestigationRepository
+import pytest
+
+from opspilot.investigations import (
+    CommittedDecision,
+    DecisionNotPendingError,
+    InMemoryInvestigationRepository,
+    PublicationConflictError,
+    StaleReportError,
+)
 
 
 def test_get_or_create_is_atomic_under_concurrent_callers():
@@ -65,3 +73,238 @@ def test_force_rerun_mints_a_new_record_and_supersedes_the_key():
     )
     assert not later_created
     assert later.investigation_id == "id-2"
+
+
+# --- commit_decision: the decision leg's commit point (G-32) -------------------------------------
+_HASH = "report-hash-1"
+
+
+def _paused(repo: InMemoryInvestigationRepository, investigation_id: str = "id-1") -> str:
+    """Drive a record to `awaiting_approval` holding `_HASH` as its pending report."""
+    repo.get_or_create(
+        idempotency_key=f"k-{investigation_id}",
+        investigation_id=investigation_id,
+        incident_id="inc-1",
+    )
+    repo.transition(investigation_id, "awaiting_approval", pending_interrupt={"report_hash": _HASH})
+    return investigation_id
+
+
+def _decision(
+    decision_id: str, *, hash_: str = _HASH, fingerprint: str = "fp-1"
+) -> CommittedDecision:
+    return CommittedDecision(
+        decision_id=decision_id,
+        fingerprint=fingerprint,
+        decision="approve",
+        submitted_report_hash=hash_,
+        approver="entra_jwt:oid-1",
+        response={"investigation_id": "id-1", "status": "running", "poll_url": "/x"},
+    )
+
+
+def test_commit_decision_records_and_transitions_in_one_step():
+    repo = InMemoryInvestigationRepository()
+    investigation_id = _paused(repo)
+
+    committed, created = repo.commit_decision(investigation_id, decision=_decision("d-1"))
+
+    assert created and committed.decision_id == "d-1"
+    record = repo.get(investigation_id)
+    assert record is not None
+    # The decision is durable AND the run has moved on, from a single call - there is no window
+    # in which a decision is recorded but the run still looks decidable, or vice versa.
+    assert record.decisions["d-1"].fingerprint == "fp-1"
+    assert record.status == "running"
+    assert record.pending_interrupt is None
+
+
+def test_replaying_a_decision_id_returns_the_original_without_a_second_commit():
+    repo = InMemoryInvestigationRepository()
+    investigation_id = _paused(repo)
+    repo.commit_decision(investigation_id, decision=_decision("d-1"))
+    history_after_first = repo.get(investigation_id).history  # type: ignore[union-attr]
+
+    replayed, created = repo.commit_decision(investigation_id, decision=_decision("d-1"))
+
+    assert not created
+    assert replayed.fingerprint == "fp-1"
+    # No second transition: a replay must not re-drive the run.
+    assert repo.get(investigation_id).history == history_after_first  # type: ignore[union-attr]
+
+
+def test_a_stale_hash_is_refused_and_leaves_the_run_awaiting_approval():
+    """G-32's behaviour change. The refusal must not consume the pause: the reviewer re-reads the
+    current report and decides again."""
+    repo = InMemoryInvestigationRepository()
+    investigation_id = _paused(repo)
+
+    with pytest.raises(StaleReportError) as excinfo:
+        repo.commit_decision(investigation_id, decision=_decision("d-1", hash_="stale-hash"))
+
+    assert excinfo.value.current_report_hash == _HASH
+    record = repo.get(investigation_id)
+    assert record is not None
+    assert record.status == "awaiting_approval"  # still decidable
+    assert record.pending_interrupt == {"report_hash": _HASH}
+    assert record.decisions == {}  # nothing was committed
+
+
+def test_a_decision_on_a_run_that_is_not_paused_is_refused():
+    repo = InMemoryInvestigationRepository()
+    repo.get_or_create(idempotency_key="k", investigation_id="id-1", incident_id="inc-1")
+    repo.transition("id-1", "running")
+
+    with pytest.raises(DecisionNotPendingError) as excinfo:
+        repo.commit_decision("id-1", decision=_decision("d-1"))
+
+    assert excinfo.value.status == "running"
+
+
+def test_concurrent_distinct_decisions_commit_exactly_once():
+    """N threads racing DIFFERENT decision_ids against one pause: exactly one may commit, and the
+    losers must be refused rather than each resuming the graph. This is the property a
+    check-then-act precondition in the endpoint would not give."""
+    repo = InMemoryInvestigationRepository()
+    investigation_id = _paused(repo)
+    n = 16
+    start = threading.Barrier(n)
+    committed: list[str] = []
+    refused: list[Exception] = []
+    lock = threading.Lock()
+
+    def call(i: int) -> None:
+        start.wait(timeout=10)
+        try:
+            _, created = repo.commit_decision(
+                investigation_id, decision=_decision(f"d-{i}", fingerprint=f"fp-{i}")
+            )
+            if created:
+                with lock:
+                    committed.append(f"d-{i}")
+        except DecisionNotPendingError as exc:
+            with lock:
+                refused.append(exc)
+
+    threads = [threading.Thread(target=call, args=(i,)) for i in range(n)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    assert len(committed) == 1, f"expected exactly one commit, got {committed}"
+    assert len(refused) == n - 1
+    record = repo.get(investigation_id)
+    assert record is not None
+    assert list(record.decisions) == committed  # only the winner was ever recorded
+
+
+# --- publish: the idempotent publication sink (G-58) ---------------------------------------------
+_RESULT = {"investigation_id": "id-1", "status": "completed", "reason": None}
+
+
+def _running(repo: InMemoryInvestigationRepository, investigation_id: str = "id-1") -> str:
+    repo.get_or_create(
+        idempotency_key=f"k-{investigation_id}",
+        investigation_id=investigation_id,
+        incident_id="inc-1",
+    )
+    repo.transition(investigation_id, "running")
+    return investigation_id
+
+
+def test_publish_commits_the_terminal_result_under_its_publication_id():
+    repo = InMemoryInvestigationRepository()
+    investigation_id = _running(repo)
+
+    record, created = repo.publish(
+        investigation_id, publication_id="pub-1", status="completed", result=_RESULT
+    )
+
+    assert created
+    assert record.publication_id == "pub-1"
+    assert record.status == "completed"
+    assert record.result == _RESULT
+
+
+def test_republishing_the_same_id_writes_nothing_a_second_time():
+    """The re-execution case: a checkpoint-recovered run re-runs finalize_report, derives the same
+    id, and must be absorbed. Not just "no duplicate result" - no duplicate history entry either,
+    since a second `completed` in the history is itself a record of a publication that must not
+    have happened."""
+    repo = InMemoryInvestigationRepository()
+    investigation_id = _running(repo)
+    first, _ = repo.publish(
+        investigation_id, publication_id="pub-1", status="completed", result=_RESULT
+    )
+
+    replayed, created = repo.publish(
+        investigation_id,
+        publication_id="pub-1",
+        status="completed",
+        result={"investigation_id": "id-1", "status": "completed", "reason": "a re-execution"},
+    )
+
+    assert not created
+    assert replayed.result == _RESULT  # the original bytes, not the re-execution's
+    assert replayed.history == first.history
+    assert replayed.updated_at == first.updated_at  # nothing was touched at all
+
+
+def test_a_different_publication_on_a_published_run_fails_closed():
+    repo = InMemoryInvestigationRepository()
+    investigation_id = _running(repo)
+    repo.publish(investigation_id, publication_id="pub-1", status="completed", result=_RESULT)
+
+    with pytest.raises(PublicationConflictError) as excinfo:
+        repo.publish(
+            investigation_id, publication_id="pub-2", status="completed", result={"other": True}
+        )
+
+    assert excinfo.value.published == "pub-1"
+    record = repo.get(investigation_id)
+    assert record is not None
+    assert record.result == _RESULT  # the approved bytes were not replaced
+
+
+def test_publish_refuses_a_non_terminal_status():
+    """Publication is the terminal write. Accepting `running` here would leave a run flagged as
+    published while still moving, and that flag is what every later publication is refused
+    against."""
+    repo = InMemoryInvestigationRepository()
+    investigation_id = _running(repo)
+
+    with pytest.raises(ValueError):
+        repo.publish(
+            investigation_id, publication_id="pub-1", status="running", result=_RESULT
+        )
+
+
+def test_concurrent_publications_of_one_id_commit_exactly_once():
+    """N workers handed the same recovered run: exactly one publishes, the rest are absorbed as
+    replays. This is what at-least-once delivery (G-34) will lean on."""
+    repo = InMemoryInvestigationRepository()
+    investigation_id = _running(repo)
+    n = 16
+    start = threading.Barrier(n)
+    created_flags: list[bool] = []
+    lock = threading.Lock()
+
+    def call() -> None:
+        start.wait(timeout=10)
+        _, created = repo.publish(
+            investigation_id, publication_id="pub-1", status="completed", result=_RESULT
+        )
+        with lock:
+            created_flags.append(created)
+
+    threads = [threading.Thread(target=call) for _ in range(n)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    assert created_flags.count(True) == 1
+    record = repo.get(investigation_id)
+    assert record is not None
+    assert record.history.count("completed") == 1

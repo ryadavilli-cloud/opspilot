@@ -14,7 +14,9 @@ surfaces the safety-guardrail result. Errors never expose stack traces, local pa
 from __future__ import annotations
 
 import hashlib
+import json
 import logging
+import threading
 from pathlib import Path
 from typing import Any, Literal
 from uuid import uuid4
@@ -46,9 +48,13 @@ from opspilot.contracts import (
 from opspilot.diagnosis.contracts import CausalClaim
 from opspilot.graph import _initial_state, build_graph, invoke_auto_approving
 from opspilot.investigations import (
+    CommittedDecision,
+    DecisionNotPendingError,
     InvestigationRecord,
     InvestigationRepository,
     InvestigationStatus,
+    PublicationConflictError,
+    StaleReportError,
 )
 from opspilot.repository import build_investigation_repository
 from opspilot.state import Intent
@@ -83,18 +89,28 @@ _CONSOLE_HTML = (Path(__file__).parent / "static" / "console.html").read_text(en
 # same shape, as `get_repository()` below.
 _graph = None
 
+# Every lazy singleton below is built under this lock (G-37). The old `if x is None: x = build()`
+# is a check-then-act race: two concurrent first requests both observe None and both construct.
+# That is not merely wasteful now that the stores are Cosmos-backed: it opens a second CosmosClient
+# and a second checkpointer against the same containers, and for the graph it means two compiled
+# graphs disagreeing about which saver they hold. Double-checked: the unlocked read is the fast path
+# (a plain attribute load, safe in CPython), the lock only serializes the construction itself.
+_singleton_lock = threading.Lock()
+
 
 def get_graph():
     global _graph
     if _graph is None:
-        checkpointer = build_checkpointer()
-        if checkpointer is None:
-            _log.warning(
-                "OPSPILOT_CHECKPOINTER=none: hitl_gate interrupts pause on an in-process "
-                "MemorySaver only — an awaiting_approval investigation will not survive a restart. "
-                "Set sqlite/cosmos for durability."
-            )
-        _graph = build_graph(checkpointer)
+        with _singleton_lock:
+            if _graph is None:
+                checkpointer = build_checkpointer()
+                if checkpointer is None:
+                    _log.warning(
+                        "OPSPILOT_CHECKPOINTER=none: hitl_gate interrupts pause on an "
+                        "in-process MemorySaver only, so an awaiting_approval "
+                        "investigation will not survive a restart. Set sqlite/cosmos."
+                    )
+                _graph = build_graph(checkpointer)
     return _graph
 
 
@@ -112,16 +128,20 @@ _diagnosis: DiagnosisComposition | None = None
 def get_service():
     global _tool_service
     if _tool_service is None:
-        from opspilot.tools.service import ToolService
+        with _singleton_lock:
+            if _tool_service is None:
+                from opspilot.tools.service import ToolService
 
-        _tool_service = ToolService()
+                _tool_service = ToolService()
     return _tool_service
 
 
 def get_diagnosis() -> DiagnosisComposition:
     global _diagnosis
     if _diagnosis is None:
-        _diagnosis = build_diagnosis()
+        with _singleton_lock:
+            if _diagnosis is None:
+                _diagnosis = build_diagnosis()
     return _diagnosis
 
 
@@ -135,7 +155,9 @@ _repository: InvestigationRepository | None = None
 def get_repository() -> InvestigationRepository:
     global _repository
     if _repository is None:
-        _repository = build_investigation_repository()
+        with _singleton_lock:
+            if _repository is None:
+                _repository = build_investigation_repository()
     return _repository
 
 
@@ -149,7 +171,9 @@ _authenticator: ReviewerAuthenticator | None = None
 def get_authenticator() -> ReviewerAuthenticator:
     global _authenticator
     if _authenticator is None:
-        _authenticator = build_reviewer_authenticator()
+        with _singleton_lock:
+            if _authenticator is None:
+                _authenticator = build_reviewer_authenticator()
     return _authenticator
 
 
@@ -375,13 +399,33 @@ class InvestigationDecision(BaseModel):
     leave a plausible-looking field that means nothing. `extra="forbid"` makes that explicit — a
     client still sending `approver` gets a 422 rather than having it silently ignored, so an
     integration built against the old shape fails loudly instead of appearing to still work.
+
+    `decision_id` is the client-minted idempotency key (G-32) and is **required**, on the same
+    reasoning: an optional idempotency key silently means nothing when omitted, which is exactly
+    the plausible-looking-field failure above. A reviewer double-clicking, or a client retrying a
+    timed-out POST, must not resume the graph twice.
     """
 
     model_config = {"extra": "forbid"}
 
+    decision_id: str = Field(min_length=1)
     decision: Literal["approve", "edit", "request_more_evidence", "reject"]
     submitted_report_hash: str
     edits: dict[str, Any] | None = None
+
+    def fingerprint(self, principal: ReviewerPrincipal) -> str:
+        """An opaque digest of this decision plus the verified reviewer, stored alongside the
+        committed `decision_id` so a retry can be told from a *different* decision reusing the id.
+
+        The reviewer is part of it deliberately: another identity reusing someone's decision_id is
+        a conflict to surface, not a retry to replay. `edits` is canonicalized with sorted keys so
+        an equivalent body that serializes differently still reads as the same decision.
+        """
+        edits = json.dumps(self.edits or {}, sort_keys=True, separators=(",", ":"))
+        raw = _UNIT_SEP.join(
+            (self.decision, self.submitted_report_hash, edits, principal.audit_label())
+        )
+        return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
 
 # --------------------------------------------------------------------------------------
@@ -661,7 +705,12 @@ def _advance(
     completed run — anything else genuinely terminal is mapped and recorded as usual. Shared by
     the initial job and every decision-resume, so a real reviewer never has a paused run
     misreported as `completed`, and an `edit` decision that re-interrupts is handled the same way
-    as the first pause."""
+    as the first pause.
+
+    A run that reached `finalize_report` carries a `publication_id` and is recorded through the
+    idempotent sink instead of a plain transition (G-58), so a re-executed terminal leg publishes
+    once. Runs that never published (escalated, rejected, failed) have no id and keep the ordinary
+    last-write-wins transition."""
     try:
         state = run()
     except Exception as exc:  # noqa: BLE001 — any run fault becomes a recorded `failed`, not a crash
@@ -672,7 +721,28 @@ def _advance(
         repo.transition(investigation_id, "awaiting_approval", pending_interrupt=pending[0].value)
         return
     response = _build_response(state, svc, diagnosis)
-    repo.transition(investigation_id, response.status, result=response.model_dump(mode="json"))
+    result = response.model_dump(mode="json")
+    publication_id = state.get("publication_id") or ""
+    if not publication_id:
+        repo.transition(investigation_id, response.status, result=result)
+        return
+    try:
+        _, created = repo.publish(
+            investigation_id,
+            publication_id=publication_id,
+            status=response.status,
+            result=result,
+        )
+    except PublicationConflictError:
+        # Fail closed and stay loud: the already-published record is left exactly as it is, since
+        # replacing the bytes an approval was bound to is the outcome the sink exists to prevent.
+        _log.exception("refused a conflicting publication for %s", investigation_id)
+        return
+    if not created:
+        _log.info(
+            "publication %s for %s already committed; second write suppressed",
+            publication_id, investigation_id,
+        )
 
 
 def _configurable_for(investigation_id: str, *, svc, diagnosis) -> dict:
@@ -827,43 +897,94 @@ def submit_decision(
     **Authentication runs first, before the record is even looked up.** Order matters: probing this
     endpoint without a valid token must not reveal which investigation ids exist, so an anonymous
     caller cannot tell 404 from 409 from a real pause.
+
+    Two more 409s, both G-32, and both leaving the run exactly as it was:
+
+    - `stale_report`: the decision was made against a report that is no longer the one awaiting
+      review (a concurrent edit or decision advanced the thread first). The response carries the
+      current hash so the client can re-review and resubmit, and the investigation **stays
+      `awaiting_approval`**. This replaces #36's behaviour, where a stale hash escalated the run:
+      losing a race is a concurrency conflict, not an investigation failure, and burning a human's
+      paused investigation over one is the wrong trade.
+    - `decision_conflict`: this `decision_id` was already committed with a *different* body.
+
+    A retry of an already-committed `decision_id` with the *same* body replays the stored response
+    verbatim (202) whatever the current status is, since a retry naturally arrives after the run
+    has moved on. The graph is never resumed twice for it.
     """
     principal = require_reviewer(authorization, authenticator)
 
     record = repo.get(investigation_id)
     if record is None:
         raise HTTPException(status_code=404, detail="investigation not found")
-    if record.status != "awaiting_approval":
+
+    response = AcceptedInvestigation(
+        investigation_id=investigation_id,
+        status="running",
+        poll_url=f"/investigations/{investigation_id}",
+    )
+    candidate = CommittedDecision(
+        decision_id=decision.decision_id,
+        fingerprint=decision.fingerprint(principal),
+        decision=decision.decision,
+        submitted_report_hash=decision.submitted_report_hash,
+        approver=principal.audit_label(),
+        response=response.model_dump(mode="json"),
+    )
+
+    # The commit point. Recording the decision and moving awaiting_approval -> running happen in
+    # ONE conditional write inside the repository, which also decides the replay/status/stale
+    # preconditions against the same state it commits against. Checking them out here first would
+    # be a check-then-act race that lets two concurrent decisions both reach the resume below.
+    try:
+        committed, created = repo.commit_decision(investigation_id, decision=candidate)
+    except StaleReportError as exc:
         raise HTTPException(
             status_code=409,
-            detail=f"investigation is not awaiting a decision (status={record.status})",
-        )
+            detail={
+                "error": "stale_report",
+                "message": "the report you decided on is no longer the one awaiting review",
+                "submitted_report_hash": decision.submitted_report_hash,
+                "current_report_hash": exc.current_report_hash,
+                "status": "awaiting_approval",
+            },
+        ) from exc
+    except DecisionNotPendingError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
 
-    # The resume payload is assembled HERE, server-side, from the validated body plus the verified
-    # principal — the client contributes the decision and the hash it reviewed, never the identity.
-    resume = _resume_payload(decision, principal)
+    if not created:
+        if committed.fingerprint != candidate.fingerprint:
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "error": "decision_conflict",
+                    "message": "decision_id was already committed with a different decision",
+                    "decision_id": decision.decision_id,
+                },
+            )
+        # A genuine retry: replay the committed response, resume nothing.
+        _log.info(
+            "decision %s on %s replayed (decision_id=%s)",
+            committed.decision, investigation_id, committed.decision_id,
+        )
+        return AcceptedInvestigation.model_validate(committed.response)
 
     _log.info(
         "decision %s on %s by %s (kind=%s)",
         decision.decision, investigation_id, principal.audit_label(), principal.auth_method,
     )
 
-    # The only place this transition happens for a resume — _resume_investigation_job must not
-    # repeat it, or history would show a spurious duplicate "running" entry.
-    repo.transition(investigation_id, "running")
+    # The resume payload is assembled HERE, server-side, from the validated body plus the verified
+    # principal. The client contributes the decision and the hash it reviewed, never the identity.
     background.add_task(
         _resume_investigation_job,
         investigation_id,
-        resume,
+        _resume_payload(decision, principal),
         repo=repo,
         svc=svc,
         diagnosis=diagnosis,
     )
-    return AcceptedInvestigation(
-        investigation_id=investigation_id,
-        status="running",
-        poll_url=f"/investigations/{investigation_id}",
-    )
+    return response
 
 
 @app.get("/investigations/{investigation_id}")

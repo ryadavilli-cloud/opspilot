@@ -128,6 +128,33 @@ def test_finalize_report_rejects_an_unbound_approval():
         finalize_report(state)
 
 
+def test_publication_id_is_derived_so_a_re_execution_repeats_it():
+    """G-58's load-bearing property. LangGraph re-executes an interrupted node from the top, so
+    finalize_report runs again on a checkpoint-recovered run; a minted id would present the sink a
+    fresh key each time and publish twice. Calling it twice on the same state must yield the same
+    id, and a different approved report must yield a different one (an edit is a genuinely new
+    publication, not a replay of the first)."""
+    state = _state_with_evidence()
+    state = state.model_copy(update=synthesize_report(state))
+    state = state.model_copy(update={
+        "investigation_id": "inv-1",
+        "approval": {"decision": "approve", "approved_report_hash": state.report_hash},
+    })
+
+    first = finalize_report(state)["publication_id"]
+    assert finalize_report(state)["publication_id"] == first  # re-execution derives the same id
+    assert first  # and it is actually stamped, not an empty default
+
+    edited = state.model_copy(update={
+        "report_hash": "a-different-report",
+        "approval": {"decision": "approve", "approved_report_hash": "a-different-report"},
+    })
+    assert finalize_report(edited)["publication_id"] != first
+
+    other_run = state.model_copy(update={"investigation_id": "inv-2"})
+    assert finalize_report(other_run)["publication_id"] != first  # scoped per run, not per report
+
+
 def test_stale_approval_is_rejected_and_escalates():
     """A decision submitted against a hash that no longer matches the current report is rejected,
     not silently applied — and routes to escalate with a specific, machine-readable reason."""

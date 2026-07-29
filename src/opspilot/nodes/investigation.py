@@ -393,6 +393,13 @@ def hitl_gate(state: InvestigationState) -> dict[str, Any]:
         # The decision was made against a report that no longer matches current state (e.g. a
         # concurrent edit/decision advanced the thread first). "stale_rejected" is neither
         # "approve" nor "edit", so it already falls into after_approval's fail-closed else-branch.
+        #
+        # As of G-32 this branch is unreachable from the decision endpoint: the stale check moved
+        # into the repository's atomic commit, which rejects a stale hash with a 409 and leaves the
+        # run `awaiting_approval` - it never resumes the graph, so this node never sees it. It is
+        # kept anyway, for the same reason `finalize_report` asserts its invariant rather than
+        # trusting the routing: the alternative to failing closed here is applying a human decision
+        # to a report they did not review. The sync path always submits the current hash.
         return {
             "approval": {
                 **identity,
@@ -434,12 +441,21 @@ def apply_edit(state: InvestigationState) -> dict[str, Any]:
 
 
 def finalize_report(state: InvestigationState) -> dict[str, Any]:
-    """Publish the byte-exact object the approval was bound to.
+    """Publish the byte-exact object the approval was bound to, under a stable `publication_id`.
 
     `after_approval` only routes here on `decision == "approve"`, which `hitl_gate` only ever sets
     once `submitted_report_hash == state.report_hash` — so this invariant should be unreachable in
     practice. It is asserted explicitly anyway rather than left as a comment: a future change to
     the routing that broke it would otherwise publish a report the approval never saw, silently.
+
+    The `publication_id` is **derived from (investigation_id, report_hash), never minted** (G-58).
+    That is the whole mechanism: LangGraph re-executes an interrupted node from the top, so a
+    checkpoint-recovered run runs this node a second time, and a `uuid4()` here would hand the
+    sink a fresh key each time and publish the same report twice. Deriving it means the second
+    execution presents the key the first one already committed, and the sink refuses it. Binding
+    it to `report_hash` rather than the run alone is deliberate: an `edit` produces different
+    approved bytes, which is a genuinely different publication and must not be suppressed as a
+    replay of the first.
     """
     approval = state.approval or {}
     if approval.get("approved_report_hash") != state.report_hash:
@@ -448,7 +464,12 @@ def finalize_report(state: InvestigationState) -> dict[str, Any]:
             f"{approval.get('approved_report_hash')!r} does not match report_hash="
             f"{state.report_hash!r}"
         )
-    return {"report": state.report, "report_hash": state.report_hash}
+    raw = _UNIT_SEP.join((state.investigation_id or "", state.report_hash))
+    return {
+        "report": state.report,
+        "report_hash": state.report_hash,
+        "publication_id": hashlib.sha256(raw.encode("utf-8")).hexdigest(),
+    }
 
 
 def postmortem(state: InvestigationState) -> dict[str, Any]:
