@@ -1,0 +1,57 @@
+#!/bin/sh
+# Pre-commit style gate. Catches the two things that were costing a lint round-trip per PR:
+#   1. ruff check, which includes the 100-char E501 limit configured in pyproject.toml
+#   2. em-dashes on lines this commit adds to Python files
+#
+# Enable once per clone:
+#     git config core.hooksPath .githooks
+# Emergency bypass:
+#     git commit --no-verify
+#
+# Note: ruff runs over the working tree, matching what CI does. If you stage only part of
+# your edits, it still reports on the unstaged remainder in those files.
+
+set -u
+
+status=0
+
+# Resolve ruff: uv if installed, else the project venv, else PATH.
+if command -v uv >/dev/null 2>&1; then
+    ruff_cmd="uv run ruff"
+elif [ -x .venv/Scripts/ruff.exe ]; then
+    ruff_cmd=".venv/Scripts/ruff.exe"
+elif [ -x .venv/bin/ruff ]; then
+    ruff_cmd=".venv/bin/ruff"
+elif command -v ruff >/dev/null 2>&1; then
+    ruff_cmd="ruff"
+else
+    ruff_cmd=""
+fi
+
+if [ -z "$ruff_cmd" ]; then
+    echo "pre-commit: ruff not found via uv, .venv, or PATH; skipping lint."
+elif ! $ruff_cmd check .; then
+    echo ""
+    echo "pre-commit: ruff check failed (see findings above)."
+    status=1
+fi
+
+# Em-dash guard, scoped to added lines only. The existing tree predates this rule, so a
+# repo-wide scan would reject every commit. The pattern is built from UTF-8 bytes rather
+# than written literally, which also avoids depending on grep -P.
+em_dash=$(printf '\342\200\224')
+
+report=$(git diff --cached -U0 --diff-filter=ACM -- '*.py' | awk -v dash="$em_dash" '
+    /^\+\+\+ / { file = substr($0, 7); next }
+    /^\+/ && index($0, dash) { print "    " file ": " substr($0, 2) }
+')
+
+if [ -n "$report" ]; then
+    echo "pre-commit: em-dash in added lines:"
+    echo "$report"
+    echo ""
+    echo "pre-commit: use a hyphen, comma, colon, or a shorter sentence instead."
+    status=1
+fi
+
+exit $status
