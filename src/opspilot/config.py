@@ -1,17 +1,9 @@
-"""Central configuration: eval targets, severity->model routing, and runtime settings.
-
-All quality targets are defined here *up front* (before any capability exists) so every
-phase builds against a fixed bar. The severity->tier map is the cost/value lever: cheap
-models handle the high-volume low-severity tail; the strong model is reserved for the rare
-high-severity case. Concrete models are resolved per environment, keeping the core
-provider-agnostic (local dev uses one model to simulate all tiers).
-"""
+"""Central configuration: eval targets and runtime settings."""
 
 from __future__ import annotations
 
 import os
 from dataclasses import dataclass
-from enum import StrEnum
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -48,11 +40,6 @@ def _env_int(var: str, default: int) -> int:
     return int(value) if value else default
 
 
-def _env_float(var: str, default: float) -> float:
-    value = _env(var)
-    return float(value) if value else default
-
-
 def _env_flag(var: str, default: bool = False) -> bool:
     value = _env(var)
     return value.lower() == "true" if value else default
@@ -73,62 +60,19 @@ RETRIEVAL_BACKEND = _env("OPSPILOT_RETRIEVAL_BACKEND", "hybrid")
 
 
 # --------------------------------------------------------------------------------------
-# Severity & model tiers
-# --------------------------------------------------------------------------------------
-class Severity(StrEnum):
-    SEV1 = "SEV1"
-    SEV2 = "SEV2"
-    SEV3 = "SEV3"
-    SEV4 = "SEV4"
-
-
-class Tier(StrEnum):
-    CHEAP = "cheap"        # high-volume low-sev long tail
-    STANDARD = "standard"  # default workhorse + SEV1 ceiling
-    PREMIUM = "premium"    # flag-gated, production-only, off by default
-
-
-# Default ceiling is STANDARD (Sonnet). PREMIUM (Opus) is only reachable when
-# ENABLE_OPUS_SEV1 is set in production — see resolve_tier().
-SEVERITY_TIER: dict[Severity, Tier] = {
-    Severity.SEV4: Tier.CHEAP,
-    Severity.SEV3: Tier.CHEAP,
-    Severity.SEV2: Tier.STANDARD,
-    Severity.SEV1: Tier.STANDARD,
-}
-
-# Concrete models per environment. Prod = severity-tiered Claude on Azure Foundry;
-# dev = one local model (Ollama) simulating every tier.
-PROD_MODELS: dict[Tier, str] = {
-    Tier.CHEAP: "claude-haiku-4-5",
-    Tier.STANDARD: "claude-sonnet-4-6",
-    Tier.PREMIUM: "claude-opus-4-8",
-}
-
 # Local dev model: qwen3:8b (~5 GB, CPU-only, has the `tools` capability) — one model
 # simulates all tiers in dev. NOTE: the larger qwen3.6 (36B MoE, 23 GB) was pulled but
 # won't run on this box (23 GB > 15.5 GB RAM, integrated GPU only). Build/iterate against
 # gpt-4o-mini for tool-call reliability; qwen3:8b is the free local/demo path.
 DEV_MODEL = _env("OPSPILOT_DEV_MODEL", "qwen3:8b")
 
-# Pinned, cross-vendor judge (>= system strength). Kept fixed so eval scores stay
-# comparable across runs. SEV1 escalates to a two-judge panel if parity is in doubt.
+# DEPRECATED: superseded by D-005 (the primary chat deployment is the single offline judge).
+# No new consumer.
 JUDGE_MODEL = _env("OPSPILOT_JUDGE_MODEL", "gpt-4.1")
-
-# Opus tier is OFF by default — reserved, not run in the demo deployment.
-ENABLE_OPUS_SEV1 = _env_flag("OPSPILOT_ENABLE_OPUS_SEV1")
-
-
-def resolve_tier(severity: Severity) -> Tier:
-    """Map a severity to its model tier, honoring the flag-gated Opus escalation."""
-    tier = SEVERITY_TIER[severity]
-    if severity is Severity.SEV1 and ENABLE_OPUS_SEV1:
-        return Tier.PREMIUM
-    return tier
 
 
 # --------------------------------------------------------------------------------------
-# LLM provider seam (Stage 4)
+# LLM provider seam
 # --------------------------------------------------------------------------------------
 # Dev default = local Ollama (qwen3:8b via DEV_MODEL, the free floor). The `openai` provider
 # reuses the same OpenAI-compatible client with a real key + base_url for gpt-4o-mini / Azure
@@ -151,16 +95,16 @@ REASONING_EFFORT = _env("OPSPILOT_REASONING_EFFORT", "medium")
 # `seed` as best-effort, and on this model it is not effective. It is kept because it costs nothing,
 # it is the documented mechanism if their determinism improves, and pinning it in the replay
 # manifest records what was in effect. Do NOT re-run this experiment expecting a stable
-# scorecard. The real instability is the sample size (3 novel scenarios, G-35) amplified by the
-# planner's batched tool calls (G-22): one sampling wobble rewrites up to _MAX_BATCH actions.
+# scorecard. The real instability is the sample size (3 novel scenarios) amplified by the
+# planner's batched tool calls: one sampling wobble rewrites up to _MAX_BATCH actions.
 #
 # Note this does not make CI flaky: the committed cassette replays deterministically. The variance
 # only appears when someone RE-RECORDS.
 LLM_SEED = _env_int("OPSPILOT_LLM_SEED", 20260726)
 
-# Observability span exporter (Stage 5g): none (default — emission on, no sink until a real one is
-# wired) | memory (tests) | stdout (dev). Real sinks land on a schedule, not "later": LangSmith
-# Developer at Stage 8, App Insights at Stage 11 (obs/tracing.py; G-61).
+# Observability span exporter: none (default, emission on, no sink until a real one is wired) |
+# memory (tests) | stdout (dev). A real sink (e.g. App Insights) is not yet wired; see
+# runtime-and-deployment.md for the target backend.
 TRACE_EXPORTER = _env("OPSPILOT_TRACE_EXPORTER", "none")
 LLM_API_KEY = _env("OPSPILOT_LLM_API_KEY") or _env("OPENAI_API_KEY")
 OLLAMA_BASE_URL = _env("OPSPILOT_OLLAMA_BASE_URL", "http://localhost:11434/v1")
@@ -192,7 +136,7 @@ RERANK_CANDIDATES = _env_int("OPSPILOT_RERANK_CANDIDATES", 30)
 
 
 # --------------------------------------------------------------------------------------
-# Durable checkpointer seam (Stage 5b)
+# Durable checkpointer seam
 # --------------------------------------------------------------------------------------
 # Selects the LangGraph checkpointer the graph compiles with: `none` (stateless one-shot, the
 # default — no behavior change), `memory` (in-process, non-durable — tests), `sqlite` (file-backed,
@@ -209,8 +153,7 @@ COSMOS_CHECKPOINT_CONTAINER = _env("AZURE_COSMOS_CHECKPOINT_CONTAINER", "checkpo
 
 
 # --------------------------------------------------------------------------------------
-# Durable investigation-repository seam (Stage 5c, pulled forward from Stage 8's shared Cosmos
-# account)
+# Durable investigation-repository seam
 # --------------------------------------------------------------------------------------
 # Selects the async job API's InvestigationRepository backend: `memory` (in-process, non-durable —
 # the default; loses every accepted/awaiting_approval record on a pod restart or scale-to-zero) or
@@ -225,8 +168,7 @@ COSMOS_INVESTIGATION_INDEX_CONTAINER = _env(
 
 
 # --------------------------------------------------------------------------------------
-# Reviewer / caller identity (Stage 5e G-01 decide role; Stage 8 submit/read roles pulled forward,
-# G-03/G-57)
+# Reviewer / caller identity
 # --------------------------------------------------------------------------------------
 # Who is allowed to do what, and how that is proven. Tenant/audience/all three roles are required
 # before ANY of the three auth-gated endpoints will serve — `build_reviewer_authenticator()` raises
@@ -251,13 +193,13 @@ ENTRA_CONSOLE_CLIENT_ID = _env("OPSPILOT_CONSOLE_CLIENT_ID")
 
 
 # --------------------------------------------------------------------------------------
-# Ingress admission control (Stage 8, pulled forward, G-03/G-57 — basic slice only)
+# Ingress admission control
 # --------------------------------------------------------------------------------------
 # A coarse cap on concurrently *running* investigations (queued/running/awaiting_approval — not yet
 # terminal), checked at submission time. Bounds unbounded Azure OpenAI spend from a single caller or
 # from aggregate traffic; it is deliberately a soft, best-effort check (count-then-create, not a
-# distributed lock) rather than the fuller admission-control system G-57 describes — sufficient to
-# close the "anyone can drive unlimited spend" gap without new infrastructure.
+# distributed lock) rather than a fuller admission-control system, sufficient to close the "anyone
+# can drive unlimited spend" hole without new infrastructure.
 MAX_CONCURRENT_INVESTIGATIONS_PER_USER = _env_int("OPSPILOT_MAX_CONCURRENT_PER_USER", 3)
 MAX_CONCURRENT_INVESTIGATIONS_GLOBAL = _env_int("OPSPILOT_MAX_CONCURRENT_GLOBAL", 20)
 
@@ -274,12 +216,13 @@ WORKFLOW_VERSION = "1.0"
 # Agentic loop controls (circuit breakers)
 # --------------------------------------------------------------------------------------
 MAX_DIAGNOSE_ITERS = _env_int("OPSPILOT_MAX_DIAGNOSE_ITERS", 5)
-CONFIDENCE_THRESHOLD = _env_float("OPSPILOT_CONFIDENCE_THRESHOLD", 0.75)
+# DEPRECATED: unenforced. Reserved for reuse as the capability-call cap once something enforces it.
 MAX_TOOL_CALLS = _env_int("OPSPILOT_MAX_TOOL_CALLS", 20)
 
 
 # --------------------------------------------------------------------------------------
-# Eval targets — defined up front, gated per the execution plan
+# Eval targets, defined up front, before any capability exists
+# DEPRECATED: consumed only by the scenario and single-agent gates being replaced; no new consumer.
 # --------------------------------------------------------------------------------------
 @dataclass(frozen=True)
 class EvalTargets:
@@ -309,4 +252,3 @@ TARGETS = EvalTargets()
 # Runtime environment
 # --------------------------------------------------------------------------------------
 ENVIRONMENT = _env("OPSPILOT_ENV", "local")  # local | dev | prod
-LANGSMITH_ENABLED = _env_flag("LANGSMITH_TRACING")

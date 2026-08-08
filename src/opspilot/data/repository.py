@@ -9,7 +9,6 @@ Azure Monitor / App Insights / Cosmos — the tools do not change, only the repo
 from __future__ import annotations
 
 import json
-import os
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -51,10 +50,7 @@ def validate_corpus(corpus_dir: Path) -> RuntimeAssetStatus:
 
 
 def _resolve_corpus_dir(corpus_dir: Path | str | None) -> Path:
-    if corpus_dir is not None:
-        return Path(corpus_dir)
-    env = os.getenv("OPSPILOT_CORPUS_DIR")
-    return Path(env) if env else CORPUS_DIR
+    return Path(corpus_dir) if corpus_dir is not None else CORPUS_DIR
 
 
 def _load(path: Path, key: str) -> list[dict[str, Any]]:
