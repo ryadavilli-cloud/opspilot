@@ -31,11 +31,11 @@ This version merges the corrected repository reconciliation draft with the earli
 - Source merge completed: 2026-08-06.
 - This merge did not re-run repository commands or re-inspect Azure. Verification timestamps remain those of the underlying inspection.
 - Repository reset landed 2026-08-08: branch `s0-repository-reset`, cut from `main` at `e567adf`,
-  two commits ahead (`c8ea681`, `4400d93`). The WIP commit `0c3c175` inspected above is confirmed
-  abandoned, not an ancestor of this branch. Re-run on this branch: `ruff check` (pass), `mypy src`
-  (0 errors, was 2), full pytest with CI's marker filter (382 passed, 5 deselected, 0 failed in
-  3m54s, was 31 failed/351 passed/11m28s). `az bicep build` and the Azure inventory were not
-  re-run; nothing under `infra/` or in the live subscription changed.
+  merged to `main` via PR #54 as squash commit `4c8f706`. The WIP commit `0c3c175` inspected above
+  is confirmed abandoned, not an ancestor of `main`. Re-run on `main` at `4c8f706`: `ruff check`
+  (pass), `mypy src` (0 errors, was 2), full pytest with CI's marker filter (382 passed, 5
+  deselected, 0 failed, was 31 failed/351 passed). `az bicep build` and the Azure inventory were
+  not re-run; nothing under `infra/` or in the live subscription changed.
 
 ## 2. Executive State
 
@@ -483,7 +483,7 @@ Classifications per the required system: Keep, Keep with changes, Replace, Delet
 
 | Component | Currently does | Why it has no place | Dependencies affected | Replacement | Risk / verification before deletion |
 | --- | --- | --- | --- | --- | --- |
-| WIP commit `0c3c175` (`dispatch.py` 349 ln, `worker.py` 183 ln, lease/epoch machinery, Service Bus config) | Outbox + queue seam + worker skeleton | Queues, workers, and durable dispatch are deliberate absences; the code is also broken (mypy `call-arg` at `api.py:862/866`) and has zero tests, zero deps, zero infra | None outside itself (unpushed, untested) | None | Deleted: `git merge-base --is-ancestor 0c3c175 HEAD` exits nonzero on `s0-repository-reset`; the code was never present on the branch cut from `main` |
+| WIP commit `0c3c175` (`dispatch.py` 349 ln, `worker.py` 183 ln, lease/epoch machinery, Service Bus config) | Outbox + queue seam + worker skeleton | Queues, workers, and durable dispatch are deliberate absences; the code is also broken (mypy `call-arg` at `api.py:862/866`) and has zero tests, zero deps, zero infra | None outside itself (unpushed, untested) | None | Deleted: `git merge-base --is-ancestor 0c3c175 HEAD` exits nonzero on `main` (PR #54, squash commit `4c8f706`); the code was never present on the branch cut from `main` at `e567adf` |
 | HITL surface: `hitl_gate`, `apply_edit` nodes, `POST /investigations/{id}/decision`, `CommittedDecision`, decision idempotency, console approval UI, `Approver` role usage | Human approval pause/resume with report-hash binding | The accepted design has no approval, review, or publication stage; delivery follows the gate and commit directly | `test_investigations_api.py` (37 tests), `test_report_binding.py`, `test_checkpointer.py` HITL test, smoke steps 4-6 | The grounding gate + commit-before-terminal (different concept, already specified) | Delete together with its tests; keep the report-hash/content-hash technique for the completed-turn artifact |
 | Checkpointer stack: `checkpoint.py`, `langgraph-checkpoint-sqlite` dep, `checkpoints` Cosmos container (Bicep + live), msgpack allowlist | Per-super-step durable graph state | In-flight state is ephemeral by design (NFR-57); D-001 forbids checkpoint/replay features | `test_checkpointer.py`, Bicep container loop, `sqlite-vec` transitive | Nothing (completed-turn commit only) | Live container deletion deferred until the new persistence slice lands |
 | `investigation-index` container + versioned idempotency key machinery | Atomic accept-once index | Target creates the investigation at first completed-turn commit; no accept-time persistence, no index container | `cosmos_investigations.py`, Bicep | None | Same deferral as above |
@@ -533,7 +533,7 @@ Classifications per the required system: Keep, Keep with changes, Replace, Delet
 | RCAEval wild generalization probe | `eval/wild.py`, recorder, fixtures, baseline, profile dependency | Archive or delete from active implementation; held-out probe is deferred |
 | Generic evaluator registry scaffold | `eval/harness.py`, scaffold test | Replace with the concrete four-layer evaluation |
 | External ITSM/RCAEval profile-calibration pipeline | `data/profiles/` scripts and external caches | Verify whether any generated-corpus input is still needed; otherwise archive |
-| Empty package placeholders | `src/opspilot/ops/`, `src/opspilot/eval/` | Deleted (`s0-repository-reset`, no owner appeared) |
+| Empty package placeholders | `src/opspilot/ops/`, `src/opspilot/eval/` | Deleted (PR #54, merged to `main`; no owner appeared) |
 | Deprecated `/health` alias | `api.py` | Delete when probes and docs use the accepted health routes |
 | Local transformer vector-index stack | `retrieval/index.py`, local embedding path | Remove with the rejected local embedding and reranker implementation unless D-003 is explicitly revised |
 
@@ -938,22 +938,22 @@ never re-verified in CI, and it was produced with `bge-small-en-v1.5` while conf
 
 ## 15. Documentation and Repository Hygiene
 
-- `README.md`: replaced (`s0-repository-reset`). No longer claims "no LLM in the loop yet";
+- `README.md`: replaced (PR #54, merged to `main`). No longer claims "no LLM in the loop yet";
   describes the runtime actually deployed and points to `docs/status.md` for the reconciliation.
-- `.env.example`: replaced (`s0-repository-reset`). Now covers every setting `config.py` reads,
+- `.env.example`: replaced (PR #54, merged to `main`). Now covers every setting `config.py` reads,
   including Cosmos and Entra identity variables, checked by `tests/test_env_example.py` rather
   than by eye; the `OLLAMA_BASE_URL` name drift is fixed to `OPSPILOT_OLLAMA_BASE_URL`.
-- `docs/` (the authoritative set) and `.githooks/` are committed (`s0-repository-reset`). Bicep and
+- `docs/` (the authoritative set) and `.githooks/` are committed (PR #54, merged to `main`). Bicep and
   smoke comments citing ADRs that existed only locally are unaffected; still to check when those
   files are next touched.
-- Stale G-xx/stage vocabulary is retired from `config.py` (`s0-repository-reset`, required by the
-  full-file scan `code-guidelines.md` §12 obligates on a file a change touches). It still lives on
+- Stale G-xx/stage vocabulary is retired from `config.py` (PR #54, merged to `main`, required by
+  the full-file scan `code-guidelines.md` §12 obligates on a file a change touches). It still lives on
   in Bicep comments, smoke strings, and prompt/module docstrings, none of which this reset touched;
   retire as the referencing code is replaced.
 - `data/answer_key/README.md` and `data/synthetic/README.md` stale (counts, phase references,
   provenance sources disagreeing with `provenance.md`). Not touched by this reset.
 - Debris: `out.txt`/`raw.txt`, `infra/.gitkeep`, `data/.gitkeep`, and the orphan `.pyc` for a
-  deleted scratch test are removed (`s0-repository-reset`). The six merged remote branches named in
+  deleted scratch test are removed (PR #54, merged to `main`). The six merged remote branches named in
   the original inspection were not verified or deleted; still outstanding.
 - Duplicated definitions flagged for the rewrite: `EvidenceItem` (state.py vs contracts.py),
   `READ_ONLY_TOOLS` vs the registry key set, `KNOWN_IMPLEMENTATIONS` twice, embedding/reranker
@@ -972,11 +972,11 @@ concurrency limits), consistent with the mypy-confirmed `epoch` kwarg defect the
 commit introduced into the inline job path; CI at `main` (`e567adf`) ran this suite green, so the
 breakage is specific to the unpushed WIP commit and reinforces abandoning it.
 
-**Re-verified on `s0-repository-reset` (2026-08-08), after the WIP commit was abandoned and the
-debris/dead-config removal landed:** `ruff check` (pass); `mypy src` (0 errors, was 2); pytest
-under the same CI filter (**382 passed, 5 deselected, 0 failed, 3m54s**, was 31 failed/351
-passed/11m28s). `ruff format --check`, `az bicep build`, and the live Azure inventory were not
-re-run on this branch.
+**Re-verified on `main` at `4c8f706` (2026-08-08, PR #54 merged), after the WIP commit was
+abandoned and the debris/dead-config removal landed:** `ruff check` (pass); `mypy src` (0 errors,
+was 2); pytest under the same CI filter (**382 passed, 5 deselected, 0 failed**, was 31 failed/351
+passed). `ruff format --check`, `az bicep build`, and the live Azure inventory were not
+re-run.
 
 **Statically inspected (code read, not executed):** everything in sections 4 to 15, with file
 and symbol citations gathered from full reads of `src/`, `tests/`, `eval/`, `data/`, `infra/`,
