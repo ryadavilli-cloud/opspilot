@@ -1,26 +1,27 @@
 # OpsPilot
 
-**Production-ready agentic AI incident-investigation assistant, on Azure.**
+Agentic incident-investigation assistant, built for Azure.
 
-OpsPilot ingests a cloud incident alert, investigates it like an on-call engineer, and
-produces an evidence-backed root-cause report — grounded in runbooks, past incidents, and
-live telemetry, with a human approval gate before anything consequential, and full
-observability, evaluation, guardrails, and cost controls around it.
+The accepted design — what the system is meant to become — lives in `docs/`.
+`docs/status.md` records what is actually built against that design;
+`docs/vertical-execution-plan.md` and `docs/horizontal-execution-plan.md` sequence the
+remaining work.
 
-> **Status: deterministic connected slice.** A synthetic incident flows ingest → triage →
-> hybrid retrieval → one diagnostic cycle → grounded report → citation guardrail, end to end,
-> with no LLM in the loop yet — the deterministic baseline the model must beat. Hybrid + reranked
-> retrieval is measured against a committed scorecard (`eval/baselines/`).
+The code in this repository currently implements an earlier architecture: a LangGraph
+pipeline with a human-in-the-loop approval gate, per-step durable checkpointing, and an
+asynchronous submit/poll job API. It runs end to end (deterministic and LLM-driven
+diagnosis paths, hybrid retrieval, an operator console) and is deployed on Azure, but does
+not yet match the accepted design. See `docs/status.md` for the full reconciliation.
 
 ## Quickstart (local)
 
 ```bash
-uv sync                       # runtime + dev deps
-uv run pytest -q              # full test suite (retrieval/eval tests skip without the extras)
-uv run uvicorn opspilot.api:app --reload   # serve the API (GET /health)
+uv sync --group dev --group data                  # runtime + dev deps
+uv run pytest -m "not reranker and not llm" -q     # CI-gated test lane
+uv run uvicorn opspilot.api:app --reload           # serve the API (GET /health/live, /health/ready)
 
-uv sync --group eval          # add the retrieval/eval ML stack (sentence-transformers, BM25)
-uv run python eval/retrieval_eval.py       # score dense / hybrid / rerank + write the scorecard
+uv sync --group eval                               # add the retrieval eval ML stack (sentence-transformers)
+uv run python eval/retrieval_eval.py               # score dense / hybrid / rerank + write the scorecard
 ```
 
 ## Layout
@@ -31,4 +32,5 @@ eval/              # evaluation harness + committed baselines (retrieval + scena
 data/              # RetailEase synthetic corpus: answer key, telemetry, alerts/incidents, KB
 infra/             # Bicep IaC + GitHub Actions CD
 tests/             # deterministic safety-net + scenario regression gate
+docs/              # the accepted design, decisions, and implementation status/plan
 ```
