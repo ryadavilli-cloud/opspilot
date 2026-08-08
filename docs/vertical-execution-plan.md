@@ -359,71 +359,41 @@ provisional placement until this structure exists.
 
 ### S-0 Repository reset and truthful baseline
 
-- **Demonstrable outcome:** a clean `main`-based branch containing the authoritative documentation,
-  truthful setup instructions, and none of the rejected unpushed dispatch skeleton.
-- **Entry criteria:** the status reconciliation is accepted as the baseline; a branch is cut from
-  `main` at `e567adf`; the working tree is clean.
-- **Existing foundation retained:** authoritative `docs/`, `.githooks/`, OIDC workflow skeleton,
-  and the current runnable old system, which is temporary compatibility retained only until the
-  S-4 cutover.
-- **Code and data to delete:** WIP `dispatch.py`, `worker.py`, lease/epoch additions and dispatch
-  configuration if they exist only on the abandoned commit; `out.txt`, `raw.txt`, placeholder
-  `.gitkeep` files, stale scratch bytecode; verified merged remote branches; the empty
-  `src/opspilot/ops/` and `src/opspilot/eval/` package placeholders; dead severity-tier routing
-  (`PROD_MODELS`, `Tier`, `SEVERITY_TIER`, `resolve_tier`, `ENABLE_OPUS_SEV1`), numeric confidence
-  (`CONFIDENCE_THRESHOLD`), and `LANGSMITH_ENABLED`.
-- **Configuration retained deliberately:** three settings are not deleted here.
-  - `EvalTargets` still has live consumers: the scenario and single-agent gates read it. Removing
-    the configuration before its consumers would break the baseline this slice is meant to prove
-    green. It is marked deprecated, accepts no new consumers, and is deleted in S-4 with the gates
-    that read it.
-  - `MAX_TOOL_CALLS` returns as the capability-call cap, renamed and enforced in S-5.
-  - `JUDGE_MODEL` is replaced by D-005 task routing in S-13.
-  All three are marked in configuration as deprecated or unenforced, with their owning deletion
-  slice named in the comment, and are listed in the coexistence register.
-- **Code to replace:** `README.md` and `.env.example`, with concise accurate versions pointing to
-  the accepted documents and distinguishing old implementation status from target design; corpus
-  path resolution, currently duplicated between `config.py` and `data/repository.py`, collapsed to
-  one resolution point (status 8.3.4).
-- **New implementation:** none. No behavioral rewrite in this slice.
-- **Contract introduced or stabilized:** none.
-- **Telemetry and activity impact:** none. The tracing seam is untouched.
-- **Deterministic tests:** the CI marker lane `uv run pytest -m "not reranker and not llm"` is
-  green. The full optional-group suite is not a gate: status 5 records it at 9h19m, dominated by
-  CPU-based live-model tests. Live-model verification is a separately named, separately run
-  command and never a slice entry criterion.
-- **Evaluation increment:** none. The old numeric gates still run and are removed in S-4.
-- **Dataset or fixture work:** none.
-- **Azure impact:** Local deterministic. No infrastructure change.
-- **Decision gates:** none.
-- **Explicit non-goals:** no behavioral rewrite; no contract work; no removal of the old runtime,
-  which is S-4; no deletion of configuration whose concept returns later.
-- **Small PR breakdown:** (1) commit authoritative docs and hooks, repair README and env example;
-  (2) remove debris, empty packages, and dead configuration, and collapse corpus path resolution.
-- **Completion evidence:** the CI marker lane green from the new branch; no dispatch keys and no
-  dead severity routing; `EvalTargets` present only for its existing legacy gates, marked
-  deprecated, with no new consumer; the repository is understandable without local-only files.
-- **Status updates required after landing:** inspected commit moves to the new branch head; the
-  dispatch WIP row in section 8.1 moves to Deleted; the hygiene findings in section 15 are resolved
-  or restated; record the marker-lane result actually observed.
+**Status: Completed.**
 
-#### Checkpoint after S-0
+**Outcome:** a clean `main`-based branch containing the authoritative documentation, truthful
+setup instructions, and none of the rejected unpushed dispatch skeleton, exactly as this slice's
+demonstrable outcome specified.
 
-Deletion is proven, not asserted. Each check names an exact command. Greps are scoped to runtime
-paths and use exact symbols, so that documentation, archives, and legitimately similar words do not
-produce false positives.
+**Merge commits:** branch `s0-repository-reset`, cut from `main` at `e567adf`; commits `c8ea681`
+(docs, hooks, README, env example), `4400d93` (debris, empty packages, dead severity-tier config,
+corpus-path collapse), `3e1f41d` (status.md landing record); merged to `main` via PR #54 as squash
+commit `4c8f706`.
 
-| Check | Proof |
+**Verification evidence (observed on `main` at `4c8f706`):**
+
+| Check | Result |
 | --- | --- |
-| Abandoned dispatch WIP is not an ancestor | `git merge-base --is-ancestor 0c3c175 HEAD` must exit nonzero |
-| Dispatch code is absent | `git grep -n -e DispatchMessage -e relay_pending -e SERVICE_BUS -- src tests infra scripts` is empty |
-| Dead severity routing is absent | `git grep -n -e PROD_MODELS -e resolve_tier -e SEVERITY_TIER -e ENABLE_OPUS_SEV1 -e CONFIDENCE_THRESHOLD -- src tests` is empty |
-| Deprecated settings are marked, not orphaned | `git grep -n -e EvalTargets -e MAX_TOOL_CALLS -e JUDGE_MODEL -- src` shows each with a deprecation comment naming its deletion slice, and no new consumer |
-| Empty package placeholders are gone | `git ls-files src/opspilot/ops src/opspilot/eval` is empty |
-| Stale root debris is gone | `git ls-files out.txt raw.txt infra/.gitkeep data/.gitkeep` is empty |
+| Abandoned dispatch WIP is not an ancestor | `git merge-base --is-ancestor 0c3c175 HEAD` exits nonzero |
+| Dispatch code is absent | `git grep -n -e DispatchMessage -e relay_pending -e SERVICE_BUS -- src tests infra scripts` empty |
+| Dead severity routing is absent | `git grep -n -e PROD_MODELS -e resolve_tier -e SEVERITY_TIER -e ENABLE_OPUS_SEV1 -e CONFIDENCE_THRESHOLD -- src tests` empty |
+| Deprecated settings are marked, not orphaned | `EvalTargets`, `MAX_TOOL_CALLS`, `JUDGE_MODEL` remain in `config.py`, each with a deprecation comment, no new consumer |
+| Empty package placeholders are gone | `git ls-files src/opspilot/ops src/opspilot/eval` empty |
+| Stale root debris is gone | `git ls-files out.txt raw.txt infra/.gitkeep data/.gitkeep` empty |
 | Authoritative docs are committed | `git ls-files docs .githooks` lists the accepted set |
-| Environment example matches reality | Every setting read in `config.py` appears in `.env.example`, checked by a small test rather than by eye |
-| Baseline is green | `uv run ruff check`, `uv run mypy src`, and `uv run pytest -m "not reranker and not llm"` all pass |
+| Environment example matches reality | `tests/test_env_example.py` asserts every setting `config.py` reads has a key in `.env.example` |
+| Baseline is green | `uv run ruff check`, `uv run mypy src` (0 errors, was 2), `uv run pytest -m "not reranker and not llm"` (382 passed, 5 deselected, 0 failed, was 31 failed/351 passed) all pass |
+
+**Divergences from this slice's original text:**
+
+- The deprecation comments for `EvalTargets`, `MAX_TOOL_CALLS`, and `JUDGE_MODEL` do not name an
+  owning deletion slice in-code, as originally specified above. `code-guidelines.md` §12 (plan
+  vocabulary must not appear in the repository) postdates this slice's text and is merge-blocking
+  per its §13; the comments instead describe the condition or cite the relevant `decisions.md` ID
+  (`D-005` for `JUDGE_MODEL`) without a slice number. The same full-file scan retired existing
+  `Stage N`/`G-NN` references from `config.py`, the one file this slice already touched.
+- "Verified merged remote branches" from the code-and-data-to-delete list was not completed. The
+  six branches `status.md` names under "Documentation and Repository Hygiene" remain undeleted.
 
 ### S-1 Streaming turn skeleton, turn identity, predefined intake, and one screen
 

@@ -93,6 +93,12 @@ here rather than in any slice, so no slice below deletes the dispatch or worker 
 clears the 31 failing tests and the two `mypy` errors `status.md` - "Verification and Test Results"
 attributes to that commit, so every slice starts from a green tree.
 
+**Progress note (2026-08-08):** the WIP commit is abandoned (confirmed not an ancestor of `main`);
+the debris, the empty package placeholders, the dead severity-tier configuration, and the
+untracked `docs`/`.githooks`/stale `README.md`/`.env.example` are closed, merged to `main` via
+PR #54 (squash commit `4c8f706`). The stale-remote-branch confirmation and deletion this paragraph
+also names has not been done; the six branches remain.
+
 **Azure orphans.** Resources that no template declares and that are not part of OpsPilot are deleted
 directly with the CLI. Bicep declares desired state; it does not remove what it never owned, so an
 undeclared resource is not removed by any template change in layer 8. `status.md` - "Deletion and
