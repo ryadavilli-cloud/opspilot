@@ -410,7 +410,7 @@ exist until S-3.
 identity, the normalized incident-context contract settled as `decisions.md` D-007, the stream
 envelope and activity-projection contracts, `obs/tracing.py`'s `turn_id` extension); #60 (the
 streaming endpoint, plus scoping `ruff format` enforcement to touched files); #61 (the one-screen
-client and the in-process cancellation signal).
+client and client-disconnect detection on the streaming endpoint).
 
 **Verification evidence:**
 
@@ -420,7 +420,7 @@ client and the in-process cancellation signal).
 | Ordering | identities-first and close-marker-last asserted directly against the live endpoint and manually verified against the real corpus |
 | Sanitization | activity entries carry no prompt, hidden reasoning, provider content, or secret; a dedicated test asserts no answer-key content reaches the stream |
 | Turn isolation | concurrent turns get independent identities and independent activity sequences |
-| Cancellation signal | driven directly against the generator with a fake disconnect signal at three points (immediately, after one activity, never); emission (including the close marker) stops once disconnected |
+| Client-disconnect detection | driven directly against the generator with a fake disconnect signal at three points (immediately, after one activity, never); emission (including the close marker) stops once the client has disconnected |
 | One-screen client | verified live in a real browser: incident selection, streamed activity feed, brief update, and details expansion all render correctly, no console errors |
 | Decision gate | the normalized incident-context clarification (status.md §17 item 1) settled as `decisions.md` D-007 before implementation |
 
@@ -432,6 +432,21 @@ client and the in-process cancellation signal).
 - "Live-session identity" in this slice's original wording was corrected to "live-session
   presentation state" during PR #59: `data-and-evidence.md` §3 names only investigation and turn
   identity, no session identity. The text above reflects the correction, not the original wording.
+- The original text's "in-process cancellation signal" landed as client-disconnect detection only
+  (the streaming endpoint checks whether the client's own HTTP connection has dropped), not as the
+  accepted explicit cancellation-request mechanism. `runtime-and-deployment.md`'s interaction table
+  names cancellation as its own transport, "a small ordinary request that signals the in-memory
+  cancellation token," separate from the request the turn itself streams over, backed by "one small
+  in-memory map from active turn identity to a cancellation signal" that an external request writes
+  to and the running turn reads. Nothing built here shares state across two requests or exposes a
+  way to cancel a turn other than closing the connection. The explicit signal is genuinely missing,
+  not merely undocumented, and is assigned to S-6 PR 1, which cannot build safe-boundary
+  cancellation semantics without something to receive first.
+- S-1 introduced the `InteractionKind` type (the five request-shape kinds) but not the classifier
+  that produces a value of it; nothing yet reads a request shape and returns a kind. The type's
+  shape is what "stabilized" means here, per the contract-stabilization table above; the
+  classification behavior itself remains S-8's to build, consuming this now-fixed type without
+  needing to redefine it.
 
 ### S-2 Evidence, reference, and assessment contracts with one bounded model call
 
@@ -490,6 +505,15 @@ client and the in-process cancellation signal).
   cause, recommendation, limitation, and brief; the Investigation Record port and its commit
   semantics, with the delivery-ordering rule proven by a lifecycle contract test rather than by a
   delivered completed turn.
+  **Who builds on each, so no later slice quietly redefines what it should consume:** S-3 grounds
+  citations through this same reference parser and resolver rather than a second one; S-5 routes
+  every capability call through this two-axis result and this EAL admission; S-7 replaces only the
+  port's backend, never the port, its commit semantics, or the ordering rule; S-8 answers follow-up
+  and handoff from these same assessment and brief structures, not a rebuilt one; S-9 extends this
+  reference model to knowledge references rather than owning a second parser; S-10 admits governed-
+  query results through this same two-axis vocabulary; S-11 carries this same canonical envelope
+  through the MCP transport, changing only which capability is exposed; S-13 evaluates the golden
+  record and the evaluation-artifact home this slice creates, rather than choosing a new location.
 - **Telemetry and activity impact:** capability request and admission results, including the
   execution-outcome and completeness axes; model task label, prompt version, and usage totals;
   the port's commit-attempt result. Admission facts appear in the activity projection in their safe
@@ -568,6 +592,14 @@ client and the in-process cancellation signal).
   temporal coherence, or any hidden fifth check.
 - **Contract introduced or stabilized:** grounding result, completed-outcome vocabulary, the
   completed-turn artifact, and terminal ordering.
+  **Who builds on each:** S-4 moves this exact ordering into the permanent explicit turn
+  controller without reopening it; S-5's six bounds include the shared correction allowance this
+  slice defines, and must reuse it rather than create a second correction mechanism; S-6's
+  cancellation and degradation outcomes are additional ways to reach the same three-outcome
+  vocabulary and the same completed-turn artifact, not a parallel one; S-7 persists exactly the
+  artifact shape fixed here; S-8 answers follow-up and handoff only from a completed turn this
+  contract already produced; S-13 aggregates this conformance entry point rather than building a
+  second one.
 - **Telemetry and activity impact:** grounding result per check, correction-allowance spend, the
   outcome assignment, the commit result, and the terminal shape decision, all as span facts that
   the projection renders safely.
@@ -630,6 +662,16 @@ client and the in-process cancellation signal).
   `tests/fixtures/wild_ob/`, `tests/test_wild.py`). Parked material moves under a clearly archived
   path excluded from CI; S-13 makes the final keep-or-delete call. Leaving these active would
   leave the repository broken or misleading the moment the graph is deleted.
+  Divergence: the RCAEval probe named in this bullet is already deleted, not parked, as of
+  2026-08-09. Golden scenario records were authored (`data/answer_key/golden_scenarios.yaml`), and
+  since they are the evaluation input surface that supersedes the probe, and `requirements.md` §12
+  defers the capability the probe demonstrated, it was deleted outright rather than parked for a
+  later keep-or-delete call. `eval/wild.py`, `record_wild.py`, `wild_scorecard.json`,
+  `wild_single_agent.json`, `tests/fixtures/wild_ob/`, and `tests/test_wild.py` are gone; entry into
+  this slice does not need to park them, and S-13's final call on them is already made.
+  `data/profiles/rcaeval_profile.json` was verified to be a live corpus-generation input and is
+  deliberately retained. The rest of this bullet, the graph-dependent evaluation, is untouched and
+  still this slice's to do.
 - **Code to replace:** `graph.py` and `router.py`, superseded by a small explicit turn controller;
   the default client route, which now serves `static/investigation.html` as the only client;
   per-user and role-based concurrency admission, superseded by one configured application-level
@@ -642,7 +684,14 @@ client and the in-process cancellation signal).
   and never a numeric merge ratchet. An interim hosted smoke covering start, authentication, and
   one streamed turn, so that CD stays green and honest until A-1 installs the eight accepted
   checks.
-- **Contract introduced or stabilized:** turn-controller and terminal-delivery ordering.
+- **Contract introduced or stabilized:** turn-controller and terminal-delivery ordering; the sole
+  streaming runtime; the application-level concurrency posture; the interim hosted smoke contract.
+  **Who builds on each:** S-5 extends this same controller into the three-agent realization rather
+  than replacing it with a second one; S-6 adds cancellation behavior at this controller's safe
+  boundaries rather than a new control structure; A-0 verifies the interim smoke hosted, and A-1
+  replaces it with the eight-check suite once later capabilities exist to check. This slice adds no
+  agent and no cancellation semantics itself; both are named here only so the next two slices know
+  exactly what they extend.
 - **Telemetry and activity impact:** the turn controller emits stage transitions through the same
   seam the graph node wrapper used, so no instrumentation fact is lost in the swap.
 - **Deterministic tests:** one complete streamed turn; one gate failure; old route absence; no
@@ -709,6 +758,12 @@ scoped to runtime paths and use exact symbols.
   with one app registration and no role machinery; an Application Insights component wired to the
   telemetry seam through `configure_exporter()` at startup; the lower-cost chat deployment added so
   that S-5 has a routing target; the interim smoke run as the post-deploy gate.
+  **Who builds on each:** S-5's intake-normalization task label routes to the lower-cost deployment
+  created here, and to no other; A-1 verifies, rather than creates, the zero-to-one replica posture,
+  built-in authentication, and Application Insights sink this slice establishes, and replaces this
+  slice's interim smoke with the eight-check suite once S-7/S-9/S-10 give it something to check. The
+  zero-to-one posture is not revisited by a later slice: it stays the single-writer, ephemeral-
+  active-state runtime shape the whole design assumes.
 - **Smoke authentication, specified rather than discovered:** enabling built-in authentication
   makes the hosted smoke a real authenticated caller, and the repository has already been bitten
   once by an identity step that existed only in a failure string. Settle and document all five
@@ -806,19 +861,31 @@ scoped to runtime paths and use exact symbols.
   conditions; independent authorized evidence actions executed in parallel within one authorized
   cycle; RCA Analyst as sole completed-turn semantic synthesis authority; free-text intake
   normalization producing the S-1 normalized context; at most one clarification; task labels for
-  intake normalization, objective interpretation, source selection, synthesis, correction, and
-  follow-up answering, with intake normalization routed to the lower-cost deployment and the rest
-  to the primary.
+  every task this slice actually calls a model for: intake normalization, objective interpretation,
+  source selection, synthesis, and correction, with intake normalization routed to the lower-cost
+  deployment and the rest to the primary. `decisions.md` D-002 already fixes the deployment for
+  every task in its routing table, including ones no slice yet calls (follow-up answering,
+  structured-query generation, the offline judge), so nothing about their eventual routing is
+  rediscovered later; only their labels are deferred to the slice that introduces the task, per
+  operating rule 8 and the vertical-slice discipline this plan follows throughout.
 - **Clarification mechanism:** prefer resubmission of the original input with the clarifying answer
   over a signed short-lived normalization token. A token is introduced only if resubmission
   demonstrably fails the requirement, and then only with an explicit signing, expiry, and payload
   contract (status 17.3).
-- **Bounds:** exactly turn deadline, capability-call cap, model-call cap, per-operation retry cap,
-  shared correction allowance, and further-evidence-cycle flag. The retained `MAX_TOOL_CALLS`
-  setting is renamed to the capability-call cap and enforced here. Token use is measured; there is
-  no token ledger.
+- **Bounds:** exactly turn deadline, capability-call cap, model-call cap, per-operation
+  transport-retry cap, shared correction allowance, and further-evidence-cycle flag. The retained
+  `MAX_TOOL_CALLS` setting is renamed to the capability-call cap and enforced here. The shared
+  correction allowance is the one S-3 already defined, reused here rather than a second mechanism;
+  the further-evidence-cycle flag is minted here as a bound with nothing behind it yet, so S-12 has
+  a flag to authorize against instead of inventing one. Token use is measured; there is no token
+  ledger.
 - **Contract introduced or stabilized:** agent proposal and authorization; free-text normalization
-  and the single-clarification flow.
+  and the single-clarification flow; the task-labelled model-access seam, extended with routing.
+  **Who builds on each:** S-9, S-10, and S-12 each propose their own evidence or query action
+  through this same proposal/authorization contract rather than a bespoke one; S-12 authorizes its
+  one further-evidence cycle against the flag this slice mints; S-8's follow-up task, S-10's
+  structured-query task, and S-13's judge task each add their own label to this same routing seam
+  rather than building a second one.
 - **Telemetry and activity impact:** agent identity on every operation; proposal, authorization,
   and refusal facts; bound-stop reason; task label on every model call. Clarification appears as an
   interaction fact, not as model content.
@@ -857,32 +924,56 @@ scoped to runtime paths and use exact symbols.
   observation.
 - **Entry criteria:** S-5 agent boundaries and the six bounds are enforced and tested; the turn
   controller has identifiable safe boundaries to cancel at.
-- **Existing foundation retained:** the S-1 in-process cancellation signal; the S-3 outcome
-  vocabulary, which already carries inconclusive; the S-2 commit ordering, which cancellation
-  outcomes reuse rather than bypass.
+- **Existing foundation retained:** S-1's client-disconnect detection on the streaming endpoint,
+  which stops emission but is not the accepted cancellation-request mechanism (see S-1's own
+  divergence note); the S-3 outcome vocabulary, which already carries inconclusive; the S-2 commit
+  ordering, which cancellation outcomes reuse rather than bypass.
 - **Code and data to delete:** none.
 - **Code to replace:** none.
-- **New implementation:** safe-boundary cancellation in the explicit controller; the materiality
-  decision that separates partial from inconclusive; stop and inconclusive-reason vocabularies; no
-  unsupported assertions anywhere in a degraded result.
+- **Missing foundation this slice must build first, before safe-boundary semantics:** the accepted
+  explicit cancellation-request mechanism does not exist yet. `runtime-and-deployment.md` names it
+  as its own transport, a small ordinary request distinct from the streaming request the turn owns,
+  that signals one small in-memory map from active turn identity to a cancellation signal, alive
+  only while that streaming request is active, not durable, not a job registry, not used for
+  recovery or reattachment. PR 1 of this slice owns minting that map and the signalling endpoint;
+  everything else in this slice is safe-boundary behavior that reads the signal PR 1 writes.
+- **New implementation:** the explicit cancellation-request endpoint and its in-memory signal map
+  (PR 1, above); safe-boundary cancellation in the explicit controller, which checks the signal at
+  each boundary rather than the disconnect flag S-1 left; the evidence-admitted decision that
+  separates partial from inconclusive on the cancellation path (a binary check, not a materiality
+  judgment: materiality is a separate mechanism gating the source-failure degradation path in this
+  same slice, not cancellation); stop and inconclusive-reason vocabularies; no unsupported
+  assertions anywhere in a degraded result.
 - **Cancellation persistence matrix, stated exactly so the commit rule is unambiguous:**
 
   | Situation | Outcome | Assessment and brief | Committed |
   | --- | --- | --- | --- |
   | Cancelled before any evidence is admitted | Inconclusive completed turn | None | Yes |
-  | Cancelled after evidence is admitted, material enough to support a result | Partial completed turn | Yes | Yes |
-  | Cancelled after evidence is admitted, not material enough | Inconclusive completed turn | None | Yes |
+  | Cancelled after evidence is admitted | Partial completed turn | Yes | Yes |
   | Client disconnect | Not a completed turn | None | No; active state is discarded |
   | Persistent grounding failure | Failed execution, outside the three completed outcomes | None | No |
 
-  "Nothing is persisted for non-completed execution" therefore excludes both cancellation rows that
-  produce a completed outcome. Cancellation is a completed turn; disconnect is not.
-- **Contract introduced or stabilized:** cancellation, degradation, and cancelled-turn persistence
-  rules.
+  "Nothing is persisted for non-completed execution" therefore excludes the cancellation row that
+  produces a completed outcome. Cancellation is a completed turn; disconnect is not.
+  **Blocker for the design authority, not resolved here:** an earlier version of this matrix split
+  the evidence-admitted cancellation row further, into a materiality-gated partial-versus-
+  inconclusive choice. `workflow-design.md`'s own rule is a plain binary: at least one admitted
+  piece of evidence delivers a partial brief, full stop; no design document gates that specific
+  branch on materiality (materiality gates the source-failure path instead). The row is removed
+  above to keep the plan consistent with the currently accepted authority. If the finer split was
+  actually intended, `workflow-design.md` needs an explicit revision recording it; this plan does
+  not invent one.
+- **Contract introduced or stabilized:** the explicit cancellation-request mechanism; cancellation,
+  degradation, and cancelled-turn persistence rules. **Who builds on each:** this fixes the
+  complete, closed set of situations that produce a completed turn (normal completion, cancellation,
+  or degradation, always one of the three accepted outcomes), and S-7 persists exactly that set;
+  nothing later adds a new way to reach a completed turn.
 - **Telemetry and activity impact:** cancellation-received and cancellation-effective facts at the
-  safe boundary, the materiality decision, and the stop reason.
-- **Deterministic tests:** every row of the matrix above; disconnect discards and commits nothing;
-  no fabricated evidence in a degraded result; the exact outcome vocabulary.
+  safe boundary, the materiality decision on the source-failure path, and the stop reason.
+- **Deterministic tests:** the cancellation-request signal reaches a running turn from a separate
+  request and is distinguishable from a disconnect in the resulting outcome; every row of the
+  matrix above; disconnect discards and commits nothing; no fabricated evidence in a degraded
+  result; the exact outcome vocabulary.
 - **Evaluation increment:** cancellation outcomes are added to the conformance aggregation so that
   a wrong outcome class is caught by evaluation as well as by tests.
 - **Dataset or fixture work:** a source-failure fixture for the degradation path.
@@ -890,10 +981,12 @@ scoped to runtime paths and use exact symbols.
 - **Decision gates:** none.
 - **Explicit non-goals:** no persistence of active-turn state, no reattachment, no resumption of a
   cancelled turn.
-- **Small PR breakdown:** (1) cancellation boundaries and signal handling; (2) materiality,
-  degradation, and reason contracts; (3) the persistence matrix and its tests.
+- **Small PR breakdown:** (1) the explicit cancellation-request signal and its endpoint, consumed
+  by nothing yet; (2) safe-boundary cancellation in the controller, reading that signal, plus
+  disconnect and materiality-gated degradation contracts; (3) the persistence matrix and its tests.
 - **Completion evidence:** early-cancel and late-cancel demonstrations in the same one-screen UI,
-  each with the committed record inspected afterwards.
+  each with the committed record inspected afterwards, plus one demonstration that cancellation and
+  a bare disconnect produce different recorded outcomes.
 - **Status updates required after landing:** the cancellation rows in section 10.7 move to
   Implemented; record which cancellation paths have deterministic tests.
 
@@ -935,10 +1028,18 @@ scoped to runtime paths and use exact symbols.
   backend behind the same port. The in-memory implementation remains as the local and CI backend.
 - **New implementation:** the Cosmos completed-turn repository with the Supervisor as sole writer;
   restart-safe read and citation resolution; the container or migration target chosen by the
-  compatibility check; the minimal retry the single-writer path requires.
+  compatibility check; the minimal retry the single-writer path requires; the Container App
+  managed identity's write-role assignment on the `investigations` container (or the outcome-3
+  replacement container), scoped to that container alone. This is the opposite posture from S-9's
+  and S-10's corpus containers, where the same identity is deliberately read-only, and it is settled
+  here rather than left for A-1 to discover: the deployed app cannot write a completed turn without
+  it, so the role assignment is part of this slice's own Bicep work, not a later cleanup task.
 - **Contract introduced or stabilized:** Investigation Record storage layout and restart-safe
   resolution. The port and its commit semantics were stabilized at S-2, and the completed-turn
   artifact and terminal ordering at S-3; none of them is reopened here.
+  **Who builds on each:** S-8 reads and resolves citations against exactly this storage layout when
+  it answers a follow-up or handoff from retained state; A-1 verifies the write-role assignment and
+  the container this slice chose, rather than inventing or granting it for the first time.
 - **Telemetry and activity impact:** persistence result, backend identity, and retry facts on the
   commit span.
 - **Deterministic tests:** one port contract suite run against the in-memory backend and against a
@@ -965,8 +1066,9 @@ scoped to runtime paths and use exact symbols.
   deletion.
 - **Small PR breakdown:** (1) compatibility check and recorded outcome; (2) if outcome 3, the
   separately approved container replacement, doing nothing else; (3) Cosmos backend behind the
-  existing port, with the shared contract suite run against the stub; (4) restart-safe read and
-  citation resolution, with the Azure-assisted integration lane.
+  existing port, including the write-role assignment, with the shared contract suite run against
+  the stub; (4) restart-safe read and citation resolution, with the Azure-assisted integration
+  lane.
 - **Completion evidence:** the port contract suite green against both offline backends, and one
   recorded Azure-assisted run in which a completed turn is written to Cosmos, the app restarted,
   and the same turn read back with resolving citations.
@@ -981,14 +1083,17 @@ scoped to runtime paths and use exact symbols.
   submission each seed a new investigative turn.
 - **Entry criteria:** S-7 durable records exist and read back after restart, so retained state is
   real rather than in-process.
-- **Existing foundation retained:** the S-1 request-shape interaction classification; the S-7
+- **Existing foundation retained:** the S-1 `InteractionKind` type, whose shape is fixed and not
+  reopened here; the S-5 task-labelled model-access seam, which gains the follow-up label this
+  slice was the one deferred to add (`decisions.md` D-002 already fixed its deployment); the S-7
   record and its resolver; the S-2 brief projection, which handoff reuses as a projection rather
   than re-rendering.
 - **Code and data to delete:** none.
 - **Code to replace:** none.
-- **New implementation:** the follow-up task on the primary deployment through the Supervisor; the
-  retained-state validation rules; deterministic handoff projection; redirect and supplied-context
-  seeding; the read endpoint.
+- **New implementation:** the request-shape classifier itself, which S-1 never built, producing a
+  value of the S-1 `InteractionKind` type from request shape or explicit UI action; the follow-up
+  task on the primary deployment through the Supervisor; the retained-state validation rules;
+  deterministic handoff projection; redirect and supplied-context seeding; the read endpoint.
 - **Constraints stated explicitly, because the old intent taxonomy could otherwise reappear as a
   routing or grounding system:**
   - interaction kind is determined by request shape or an explicit UI action, never by a model
@@ -1003,15 +1108,24 @@ scoped to runtime paths and use exact symbols.
   - a follow-up is not a completed turn and does not run the four-check gate;
   - handoff performs no model call, no new synthesis, no ranking, no new evidence, and no new
     recommendation.
+- **Forward compatibility with S-9, which follows this slice:** knowledge references do not exist
+  yet, so "retained evidence references" here means only the operational evidence references S-2
+  fixed. Retained-state validation reads references generically, by the S-2 parser and resolver,
+  not by an operational-only shape hard-coded into this slice. When S-9 extends that same parser
+  and resolver to knowledge references, a retained knowledge reference becomes readable through the
+  identical validation path with no reshaping of this slice's interaction semantics. If that
+  genuinely cannot hold, S-9 owns the fix, not a return trip through this slice.
 - **Contract introduced or stabilized:** follow-up, handoff, redirect, and supplied-context
   semantics.
 - **Telemetry and activity impact:** interaction kind, retained-state validation result, and the
   fact that handoff made no model call.
-- **Deterministic tests:** each constraint above as its own test; a follow-up that would require
-  new evidence is refused with the new-turn recommendation; handoff output is byte-identical for
-  identical retained state; redirect and supplied context create new turns rather than mutating the
-  prior one.
-- **Evaluation increment:** follow-up and handoff conformance added to the aggregation.
+- **Deterministic tests:** the classifier maps each of the five request shapes to the correct
+  `InteractionKind` value, with an ambiguous ordinary follow-up defaulting to a question; each
+  constraint above as its own test; a follow-up that would require new evidence is refused with the
+  new-turn recommendation; handoff output is byte-identical for identical retained state; redirect
+  and supplied context create new turns rather than mutating the prior one.
+- **Evaluation increment:** follow-up and handoff conformance added to the aggregation; both
+  results are S-13 report inputs, not reimplemented there.
 - **Dataset or fixture work:** retained-state fixtures covering answerable and unanswerable
   follow-ups; a recorded cassette for the follow-up model response, carrying prompt-version and
   manifest metadata like every other cassette, so that CI never calls a model for follow-up. The
@@ -1022,8 +1136,9 @@ scoped to runtime paths and use exact symbols.
 - **Decision gates:** none.
 - **Explicit non-goals:** no new evidence path, no model call in handoff, no follow-up gate, no
   cross-turn memory store.
-- **Small PR breakdown:** (1) follow-up task and retained-state validation; (2) deterministic
-  handoff and the read endpoint; (3) redirect and supplied-context seeding.
+- **Small PR breakdown:** (1) the request-shape classifier, the follow-up task, and retained-state
+  validation; (2) deterministic handoff and the read endpoint; (3) redirect and supplied-context
+  seeding.
 - **Completion evidence:** complete a turn, restart, ask a follow-up answered under replay, be
   refused on an out-of-scope follow-up, and request a handoff that makes no model call. The
   follow-up cassette is committed and its manifest validates.
@@ -1088,6 +1203,13 @@ scoped to runtime paths and use exact symbols.
   A-1 verifies that the application identity still holds read-only access on these containers.
 - **Contract introduced or stabilized:** retrieval result and knowledge-reference model, as an
   extension of the S-2 reference model using the same parser and resolver.
+  **Who builds on each:** S-12's further-evidence cycle reasons over the informing references this
+  slice starts carrying into proposals, so a further-evidence demonstration can cite retrieved
+  knowledge rather than only operational evidence; S-13 aggregates the lexical-only baseline and
+  the retrieval-influence measurement recorded here as report inputs, not new measurements; A-1
+  verifies the read-only posture and the seeded `knowledge` container this slice creates, rather
+  than inventing either; A-2's retrieval-influence demonstration journey runs against exactly the
+  repaired scenario this slice's completion evidence names.
 - **Telemetry and activity impact:** retrieval query, fusion and promotion decisions, passage
   budget applied, and the informing references carried into the next proposal.
 - **Deterministic tests:** identifier promotion above fused position; passage budget; category
@@ -1140,7 +1262,9 @@ tests, and its comments may legitimately use.
   than arbitrary SQL.
 - **Entry criteria:** S-5 proposal and authorization are stable, since a query is an authorized
   evidence action; the approved surface is agreed as `incidents.json`, `deployments.json`, and
-  `alerts.json` (status 11).
+  `alerts.json` (status 11); S-9 has settled the setup-identity posture (a separate seeding
+  principal, read-only application access) this slice's own container seeding reuses rather than
+  redeciding.
 - **Existing foundation retained:** the corpus loader in `data/repository.py` as the local fixture
   source; the capability result envelope and admission from S-2.
 - **Code and data to delete:** none.
@@ -1151,13 +1275,17 @@ tests, and its comments may legitimately use.
   ordering, MIN, MAX, SUM, AVG, joins, writes, and arbitrary SQL have no canonical representation
   and must remain unrepresentable rather than merely rejected.
 - **Contract introduced or stabilized:** governed-query structure.
+  **Who builds on each:** A-1 verifies the `operational-records` container and its read-only
+  application access, rather than creating either; A-2's governed-structured-query demonstration
+  journey runs against exactly the approved surface and refusal case this slice's completion
+  evidence names.
 - **Telemetry and activity impact:** query validation result, rejection reason, scope and limit
   applied, and execution provenance.
 - **Deterministic tests:** lookup, filter, and COUNT against fixture truth; rejection before
   execution; scope, limit, and timeout enforcement; read-only enforcement on this path as on every
   other.
 - **Evaluation increment:** structured-query conformance added to the aggregation, including one
-  recorded refusal.
+  recorded refusal; this result is an S-13 report input, not reimplemented there.
 - **Dataset or fixture work:** fixture truth tables for the approved surface; no corpus change.
 - **Azure impact:** Local fixture adapter first, then Azure-assisted Cosmos integration. The
   `operational-records` container is added additively and is seeded under the same setup-identity
@@ -1183,8 +1311,10 @@ tests, and its comments may legitimately use.
   the inspection; D-004 settles library mechanics, session and transport handling, and result
   carriage only. The existing server already demonstrates in-process execution, same-service
   delegation, and canonical envelope passthrough (status 6.7, 17.5).
-- **Existing foundation retained:** parity by delegation to the same `ToolService.call()`, with the
-  same validation and sanitized errors, and the parity test pattern.
+- **Existing foundation retained:** parity by delegation to the same `ToolService.call()` and the
+  S-2 canonical two-axis result envelope, unchanged here; the same validation and sanitized errors;
+  the parity test pattern; the activity and telemetry projection seams from S-1, which the new
+  transport tag rides on rather than a second emission path.
 - **Code and data to delete:** all three current MCP exposures, `get_incident`, `query_logs`, and
   `search_runbooks`. None of them is the accepted capability, so the correct action is to remove
   every existing registration rather than to narrow the set. The underlying direct capabilities are
@@ -1193,7 +1323,10 @@ tests, and its comments may legitimately use.
 - **New implementation:** one MCP exposure for deployment and change history over the same
   implementation and the same canonical result model; the transport tag in activity and telemetry;
   registration enforcement so an unregistered capability cannot be reached.
-- **Contract introduced or stabilized:** MCP parity contract.
+- **Contract introduced or stabilized:** MCP parity contract: exactly one MCP exposure, held to the
+  same canonical result and provenance as the direct path. **Who builds on each:** A-2's
+  direct-versus-MCP demonstration journey runs against exactly this one exposure; nothing later
+  adds a second one.
 - **Telemetry and activity impact:** transport identity on the capability span, and MCP operation
   spans, which do not exist today.
 - **Deterministic tests:** result, provenance, and permission parity between transports;
@@ -1222,7 +1355,13 @@ tests, and its comments may legitimately use.
 - **Entry criteria:** retrieval works end to end from S-9, and corpus chronology and leakage checks
   exist as automated gates rather than manual review.
 - **Existing foundation retained:** the authored corpus, its answer key, and its closure gates; the
-  S-5 authorization conditions, which the further-evidence cycle reuses rather than duplicates.
+  S-4 explicit turn controller, which the back-edge runs inside rather than a second control
+  structure; the S-5 authorization conditions and the further-evidence-cycle flag S-5 already
+  mints, both reused rather than duplicated; S-9 retrieval and the informing references it carries
+  into a proposal, which is what the further-evidence proposal reasons over; the S-3 terminal
+  lifecycle, grounding gate, correction allowance, outcome vocabulary, and commit ordering, all of
+  which the final re-synthesis after the back-edge runs through unchanged rather than a shortened
+  path.
 - **Scope guard:** keep exactly seven authored incidents across five families. Do not add an eighth
   or ninth incident in this plan.
 - **Code and data to delete:** stale data documentation, including the `data/answer_key/README.md`
@@ -1231,8 +1370,12 @@ tests, and its comments may legitimately use.
   it is no longer an input.
 - **Code to replace:** the affected generator inputs, per the corpus repair protocol; goldens
   regenerated rather than hand-edited.
-- **New implementation:** the further-evidence proposal, the four authorization conditions, the
-  one-cycle flag, and the final synthesis pass after the back-edge.
+- **New implementation, and nothing beyond it:** the further-evidence proposal; authorization
+  against the four accepted conditions, enforced against the one-cycle flag S-5 already minted
+  rather than a newly built one; exactly one back-edge; the final synthesis pass after it, which
+  completes the turn through the existing S-3 terminal lifecycle rather than a second one; the
+  remaining corpus and evaluation assignments below. No second controller, second authorization
+  mechanism, second correction allowance, or new loop framework is introduced here.
 - **Contract introduced or stabilized:** evaluation scenario and fixture assignments, written into
   the evaluation artifact home settled in S-2.
 - **Telemetry and activity impact:** further-evidence proposal, its authorization decision against
@@ -1241,7 +1384,9 @@ tests, and its comments may legitimately use.
   five-family counts; closure; chronology; leakage; and the scenario-versus-variant distinction.
 - **Evaluation increment:** D-006 selections recorded for further evidence, retrieval influence,
   the change-time scenario subset, the milestone set, and the repeatability subset; the
-  repeatability subset is wired and runnable.
+  repeatability subset is wired and runnable. Both the D-006 selections and the repeatability
+  subset are direct S-13 inputs: S-13 assembles its report from them rather than re-selecting
+  scenarios or re-deriving the subset.
 - **Dataset or fixture work:** repair remaining mechanism-implied telemetry (inc-002 RU, inc-005
   hit rate, inc-006 cache evidence), remaining effect-before-cause orderings and postmortem
   timelines, stale data documentation, and templated leakage. Revise an existing scenario,
@@ -1296,8 +1441,11 @@ then immediately require a regeneration against a changed environment.
 - **Entry criteria:** S-7 persistence, S-9 retrieval, and S-10 governed query are stable and their
   containers are seeded, so nothing is deleted that a capability still needs.
 - **Existing foundation retained:** the A-0 hosted alignment, which already settled replicas,
-  authentication, and telemetry; the model-import trick and the az-CLI restart technique from the
-  old smoke script, reused for the citations-resolve-after-restart check.
+  authentication, and telemetry; the S-7 `investigations` container and its write-role assignment;
+  the S-9 `knowledge` container, embedding deployment, and read-only application access; the S-10
+  `operational-records` container under the same read-only posture; the model-import trick and the
+  az-CLI restart technique from the old smoke script, reused for the citations-resolve-after-restart
+  check. This slice verifies each of these; it does not create any of them for the first time.
 - **Code and data to delete:** performed only after the verification in each case: the live
   `checkpoints` and `investigation-index` containers; the old job-record data or container, per the
   S-7 migration decision; the interim smoke installed in S-4; the owner-confirmed orphan
@@ -1346,6 +1494,7 @@ Live state is proven by query, not by reading Bicep.
 | Replicas are still zero to one | `az containerapp show -g rg-opspilot -n opspilot-api --query "properties.template.scale"` shows min 0, max 1 |
 | No orphan resources remain unapproved | `az resource list -g rg-opspilot --query "[].name"` matches the Bicep output set, or each difference is explicitly approved |
 | Application identity is read-only on corpus containers | The role assignments show the app identity with data-reader scope on `knowledge` and `operational-records`, and no write scope |
+| Application identity can write completed turns | The role assignments show the app identity with data-write scope on `investigations` (or the S-7 outcome-3 replacement container) and no other container |
 | Hosted smoke is exactly the accepted suite | The smoke script defines eight checks and no assertion references approval, polling, or job status |
 | Deployment is repeatable | `az deployment group what-if` against unchanged parameters reports no create, delete, or modify actions. Optionally follow with a real deployment and confirm that resource IDs and the properties the accepted design names are unchanged. A plain repeat deployment is not proof, because Azure records deployment operations even when effective properties do not change |
 
@@ -1358,19 +1507,29 @@ Live state is proven by query, not by reading Bicep.
   hosted smoke result.
 - **Entry criteria:** D-006 selections are recorded, the corpus gates pass, and A-1 is complete, so
   the evaluation set, its home, and the hosted environment are all final before measurement begins.
-- **Existing foundation retained:** the conformance aggregation from S-3, extended rather than
-  rebuilt; the golden records begun at S-2 in the artifact home settled there; the fixed-script
-  fixture captured at S-5; the lexical baseline from S-9; cassette and replay machinery as
-  change-time determinism aids.
+- **Existing foundation retained, all of it aggregated here rather than rediscovered:** the golden
+  records and the evaluation artifact home from S-2; the grounding and outcome conformance
+  aggregation from S-3; the fixed-script baseline fixture from S-5; the cancellation conformance
+  from S-6; the follow-up and handoff conformance from S-8; the lexical-only retrieval baseline and
+  the retrieval-influence result from S-9; the governed-query conformance and refusal result from
+  S-10; the D-006 selections and the repeatability subset from S-12; the final hosted smoke result
+  from A-1; cassette and replay machinery as change-time determinism aids. This slice's own job is
+  the judge, the baseline comparisons, and report assembly over that spine, not re-measuring any
+  item on it.
 - **Code and data to delete:** the material parked in S-4, now finally deleted or archived by
   explicit decision: old numeric scorecards, stale rerank claims, the RCAEval probe and its
   fixtures, and the stub harness. The standalone judge configuration retained since S-0 is removed
   here, replaced by D-005 task routing.
+  Divergence: the RCAEval probe and its fixtures are already deleted as of 2026-08-09, when golden
+  scenario records superseded them, so this slice has no keep-or-delete call left to make on them.
+  The rest of this bullet is untouched and still this slice's to do.
 - **Code to replace:** the remaining scorecard vocabulary, superseded by the four accepted layers.
-- **New implementation:** the versioned judge rubric on the primary deployment; the expanded
-  fixed-script fixture set and its comparison; categorical result assembly; the report generator;
-  and the advisory CI signal, with no thresholds set before the baselines exist. Evaluation
-  aggregates deterministic tests and the final hosted smoke; it does not reimplement them.
+- **New implementation:** the versioned judge rubric, dispatched through the existing S-5
+  task-labelled model-access seam on the primary deployment, not a separate runtime model path; the
+  expanded fixed-script fixture set and its comparison; categorical result assembly; the report
+  generator; and the advisory CI signal, with no thresholds set before the baselines exist.
+  Evaluation aggregates deterministic tests and the final hosted smoke; it does not reimplement
+  them.
 - **Two report modes, because a live judge is not byte-stable:**
   1. **Deterministic report:** generated from committed judge fixtures or cassettes, with the
      hosted-smoke result read from a committed recorded run. Reproducible byte for byte, and the
@@ -1438,9 +1597,12 @@ Live state is proven by query, not by reading Bicep.
 - **Azure impact:** Hosted verification only; no infrastructure change.
 - **Decision gates:** none.
 - **Explicit non-goals:** no new capability, no contract change, no corpus change.
-- **Demonstration journeys:** predefined investigation; free-text intake with at most one
-  clarification; retrieval influence; direct versus MCP; follow-up and handoff; early and late
-  cancellation; the further-evidence cycle.
+- **Demonstration journeys:** predefined investigation, ending in a grounded completed-turn outcome
+  with visible three-agent collaboration and model routing in the feed; free-text intake with at
+  most one clarification; retrieval influence; governed structured query, including one visible
+  refusal; direct versus MCP; follow-up and handoff; early and late cancellation; the
+  further-evidence cycle. Governed structured query was missing from this list until this pass;
+  S-10 already built the capability, so this adds only the journey, not new implementation.
 - **Small PR breakdown:** (1) UI and demonstration polish; (2) final documentation and repository
   hygiene.
 - **Completion evidence:** the demonstration script succeeds end to end against the hosted app.
@@ -1462,7 +1624,9 @@ Live state is proven by query, not by reading Bicep.
 - S-6 precedes S-7 so that the set of turns requiring a commit is fixed before the durable backend
   is built. S-7 precedes S-8 so that retained state is durable before follow-up reads it.
 - S-9 must include the minimum retrieval-demonstration repair before claiming `inc-007` influence.
-- S-10 and S-11 are independent of each other and of S-9, and may be reordered inside Horizon 2.
+- S-10 consumes the setup-identity posture S-9 settles (read-only application access, a separate
+  setup principal for seeding) and follows it for that reason; the two are not independently
+  reorderable. S-11 is independent of both S-9 and S-10 and may be reordered inside Horizon 2.
 - S-12 needs S-9 for the retrieval selection and S-5 for the authorization conditions the
   further-evidence cycle reuses.
 - A-1 requires S-7, S-9, and S-10, because it deletes containers and seeds the ones those slices
@@ -1509,7 +1673,7 @@ This plan is ready to execute when review confirms:
 4. no temporary assessment contract is introduced;
 5. exactly seven authored incidents remain;
 6. retrieval influence is demonstrated only after repairing answer leakage and contradictions;
-7. the six bounds use the accepted names, including the per-operation retry cap;
+7. the six bounds use the accepted names, including the per-operation transport-retry cap;
 8. grounding check two retains the exact operational-support meaning;
 9. obsolete approval-role machinery is removed with HITL, and hand-rolled authorization is removed
    at A-0 rather than deferred to the end;
@@ -1537,7 +1701,9 @@ This plan is ready to execute when review confirms:
 22. every existing test module has exactly one disposition and one owning slice;
 23. no slice depends on a decision that no earlier slice or authoritative document owns;
 24. every slice answers what a reviewer can run, see, or verify;
-25. no slice is merely framework or infrastructure construction.
+25. no slice is merely framework or infrastructure construction;
+26. no slice depends on a mechanism, contract, resource, fixture, or test seam unless the producing
+    slice explicitly owns its implementation and proof.
 
 ---
 
@@ -1595,8 +1761,8 @@ contract; Delete means it dies with its subject.
 | `test_tracing.py` | Keep | S-1, A-0 | Extended for turn identity and the real exporter |
 | `test_triage.py` | Delete | S-5 | Dies with `triage.py` |
 | `test_triager.py` | Delete | S-5 | Dies with the LLM triager |
-| `test_wild.py` | Park then Delete | S-4, S-13 | Parked with the RCAEval probe in S-4; final disposition in S-13 |
-| `tests/fixtures/wild_ob/` | Park then Delete | S-4, S-13 | Same disposition as `test_wild.py` |
+| `test_wild.py` | Deleted | Done 2026-08-09 | Deleted with the RCAEval probe when golden scenario records superseded it; neither S-4 nor S-13 has anything left to do here |
+| `tests/fixtures/wild_ob/` | Deleted | Done 2026-08-09 | Same disposition as `test_wild.py` |
 | `tests/conftest.py` | Keep | Across slices | Evolves with the fixtures it serves |
 
 New suites are named in the path-level detail table. Any test module added after this plan was

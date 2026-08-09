@@ -29,7 +29,7 @@ belongs to `status.md`; implementation sequence belongs to `execution-plan.md`.
 | D-003 | Retrieval realization | Accepted |
 | D-004 | MCP capability and realization | Pending library inspection |
 | D-005 | Evaluation judge configuration | Accepted |
-| D-006 | Evaluation scenario selections | Pending corpus inspection |
+| D-006 | Evaluation scenario selections | Accepted |
 | D-007 | Normalized incident-context contract | Accepted |
 
 ---
@@ -217,6 +217,49 @@ are what mitigate it, and neither removes it.
 **Applies to.** `evaluation.md` — "Model-Assisted Judge"; `runtime-and-deployment.md` — "Model
 Connectivity"; NFR-25.
 
+### D-006 - Evaluation scenario selections
+
+**Status:** Accepted
+
+**Decision.** The selection criteria were already settled; the corpus inspection this decision
+waited on was performed on 2026-08-09, against a corpus whose repairs had landed and which is not
+expected to change again. Each criterion now names real incident identifiers.
+
+| Selection | Criteria | Selected |
+| --- | --- | --- |
+| Change-time scenario subset | One incident that reaches a supported conclusion through a short evidence path, chosen for the fastest end-to-end signal | inc-005 |
+| Milestone set | All seven authored incidents | inc-001 through inc-007 |
+| Repeatability subset | Three incidents covering one supported conclusion, one ambiguous or competing-hypothesis case, and one partial or inconclusive case | inc-005, inc-004, inc-006 |
+| Further-evidence demonstration | One authored scenario or controlled fixture variant in which the RCA Analyst's further-evidence need fires and the Supervisor authorizes the cycle | inc-004, an authored scenario; no fixture variant is needed |
+| Retrieval influence | One scenario in which retrieved knowledge materially influences the investigation: an authored scenario where the corpus naturally supports one, otherwise a controlled and credible fixture variant. If neither can demonstrate the influence, that is a corpus coverage gap requiring explicit resolution, never grounds to drop the demonstration | inc-007, an authored scenario; no fixture variant is needed |
+
+**Why each.** inc-005 has the shortest supported path in the corpus (one log, three metrics, one
+edge, and uniquely no deploy at all), so it reaches a conclusion with the fewest moving parts.
+inc-004 is the only scenario carrying an authored `red_herring`, which is what makes it the
+ambiguous case, and its externally unobservable third party is what leaves a question a first
+evidence pass cannot close, which is what makes it the further-evidence case as well. inc-006 is
+the corpus's only scenario where partial is a legitimate terminal shape rather than a failure:
+establishing one of its two contributing conditions, and saying plainly that one does not explain
+all signals, is a correct partial answer. inc-007 is a recurrence whose match is reached through a
+postmortem's recurrence signature rather than through operational evidence, so retrieved knowledge
+changes the investigation's path rather than decorating its result.
+
+**One criterion is satisfied differently than its wording anticipates.** The repeatability subset
+asks for "one partial or inconclusive case". No authored incident has partial or inconclusive as
+its only acceptable outcome; all seven can reach complete. inc-006 is selected because its golden
+record accepts complete or partial, making it the only scenario where a partial answer is correct
+rather than a shortfall. Reading the criterion as requiring a scenario that can only fail would
+have found nothing in this corpus and forced a fixture variant, which would demonstrate the
+evaluation machinery rather than the system.
+
+**Accepted trade-off.** inc-004 carries both the further-evidence and the ambiguous-case roles, so
+a defect in that one scenario would weaken two demonstrations at once. It is selected for both
+because it is genuinely the strongest candidate for each, and duplicating the roles onto a weaker
+scenario to spread risk would make both demonstrations less convincing.
+
+**Applies to.** `evaluation.md` — "Scenario Corpus and Coverage Audit"; `evaluation.md` —
+"Repeatability and Before/After Comparison"; `evaluation.md` — "Evaluation Cadence".
+
 ### D-007 - Normalized incident-context contract
 
 **Status:** Accepted
@@ -280,39 +323,5 @@ through deterministic admission, never through intake.
 
 **Applies to.** `system-design.md`: "Investigation, Turn, and Live-Session Model";
 `data-and-evidence.md`: "Identity and Reference Model"; FR-1, FR-2, FR-3, FR-5, FR-7.
-
----
-
-## 4. Pending Corpus Item
-
-### D-006 - Evaluation scenario selections
-
-**Status:** Pending corpus inspection
-
-**Decision.** The selection criteria are settled. Which authored incident satisfies each is not,
-because no design document names the authored incidents.
-
-| Selection | Criteria |
-| --- | --- |
-| Change-time scenario subset | One incident that reaches a supported conclusion through a short evidence path, chosen for the fastest end-to-end signal |
-| Milestone set | All seven authored incidents |
-| Repeatability subset | Three incidents covering one supported conclusion, one ambiguous or competing-hypothesis case, and one partial or inconclusive case |
-| Further-evidence demonstration | One authored scenario or controlled fixture variant in which the RCA Analyst's further-evidence need fires and the Supervisor authorizes the cycle |
-| Retrieval influence | One scenario in which retrieved knowledge materially influences the investigation: an authored scenario where the corpus naturally supports one, otherwise a controlled and credible fixture variant. If neither can demonstrate the influence, that is a corpus coverage gap requiring explicit resolution, never grounds to drop the demonstration |
-
-**What inspection will settle.** Reading the authored corpus assigns an incident identifier to each
-criterion above, and confirms that an incident satisfying each criterion exists. The coverage audit
-in `evaluation.md` is what surfaces a criterion no authored incident currently meets.
-
-**Why.** The criteria are what implementation needs in order to wire the evaluation runs; the
-identifiers are a corpus lookup. Naming identifiers without reading the corpus would invent them, and
-a wrong identifier here is worse than an absent one because it would silently select the wrong
-scenario.
-
-**Accepted trade-off.** Evaluation runs cannot be wired to specific scenarios until the lookup is
-done. Nothing else waits on it.
-
-**Applies to.** `evaluation.md` — "Scenario Corpus and Coverage Audit"; `evaluation.md` —
-"Repeatability and Before/After Comparison"; `evaluation.md` — "Evaluation Cadence".
 
 ---
