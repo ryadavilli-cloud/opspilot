@@ -1170,6 +1170,11 @@ scoped to runtime paths and use exact symbols.
   and its tests, `RERANK_CANDIDATES`, and the divergent `bge-*` configuration. Verify here whether
   `data/profiles/` calibration scripts are still an input to corpus regeneration; if they are not,
   S-12 archives them.
+  Divergence: that verification is already done, 2026-08-09. `data/profiles/rcaeval_profile.json`
+  IS a live input: `data/synthetic/generate.py` reads it to calibrate noise density, confirmed by
+  running the generator, which reports `evidence refs required=42 resolved=42`. It is therefore
+  retained, and the archiving branch this bullet points S-12 at does not apply. Neither this slice
+  nor S-12 needs to re-verify or archive it.
 - **Code to replace:** the retrieval factory and adapter mapping, superseded by the D-003 stack;
   the pointer-only hit shape, superseded by passage-bearing results, since an agent cannot reason
   over a pointer.
@@ -1368,6 +1373,11 @@ tests, and its comments may legitimately use.
   claim of six scenarios and the provenance sources that `provenance.md` does not support; the
   `data/profiles/` external calibration pipeline and its cache dependence, if S-9 established that
   it is no longer an input.
+  Divergence: the `data/answer_key/README.md` scenario-count claim was already fixed in the
+  2026-08-08 corpus repair (#56). The `data/profiles/` conditional is already resolved the other
+  way, 2026-08-09: the calibration profile IS a live corpus-generation input, so it is retained and
+  this slice deletes nothing under `data/profiles/`. The `provenance.md` sources are untouched and
+  still this slice's to do.
 - **Code to replace:** the affected generator inputs, per the corpus repair protocol; goldens
   regenerated rather than hand-edited.
 - **New implementation, and nothing beyond it:** the further-evidence proposal; authorization

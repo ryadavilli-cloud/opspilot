@@ -152,7 +152,7 @@ scenario where the corpus naturally supports one, otherwise a controlled and cre
 variant of the §13 kind, in which the RCA Analyst states a further-evidence need and the Supervisor
 authorizes the cycle. The demonstration is required either way; the absence of a naturally
 occurring scenario selects the fixture variant and is not grounds to drop the requirement. Which
-scenario or variant is used is pending corpus inspection (`decisions.md` D-006). Removing the
+scenario or variant is used is recorded in `decisions.md` D-006. Removing the
 further-evidence capability or its demonstration would be an explicit later architecture revision,
 never an evaluation-only cleanup.
 
