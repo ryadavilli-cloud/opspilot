@@ -124,11 +124,16 @@ def _new_id() -> str:
 
 def standard_attributes(state: Any) -> dict[str, Any]:
     """The run-level attributes every span carries (§23). Primitive wrappers add their specifics
-    (tool_name/hashes/tokens/cost). Reads defensively so a partial state never breaks emission."""
+    (tool_name/hashes/tokens/cost). Reads defensively so a partial state never breaks emission.
+
+    `turn_id`: the correlation id for one bounded evidence-gathering and synthesis cycle
+    (data-and-evidence.md §3), added once a turn model existed to carry it; reads as "" from any
+    object that does not carry one."""
     return {
         "investigation_id": getattr(state, "investigation_id", "") or "",
         "incident_id": getattr(state, "incident_id", "") or "",
         "workflow_version": getattr(state, "workflow_version", "") or "",
+        "turn_id": getattr(state, "turn_id", "") or "",
     }
 
 
