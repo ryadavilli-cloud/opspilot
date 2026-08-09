@@ -1,15 +1,20 @@
 #!/bin/sh
-# Pre-commit style gate. Catches the two things that were costing a lint round-trip per PR:
+# Pre-commit style gate. Catches the things that were costing a lint round-trip per PR:
 #   1. ruff check, which includes the 100-char E501 limit configured in pyproject.toml
 #   2. em-dashes on lines this commit adds to Python files
+#   3. ruff format, scoped to the Python files this commit touches
 #
 # Enable once per clone:
 #     git config core.hooksPath .githooks
 # Emergency bypass:
 #     git commit --no-verify
 #
-# Note: ruff runs over the working tree, matching what CI does. If you stage only part of
-# your edits, it still reports on the unstaged remainder in those files.
+# Note: ruff check runs over the working tree, matching what CI does. If you stage only part of
+# your edits, it still reports on the unstaged remainder in those files. The format check (3) is
+# scoped to staged files only, same reasoning as the em-dash guard below: the tree predates
+# formatting enforcement, so a repo-wide `ruff format --check .` would reject every commit. Scoping
+# to touched files converges the repo gradually, as files get edited anyway, with no big-bang
+# reformat PR.
 
 set -u
 
@@ -52,6 +57,18 @@ if [ -n "$report" ]; then
     echo ""
     echo "pre-commit: use a hyphen, comma, colon, or a shorter sentence instead."
     status=1
+fi
+
+# Format check, scoped to staged Python files only (see header note).
+staged_py=$(git diff --cached --name-only --diff-filter=ACM -- '*.py')
+
+if [ -n "$staged_py" ] && [ -n "$ruff_cmd" ]; then
+    if ! $ruff_cmd format --check $staged_py; then
+        echo ""
+        echo "pre-commit: staged file(s) are not ruff-formatted (see above)."
+        echo "pre-commit: run \`$ruff_cmd format $staged_py\`, then re-stage and commit."
+        status=1
+    fi
 fi
 
 exit $status

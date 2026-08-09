@@ -17,12 +17,13 @@ import hashlib
 import json
 import logging
 import threading
+from collections.abc import AsyncIterator
 from pathlib import Path
 from typing import Any, Literal
 from uuid import uuid4
 
 from fastapi import BackgroundTasks, Depends, FastAPI, Header, HTTPException, Response
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
 from opspilot import __version__, config
@@ -45,8 +46,10 @@ from opspilot.contracts import (
     KnowledgeBriefing,
     PartialInvestigationReport,
 )
+from opspilot.data.repository import Repository, default_repository
 from opspilot.diagnosis.contracts import CausalClaim
 from opspilot.graph import _initial_state, build_graph, invoke_auto_approving
+from opspilot.intake.contracts import from_predefined_incident
 from opspilot.investigations import (
     CommittedDecision,
     DecisionNotPendingError,
@@ -56,8 +59,13 @@ from opspilot.investigations import (
     PublicationConflictError,
     StaleReportError,
 )
+from opspilot.obs import tracing
 from opspilot.repository import build_investigation_repository
 from opspilot.state import Intent
+from opspilot.stream.contracts import IdentityEvent, StreamCloseMarker
+from opspilot.stream.projection import ActivityProjector, emit
+from opspilot.tools.contracts import IncidentRecord
+from opspilot.turn.identity import start_turn
 
 _log = logging.getLogger("opspilot.api")
 
@@ -143,6 +151,22 @@ def get_diagnosis() -> DiagnosisComposition:
             if _diagnosis is None:
                 _diagnosis = build_diagnosis()
     return _diagnosis
+
+
+# The read-only corpus repository predefined intake resolves an incident_id against. Separate from
+# the async job store below: selecting a predefined incident is not evidence-gathering (the
+# Engineer Interaction Interface must not call operational tools), so this reads the corpus
+# directly rather than going through ToolService.
+_corpus_repository: Repository | None = None
+
+
+def get_corpus_repository() -> Repository:
+    global _corpus_repository
+    if _corpus_repository is None:
+        with _singleton_lock:
+            if _corpus_repository is None:
+                _corpus_repository = default_repository()
+    return _corpus_repository
 
 
 # One investigation repository per process (the async resource store), selected by
@@ -252,6 +276,12 @@ class Alert(BaseModel):
     severity: str | None = None
     category: str | None = None
     summary: str = ""
+
+
+class StartTurnRequest(BaseModel):
+    """Predefined intake: select one RetailEase incident to start a turn against."""
+
+    incident_id: str
 
 
 class LivenessResponse(BaseModel):
@@ -516,13 +546,20 @@ def ready(
         return _tool_ok(result) and bool(result.results)
 
     def logs_ok() -> bool:
-        return _tool_ok(svc.query_logs(
-            service="checkout-api",
-            start_time="2026-06-28T10:00:00Z", end_time="2026-06-28T11:00:00Z"))
+        return _tool_ok(
+            svc.query_logs(
+                service="checkout-api",
+                start_time="2026-06-28T10:00:00Z",
+                end_time="2026-06-28T11:00:00Z",
+            )
+        )
 
     def retrieval_ok() -> bool:
-        return (backend != "unavailable" and backend == RETRIEVAL_BACKEND
-                and _tool_ok(svc.search_runbooks(query="payment timeout", k=1)))
+        return (
+            backend != "unavailable"
+            and backend == RETRIEVAL_BACKEND
+            and _tool_ok(svc.search_runbooks(query="payment timeout", k=1))
+        )
 
     record("corpus", _check(lambda: corpus.ok), "CORPUS_INCOMPLETE")
     record("repository", _check(repository_ok), "REPOSITORY_LOOKUP_FAILED")
@@ -539,6 +576,64 @@ def ready(
         workflow_version=WORKFLOW_VERSION,
         version=__version__,
         errors=errors or None,
+    )
+
+
+# --------------------------------------------------------------------------------------
+# Streaming turn endpoint. Added beside the old routes, not a replacement: the old async job
+# surface below stays reachable until the cutover slice deletes both together. One live streaming
+# request owns one turn: identities first, then activity as it happens, then the close marker
+# last. This closing event is a transport-ordering proof only; no accepted completed-turn outcome
+# exists yet, so the stub assessment/brief here demonstrates transport and rendering, nothing more.
+# --------------------------------------------------------------------------------------
+async def _predefined_turn_stream(incident_id: str, incident: IncidentRecord) -> AsyncIterator[str]:
+    # Async, not a plain generator: Starlette drives a sync generator's `next()` through a worker
+    # threadpool call per yield, and a contextvars token set before one yield cannot be reset after
+    # the next one if that resumes in a different worker thread. An async generator stays on the
+    # single request task throughout, so the span below can safely wrap every yield.
+    turn = start_turn(incident_id=incident_id)
+    context = from_predefined_incident(incident)
+    projector = ActivityProjector()
+
+    with tracing.span("turn", trace_id=turn.turn_id, attributes=tracing.standard_attributes(turn)):
+        identity = IdentityEvent(turn_id=turn.turn_id, investigation_id=turn.investigation_id)
+        yield identity.model_dump_json() + "\n"
+
+        started = emit(
+            "turn.investigating",
+            turn,
+            projector,
+            phase="investigating",
+            action="turn started",
+            detail=f"Investigation started for: {context.symptom}",
+        )
+        yield started.model_dump_json() + "\n"
+
+        stub = emit(
+            "turn.synthesizing",
+            turn,
+            projector,
+            phase="synthesizing",
+            action="stub assessment produced",
+            detail="Deterministic stub assessment produced to prove transport and rendering.",
+        )
+        yield stub.model_dump_json() + "\n"
+
+        yield StreamCloseMarker(turn_id=turn.turn_id).model_dump_json() + "\n"
+
+
+@app.post("/turns")
+def start_turn_endpoint(
+    body: StartTurnRequest,
+    repo: Repository = Depends(get_corpus_repository),
+) -> StreamingResponse:
+    raw = repo.incident(body.incident_id)
+    if raw is None:
+        raise HTTPException(status_code=404, detail="Unknown incident_id.")
+    incident = IncidentRecord(**raw)
+    return StreamingResponse(
+        _predefined_turn_stream(body.incident_id, incident),
+        media_type="application/x-ndjson",
     )
 
 
@@ -568,8 +663,10 @@ def _run_and_build(alert: dict, svc, diagnosis) -> InvestigationResponse:
         "thread_id": f"investigate-{uuid4()}",
     }
     state = invoke_auto_approving(
-        get_graph(), _initial_state(alert),
-        config={"configurable": configurable}, approver=_AUTO_APPROVER,
+        get_graph(),
+        _initial_state(alert),
+        config={"configurable": configurable},
+        approver=_AUTO_APPROVER,
     )
     return _build_response(state, svc, diagnosis)
 
@@ -697,9 +794,7 @@ def _safe_error(exc: Exception) -> str:
     return type(exc).__name__
 
 
-def _advance(
-    investigation_id: str, run, *, repo: InvestigationRepository, svc, diagnosis
-) -> None:
+def _advance(investigation_id: str, run, *, repo: InvestigationRepository, svc, diagnosis) -> None:
     """Run `run()` (an initial invoke or a decision resume) and record the outcome: a paused
     `hitl_gate` interrupt becomes `awaiting_approval` with the pending report attached — NOT a
     completed run — anything else genuinely terminal is mapped and recorded as usual. Shared by
@@ -741,7 +836,8 @@ def _advance(
     if not created:
         _log.info(
             "publication %s for %s already committed; second write suppressed",
-            publication_id, investigation_id,
+            publication_id,
+            investigation_id,
         )
 
 
@@ -786,7 +882,9 @@ def _run_investigation_job(
     _advance(
         investigation_id,
         lambda: get_graph().invoke(initial, config=config),
-        repo=repo, svc=svc, diagnosis=diagnosis,
+        repo=repo,
+        svc=svc,
+        diagnosis=diagnosis,
     )
 
 
@@ -802,7 +900,9 @@ def _resume_investigation_job(
     _advance(
         investigation_id,
         lambda: get_graph().invoke(Command(resume=decision), config=config),
-        repo=repo, svc=svc, diagnosis=diagnosis,
+        repo=repo,
+        svc=svc,
+        diagnosis=diagnosis,
     )
 
 
@@ -965,13 +1065,18 @@ def submit_decision(
         # A genuine retry: replay the committed response, resume nothing.
         _log.info(
             "decision %s on %s replayed (decision_id=%s)",
-            committed.decision, investigation_id, committed.decision_id,
+            committed.decision,
+            investigation_id,
+            committed.decision_id,
         )
         return AcceptedInvestigation.model_validate(committed.response)
 
     _log.info(
         "decision %s on %s by %s (kind=%s)",
-        decision.decision, investigation_id, principal.audit_label(), principal.auth_method,
+        decision.decision,
+        investigation_id,
+        principal.audit_label(),
+        principal.auth_method,
     )
 
     # The resume payload is assembled HERE, server-side, from the validated body plus the verified
