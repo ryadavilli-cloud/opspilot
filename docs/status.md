@@ -580,7 +580,7 @@ test exists; Demo = demonstrable today.
 | Follow-up answers | No | - | No | No | |
 | Handoff | No | - | No | No | |
 | Cancellation | No | - | No | No | |
-| Activity streaming | No (1.5 s polling) | No | No | No | No SSE/chunked stream anywhere |
+| Activity streaming | Yes (predefined intake only) | Yes | Yes | Yes | `POST /turns`: identities first, activity from the same telemetry facts, close marker last; stub assessment only, no accepted outcome yet |
 | Completed-turn persistence | Partial (terminal publish exists) | No (job records, per-step checkpoints, index container) | Partial (in-memory only; `cosmos_investigations.py` 447 ln untested) | Partial | Commit-before-terminal idea present at the publish sink |
 | Model routing | No (one deployment, one model for everything) | No | No | No | Severity-tier table is dead code; D-002 needs a second deployment |
 | Offline evaluation | Partial (scorecards, gates) | No (vocabulary, baselines, no judge) | Partial | Partial | Retrieval rerank numbers never re-verified in CI |
@@ -595,11 +595,11 @@ owns order and PR structure.
 
 | Required behavior | Current standing |
 | --- | --- |
-| One same-origin screen for intake, follow-up, activity, brief, and details | Missing. The current console is a polling approval UI and is replaced rather than extended |
-| Predefined and free-text intake normalization | Partial alert submission exists, but no accepted normalization task or context contract is wired |
+| One same-origin screen for intake, follow-up, activity, brief, and details | Partial. `/investigation` exists: predefined intake, activity feed, brief region, one expandable details area. No follow-up control; the old console is unaffected and stays reachable until cutover |
+| Predefined and free-text intake normalization | Partial. Predefined intake is normalized through the accepted contract (`decisions.md` D-007) and wired live; free-text normalization does not exist |
 | At most one clarification | Missing |
-| Request-shape classification of follow-up, redirect, supplied context, handoff, and read | Missing. The current intent taxonomy is a different concept |
-| Compact safe activity projection | Missing. Polling job status is not an activity stream |
+| Request-shape classification of follow-up, redirect, supplied context, handoff, and read | Partial. The five-kind type (`InteractionKind`) exists; the classifier itself is not implemented |
+| Compact safe activity projection | Implemented. Exact `system-design.md` §10.4 field set, produced at the same instrumentation point as telemetry, tested for fidelity and sanitization |
 | Deterministic handoff rendering | Missing |
 
 ### 10.2 Supervisor
@@ -729,10 +729,10 @@ owns order and PR structure.
 | Required behavior | Current standing |
 | --- | --- |
 | Shared span seam | Implemented and reusable |
-| Turn and agent identity | Missing |
+| Turn and agent identity | Partial. Turn identity (`turn/identity.py`) exists and is on every span (`obs/tracing.py` `standard_attributes`); agent identity does not exist, since no agents exist yet |
 | Model task labels and usage totals | Partial model wrapper exists; accepted labels and totals are missing |
 | MCP, evidence-admission, grounding, and persistence spans | Missing |
-| Activity projection emitted from the same facts | Missing |
+| Activity projection emitted from the same facts | Implemented, for the predefined-intake stub path (`stream/projection.py`) |
 | Application Insights sink | Missing |
 | No activity persistence or telemetry-query UI | Not currently implemented, which is aligned |
 

@@ -1,0 +1,249 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>OpsPilot: Investigation</title>
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg: #f7f7f8;
+    --panel: #ffffff;
+    --border: #d9dce1;
+    --text: #1b1f24;
+    --muted: #5b6570;
+    --accent: #2454ff;
+    --ok: #1a7f37;
+    --warn: #9a6700;
+    --bad: #cf222e;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    padding: 0 0 3rem;
+    background: var(--bg);
+    color: var(--text);
+    font: 15px/1.5 -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  header {
+    padding: 1.25rem 1.5rem;
+    border-bottom: 1px solid var(--border);
+    background: var(--panel);
+  }
+  header h1 { margin: 0; font-size: 1.15rem; }
+  header p { margin: 0.25rem 0 0; color: var(--muted); font-size: 0.85rem; }
+
+  main {
+    max-width: 860px;
+    margin: 0 auto;
+    padding: 0 1.5rem;
+  }
+
+  section {
+    margin-top: 1.5rem;
+    padding: 1rem 1.25rem;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+  }
+  section h2 {
+    margin: 0 0 0.75rem;
+    font-size: 0.95rem;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    color: var(--muted);
+  }
+
+  #intake { display: flex; gap: 0.6rem; flex-wrap: wrap; align-items: center; }
+  select, button {
+    font: inherit;
+    padding: 0.45rem 0.7rem;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: var(--panel);
+    color: var(--text);
+  }
+  button {
+    background: var(--accent);
+    color: #fff;
+    border-color: var(--accent);
+    cursor: pointer;
+  }
+  button:disabled { opacity: 0.5; cursor: default; }
+
+  #feed { list-style: none; margin: 0; padding: 0; }
+  #feed li {
+    padding: 0.4rem 0;
+    border-bottom: 1px solid var(--border);
+    font-size: 0.9rem;
+  }
+  #feed li:last-child { border-bottom: none; }
+  #feed .status-error { color: var(--bad); }
+  #feed .phase { color: var(--muted); }
+
+  #brief { min-height: 2.5rem; }
+  #brief.pending { color: var(--muted); }
+
+  details summary { cursor: pointer; color: var(--muted); font-size: 0.85rem; }
+  details pre {
+    margin-top: 0.6rem;
+    padding: 0.75rem;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    overflow-x: auto;
+    font-size: 0.8rem;
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>OpsPilot: Investigation</h1>
+  <p>Streams one turn from a predefined incident. No accepted investigation outcome exists yet;
+     this demonstrates the transport and activity feed only.</p>
+</header>
+
+<main>
+  <section id="intake">
+    <h2>Start a turn</h2>
+    <select id="incident-select">
+      <option value="inc-001">inc-001: Elevated checkout failures; payment authorizations timing out.</option>
+      <option value="inc-002">inc-002: Inventory and catalog reads failing intermittently with 429s.</option>
+      <option value="inc-003">inc-003: Order notifications delayed; Service Bus queue depth climbing.</option>
+      <option value="inc-004">inc-004: checkout-api returning 500s shortly after this morning's deployment.</option>
+      <option value="inc-005">inc-005: Checkout latency up and some carts/sessions dropping.</option>
+      <option value="inc-006">inc-006: Reservation conflicts and oversells at checkout.</option>
+      <option value="inc-007">inc-007: Order notifications delayed again; queue depth climbing and not draining.</option>
+    </select>
+    <button id="start-button" type="button">Start investigation</button>
+  </section>
+
+  <section>
+    <h2>Activity</h2>
+    <ul id="feed"></ul>
+  </section>
+
+  <section>
+    <h2>Brief</h2>
+    <div id="brief" class="pending">No turn started yet.</div>
+  </section>
+
+  <section>
+    <details>
+      <summary>Details</summary>
+      <pre id="details-log">(nothing yet)</pre>
+    </details>
+  </section>
+</main>
+
+<script>
+(function () {
+  "use strict";
+
+  var startButton = document.getElementById("start-button");
+  var incidentSelect = document.getElementById("incident-select");
+  var feed = document.getElementById("feed");
+  var brief = document.getElementById("brief");
+  var detailsLog = document.getElementById("details-log");
+
+  var rawEvents = [];
+
+  function appendActivity(event) {
+    var item = document.createElement("li");
+    var statusClass = event.status === "error" ? " status-error" : "";
+    item.innerHTML =
+      "<span class=\"phase\">[" + escapeHtml(event.phase) + "]</span> " +
+      escapeHtml(event.action) +
+      " <span class=\"" + statusClass.trim() + "\">(" + escapeHtml(event.status) + ")</span>" +
+      "<br>" + escapeHtml(event.detail);
+    feed.appendChild(item);
+  }
+
+  function escapeHtml(value) {
+    var div = document.createElement("div");
+    div.textContent = String(value == null ? "" : value);
+    return div.innerHTML;
+  }
+
+  function renderDetails(turnId, investigationId) {
+    var lines = [
+      "turn_id: " + turnId,
+      "investigation_id: " + investigationId,
+      "",
+      "events:",
+    ].concat(rawEvents.map(function (e) { return JSON.stringify(e); }));
+    detailsLog.textContent = lines.join("\n");
+  }
+
+  function handleEvent(event) {
+    rawEvents.push(event);
+
+    if (event.event_type === "identity") {
+      brief.textContent = "Investigating...";
+      renderDetails(event.turn_id, event.investigation_id);
+    } else if (event.event_type === "activity") {
+      appendActivity(event);
+      renderDetails(rawEvents[0].turn_id, rawEvents[0].investigation_id);
+    } else if (event.event_type === "close") {
+      brief.textContent =
+        "Transport demonstration complete. No investigation outcome exists yet.";
+      brief.classList.remove("pending");
+      renderDetails(event.turn_id, rawEvents[0].investigation_id);
+    }
+  }
+
+  function resetView() {
+    feed.innerHTML = "";
+    brief.textContent = "Investigating...";
+    brief.classList.add("pending");
+    detailsLog.textContent = "(nothing yet)";
+    rawEvents = [];
+  }
+
+  async function startTurn() {
+    startButton.disabled = true;
+    resetView();
+
+    try {
+      var response = await fetch("/turns", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ incident_id: incidentSelect.value }),
+      });
+
+      if (!response.ok) {
+        var body = await response.json().catch(function () { return {}; });
+        brief.textContent = "Could not start a turn: " + (body.detail || response.status);
+        brief.classList.remove("pending");
+        return;
+      }
+
+      var reader = response.body.getReader();
+      var decoder = new TextDecoder();
+      var buffer = "";
+
+      for (;;) {
+        var chunk = await reader.read();
+        if (chunk.done) break;
+        buffer += decoder.decode(chunk.value, { stream: true });
+
+        var lines = buffer.split("\n");
+        buffer = lines.pop();
+        for (var i = 0; i < lines.length; i++) {
+          if (lines[i]) handleEvent(JSON.parse(lines[i]));
+        }
+      }
+      if (buffer.trim()) handleEvent(JSON.parse(buffer));
+    } catch (err) {
+      brief.textContent = "Stream failed: " + err;
+      brief.classList.remove("pending");
+    } finally {
+      startButton.disabled = false;
+    }
+  }
+
+  startButton.addEventListener("click", startTurn);
+})();
+</script>
+</body>
+</html>
