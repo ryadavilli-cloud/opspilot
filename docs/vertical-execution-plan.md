@@ -1074,6 +1074,13 @@ scoped to runtime paths and use exact symbols.
   recurrence chain. Apply the corpus repair protocol. Retrieval influence must not be claimed when
   ordinary evidence already states the answer. If the minimum repair cannot land in this slice, use
   a controlled credible `inc-004` fixture variant instead and record that limitation.
+  Divergence: this minimum repair, and more of the full corpus repair besides, already landed ahead
+  of this slice (2026-08-08) as horizontal-execution-plan.md's 1.1, uncommitted. The `evt-007-01`
+  leak is removed, all five deployment-note causal/red-herring annotations are removed (not only
+  the ones this slice needed), the inc-003/inc-007 `msg_processed_rate` contradiction is repaired,
+  and the `active_message_count` onset now follows the causal log rather than preceding it. Entry
+  into this slice no longer needs to redo or gate on this bullet; see `status.md` - "Data and Corpus
+  Status" for the verification evidence.
 - **New implementation:** the categorized `knowledge` container and its seed script; Azure OpenAI
   embeddings; Cosmos vector query; lexical scoring; RRF; deterministic identifier and metadata
   promotion; passage-budget truncation; knowledge admission; and informing references on proposals.
@@ -1252,6 +1259,21 @@ tests, and its comments may legitimately use.
   identifier. Represent benign and transient behavior through a controlled non-incident fixture
   derived from existing ambient events, not a new authored incident. Execute every change through
   the corpus repair protocol.
+  Divergence: everything in this bullet except templated leakage already landed ahead of this
+  slice (2026-08-08) as horizontal-execution-plan.md's 1.1, uncommitted. inc-002 (`used_ru_pct`),
+  inc-005 (`hit_rate`), and inc-006 (`stale_read_rate`) each gained the missing evidence reference;
+  the inc-004/inc-006 log-ordering inversions and the inc-003/inc-007 metric-onset-before-cause
+  inversions are corrected; the three historical postmortem timelines are retimed within their
+  telemetry window with real dates and resolvable deploy ids; `data/answer_key/README.md`'s stale
+  scenario count is fixed; inc-006 is revised in place to require two independently evidenced
+  contributing signals, retaining its family and identifier; and
+  `data/answer_key/benign_fixture.yaml` represents the benign/transient class from the existing
+  ambient events, structurally distinct from the seven scenarios and carrying no golden record.
+  Templated noise realism (905 identical error strings, no pre-incident baseline history) is
+  untouched and still this slice's to do. The D-006 remaining corpus selections, the repeatability
+  subset, and the further-evidence mechanism itself are also still this slice's to do: the
+  divergence covers only the dataset-repair bullet above. See `status.md` - "Data and Corpus
+  Status" for verification evidence.
 - **Azure impact:** Local deterministic plus selected Azure-assisted model verification for the
   live back-edge demonstration.
 - **Decision gates:** D-006 remaining corpus selections resolve at the end of this slice, and are
@@ -1289,7 +1311,12 @@ then immediately require a regeneration against a changed environment.
 - **Code and data to delete:** performed only after the verification in each case: the live
   `checkpoints` and `investigation-index` containers; the old job-record data or container, per the
   S-7 migration decision; the interim smoke installed in S-4; the owner-confirmed orphan
-  `rytesting`, only with explicit approval.
+  `rytesting`, only with explicit approval. Divergence: the `rytesting` deletion was completed
+  ahead of this slice, during Preparation (2026-08-08), not withheld for A-1: user confirmed, then
+  deleted via `az resource delete` on the nested `proj-default` project followed by
+  `az cognitiveservices account delete`. `az cognitiveservices account show` returns
+  `ResourceNotFound`; `az cognitiveservices account list-deleted` shows it soft-deleted, not yet
+  purged.
 - **Code to replace:** `scripts/smoke_deployment.py`, superseded by the eight accepted checks.
 - **New implementation:** the eight-check hosted smoke: start, authentication, model reachability,
   Cosmos role access, one streamed turn, citations resolving after restart, telemetry arrival, and
@@ -1311,7 +1338,8 @@ then immediately require a regeneration against a changed environment.
   new capability.
 - **Small PR breakdown:** (1) Bicep convergence on the accepted resource set; (2) the eight-check
   smoke replacing the interim smoke; (3) separately approved live container deletion; (4)
-  separately approved orphan cleanup.
+  separately approved orphan cleanup (the `rytesting` orphan is already deleted as of 2026-08-08,
+  ahead of this slice; see the divergence note above).
 - **Completion evidence:** hosted streamed turn, persisted artifact, citations resolving after
   restart, telemetry correlation visible, and a repeated deployment that converges.
 - **Status updates required after landing:** section 12 is rewritten from a fresh live inspection;

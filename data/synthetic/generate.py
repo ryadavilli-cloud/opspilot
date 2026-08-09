@@ -66,17 +66,20 @@ METRIC_DEFS: dict[str, dict[str, Any]] = {
     "evicted_keys_rate":     {"unit": "rps",   "baseline": 0.0,   "deviated": 3100.0},
     "hit_rate":              {"unit": "ratio", "baseline": 0.95,  "deviated": 0.62},
     "msg_processed_rate":    {"unit": "rps",   "baseline": 28.0,  "deviated": 0.0},
+    "stale_read_rate":       {"unit": "ratio", "baseline": 0.0,   "deviated": 0.55},
+    "reservation_queue_depth": {"unit": "count", "baseline": 2.0, "deviated": 340.0},
 }
 
 ENTITY_METRICS: dict[str, list[str]] = {
     "checkout-api":        ["http_5xx_rate", "p95_latency_ms", "request_rate", "cpu_pct"],
     "payment-api":         ["p95_latency_ms", "http_5xx_rate", "request_rate", "cpu_pct"],
-    "inventory-api":       ["p95_latency_ms", "reservation_error_rate", "request_rate", "cpu_pct"],
+    "inventory-api":       ["p95_latency_ms", "reservation_error_rate", "request_rate", "cpu_pct",
+                             "reservation_queue_depth"],
     "catalog-api":         ["p95_latency_ms", "request_rate", "cpu_pct"],
     "notification-worker": ["restart_count", "msg_processed_rate", "cpu_pct"],
     "cosmos-db":           ["ru_throttled_rate", "used_ru_pct"],
     "service-bus":         ["active_message_count", "incoming_rate"],
-    "redis-cache":         ["used_memory_pct", "evicted_keys_rate", "hit_rate"],
+    "redis-cache":         ["used_memory_pct", "evicted_keys_rate", "hit_rate", "stale_read_rate"],
 }
 
 # Log messages for each authored event id (evidence `logs:<svc>:<event_id>`).
@@ -102,33 +105,40 @@ LOG_EVENTS: dict[str, dict[str, str]] = {
     "evt-006-02": {"service": "checkout-api", "level": "error",
                    "message": "reserve failed: inventory conflict"},
     "evt-007-01": {"service": "notification-worker", "level": "error",
-                   "message": "Unhandled deserialization exception; restarting "
-                              "(crash loop — same failure mode as inc-003)"},
+                   "message": "Unhandled deserialization exception; restarting (crash loop)"},
 }
+
+# Per-event log offsets are otherwise independent (hashed on event_id alone), so an unlucky
+# draw can place a causally-later event before the cause it follows. These pairs are the
+# only ones where the answer key actually asserts a causal order between two authored log
+# lines in the same incident; each is enforced in build_logs.
+CAUSE_BEFORE_EFFECT: list[tuple[str, str]] = [
+    ("evt-004-02", "evt-004-01"),  # PaymentGatewayTimeout before the checkout-api 500 it causes
+    ("evt-006-01", "evt-006-02"),  # StockReservationConflict before the downstream reserve failure
+]
 
 # Deploys named in evidence (`deploys:<svc>:<deploy_id>`). ts is authored relative to the incident.
 DEPLOYS: dict[str, dict[str, str]] = {
     "dep-20260512-01": {"service": "payment-api", "ts": "2026-05-12T14:00:00Z",
                         "version": "payment-api@2.4.1",
-                        "note": "reduced Cosmos connection pool 100->10 (causal: inc-001)"},
+                        "note": "reduced Cosmos connection pool 100->10"},
     "dep-20260528-01": {"service": "catalog-api", "ts": "2026-05-28T09:00:00Z",
                         "version": "catalog-api@1.9.0",
-                        "note": "catalog bulk-import job rollout (trigger: inc-002)"},
+                        "note": "catalog bulk-import job rollout"},
     "dep-20260610-01": {"service": "notification-worker", "ts": "2026-06-10T19:45:00Z",
                         "version": "notification-worker@3.1.0",
-                        "note": "worker release with poison-message bug (causal: inc-003)"},
+                        "note": "worker release with poison-message bug"},
     "dep-20260628-01": {"service": "checkout-api", "ts": "2026-06-28T09:00:00Z",
                         "version": "checkout-api@5.7.2",
-                        "note": "routine checkout release (RED HERRING: coincidental to inc-004)"},
+                        "note": "routine checkout release"},
     "dep-20260625-01": {"service": "inventory-api", "ts": "2026-06-25T16:00:00Z",
                         "version": "inventory-api@4.2.0",
-                        "note": "dropped cache invalidation on stock writes (causal: inc-006)"},
+                        "note": "dropped cache invalidation on stock writes"},
     # Same version string as dep-20260610-01 by design: a stale pipeline re-deployed the affected
     # revision, so inc-003's affected_versions check holds for the inc-007 recurrence.
     "dep-20260702-01": {"service": "notification-worker", "ts": "2026-07-02T09:10:00Z",
                         "version": "notification-worker@3.1.0",
-                        "note": "stale-pipeline re-deploy of the poison-message revision "
-                                "(causal: inc-007, recurrence of inc-003)"},
+                        "note": "stale-pipeline re-deploy of the poison-message revision"},
 }
 
 # A few routine, unrelated deploys — deploy-feed noise so "recent deploy" is a hypothesis to test.
@@ -252,9 +262,18 @@ def build_logs(scenarios: list[dict], profile: dict) -> tuple[list[dict], set[st
         err_frac = cat.get("ambient_error_fraction") or 0.065
         rate = cat.get("log_lines_per_min_per_service") or 320.0
         # 1) authored signal — the exact evidence rows.
+        event_ts: dict[str, datetime] = {
+            event_id: center + timedelta(seconds=3 + int(_rng(event_id) * 90))
+            for _, event_id in ev["logs"]
+        }
+        for cause_id, effect_id in CAUSE_BEFORE_EFFECT:
+            if cause_id in event_ts and effect_id in event_ts:
+                earliest_effect = event_ts[cause_id] + timedelta(seconds=20)
+                if event_ts[effect_id] < earliest_effect:
+                    event_ts[effect_id] = earliest_effect
         for svc, event_id in ev["logs"]:
             spec = LOG_EVENTS[event_id]
-            ts = _iso(center + timedelta(seconds=3 + int(_rng(event_id) * 90)))
+            ts = _iso(event_ts[event_id])
             rows.append({"event_id": event_id, "ts": ts, "service": spec["service"],
                          "level": spec["level"], "message": spec["message"],
                          "incident_id": s["id"]})

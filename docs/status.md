@@ -493,7 +493,7 @@ Classifications per the required system: Keep, Keep with changes, Replace, Delet
 | `eval/wild.py`, `record_wild.py`, `wild_scorecard.json`, `wild_single_agent.json` cassette (manifest-less, unreplayable), `tests/fixtures/wild_ob/`, RCAEval profile dependence | Held-out RCAEval generalization probe | Requirements section 12 defers the held-out probe; the cassette is unreplayable by the repo's own drift rules | `test_wild.py` | None (deferred capability) | Archive rather than silently lose the recorded numbers if desired |
 | `postmortem` node output path | Returns a resolution dict never stored | Cross-thread memory store is a deferred capability; dead output | None | None | None |
 | Stray/stale: `out.txt`, `raw.txt`, `infra/.gitkeep`, `data/.gitkeep`, `tests/__pycache__/_scratch_proposed...pyc`, stale remote branches (`add-operator-console`, `stage-5e-*`, `add-durable-checkpointer`, `add-cross-encoder-reranker`, `add-ci-test-gate`, `stage-5f-decision-protocol`) | Debris | Third-party slide dumps and merged-branch leftovers | None | None | Confirm branches are merged before remote deletion |
-| Live orphan: `rytesting` (Microsoft.CognitiveServices/accounts, kind AIServices) + `rytesting/proj-default` in `rg-opspilot` | Manual AI Foundry experiment | Not declared in Bicep, unrelated to OpsPilot | None | None | User confirmation; not deleted in this phase |
+| Live orphan: `rytesting` (Microsoft.CognitiveServices/accounts, kind AIServices) + `rytesting/proj-default` in `rg-opspilot` | Manual AI Foundry experiment | Not declared in Bicep, unrelated to OpsPilot | None | None | Deleted: user confirmed 2026-08-08; `az resource delete` removed the nested `.../accounts/rytesting/projects/proj-default`, then `az cognitiveservices account delete -g rg-opspilot -n rytesting` removed the account. `az cognitiveservices account show` now returns `ResourceNotFound`; `az cognitiveservices account list-deleted` shows it soft-deleted (recoverable), not yet purged |
 
 ### 8.2 Replace
 
@@ -803,28 +803,63 @@ all 22 retrieval references resolve. Identifier grammar is stable and uniform.
 
 **Five-class coverage:** clear single-cause strong (inc-005, inc-001); competing hypotheses strong
 (inc-004 with an explicit red herring, inc-006 as the deploy-is-guilty foil); multiple contributing
-failures **absent** (every scenario records one cause); sparse evidence accidental only (inc-006,
-inc-004); benign/transient **present but unscoreable** (ambient events have no scenario, golden, or
-ticket).
+failures now represented by inc-006, revised in place (repaired 2026-08-08, see below) to require
+two independently evidenced contributing signals (`metrics:inventory-api:reservation_queue_depth`,
+a concurrent capacity shortfall, and `metrics:redis-cache:stale_read_rate`, the stale-cache defect)
+rather than one linear chain; sparse evidence accidental only (inc-006, inc-004); benign/transient
+now has a citable representative, `data/answer_key/benign_fixture.yaml` (repaired 2026-08-08),
+derived from the four existing ambient events, structurally distinct from the seven scenarios (no
+`expected_evidence`, no `expected_match`, not counted by `load_scenarios()`); it is not an eighth
+incident and carries no golden record, which is 1.2's work, not this repair's.
 
-**Quality concerns (must be repaired before the affected demonstrations):**
+**Quality concerns:**
 
-1. Physically contradictory telemetry, caused by the generator perturbing only the exact series in
-   `expected_evidence`: inc-002 (`used_ru_pct` flat while throttling spikes and the postmortem
-   narrates it climbing to 100%), inc-003/inc-007 (`msg_processed_rate` steady while the postmortem
-   says nothing is consumed), inc-005 (`hit_rate` flat during an eviction storm), inc-006 (zero
-   cache-side deviation for a stale-cache cause).
-2. Effect-precedes-cause orderings: inc-003 and inc-007 metric onsets; inc-004 and inc-006 log
-   orderings.
-3. Answer leakage: `evt-007-01` names "same failure mode as inc-003" in the log line;
-   `deployments.json` notes announce "(RED HERRING...)" and "(causal: ...)" in a tool-visible feed.
-4. Postmortem narrative timelines are date-less and match neither the answer key nor the tickets
-   (inc-003 off by ~6.5 hours); narrative Container Apps `--rev-NN` identifiers resolve nowhere.
+1. **Repaired (2026-08-08).** Physically contradictory telemetry, caused by the generator
+   perturbing only the exact series in `expected_evidence`: inc-002 (`used_ru_pct` flat while
+   throttling spikes and the postmortem narrates it climbing to 100%), inc-003/inc-007
+   (`msg_processed_rate` steady while the postmortem says nothing is consumed), inc-005 (`hit_rate`
+   flat during an eviction storm), inc-006 (zero cache-side deviation for a stale-cache cause). Each
+   now has an `expected_evidence` reference (`used_ru_pct`, `msg_processed_rate` x2, `hit_rate`,
+   `stale_read_rate`) so the generator deviates it; `tests/test_telemetry.py`'s deviation check is
+   now direction-aware (drop-type metrics were previously inexpressible, not just untested) rather
+   than assuming every reference rises.
+2. **Repaired (2026-08-08).** Effect-precedes-cause orderings: inc-003 and inc-007 metric onsets
+   (their `active_message_count` reference ts moved later so the ramp onset follows the causal log,
+   not precedes it); inc-004 and inc-006 log orderings (`generate.py`'s `CAUSE_BEFORE_EFFECT` pass
+   nudges the effect log's offset forward when the hash-based draw would otherwise invert it).
+   Covered by new tests `test_causally_linked_log_pairs_stay_ordered` and
+   `test_metric_onset_follows_its_causal_log`.
+3. **Repaired (2026-08-08).** Answer leakage: `evt-007-01` named "same failure mode as inc-003" in
+   the log line; `deployments.json` notes announced "(RED HERRING...)" and "(causal: ...)" in a
+   tool-visible feed. Both removed at the generator source; covered by new test
+   `test_no_answer_leakage_in_tool_visible_fields`, which scans every log message and deploy note.
+4. **Repaired (2026-08-08).** Postmortem narrative timelines were date-less and matched neither the
+   answer key nor the tickets (inc-003 off by ~6.5 hours); narrative Container Apps `--rev-NN`
+   identifiers resolved nowhere. The three historical postmortems (`data/kb/postmortems/`) are
+   retimed to fall within their incident's actual `occurred_at ± 30min` telemetry window with
+   explicit dates, and `--rev-NN` mentions are paired with the real `dep-YYYYMMDD-NN` id or replaced
+   with a plain description where no deploy record exists for them.
 5. Noise is templated (905 identical error strings), so discrimination is trivial; no pre-incident
-   baseline history exists (uniform 60-minute windows).
-6. Stale data docs: `data/answer_key/README.md` says "Six incident scenarios" (there are 7 and a
-   third type `recurrence`), still marks closure/provenance as future work, and cites sources that
-   `provenance.md` does not.
+   baseline history exists (uniform 60-minute windows). Not addressed by this repair: outside the
+   four items horizontal-execution-plan.md 1.1 closes.
+6. **Repaired (2026-08-08).** Stale data docs: `data/answer_key/README.md` said "Six incident
+   scenarios" (there are 7 and a third type `recurrence`); both mentions corrected.
+
+**Corpus-repair verification (2026-08-08):** `uv run python data/synthetic/generate.py` reports
+`evidence refs required=42 resolved=42`, no unresolved refs; `build_goldens.py` regenerated;
+`tests/test_answer_key.py`, `test_closure.py`, `test_incidents_alerts.py`, `test_kb.py`,
+`test_telemetry.py`, `test_evidence_coverage.py`, `test_benign_fixture.py` all pass (54 tests); full
+marker-filtered suite is 389 passed, 1 failed, 5 deselected. The one failure,
+`test_single_agent_gate.py::test_single_agent_beats_the_deterministic_floor`, is a disclosed,
+out-of-scope consequence, not a corpus defect: the repair added five previously-missing metric
+evidence refs, which the deterministic fixed plan picks up incidentally (it sweeps a service's full
+metric catalog) but the old single-agent LLM planner does not yet ask for, so its `evidence_recall`
+(0.3571) no longer strictly beats the deterministic floor (0.4286) after both baselines were
+regenerated against the repaired corpus (`eval/baselines/slice_baseline.json`,
+`eval/baselines/single_agent_baseline.json`, `eval/cassettes/single_agent.json`, the last two
+re-recorded live against `gpt-4o-mini`). Fixing the LLM planner's tool selection is out of this
+repair's scope and belongs to different, later work; the file itself is old-architecture machinery
+already named for deletion in both plans. `ruff check` and `mypy src` are clean.
 
 **D-006 implications:** natural candidates exist and should be recorded after repairs:
 further-evidence = inc-004; retrieval influence = inc-007 (primary) and inc-004 (steer-away case);
@@ -875,6 +910,11 @@ realization is three app roles + hand-rolled JWT versus built-in auth with no ro
 **Excess/delete candidates (deferred, live changes are out of scope this phase):** `checkpoints`
 and `investigation-index` containers; the `Approver`/`Submitter`/`Reader` app-role machinery;
 `rytesting` (user to confirm); merged remote branches.
+
+**Progress note (2026-08-08):** the `rytesting` orphan and its `proj-default` project are deleted
+from `rg-opspilot`, confirmed via `az cognitiveservices account show` (`ResourceNotFound`) and
+`az cognitiveservices account list-deleted` (soft-deleted, recoverable, not yet purged). No other
+item in the excess/delete-candidates list above was touched.
 
 **Deployment blockers:** the current pipeline deploys `main` green; the reconciled system will
 break the smoke contract immediately (it asserts `awaiting_approval` and the decision protocol),

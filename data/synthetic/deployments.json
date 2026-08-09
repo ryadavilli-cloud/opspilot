@@ -5,14 +5,14 @@
       "service": "payment-api",
       "ts": "2026-05-12T14:00:00Z",
       "version": "payment-api@2.4.1",
-      "note": "reduced Cosmos connection pool 100->10 (causal: inc-001)"
+      "note": "reduced Cosmos connection pool 100->10"
     },
     {
       "deploy_id": "dep-20260528-01",
       "service": "catalog-api",
       "ts": "2026-05-28T09:00:00Z",
       "version": "catalog-api@1.9.0",
-      "note": "catalog bulk-import job rollout (trigger: inc-002)"
+      "note": "catalog bulk-import job rollout"
     },
     {
       "deploy_id": "dep-20260601-07",
@@ -26,7 +26,7 @@
       "service": "notification-worker",
       "ts": "2026-06-10T19:45:00Z",
       "version": "notification-worker@3.1.0",
-      "note": "worker release with poison-message bug (causal: inc-003)"
+      "note": "worker release with poison-message bug"
     },
     {
       "deploy_id": "dep-20260615-02",
@@ -47,21 +47,21 @@
       "service": "inventory-api",
       "ts": "2026-06-25T16:00:00Z",
       "version": "inventory-api@4.2.0",
-      "note": "dropped cache invalidation on stock writes (causal: inc-006)"
+      "note": "dropped cache invalidation on stock writes"
     },
     {
       "deploy_id": "dep-20260628-01",
       "service": "checkout-api",
       "ts": "2026-06-28T09:00:00Z",
       "version": "checkout-api@5.7.2",
-      "note": "routine checkout release (RED HERRING: coincidental to inc-004)"
+      "note": "routine checkout release"
     },
     {
       "deploy_id": "dep-20260702-01",
       "service": "notification-worker",
       "ts": "2026-07-02T09:10:00Z",
       "version": "notification-worker@3.1.0",
-      "note": "stale-pipeline re-deploy of the poison-message revision (causal: inc-007, recurrence of inc-003)"
+      "note": "stale-pipeline re-deploy of the poison-message revision"
     }
   ]
 }

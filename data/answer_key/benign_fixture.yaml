@@ -1,0 +1,36 @@
+# Controlled non-incident fixture: the benign / transient scenario class.
+#
+# This is NOT an eighth authored incident and is never loaded by `build_goldens.py` or
+# `data/answer_key/scenarios.yaml`'s consumers (`load_scenarios()` reads scenarios.yaml
+# specifically, not a directory glob, so this file is structurally invisible to scenario
+# counting, golden projection, and evaluation scoring).
+#
+# Derived from the four ambient sub-threshold events already generated as noise
+# (`data/synthetic/generate.py` AMBIENT_EVENTS, ids amb-01..amb-04). Every one of them
+# carries `incident_id: null` and `label: non_incident` in the generated log feed, and
+# each has a matching noise alert (`alrt-noise-<id>`, `role: noise`, `incident_id: null`)
+# in the generated alert feed; there is no ticket, no `expected_evidence`, no
+# `expected_match`, and no resolution attached to any of them, unlike the seven authored
+# incidents.
+#
+# What this fixture exists for: the benign/transient class needs a citable, structurally
+# distinct representative rather than being undifferentiated noise mixed into the incident
+# feeds. A golden record scoring against it is 1.2's work, not this file's; this file only
+# establishes which rows constitute the class and what correct behavior against them is.
+
+fixture:
+  id: benign-01
+  class: benign_transient
+  description: >-
+    Four independent sub-threshold events, each the same failure mode an authored incident
+    represents, but at an intensity that recovered on its own without paging or an incident
+    record. None shares a service, a timestamp window, or a root cause with the others or
+    with any of the seven authored incidents.
+  derived_from:
+    - logs:catalog-api:amb-01           # single retried 429, served from cache
+    - logs:notification-worker:amb-02   # one transient worker restart
+    - logs:redis-cache:amb-03           # brief eviction blip, recovered
+    - logs:payment-api:amb-04           # single payment-gateway retry, recovered
+  expected_behavior: no_investigation_warranted
+  expected_intent: none
+  expected_match: null

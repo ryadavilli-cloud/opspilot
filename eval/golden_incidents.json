@@ -54,6 +54,7 @@
       "logs:inventory-api:evt-002-01",
       "logs:catalog-api:evt-002-02",
       "metrics:cosmos-db:ru_throttled_rate@2026-05-28T09:15:00Z",
+      "metrics:cosmos-db:used_ru_pct@2026-05-28T09:15:00Z",
       "metrics:inventory-api:p95_latency_ms@2026-05-28T09:20:00Z",
       "deploys:catalog-api:dep-20260528-01",
       "deps:inventory-api->cosmos-db"
@@ -84,8 +85,9 @@
     ],
     "expected_evidence_refs": [
       "logs:notification-worker:evt-003-01",
-      "metrics:service-bus:active_message_count@2026-06-10T20:00:00Z",
+      "metrics:service-bus:active_message_count@2026-06-10T20:10:00Z",
       "metrics:notification-worker:restart_count@2026-06-10T20:05:00Z",
+      "metrics:notification-worker:msg_processed_rate@2026-06-10T20:10:00Z",
       "deploys:notification-worker:dep-20260610-01",
       "deps:notification-worker->service-bus"
     ],
@@ -151,6 +153,7 @@
       "logs:checkout-api:evt-005-01",
       "metrics:redis-cache:used_memory_pct@2026-06-22T11:35:00Z",
       "metrics:redis-cache:evicted_keys_rate@2026-06-22T11:40:00Z",
+      "metrics:redis-cache:hit_rate@2026-06-22T11:40:00Z",
       "metrics:checkout-api:p95_latency_ms@2026-06-22T11:45:00Z",
       "deps:checkout-api->redis-cache"
     ],
@@ -172,7 +175,7 @@
     "expected_category": "inventory",
     "expected_intent": "novel_investigation",
     "expected_match": null,
-    "expected_root_cause": "An inventory-api deploy dropped cache invalidation on stock writes, so redis-cache served stale availability. checkout-api reservations conflicted and oversold. The deploy is the real cause here.",
+    "expected_root_cause": "Two conditions combined, neither sufficient alone. An inventory-api deploy dropped cache invalidation on stock writes, so redis-cache kept serving stale availability. Independently, a promotional-traffic surge pushed inventory-api's reservation queue past its normal depth. Stale availability alone would have caused only occasional oversells; a deep reservation queue alone would have caused slow reservations, not conflicts. Together, checkout-api reservations conflicted and oversold.",
     "expected_impacted_chain": [
       "inventory-api",
       "redis-cache",
@@ -182,6 +185,8 @@
       "logs:inventory-api:evt-006-01",
       "logs:checkout-api:evt-006-02",
       "metrics:inventory-api:reservation_error_rate@2026-06-25T16:20:00Z",
+      "metrics:inventory-api:reservation_queue_depth@2026-06-25T16:15:00Z",
+      "metrics:redis-cache:stale_read_rate@2026-06-25T16:20:00Z",
       "deploys:inventory-api:dep-20260625-01",
       "deps:inventory-api->redis-cache"
     ],
@@ -211,8 +216,9 @@
     ],
     "expected_evidence_refs": [
       "logs:notification-worker:evt-007-01",
-      "metrics:service-bus:active_message_count@2026-07-02T09:30:00Z",
+      "metrics:service-bus:active_message_count@2026-07-02T09:40:00Z",
       "metrics:notification-worker:restart_count@2026-07-02T09:35:00Z",
+      "metrics:notification-worker:msg_processed_rate@2026-07-02T09:40:00Z",
       "deploys:notification-worker:dep-20260702-01",
       "deps:notification-worker->service-bus"
     ],
