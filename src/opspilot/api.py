@@ -17,12 +17,13 @@ import hashlib
 import json
 import logging
 import threading
+from collections.abc import AsyncIterator
 from pathlib import Path
 from typing import Any, Literal
 from uuid import uuid4
 
 from fastapi import BackgroundTasks, Depends, FastAPI, Header, HTTPException, Response
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
 from opspilot import __version__, config
@@ -45,8 +46,10 @@ from opspilot.contracts import (
     KnowledgeBriefing,
     PartialInvestigationReport,
 )
+from opspilot.data.repository import Repository, default_repository
 from opspilot.diagnosis.contracts import CausalClaim
 from opspilot.graph import _initial_state, build_graph, invoke_auto_approving
+from opspilot.intake.contracts import from_predefined_incident
 from opspilot.investigations import (
     CommittedDecision,
     DecisionNotPendingError,
@@ -56,8 +59,13 @@ from opspilot.investigations import (
     PublicationConflictError,
     StaleReportError,
 )
+from opspilot.obs import tracing
 from opspilot.repository import build_investigation_repository
 from opspilot.state import Intent
+from opspilot.stream.contracts import IdentityEvent, StreamCloseMarker
+from opspilot.stream.projection import ActivityProjector, emit
+from opspilot.tools.contracts import IncidentRecord
+from opspilot.turn.identity import start_turn
 
 _log = logging.getLogger("opspilot.api")
 
@@ -143,6 +151,22 @@ def get_diagnosis() -> DiagnosisComposition:
             if _diagnosis is None:
                 _diagnosis = build_diagnosis()
     return _diagnosis
+
+
+# The read-only corpus repository predefined intake resolves an incident_id against. Separate from
+# the async job store below: selecting a predefined incident is not evidence-gathering (the
+# Engineer Interaction Interface must not call operational tools), so this reads the corpus
+# directly rather than going through ToolService.
+_corpus_repository: Repository | None = None
+
+
+def get_corpus_repository() -> Repository:
+    global _corpus_repository
+    if _corpus_repository is None:
+        with _singleton_lock:
+            if _corpus_repository is None:
+                _corpus_repository = default_repository()
+    return _corpus_repository
 
 
 # One investigation repository per process (the async resource store), selected by
@@ -252,6 +276,12 @@ class Alert(BaseModel):
     severity: str | None = None
     category: str | None = None
     summary: str = ""
+
+
+class StartTurnRequest(BaseModel):
+    """Predefined intake: select one RetailEase incident to start a turn against."""
+
+    incident_id: str
 
 
 class LivenessResponse(BaseModel):
@@ -539,6 +569,64 @@ def ready(
         workflow_version=WORKFLOW_VERSION,
         version=__version__,
         errors=errors or None,
+    )
+
+
+# --------------------------------------------------------------------------------------
+# Streaming turn endpoint. Added beside the old routes, not a replacement: the old async job
+# surface below stays reachable until the cutover slice deletes both together. One live streaming
+# request owns one turn: identities first, then activity as it happens, then the close marker
+# last. This closing event is a transport-ordering proof only; no accepted completed-turn outcome
+# exists yet, so the stub assessment/brief here demonstrates transport and rendering, nothing more.
+# --------------------------------------------------------------------------------------
+async def _predefined_turn_stream(incident_id: str, incident: IncidentRecord) -> AsyncIterator[str]:
+    # Async, not a plain generator: Starlette drives a sync generator's `next()` through a worker
+    # threadpool call per yield, and a contextvars token set before one yield cannot be reset after
+    # the next one if that resumes in a different worker thread. An async generator stays on the
+    # single request task throughout, so the span below can safely wrap every yield.
+    turn = start_turn(incident_id=incident_id)
+    context = from_predefined_incident(incident)
+    projector = ActivityProjector()
+
+    with tracing.span("turn", trace_id=turn.turn_id, attributes=tracing.standard_attributes(turn)):
+        identity = IdentityEvent(turn_id=turn.turn_id, investigation_id=turn.investigation_id)
+        yield identity.model_dump_json() + "\n"
+
+        started = emit(
+            "turn.investigating",
+            turn,
+            projector,
+            phase="investigating",
+            action="turn started",
+            detail=f"Investigation started for: {context.symptom}",
+        )
+        yield started.model_dump_json() + "\n"
+
+        stub = emit(
+            "turn.synthesizing",
+            turn,
+            projector,
+            phase="synthesizing",
+            action="stub assessment produced",
+            detail="Deterministic stub assessment produced to prove transport and rendering.",
+        )
+        yield stub.model_dump_json() + "\n"
+
+        yield StreamCloseMarker(turn_id=turn.turn_id).model_dump_json() + "\n"
+
+
+@app.post("/turns")
+def start_turn_endpoint(
+    body: StartTurnRequest,
+    repo: Repository = Depends(get_corpus_repository),
+) -> StreamingResponse:
+    raw = repo.incident(body.incident_id)
+    if raw is None:
+        raise HTTPException(status_code=404, detail="Unknown incident_id.")
+    incident = IncidentRecord(**raw)
+    return StreamingResponse(
+        _predefined_turn_stream(body.incident_id, incident),
+        media_type="application/x-ndjson",
     )
 
 
