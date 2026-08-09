@@ -490,7 +490,7 @@ Classifications per the required system: Keep, Keep with changes, Replace, Delet
 | Async job status vocabulary (`queued`/`running`/`awaiting_approval`/`degraded`/`escalated`...) and 202+poll transport | Job lifecycle over background tasks | One live streaming request owns the turn; live status is the 5-value stream vocabulary; completed outcomes are exactly three | `api.py`, console, smoke | Streaming turn endpoint + live statuses | Remove only after the streaming slice is demonstrable |
 | Unreachable model reranker: `retrieval/reranker.py`, `Retriever.rerank()`, `RERANK_CANDIDATES`, `reranker` test marker, `bge-reranker` references | CrossEncoder reranking (never reachable via factory) | No model reranker in the baseline (D-003); currently dead by construction anyway | `test_retrieval.py` reranker tests, `retrieval_scorecard.json` rerank mode | Deterministic identifier/metadata promotion | None |
 | Dead config: `PROD_MODELS`, `Tier`, `SEVERITY_TIER`, `resolve_tier`, `ENABLE_OPUS_SEV1`, `JUDGE_MODEL` (as-is), `MAX_TOOL_CALLS`, `CONFIDENCE_THRESHOLD`, `LANGSMITH_ENABLED`, dispatch knobs | Unreferenced severity-tier model routing and unenforced limits | Never called; contradicts D-002 (routing is by task label to two deployments, not severity tiers) | None (unreferenced) | D-002 task-label routing | None |
-| `eval/wild.py`, `record_wild.py`, `wild_scorecard.json`, `wild_single_agent.json` cassette (manifest-less, unreplayable), `tests/fixtures/wild_ob/`, RCAEval profile dependence | Held-out RCAEval generalization probe | Requirements section 12 defers the held-out probe; the cassette is unreplayable by the repo's own drift rules | `test_wild.py` | None (deferred capability) | Archive rather than silently lose the recorded numbers if desired |
+| **Deleted (2026-08-09).** `eval/wild.py`, `record_wild.py`, `wild_scorecard.json`, `wild_single_agent.json` cassette (manifest-less, unreplayable), `tests/fixtures/wild_ob/`, RCAEval profile dependence | Held-out RCAEval generalization probe | Requirements section 12 defers the held-out probe; the cassette is unreplayable by the repo's own drift rules | `test_wild.py`, deleted with it | Golden scenario records (`data/answer_key/golden_scenarios.yaml`), the evaluation input surface that replaces it | Deleted rather than archived: the recorded numbers scored a deferred capability against a corpus the golden records replace, so preserving them would preserve a comparison nothing may draw. `data/profiles/rcaeval_profile.json` is NOT deleted, see the profile-calibration row below |
 | `postmortem` node output path | Returns a resolution dict never stored | Cross-thread memory store is a deferred capability; dead output | None | None | None |
 | Stray/stale: `out.txt`, `raw.txt`, `infra/.gitkeep`, `data/.gitkeep`, `tests/__pycache__/_scratch_proposed...pyc`, stale remote branches (`add-operator-console`, `stage-5e-*`, `add-durable-checkpointer`, `add-cross-encoder-reranker`, `add-ci-test-gate`, `stage-5f-decision-protocol`) | Debris | Third-party slide dumps and merged-branch leftovers | None | None | Confirm branches are merged before remote deletion |
 | Live orphan: `rytesting` (Microsoft.CognitiveServices/accounts, kind AIServices) + `rytesting/proj-default` in `rg-opspilot` | Manual AI Foundry experiment | Not declared in Bicep, unrelated to OpsPilot | None | None | Deleted: user confirmed 2026-08-08; `az resource delete` removed the nested `.../accounts/rytesting/projects/proj-default`, then `az cognitiveservices account delete -g rg-opspilot -n rytesting` removed the account. `az cognitiveservices account show` now returns `ResourceNotFound`; `az cognitiveservices account list-deleted` shows it soft-deleted (recoverable), not yet purged |
@@ -530,9 +530,9 @@ Classifications per the required system: Keep, Keep with changes, Replace, Delet
 
 | Component | Location | Disposition |
 | --- | --- | --- |
-| RCAEval wild generalization probe | `eval/wild.py`, recorder, fixtures, baseline, profile dependency | Archive or delete from active implementation; held-out probe is deferred |
+| RCAEval wild generalization probe | `eval/wild.py`, recorder, fixtures, baseline, profile dependency | Deleted 2026-08-09, with `test_wild.py`. The golden scenario records are the evaluation input surface that replaces it |
 | Generic evaluator registry scaffold | `eval/harness.py`, scaffold test | Replace with the concrete four-layer evaluation |
-| External ITSM/RCAEval profile-calibration pipeline | `data/profiles/` scripts and external caches | Verify whether any generated-corpus input is still needed; otherwise archive |
+| External ITSM/RCAEval profile-calibration pipeline | `data/profiles/` scripts and external caches | Verified 2026-08-09: `data/profiles/rcaeval_profile.json` IS still a generated-corpus input. `data/synthetic/generate.py` reads it to calibrate noise density, so it is retained, not archived. Only the probe that consumed the held-out raw dataset was deleted; the committed calibration constants the generator depends on are a different artifact and stay. The gitignored raw caches remain absent and are needed only to regenerate the profile |
 | Empty package placeholders | `src/opspilot/ops/`, `src/opspilot/eval/` | Deleted (PR #54, merged to `main`; no owner appeared) |
 | Deprecated `/health` alias | `api.py` | Delete when probes and docs use the accepted health routes |
 | Local transformer vector-index stack | `retrieval/index.py`, local embedding path | Remove with the rejected local embedding and reranker implementation unless D-003 is explicitly revised |
@@ -740,14 +740,14 @@ owns order and PR structure.
 
 | Required behavior | Current standing |
 | --- | --- |
-| Golden scenario records of accepted shape | Missing; answer key is strong source material |
+| Golden scenario records of accepted shape | Implemented. `data/answer_key/golden_scenarios.yaml`, one eight-part record per authored incident, authored beside the answer key rather than generated from it; closure and shape asserted by `tests/test_golden_scenarios.py` |
 | Deterministic conformance aggregation | Partial tests exist but ownership and contracts differ |
 | Categorical scenario scoring | Missing |
 | One judge with versioned rubric | Missing |
 | Lexical-only baseline | Partial retrieval backend exists |
 | Fixed-script evidence-plan baseline | Partial deterministic behavior exists but is wrongly a runtime fallback |
 | Repeatability subset | Missing as accepted evaluation wiring |
-| Retrieval-influence and further-evidence demonstrations | Missing until corpus repairs and D-006 selection |
+| Retrieval-influence and further-evidence demonstrations | Scenarios selected (D-006, accepted 2026-08-09: retrieval influence inc-007, further evidence inc-004); the demonstrations themselves are unbuilt, since neither retrieval nor the further-evidence cycle exists yet |
 | Advisory report rather than merge-gating numeric ratchet | Missing; current scorecards and gates conflict |
 
 ### 10.14 Corpus preparation
@@ -801,16 +801,35 @@ all 22 retrieval references resolve. Identifier grammar is stable and uniform.
 | inc-007 | queue backlog recurrence | complete (known issue) | 1/2/1/1 | **postmortem inc-003 with recurrence signature** | **high (strongest)** | high (version join) | **high (same-version redeploy)** | low | low | same defects as inc-003; log message leaks the answer | yes |
 | (unlabeled) | benign transients (4 alerts + 4 logs, `incident_id: null`) | none scoreable | - | - | - | - | - | - | - | outside all windows | **no** |
 
-**Five-class coverage:** clear single-cause strong (inc-005, inc-001); competing hypotheses strong
-(inc-004 with an explicit red herring, inc-006 as the deploy-is-guilty foil); multiple contributing
-failures now represented by inc-006, revised in place (repaired 2026-08-08, see below) to require
-two independently evidenced contributing signals (`metrics:inventory-api:reservation_queue_depth`,
-a concurrent capacity shortfall, and `metrics:redis-cache:stale_read_rate`, the stale-cache defect)
-rather than one linear chain; sparse evidence accidental only (inc-006, inc-004); benign/transient
-now has a citable representative, `data/answer_key/benign_fixture.yaml` (repaired 2026-08-08),
-derived from the four existing ambient events, structurally distinct from the seven scenarios (no
-`expected_evidence`, no `expected_match`, not counted by `load_scenarios()`); it is not an eighth
-incident and carries no golden record, which is 1.2's work, not this repair's.
+**Five-class coverage audit (performed 2026-08-09).** The audit `evaluation.md` - "Scenario Corpus
+and Coverage Audit" defines, asking its three questions per class and nothing more. One row per
+class; the result is a finding from the corpus, not a design decision.
+
+| Scenario class | Represented? | By which | Clear enough to evaluate against a golden scenario? |
+| --- | --- | --- | --- |
+| Clear single-cause | Yes | inc-001, inc-002, inc-003, inc-005, inc-007 | Yes. Each carries an unambiguous causal chain. Four of the five also carry a disqualifying signal ruling the neighbouring failure mode out; inc-005 instead has no deploy anywhere in its window, which rules out change regression by absence rather than by a flat reading |
+| Competing or ambiguous hypotheses | Yes | inc-004 (primary), inc-006 (foil) | Yes. inc-004 carries an explicit authored `red_herring`; inc-006 is the inverse case, where the temporally adjacent deploy genuinely is contributory |
+| Multiple contributing failures | Yes | inc-006 | Yes, since the 2026-08-08 repair. Two independently evidenced conditions (`metrics:inventory-api:reservation_queue_depth`, a concurrent capacity shortfall, and `metrics:redis-cache:stale_read_rate`, the stale-cache defect), neither sufficient alone |
+| Sparse or unavailable evidence | Yes | inc-004 | Yes. `payment-gateway` is an external third party carrying zero metric series anywhere in the corpus, verified 2026-08-09, so the root cause is structurally unobservable and must be established indirectly and disclosed as a limitation |
+| Benign or transient condition | Yes | `benign_fixture.yaml` (benign-01) | Yes. Four ambient sub-threshold events, structurally distinct from the seven scenarios (no `expected_evidence`, no `expected_match`, not counted by `load_scenarios()`) |
+
+**Corpus gaps recorded by this audit:** none. Every class is represented and evaluable.
+
+**Further-evidence scenario, which the audit must also identify:** inc-004, an authored scenario
+rather than a fixture variant. Its unobservable third party is exactly what leaves a question the
+first evidence pass cannot close, which is the condition the cycle exists to serve.
+
+**One re-assessment this audit makes against the earlier pre-audit note.** The sparse-evidence class
+was previously recorded as "accidental only (inc-006, inc-004)". Inspection on 2026-08-09 shows
+inc-004's sparseness is structural rather than accidental: `payment-gateway` is an external
+dependency the corpus deliberately never instruments (confirmed: no metric series exists for it),
+so the class has a genuine representative rather than an incidental one. inc-006's sparseness was
+the accidental kind and the 2026-08-08 repair removed it by adding the missing cache-side signal;
+it is no longer offered as a representative of this class.
+
+The benign fixture carries no golden record: it is a non-incident, so there is no correct
+investigation for a golden record to describe. That exclusion is asserted by
+`tests/test_golden_scenarios.py::test_one_golden_record_per_authored_incident`.
 
 **Quality concerns:**
 
@@ -861,14 +880,16 @@ re-recorded live against `gpt-4o-mini`). Fixing the LLM planner's tool selection
 repair's scope and belongs to different, later work; the file itself is old-architecture machinery
 already named for deletion in both plans. `ruff check` and `mypy src` are clean.
 
-**D-006 implications:** natural candidates exist and should be recorded after repairs:
-further-evidence = inc-004; retrieval influence = inc-007 (primary) and inc-004 (steer-away case);
-change-time scenario subset = inc-001 or inc-005; repeatability = one of {inc-001, inc-005} +
-inc-004 + a sparse/inconclusive case. Preserve the accepted seven-incident scope: cover the
-multi-contributor class by revising one existing authored incident (inc-006 is the strongest
-candidate because it already combines a stale-cache mechanism with a causal deploy), and represent
-the benign/transient class through a controlled non-incident fixture derived from the existing
-ambient events rather than adding an eighth authored incident.
+**D-006 selections, recorded 2026-08-09.** The candidate mapping this section previously carried
+has been resolved into `decisions.md` D-006, which is the authority for the selections; it is not
+restated here. The candidates it proposed were confirmed by the coverage audit above with two
+refinements worth recording, because both were open questions the earlier note left to the audit:
+the change-time subset resolved to inc-005 rather than "inc-001 or inc-005", on the shortest-path
+criterion; and the repeatability subset's third slot resolved to inc-006 rather than "a
+sparse/inconclusive case", because no authored incident has partial or inconclusive as its only
+acceptable outcome, and inc-006 is the one scenario whose golden record accepts partial as correct
+rather than as a shortfall. The multi-contributor revision and the benign fixture the earlier note
+called for both landed in the 2026-08-08 repair.
 
 **Structured-query implications:** `incidents.json` (7 rows with SLA/known-error/priority fields),
 `deployments.json` (9), `alerts.json` (16) are a sufficient operational-records surface for
@@ -1036,8 +1057,9 @@ works in-process against `ToolService`, which partially answers D-004's first an
 the fourth (result vocabulary) is answered favorably by the existing byte-identical
 `ToolResult` passthrough.
 
-**Blocked by D-006 (corpus selections):** final scenario identifier assignments; this inspection
-supplies the candidate mapping in section 11 but the selections remain pending until the repairs land.
+**Resolved (D-006, 2026-08-09):** final scenario identifier assignments. The repairs landed, the
+five-class coverage audit ran (section 11), and `decisions.md` D-006 now names real identifiers for
+every criterion. Nothing here is blocked on corpus selection.
 
 ## 17. Implementation Clarifications Exposed by the Repository
 
@@ -1061,8 +1083,10 @@ slice or a small decision update before code invents incompatible answers.
 5. **D-004 evidence:** the current MCP SDK usage demonstrates in-process execution, same-service
    delegation, and canonical envelope passthrough. D-004 still needs the explicit library
    inspection and final record.
-6. **D-006 evidence:** the corpus provides credible candidates, but selections must wait for the
-   required repairs and coverage audit.
+6. **Resolved (D-006).** D-006 evidence: the corpus provides credible candidates, but selections
+   must wait for the required repairs and coverage audit. Both happened: the repairs landed
+   2026-08-09 (#56) and the five-class coverage audit in section 11 ran against the repaired
+   corpus, so `decisions.md` D-006 is accepted with real identifiers for every criterion.
 7. **D-003 vector viability:** no Cosmos vector-index configuration exists. The first S-8 technical
    PR must verify viability before choosing the implementation; an in-process cosine scan requires
    the recorded explicit revision.

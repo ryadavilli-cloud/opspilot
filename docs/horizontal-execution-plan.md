@@ -182,6 +182,16 @@ the rest of the plan.
 
 ### 1.2 Golden scenario records, the coverage audit, and the D-006 selections
 
+**Status: Completed (2026-08-09).** `data/answer_key/golden_scenarios.yaml` carries one eight-part
+record per authored incident, authored beside the answer key rather than generated from it; the
+five-class coverage audit is recorded in `status.md` - "Data and Corpus Status" with one row per
+class and no corpus gaps; `decisions.md` D-006 moved to Accepted with real identifiers for every
+criterion; and the RCAEval wild probe is deleted. Verification:
+`tests/test_golden_scenarios.py` (9 tests) asserts closure of all 43 golden references against the
+repaired corpus plus the eight-part shape, the accepted class and outcome vocabularies, the
+multi-contributor scenario's two independent conditions, and that the red herring is required
+evidence rather than an excluded reference.
+
 **Makes true.** Each authored incident carries one golden record stating what a correct
 investigation must establish, the corpus has been audited against the five scenario classes, and the
 scenario selections are named against real incident identifiers.
@@ -222,6 +232,24 @@ corpus lookup rather than a decision this plan makes.
 the audit table has one row per scenario class, with the multi-contributor and benign classes
 recorded as represented; and the scenario selections D-006 lists are named against real incident
 identifiers.
+
+**Divergences from this slice's original text:**
+
+- The Retires clause above names "RCAEval profile dependence" inside the wild-probe row. Only the
+  probe was deleted. `data/profiles/rcaeval_profile.json` was verified to be a live input to
+  corpus generation (`data/synthetic/generate.py` reads it to calibrate noise density) and is
+  retained. The register carries the profile-calibration pipeline as its own separate row whose
+  instruction is to verify before archiving, and that verification now has an answer, recorded in
+  `status.md`. Deleting the profile would have broken corpus regeneration.
+- The repeatability subset's third criterion asks for "one partial or inconclusive case" and no
+  authored incident has partial or inconclusive as its only acceptable outcome. It resolved to
+  inc-006, whose golden record accepts complete or partial, on the reasoning recorded in
+  `decisions.md` D-006. This is a selection made against the criterion's intent rather than its
+  literal wording, and is recorded rather than silently resolved.
+- The sparse-evidence class was previously noted in `status.md` as "accidental only". The audit
+  re-assessed it: inc-004's unobservable third party is structural, so the class has a genuine
+  representative. That re-assessment is recorded with the audit rather than left as a
+  contradiction between the note and the audit result.
 
 ### 1.3 Corpus preparation into the RetailEase containers
 
