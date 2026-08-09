@@ -17,6 +17,16 @@ class _State:
         self.incident_id = kw.get("incident_id", "inc-004")
         self.workflow_version = kw.get("workflow_version", "1.0")
         self.trace_id = kw.get("trace_id", "")
+        self.turn_id = kw.get("turn_id", "")
+
+
+def test_standard_attributes_reads_turn_id(span_exporter: tracing.InMemorySpanExporter):
+    # S-1: turn_id is new on every span. Absent from a state that carries none, it reads as "".
+    with_turn = tracing.standard_attributes(_State(turn_id="turn-1"))
+    assert with_turn["turn_id"] == "turn-1"
+
+    without_turn = tracing.standard_attributes(_State())
+    assert without_turn["turn_id"] == ""
 
 
 def test_span_emitted_with_standard_attributes(span_exporter: tracing.InMemorySpanExporter):

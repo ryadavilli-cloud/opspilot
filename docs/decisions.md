@@ -30,6 +30,7 @@ belongs to `status.md`; implementation sequence belongs to `execution-plan.md`.
 | D-004 | MCP capability and realization | Pending library inspection |
 | D-005 | Evaluation judge configuration | Accepted |
 | D-006 | Evaluation scenario selections | Pending corpus inspection |
+| D-007 | Normalized incident-context contract | Accepted |
 
 ---
 
@@ -215,6 +216,70 @@ are what mitigate it, and neither removes it.
 
 **Applies to.** `evaluation.md` — "Model-Assisted Judge"; `runtime-and-deployment.md` — "Model
 Connectivity"; NFR-25.
+
+### D-007 - Normalized incident-context contract
+
+**Status:** Accepted
+
+**Decision.** One typed, frozen contract, shared by both intake paths, carrying exactly five
+fields:
+
+| Field | Type | Meaning |
+| --- | --- | --- |
+| `incident_id` | `str \| None` | The selected predefined RetailEase incident's id; `None` for free-text intake |
+| `scope` | `str \| None` | The affected service or component, only when the intake source explicitly names one; `None` otherwise |
+| `symptom` | `str` | The reported problem description: the incident's `short_description` for predefined intake, the engineer's literal input for free text |
+| `time_anchor` | `datetime` | The operational anchor for initial evidence-window selection: the incident's `opened_at` for predefined intake, or the normalization/turn-start time for free text when no better incident time is known. Not asserted as the actual incident onset. |
+| `supplied_context` | `str \| None` | Additional evidence or context the engineer supplies, seeding a new turn (FR-7); unpopulated by S-1's predefined-only intake |
+
+No other field exists. In particular the contract carries no severity, priority, impact, urgency,
+SLA, ownership, environment, ticket workflow state, or session/live-status field, and no evidence
+reference: `system-design.md` §4.3's Evidence Investigator contract consumes normalized incident
+context and "existing evidence and retrieved-knowledge references" as two separate, distinct
+inputs, so seeding an initial evidence reference is not this contract's job: evidence exists only
+through deterministic admission (`code-guidelines.md`), never through intake.
+
+**`scope` for predefined intake, concretely.** The RetailEase `IncidentRecord`
+(`tools/contracts.py`) carries no affected-service or component field, only `category` (e.g.
+`"payment"`, `"datastore"`). `category` is a classification label, not a service/component
+identity, and is not used to populate `scope`: putting a category into a component-shaped field
+risks both semantic confusion and the corpus's own category-as-hint answer leakage. Consequently
+`scope` is `None` for every predefined-intake turn until a source that actually names an affected
+service or component exists.
+
+**Why.** FR-1 through FR-3 require only that both intake paths converge on "the same structured
+incident form" before investigation begins; nothing in FR-1 through FR-5, FR-7, or
+`system-design.md`'s normalized-context boundary language calls for more than an anchor
+identifier, an explicitly-known scope, the symptom itself, an operational time anchor for
+retrieval and telemetry windowing, and optional supplied context. The raw predefined-incident
+record (`IncidentRecord`, `tools/contracts.py`) carries `root_cause` and `resolution`, the
+answer-key content the investigation exists to discover, so the contract deliberately excludes
+them rather than deriving from the raw record directly; an investigation must reach its own
+conclusion, never receive it as intake. It also excludes the record's ticket-workflow fields
+(`priority`, `impact`, `urgency`, `made_sla`, `reassignment_count`, `state`, `number`,
+`is_known_error`, `close_code`, `resolved_at`), none of which an accepted requirement reads at the
+intake boundary. `time_anchor` is named and worded to keep a request-time fact from being read as
+an incident-time fact: `opened_at` describes the incident, a free-text normalization timestamp
+describes only the request, and collapsing both into one `observed_at`-style name would make the
+free-text value look like evidence about when the incident occurred.
+
+**Accepted trade-off.** Predefined intake discards most of the raw `IncidentRecord`'s operational
+metadata even where a future feature might want it. Re-adding any of it is a revision to this
+record, never a silent field addition.
+
+**Rejected.** A general incident-intake schema mirroring the full ITSM ticket shape (severity
+tiers, ownership, environment taxonomy, ticket metadata), and embedding session or workflow status
+in the contract. Neither is required by `requirements.md`, and each would blur the intake boundary
+with a concept owned elsewhere: live status is `workflow-design.md` §9's vocabulary, and
+ticket-shaped fields belong to the operational-records tool surface a turn queries as evidence, not
+to what a turn starts from. Also rejected: populating `scope` from `IncidentRecord.category`,
+which conflates a classification label with a component identity and risks leaking the category as
+an answer hint; and an `initial_evidence_refs` field, since the design keeps normalized context and
+evidence references as two structurally separate inputs (see above) and evidence exists only
+through deterministic admission, never through intake.
+
+**Applies to.** `system-design.md`: "Investigation, Turn, and Live-Session Model";
+`data-and-evidence.md`: "Identity and Reference Model"; FR-1, FR-2, FR-3, FR-5, FR-7.
 
 ---
 

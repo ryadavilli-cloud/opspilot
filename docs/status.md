@@ -1044,8 +1044,11 @@ supplies the candidate mapping in section 11 but the selections remain pending u
 These questions were exposed by repository reconciliation. They should be settled in the owning
 slice or a small decision update before code invents incompatible answers.
 
-1. **Normalized incident context fields:** the implementation needs one typed contract for normalized
-   input. The current `Alert` shape is evidence, not automatic authority.
+1. **Resolved (D-007).** Normalized incident context fields: the implementation needs one typed
+   contract for normalized input. The current `Alert` shape is evidence, not automatic authority.
+   `decisions.md` D-007 fixes the contract to five fields (`incident_id`, `scope`, `symptom`,
+   `time_anchor`, `supplied_context`), deliberately excluding the raw `IncidentRecord`'s
+   answer-leaking and ticket-workflow fields.
 2. **Evidence and knowledge reference encoding:** deterministic resolution needs one owner for
    prefixes, keys, and parsing. The existing frozen grammar is a useful candidate and should be
    evaluated rather than copied blindly.

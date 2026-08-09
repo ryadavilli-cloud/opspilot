@@ -153,7 +153,7 @@ extension. Reshaping a stable contract is a plan change, not progress.
 
 | Contract | Stabilized in |
 | --- | --- |
-| Stream envelope, turn and live-session identity, activity projection | S-1 |
+| Stream envelope, turn identity, live-session presentation state, activity projection | S-1 |
 | Normalized incident context and request-shape interaction kind | S-1 |
 | Evidence reference encoding, its single parser, and its resolver | S-2 |
 | Two-axis capability result vocabulary and admitted-evidence structure | S-2 |
@@ -317,7 +317,7 @@ provisional placement until this structure exists.
 | --- | --- | --- | --- |
 | Stream envelope and activity contract | `src/opspilot/stream/contracts.py` (proposed) | S-1 | New module; no existing counterpart |
 | Activity projection from instrumentation facts | `src/opspilot/stream/projection.py` (proposed) | S-1 | Derives from `obs/tracing.py` span facts |
-| Turn and live-session identity | `src/opspilot/turn/identity.py` (proposed) | S-1 | No turn model exists today (status 10.12) |
+| Turn identity and live-session presentation state | `src/opspilot/turn/identity.py` (proposed) | S-1 | No turn model exists today (status 10.12) |
 | Normalized incident context and intake classification | `src/opspilot/intake/contracts.py` (proposed) | S-1 | Predefined intake only; S-5 adds free text and clarification |
 | Telemetry seam | `src/opspilot/obs/tracing.py` | S-1 | Retained; `configure_exporter()` wired at startup, App Insights exporter added in A-0 |
 | Streaming endpoint | `src/opspilot/api.py` | S-1 | Added beside the old routes; old routes removed in S-4 |
@@ -413,19 +413,21 @@ commit `4c8f706`.
 - **Code to replace:** none in this slice. The streaming endpoint is added beside the old routes,
   and the new screen is a new file at `static/investigation.html` on its own route rather than a
   rewrite of `console.html`, so the old runtime keeps a working UI until S-4 deletes both together.
-- **New implementation:** streaming HTTP response without WebSockets or replay; turn and
-  live-session identity, which no component owns today; the normalized incident-context contract
-  populated from predefined intake; request-shape interaction classification; the accepted activity
-  projection emitted from the same instrumentation facts; live statuses; deterministic stub
-  assessment and brief solely to prove transport and rendering; in-process cancellation signal;
-  minimal one-screen client.
-- **Contract introduced or stabilized:** stream envelope, turn and live-session identity, activity
-  projection; normalized incident context and request-shape interaction kind. The normalized
-  context is authored to its final accepted shape now and populated only by predefined intake;
-  S-5 adds the free-text producer without reshaping it.
-- **Telemetry and activity impact:** turn identity and live-session identity on every span; stream
-  open, activity emission, and terminal events derived from the same facts. No prompts, provider
-  content, hidden reasoning, logs, or secrets reach the projection.
+- **New implementation:** streaming HTTP response without WebSockets or replay; turn identity,
+  which no component owns today; ephemeral live-session presentation state (not a persisted or
+  separately identified entity, `data-and-evidence.md` §3 names only investigation and turn
+  identity, no session identity); the normalized incident-context contract populated from
+  predefined intake; request-shape interaction classification; the accepted activity projection
+  emitted from the same instrumentation facts; live statuses; deterministic stub assessment and
+  brief solely to prove transport and rendering; in-process cancellation signal; minimal
+  one-screen client.
+- **Contract introduced or stabilized:** stream envelope, turn identity, live-session presentation
+  state, activity projection; normalized incident context and request-shape interaction kind. The
+  normalized context is authored to its final accepted shape now and populated only by predefined
+  intake; S-5 adds the free-text producer without reshaping it.
+- **Telemetry and activity impact:** turn identity on every span; stream open, activity emission,
+  and terminal events derived from the same facts. No prompts, provider content, hidden reasoning,
+  logs, or secrets reach the projection.
 - **Deterministic tests:** activity projection fidelity and sanitization; identities-first and
   close-marker-last ordering; no stream-only facts; turn isolation across concurrent streams.
 - **Evaluation increment:** none. Evaluation begins at S-2, when a real assessment exists.
@@ -1075,12 +1077,11 @@ scoped to runtime paths and use exact symbols.
   ordinary evidence already states the answer. If the minimum repair cannot land in this slice, use
   a controlled credible `inc-004` fixture variant instead and record that limitation.
   Divergence: this minimum repair, and more of the full corpus repair besides, already landed ahead
-  of this slice (2026-08-08) as horizontal-execution-plan.md's 1.1, merged to main 2026-08-09 (#56).
-  The `evt-007-01` leak is removed, all five deployment-note causal/red-herring annotations are
-  removed (not only the ones this slice needed), the inc-003/inc-007 `msg_processed_rate`
-  contradiction is repaired, and the `active_message_count` onset now follows the causal log rather
-  than preceding it. Entry into this slice no longer needs to redo or gate on this bullet; see
-  `status.md` - "Data and Corpus
+  of this slice as a standalone corpus repair, merged to main 2026-08-09 (#56). The `evt-007-01`
+  leak is removed, all five deployment-note causal/red-herring annotations are removed (not only
+  the ones this slice needed), the inc-003/inc-007 `msg_processed_rate` contradiction is repaired,
+  and the `active_message_count` onset now follows the causal log rather than preceding it. Entry
+  into this slice no longer needs to redo or gate on this bullet; see `status.md` - "Data and Corpus
   Status" for the verification evidence.
 - **New implementation:** the categorized `knowledge` container and its seed script; Azure OpenAI
   embeddings; Cosmos vector query; lexical scoring; RRF; deterministic identifier and metadata
@@ -1261,14 +1262,14 @@ tests, and its comments may legitimately use.
   derived from existing ambient events, not a new authored incident. Execute every change through
   the corpus repair protocol.
   Divergence: everything in this bullet except templated leakage already landed ahead of this
-  slice (2026-08-08) as horizontal-execution-plan.md's 1.1, merged to main 2026-08-09 (#56).
-  inc-002 (`used_ru_pct`), inc-005 (`hit_rate`), and inc-006 (`stale_read_rate`) each gained the
-  missing evidence reference; the inc-004/inc-006 log-ordering inversions and the inc-003/inc-007
-  metric-onset-before-cause inversions are corrected; the three historical postmortem timelines are
-  retimed within their telemetry window with real dates and resolvable deploy ids;
-  `data/answer_key/README.md`'s stale scenario count is fixed; inc-006 is revised in place to
-  require two independently evidenced contributing signals, retaining its family and identifier;
-  and `data/answer_key/benign_fixture.yaml` represents the benign/transient class from the existing
+  slice as a standalone corpus repair, merged to main 2026-08-09 (#56). inc-002 (`used_ru_pct`),
+  inc-005 (`hit_rate`), and inc-006 (`stale_read_rate`) each gained the missing evidence reference;
+  the inc-004/inc-006 log-ordering inversions and the inc-003/inc-007 metric-onset-before-cause
+  inversions are corrected; the three historical postmortem timelines are retimed within their
+  telemetry window with real dates and resolvable deploy ids; `data/answer_key/README.md`'s stale
+  scenario count is fixed; inc-006 is revised in place to require two independently evidenced
+  contributing signals, retaining its family and identifier; and
+  `data/answer_key/benign_fixture.yaml` represents the benign/transient class from the existing
   ambient events, structurally distinct from the seven scenarios and carrying no golden record.
   Templated noise realism (905 identical error strings, no pre-incident baseline history) is
   untouched and still this slice's to do. The D-006 remaining corpus selections, the repeatability
