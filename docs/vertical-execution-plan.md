@@ -397,53 +397,41 @@ commit `4c8f706`.
 
 ### S-1 Streaming turn skeleton, turn identity, predefined intake, and one screen
 
-- **Demonstrable outcome:** post a predefined incident to a new streaming endpoint and observe
-  identities first, a compact sequence of safe activity entries, and a stream-close marker last in
-  one HTTP response. A minimal same-origin screen at its own route renders intake, feed, brief
-  region, and one details area. The closing event is a transport demonstration marker proving
-  ordering, not a completed investigation outcome; accepted outcomes do not exist until S-3.
-- **Entry criteria:** S-0 is green; docs and baseline branch are committed; the abandoned WIP is
-  proven absent by the S-0 checkpoint.
-- **Existing foundation retained:** FastAPI app, the static single-file no-build-step approach, and
-  the tracing seam in `obs/tracing.py`, which already emits once at shared primitives with
-  correlation ids and a swappable exporter (status 6.10). The old polling and HITL endpoints and
-  their console are temporary compatibility, registered in the coexistence register and deleted in
-  S-4; no new feature work goes into them.
-- **Code and data to delete:** none in this slice.
-- **Code to replace:** none in this slice. The streaming endpoint is added beside the old routes,
-  and the new screen is a new file at `static/investigation.html` on its own route rather than a
-  rewrite of `console.html`, so the old runtime keeps a working UI until S-4 deletes both together.
-- **New implementation:** streaming HTTP response without WebSockets or replay; turn identity,
-  which no component owns today; ephemeral live-session presentation state (not a persisted or
-  separately identified entity, `data-and-evidence.md` §3 names only investigation and turn
-  identity, no session identity); the normalized incident-context contract populated from
-  predefined intake; request-shape interaction classification; the accepted activity projection
-  emitted from the same instrumentation facts; live statuses; deterministic stub assessment and
-  brief solely to prove transport and rendering; in-process cancellation signal; minimal
-  one-screen client.
-- **Contract introduced or stabilized:** stream envelope, turn identity, live-session presentation
-  state, activity projection; normalized incident context and request-shape interaction kind. The
-  normalized context is authored to its final accepted shape now and populated only by predefined
-  intake; S-5 adds the free-text producer without reshaping it.
-- **Telemetry and activity impact:** turn identity on every span; stream open, activity emission,
-  and terminal events derived from the same facts. No prompts, provider content, hidden reasoning,
-  logs, or secrets reach the projection.
-- **Deterministic tests:** activity projection fidelity and sanitization; identities-first and
-  close-marker-last ordering; no stream-only facts; turn isolation across concurrent streams.
-- **Evaluation increment:** none. Evaluation begins at S-2, when a real assessment exists.
-- **Dataset or fixture work:** none. The stub path uses an existing predefined incident.
-- **Azure impact:** Local deterministic. No infrastructure change.
-- **Decision gates:** the normalized incident-context clarification (status 17.1) is settled here.
-- **Explicit non-goals:** no model call, no grounding checks, no accepted completed outcome, no
-  persistence, no retrieval, no free-text intake, no clarification, no agent split, and no removal
-  of the old routes or the old console.
-- **Small PR breakdown:** (1) turn identity, normalized context, and projection contract with
-  instrumentation emission; (2) streaming endpoint; (3) the new one-screen client on its own route.
-- **Completion evidence:** local executable stream and deterministic ordering and sanitization
-  tests.
-- **Status updates required after landing:** the activity-streaming row in section 9 moves off
-  "No" for implementation; the Engineer Interaction Interface rows in section 10.1 for the single
-  screen and activity projection move to Implemented; record the local run command used.
+**Status: Completed.**
+
+**Outcome:** a predefined incident posted to `POST /turns` streams identities first, a compact
+sequence of safe activity entries, and a stream-close marker last, in one HTTP response; a minimal
+same-origin screen at `/investigation` renders intake, feed, brief region, and one expandable
+details area, exactly as this slice's demonstrable outcome specified. The closing event remains a
+transport demonstration marker, not a completed investigation outcome; accepted outcomes do not
+exist until S-3.
+
+**Merge commits:** branch `s1-turn-identity-and-contracts`, landed as three PRs: #59 (turn
+identity, the normalized incident-context contract settled as `decisions.md` D-007, the stream
+envelope and activity-projection contracts, `obs/tracing.py`'s `turn_id` extension); #60 (the
+streaming endpoint, plus scoping `ruff format` enforcement to touched files); #61 (the one-screen
+client and the in-process cancellation signal).
+
+**Verification evidence:**
+
+| Check | Result |
+| --- | --- |
+| Local suite green | `ruff check .`, `ruff format --check` (scoped), `mypy src` (0 errors), `pytest -q -m "not reranker and not llm"` (412 passed, 1 xfailed, 5 deselected, 0 failed) |
+| Ordering | identities-first and close-marker-last asserted directly against the live endpoint and manually verified against the real corpus |
+| Sanitization | activity entries carry no prompt, hidden reasoning, provider content, or secret; a dedicated test asserts no answer-key content reaches the stream |
+| Turn isolation | concurrent turns get independent identities and independent activity sequences |
+| Cancellation signal | driven directly against the generator with a fake disconnect signal at three points (immediately, after one activity, never); emission (including the close marker) stops once disconnected |
+| One-screen client | verified live in a real browser: incident selection, streamed activity feed, brief update, and details expansion all render correctly, no console errors |
+| Decision gate | the normalized incident-context clarification (status.md §17 item 1) settled as `decisions.md` D-007 before implementation |
+
+**Divergences from this slice's original text:**
+
+- The normalized incident-context contract required a new `decisions.md` entry (D-007) before
+  implementation could proceed. The original text above treated the shape as already knowable; it
+  was not, and a settled decision was the blocking step, not a gap to fill silently.
+- "Live-session identity" in this slice's original wording was corrected to "live-session
+  presentation state" during PR #59: `data-and-evidence.md` §3 names only investigation and turn
+  identity, no session identity. The text above reflects the correction, not the original wording.
 
 ### S-2 Evidence, reference, and assessment contracts with one bounded model call
 
