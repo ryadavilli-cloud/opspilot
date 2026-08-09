@@ -22,7 +22,7 @@ from pathlib import Path
 from typing import Any, Literal
 from uuid import uuid4
 
-from fastapi import BackgroundTasks, Depends, FastAPI, Header, HTTPException, Response
+from fastapi import BackgroundTasks, Depends, FastAPI, Header, HTTPException, Request, Response
 from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
@@ -82,6 +82,13 @@ app = FastAPI(title="OpsPilot", version=__version__)
 # requests, no build step) so an operator can drive an investigation without a separate frontend
 # deployment. Read once at import time — it's a packaged asset, not runtime-configurable data.
 _CONSOLE_HTML = (Path(__file__).parent / "static" / "console.html").read_text(encoding="utf-8")
+
+# The new one-screen client: a separate file and route, not a rewrite of console.html, so the old
+# runtime keeps a working UI until the cutover slice deletes both together. Same self-contained,
+# no-build-step approach; drives the streaming turn endpoint instead of the old polling API.
+_INVESTIGATION_HTML = (Path(__file__).parent / "static" / "investigation.html").read_text(
+    encoding="utf-8"
+)
 
 # One durable checkpointer per process (selected by OPSPILOT_CHECKPOINTER; `none` by default),
 # compiled into one graph — every invocation must carry a `thread_id` so the checkpoint is
@@ -474,6 +481,13 @@ def console() -> str:
     return _CONSOLE_HTML
 
 
+@app.get("/investigation", response_class=HTMLResponse, include_in_schema=False)
+def investigation() -> str:
+    """The new one-screen client: predefined intake, a compact live activity feed, the brief as
+    the dominant element, and one expandable details area. Drives POST /turns."""
+    return _INVESTIGATION_HTML
+
+
 @app.get("/console/config", include_in_schema=False)
 def console_config() -> ConsoleAuthConfig:
     """Sign-in parameters for the console, served rather than baked into the HTML so the page stays
@@ -586,11 +600,20 @@ def ready(
 # last. This closing event is a transport-ordering proof only; no accepted completed-turn outcome
 # exists yet, so the stub assessment/brief here demonstrates transport and rendering, nothing more.
 # --------------------------------------------------------------------------------------
-async def _predefined_turn_stream(incident_id: str, incident: IncidentRecord) -> AsyncIterator[str]:
+async def _predefined_turn_stream(
+    incident_id: str, incident: IncidentRecord, disconnect: Request
+) -> AsyncIterator[str]:
     # Async, not a plain generator: Starlette drives a sync generator's `next()` through a worker
     # threadpool call per yield, and a contextvars token set before one yield cannot be reset after
     # the next one if that resumes in a different worker thread. An async generator stays on the
     # single request task throughout, so the span below can safely wrap every yield.
+    #
+    # `disconnect` (typed as Request; a lighter duck-typed fake is all a test needs) is the
+    # in-process cancellation signal: checked before doing each further unit of work, so a client
+    # that has left gets nothing more emitted. Alive only for this streaming request, not durable,
+    # not a job registry. This is the minimal signal a later slice's safe-boundary cancellation and
+    # commit-on-disconnect semantics build on; there is no operation to interrupt mid-flight yet,
+    # since everything below is deterministic and stub-backed.
     turn = start_turn(incident_id=incident_id)
     context = from_predefined_incident(incident)
     projector = ActivityProjector()
@@ -598,6 +621,9 @@ async def _predefined_turn_stream(incident_id: str, incident: IncidentRecord) ->
     with tracing.span("turn", trace_id=turn.turn_id, attributes=tracing.standard_attributes(turn)):
         identity = IdentityEvent(turn_id=turn.turn_id, investigation_id=turn.investigation_id)
         yield identity.model_dump_json() + "\n"
+
+        if await disconnect.is_disconnected():
+            return
 
         started = emit(
             "turn.investigating",
@@ -609,6 +635,9 @@ async def _predefined_turn_stream(incident_id: str, incident: IncidentRecord) ->
         )
         yield started.model_dump_json() + "\n"
 
+        if await disconnect.is_disconnected():
+            return
+
         stub = emit(
             "turn.synthesizing",
             turn,
@@ -619,12 +648,16 @@ async def _predefined_turn_stream(incident_id: str, incident: IncidentRecord) ->
         )
         yield stub.model_dump_json() + "\n"
 
+        if await disconnect.is_disconnected():
+            return
+
         yield StreamCloseMarker(turn_id=turn.turn_id).model_dump_json() + "\n"
 
 
 @app.post("/turns")
 def start_turn_endpoint(
     body: StartTurnRequest,
+    request: Request,
     repo: Repository = Depends(get_corpus_repository),
 ) -> StreamingResponse:
     raw = repo.incident(body.incident_id)
@@ -632,7 +665,7 @@ def start_turn_endpoint(
         raise HTTPException(status_code=404, detail="Unknown incident_id.")
     incident = IncidentRecord(**raw)
     return StreamingResponse(
-        _predefined_turn_stream(body.incident_id, incident),
+        _predefined_turn_stream(body.incident_id, incident, request),
         media_type="application/x-ndjson",
     )
 
