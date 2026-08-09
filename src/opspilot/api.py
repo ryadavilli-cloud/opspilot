@@ -546,13 +546,20 @@ def ready(
         return _tool_ok(result) and bool(result.results)
 
     def logs_ok() -> bool:
-        return _tool_ok(svc.query_logs(
-            service="checkout-api",
-            start_time="2026-06-28T10:00:00Z", end_time="2026-06-28T11:00:00Z"))
+        return _tool_ok(
+            svc.query_logs(
+                service="checkout-api",
+                start_time="2026-06-28T10:00:00Z",
+                end_time="2026-06-28T11:00:00Z",
+            )
+        )
 
     def retrieval_ok() -> bool:
-        return (backend != "unavailable" and backend == RETRIEVAL_BACKEND
-                and _tool_ok(svc.search_runbooks(query="payment timeout", k=1)))
+        return (
+            backend != "unavailable"
+            and backend == RETRIEVAL_BACKEND
+            and _tool_ok(svc.search_runbooks(query="payment timeout", k=1))
+        )
 
     record("corpus", _check(lambda: corpus.ok), "CORPUS_INCOMPLETE")
     record("repository", _check(repository_ok), "REPOSITORY_LOOKUP_FAILED")
@@ -656,8 +663,10 @@ def _run_and_build(alert: dict, svc, diagnosis) -> InvestigationResponse:
         "thread_id": f"investigate-{uuid4()}",
     }
     state = invoke_auto_approving(
-        get_graph(), _initial_state(alert),
-        config={"configurable": configurable}, approver=_AUTO_APPROVER,
+        get_graph(),
+        _initial_state(alert),
+        config={"configurable": configurable},
+        approver=_AUTO_APPROVER,
     )
     return _build_response(state, svc, diagnosis)
 
@@ -785,9 +794,7 @@ def _safe_error(exc: Exception) -> str:
     return type(exc).__name__
 
 
-def _advance(
-    investigation_id: str, run, *, repo: InvestigationRepository, svc, diagnosis
-) -> None:
+def _advance(investigation_id: str, run, *, repo: InvestigationRepository, svc, diagnosis) -> None:
     """Run `run()` (an initial invoke or a decision resume) and record the outcome: a paused
     `hitl_gate` interrupt becomes `awaiting_approval` with the pending report attached — NOT a
     completed run — anything else genuinely terminal is mapped and recorded as usual. Shared by
@@ -829,7 +836,8 @@ def _advance(
     if not created:
         _log.info(
             "publication %s for %s already committed; second write suppressed",
-            publication_id, investigation_id,
+            publication_id,
+            investigation_id,
         )
 
 
@@ -874,7 +882,9 @@ def _run_investigation_job(
     _advance(
         investigation_id,
         lambda: get_graph().invoke(initial, config=config),
-        repo=repo, svc=svc, diagnosis=diagnosis,
+        repo=repo,
+        svc=svc,
+        diagnosis=diagnosis,
     )
 
 
@@ -890,7 +900,9 @@ def _resume_investigation_job(
     _advance(
         investigation_id,
         lambda: get_graph().invoke(Command(resume=decision), config=config),
-        repo=repo, svc=svc, diagnosis=diagnosis,
+        repo=repo,
+        svc=svc,
+        diagnosis=diagnosis,
     )
 
 
@@ -1053,13 +1065,18 @@ def submit_decision(
         # A genuine retry: replay the committed response, resume nothing.
         _log.info(
             "decision %s on %s replayed (decision_id=%s)",
-            committed.decision, investigation_id, committed.decision_id,
+            committed.decision,
+            investigation_id,
+            committed.decision_id,
         )
         return AcceptedInvestigation.model_validate(committed.response)
 
     _log.info(
         "decision %s on %s by %s (kind=%s)",
-        decision.decision, investigation_id, principal.audit_label(), principal.auth_method,
+        decision.decision,
+        investigation_id,
+        principal.audit_label(),
+        principal.auth_method,
     )
 
     # The resume payload is assembled HERE, server-side, from the validated body plus the verified
