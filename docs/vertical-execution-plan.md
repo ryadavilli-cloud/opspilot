@@ -1075,11 +1075,12 @@ scoped to runtime paths and use exact symbols.
   ordinary evidence already states the answer. If the minimum repair cannot land in this slice, use
   a controlled credible `inc-004` fixture variant instead and record that limitation.
   Divergence: this minimum repair, and more of the full corpus repair besides, already landed ahead
-  of this slice (2026-08-08) as horizontal-execution-plan.md's 1.1, uncommitted. The `evt-007-01`
-  leak is removed, all five deployment-note causal/red-herring annotations are removed (not only
-  the ones this slice needed), the inc-003/inc-007 `msg_processed_rate` contradiction is repaired,
-  and the `active_message_count` onset now follows the causal log rather than preceding it. Entry
-  into this slice no longer needs to redo or gate on this bullet; see `status.md` - "Data and Corpus
+  of this slice (2026-08-08) as horizontal-execution-plan.md's 1.1, merged to main 2026-08-09 (#56).
+  The `evt-007-01` leak is removed, all five deployment-note causal/red-herring annotations are
+  removed (not only the ones this slice needed), the inc-003/inc-007 `msg_processed_rate`
+  contradiction is repaired, and the `active_message_count` onset now follows the causal log rather
+  than preceding it. Entry into this slice no longer needs to redo or gate on this bullet; see
+  `status.md` - "Data and Corpus
   Status" for the verification evidence.
 - **New implementation:** the categorized `knowledge` container and its seed script; Azure OpenAI
   embeddings; Cosmos vector query; lexical scoring; RRF; deterministic identifier and metadata
@@ -1260,14 +1261,14 @@ tests, and its comments may legitimately use.
   derived from existing ambient events, not a new authored incident. Execute every change through
   the corpus repair protocol.
   Divergence: everything in this bullet except templated leakage already landed ahead of this
-  slice (2026-08-08) as horizontal-execution-plan.md's 1.1, uncommitted. inc-002 (`used_ru_pct`),
-  inc-005 (`hit_rate`), and inc-006 (`stale_read_rate`) each gained the missing evidence reference;
-  the inc-004/inc-006 log-ordering inversions and the inc-003/inc-007 metric-onset-before-cause
-  inversions are corrected; the three historical postmortem timelines are retimed within their
-  telemetry window with real dates and resolvable deploy ids; `data/answer_key/README.md`'s stale
-  scenario count is fixed; inc-006 is revised in place to require two independently evidenced
-  contributing signals, retaining its family and identifier; and
-  `data/answer_key/benign_fixture.yaml` represents the benign/transient class from the existing
+  slice (2026-08-08) as horizontal-execution-plan.md's 1.1, merged to main 2026-08-09 (#56).
+  inc-002 (`used_ru_pct`), inc-005 (`hit_rate`), and inc-006 (`stale_read_rate`) each gained the
+  missing evidence reference; the inc-004/inc-006 log-ordering inversions and the inc-003/inc-007
+  metric-onset-before-cause inversions are corrected; the three historical postmortem timelines are
+  retimed within their telemetry window with real dates and resolvable deploy ids;
+  `data/answer_key/README.md`'s stale scenario count is fixed; inc-006 is revised in place to
+  require two independently evidenced contributing signals, retaining its family and identifier;
+  and `data/answer_key/benign_fixture.yaml` represents the benign/transient class from the existing
   ambient events, structurally distinct from the seven scenarios and carrying no golden record.
   Templated noise realism (905 identical error strings, no pre-incident baseline history) is
   untouched and still this slice's to do. The D-006 remaining corpus selections, the repeatability

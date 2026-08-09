@@ -137,8 +137,8 @@ application identity holds read-only access to both.
 
 ### 1.1 Corpus repairs
 
-**Status: Completed (2026-08-08), uncommitted.** All four "Closes" items below are repaired in the
-working tree; nothing is committed yet. Verification: `uv run python data/synthetic/generate.py`
+**Status: Completed (2026-08-08), committed.** All four "Closes" items below are repaired and
+merged to main (2026-08-09, #56). Verification: `uv run python data/synthetic/generate.py`
 reports `evidence refs required=42 resolved=42`; `build_goldens.py` regenerated;
 `tests/test_answer_key.py`, `test_closure.py`, `test_incidents_alerts.py`, `test_kb.py`,
 `test_telemetry.py`, `test_evidence_coverage.py`, and the new `test_benign_fixture.py` all pass;
