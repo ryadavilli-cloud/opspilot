@@ -79,6 +79,7 @@ scenarios:
       - logs:inventory-api:evt-002-01          # 429 TooManyRequests from cosmos
       - logs:catalog-api:evt-002-02            # 429 TooManyRequests from cosmos
       - metrics:cosmos-db:ru_throttled_rate@2026-05-28T09:15:00Z
+      - metrics:cosmos-db:used_ru_pct@2026-05-28T09:15:00Z
       - metrics:inventory-api:p95_latency_ms@2026-05-28T09:20:00Z
       - deploys:catalog-api:dep-20260528-01    # the bulk-import job rollout
       - deps:inventory-api->cosmos-db
@@ -114,8 +115,9 @@ scenarios:
     impacted_chain: [notification-worker, service-bus]
     expected_evidence:
       - logs:notification-worker:evt-003-01    # unhandled deserialization exception, crash loop
-      - metrics:service-bus:active_message_count@2026-06-10T20:00:00Z
+      - metrics:service-bus:active_message_count@2026-06-10T20:10:00Z
       - metrics:notification-worker:restart_count@2026-06-10T20:05:00Z
+      - metrics:notification-worker:msg_processed_rate@2026-06-10T20:10:00Z
       - deploys:notification-worker:dep-20260610-01
       - deps:notification-worker->service-bus
     expected_retrieval:
@@ -190,6 +192,7 @@ scenarios:
       - logs:checkout-api:evt-005-01           # session-not-found / cache-miss surge
       - metrics:redis-cache:used_memory_pct@2026-06-22T11:35:00Z
       - metrics:redis-cache:evicted_keys_rate@2026-06-22T11:40:00Z
+      - metrics:redis-cache:hit_rate@2026-06-22T11:40:00Z
       - metrics:checkout-api:p95_latency_ms@2026-06-22T11:45:00Z
       - deps:checkout-api->redis-cache
     expected_retrieval:
@@ -208,16 +211,25 @@ scenarios:
       signal: inventory-api reservation error rate elevated
     expected_intent: novel_investigation
     expected_match: null
-    trigger: An inventory-api deploy removed cache invalidation on stock writes, so Redis served stale availability.
+    trigger: >-
+      An inventory-api deploy removed cache invalidation on stock writes, and a concurrent
+      promotional-traffic surge pushed inventory-api's reservation queue past its normal depth;
+      together, stale Redis data and a backlog of queued reservation checks let oversells through.
     root_cause: >-
-      An inventory-api deploy dropped cache invalidation on stock writes, so redis-cache served stale
-      availability. checkout-api reservations conflicted and oversold. The deploy is the real cause here.
+      Two conditions combined, neither sufficient alone. An inventory-api deploy dropped cache
+      invalidation on stock writes, so redis-cache kept serving stale availability. Independently, a
+      promotional-traffic surge pushed inventory-api's reservation queue past its normal depth. Stale
+      availability alone would have caused only occasional oversells; a deep reservation queue alone
+      would have caused slow reservations, not conflicts. Together, checkout-api reservations
+      conflicted and oversold.
     impacted_chain: [inventory-api, redis-cache, checkout-api]
     expected_evidence:
       - logs:inventory-api:evt-006-01          # StockReservationConflict / oversell
       - logs:checkout-api:evt-006-02           # reserve failed downstream
       - metrics:inventory-api:reservation_error_rate@2026-06-25T16:20:00Z
-      - deploys:inventory-api:dep-20260625-01  # causal deploy
+      - metrics:inventory-api:reservation_queue_depth@2026-06-25T16:15:00Z  # the traffic-surge contributor
+      - metrics:redis-cache:stale_read_rate@2026-06-25T16:20:00Z           # the stale-cache contributor
+      - deploys:inventory-api:dep-20260625-01  # causal deploy (the cache-invalidation half)
       - deps:inventory-api->redis-cache
     expected_retrieval:
       - runbook:deployment-rollback
@@ -250,8 +262,9 @@ scenarios:
     impacted_chain: [notification-worker, service-bus]
     expected_evidence:
       - logs:notification-worker:evt-007-01    # deserialization crash loop (again)
-      - metrics:service-bus:active_message_count@2026-07-02T09:30:00Z
+      - metrics:service-bus:active_message_count@2026-07-02T09:40:00Z
       - metrics:notification-worker:restart_count@2026-07-02T09:35:00Z
+      - metrics:notification-worker:msg_processed_rate@2026-07-02T09:40:00Z
       - deploys:notification-worker:dep-20260702-01   # re-deploy of the affected revision
       - deps:notification-worker->service-bus
     expected_retrieval:

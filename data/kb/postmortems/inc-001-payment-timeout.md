@@ -29,22 +29,23 @@ requests queued waiting for a connection, exceeded their timeout, and surfaced a
 503s at checkout. Reverting the pool size restored service.
 
 ## Impact
-- ~34 minutes of degraded checkout: `checkout-api` `http_5xx_rate` peaked around 12%.
+- ~25 minutes of degraded checkout: `checkout-api` `http_5xx_rate` peaked around 12%.
 - Payment authorization `p95_latency_ms` rose from ~180 ms to >5,000 ms (timeout ceiling).
 - Customer impact: intermittent failed checkouts and abandoned carts during peak.
 - No data loss; no duplicate charges (authorizations that timed out never completed).
 
 ## Timeline
-All times UTC. Active revision at incident start: `payment-api` revision
-`payment-api--rev-47` (deployed earlier same day with the config change).
+All times UTC on 2026-05-12. Active revision at incident start: `payment-api`
+revision `payment-api--rev-47` (deployed as `dep-20260512-01`, carrying the
+config change).
 
-- 18:52 — Config change to `payment-api--rev-47` reduces Cosmos DB max pool size 100 -> 10. No immediate effect at low traffic.
-- 20:05 — Evening peak begins; `payment-api` `p95_latency_ms` starts climbing.
-- 20:11 — First "connection pool exhausted" errors logged by `payment-api`; authorizations begin queuing.
-- 20:14 — `checkout-api` `http_5xx_rate` crosses alert threshold; Azure Monitor alert fires; on-call paged.
-- 20:23 — Responder correlates payment-api latency spike and pool-exhausted logs to `payment-api--rev-47` in Application Insights.
-- 20:31 — Config reverted (pool size back to 100); new revision `payment-api--rev-48` activated via Container Apps.
-- 20:39 — `p95_latency_ms` and `http_5xx_rate` return to baseline. Incident resolved.
+- 14:00: Config change ships as `payment-api--rev-47` (`dep-20260512-01`), reducing Cosmos DB max pool size 100 -> 10. No immediate effect at low traffic.
+- 14:20: Traffic ramps toward the window's peak; `payment-api` `p95_latency_ms` starts climbing.
+- 14:30: First "connection pool exhausted" errors logged by `payment-api`; authorizations begin queuing and `checkout-api` starts returning 503s.
+- 14:31: `checkout-api` `http_5xx_rate` crosses alert threshold; Azure Monitor alert fires; on-call paged.
+- 14:38: Responder correlates the payment-api latency spike and pool-exhausted logs to `payment-api--rev-47`.
+- 14:45: Config reverted (pool size back to 100); a corrected revision, `payment-api--rev-48`, activated via Container Apps.
+- 14:55: `p95_latency_ms` and `http_5xx_rate` return to baseline. Incident resolved.
 
 ## Root cause
 A configuration change reduced `payment-api`'s Azure Cosmos DB client connection

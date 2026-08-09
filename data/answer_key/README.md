@@ -6,7 +6,7 @@ golden sets is **derived from or validated against** these two files:
 | File | What it is |
 | --- | --- |
 | `topology.yaml` | The RetailEase service/infra/external graph and its dependency edges — the spine. |
-| `scenarios.yaml` | Six incident scenarios authored as structured specs — the labels. |
+| `scenarios.yaml` | Seven incident scenarios authored as structured specs, the labels. |
 | `build_goldens.py` | Deterministic projection of the above into `eval/golden_*.json`. |
 
 ```
@@ -74,10 +74,12 @@ class, or if a causal deploy's version is missing from `affected_versions`.
 
 ## Scenario invariants (enforced by the test)
 
-- 6 scenarios: 3 `historical` + 3 `novel`.
+- 7 scenarios: 3 `historical` + 3 `novel` + 1 `recurrence`.
 - `historical` → `expected_intent: known_issue`, `expected_match: postmortem:<own id>` (it seeds
   that postmortem and the Phase 9.5 fast path should match it).
 - `novel` → `expected_intent: novel_investigation`, `expected_match: null`.
+- `recurrence` → `expected_intent: known_issue`, `expected_match: postmortem:<a different,
+  historical incident's id>` (never its own; matching itself would be untestable).
 - Every evidence/retrieval ref obeys the grammar above and points at a real topology entity.
 - `red_herring` (when present) is also listed in `expected_evidence` — it exists in telemetry and
   must be ruled out, not omitted. Used by `inc-004` (Demo 1) where the recent deploy is innocent.

@@ -12,6 +12,8 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import re
+from datetime import timedelta
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -81,7 +83,11 @@ def test_every_evidence_ref_resolves():
 
 
 def test_referenced_metrics_are_actually_deviated():
-    """A metric ref must land on an *elevated* sample, not just any sample (referenced go up)."""
+    """A metric ref must land on a sample that moved toward its own authored direction, not
+    just any sample. Some referenced metrics rise (http_5xx_rate); some legitimately drop to
+    signal (msg_processed_rate dropping to ~0 is exactly what "nothing is being consumed"
+    looks like): a repaired series must move the way its own postmortem narrates, not just
+    move away from baseline in either direction."""
     for ref in ALL_REFS:
         if not ref.startswith("metrics:"):
             continue
@@ -89,9 +95,55 @@ def test_referenced_metrics_are_actually_deviated():
         metric, ts = tail.split("@", 1)
         samples = METRIC_SERIES[(svc, metric)]
         baseline = samples[0]["value"]  # window start = steady state
-        assert METRIC_SAMPLES[(svc, metric, ts)] > baseline * 1.2 or (
-            baseline == 0 and METRIC_SAMPLES[(svc, metric, ts)] > 0
-        ), f"{ref} is not deviated above baseline"
+        observed = METRIC_SAMPLES[(svc, metric, ts)]
+        authored = generate.METRIC_DEFS[metric]
+        assert authored["deviated"] != authored["baseline"], (
+            f"{metric} has no authored direction (baseline == deviated) but is referenced")
+        if authored["deviated"] > authored["baseline"]:
+            assert observed > baseline * 1.2 or (baseline == 0 and observed > 0), (
+                f"{ref} should have risen above baseline but did not")
+        else:
+            assert observed < baseline * 0.8 or baseline == 0, (
+                f"{ref} should have dropped below baseline but did not")
+
+
+def test_causally_linked_log_pairs_stay_ordered():
+    """Where the answer key asserts one authored log line causes another (inc-004, inc-006),
+    the cause's timestamp must not land after the effect's: an inverted order reads as the
+    effect happening for no reason, before its own cause exists."""
+    for cause_id, effect_id in generate.CAUSE_BEFORE_EFFECT:
+        assert LOG_EVENTS[cause_id]["ts"] <= LOG_EVENTS[effect_id]["ts"], (
+            f"{cause_id} did not precede {effect_id}")
+
+
+def test_metric_onset_follows_its_causal_log():
+    """inc-003/inc-007: the backlog metric's ramp must not start before the crash-loop log
+    that causes it. The ramp onset sits STEP_MIN before the referenced sample's timestamp, so
+    an onset earlier than the causal log means the metric moved before its own cause fired."""
+    pairs = [("inc-003", "evt-003-01", "service-bus", "active_message_count"),
+             ("inc-007", "evt-007-01", "service-bus", "active_message_count")]
+    for inc_id, cause_event, svc, metric in pairs:
+        cause_ts = LOG_EVENTS[cause_event]["ts"]
+        scenario = next(s for s in SCENARIOS if s["id"] == inc_id)
+        ref = next(r for r in scenario["expected_evidence"]
+                   if r.startswith(f"metrics:{svc}:{metric}@"))
+        ref_ts = ref.split("@", 1)[1]
+        onset = generate._dt(ref_ts) - timedelta(minutes=generate.STEP_MIN)
+        assert generate._iso(onset) >= cause_ts, (
+            f"{inc_id}: {metric} onset {generate._iso(onset)} precedes cause log at {cause_ts}")
+
+
+def test_no_answer_leakage_in_tool_visible_fields():
+    """Log messages and deploy notes are what the tools actually surface to a model. Neither
+    may name another incident id or announce its own narrative role (red herring, causal,
+    trigger): that hands the model the answer instead of requiring it to establish one."""
+    leak = re.compile(r"inc-\d{3}|red herring|causal:|trigger:", re.IGNORECASE)
+    for row in LOGS:
+        assert not leak.search(row["message"]), (
+            f"leak in log {row['event_id']!r}: {row['message']!r}")
+    for dep in DEPLOYS:
+        assert not leak.search(dep["note"]), (
+            f"leak in deploy note {dep['deploy_id']!r}: {dep['note']!r}")
 
 
 def test_red_herring_deploy_present_but_uncorrelated():

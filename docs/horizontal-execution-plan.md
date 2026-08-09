@@ -107,6 +107,10 @@ AIServices) + `rytesting/proj-default` in `rg-opspilot`" is the one such resourc
 "Azure and Deployment Status" records it as the only live resource in `rg-opspilot` outside the
 template. These deletions belong to no slice and are not added to the template.
 
+**Progress note (2026-08-08):** `rytesting` and its `proj-default` project are deleted from
+`rg-opspilot`, confirmed via `az cognitiveservices account show` (`ResourceNotFound`) and
+`az cognitiveservices account list-deleted` (soft-deleted, not yet purged).
+
 **Live containers the template will stop declaring.** A template that no longer mentions a container
 does not delete it from the account either. The `checkpoints` and `investigation-index` containers
 are therefore deleted with the CLI, not by Bicep, and they are deleted when the persistence slice
@@ -132,6 +136,15 @@ carry collection category, provenance, extracted identifiers, and entity and tim
 application identity holds read-only access to both.
 
 ### 1.1 Corpus repairs
+
+**Status: Completed (2026-08-08), uncommitted.** All four "Closes" items below are repaired in the
+working tree; nothing is committed yet. Verification: `uv run python data/synthetic/generate.py`
+reports `evidence refs required=42 resolved=42`; `build_goldens.py` regenerated;
+`tests/test_answer_key.py`, `test_closure.py`, `test_incidents_alerts.py`, `test_kb.py`,
+`test_telemetry.py`, `test_evidence_coverage.py`, and the new `test_benign_fixture.py` all pass;
+`ruff check` and `mypy src` are clean. Full detail, including one disclosed, out-of-scope test
+failure surfaced by the repair (an old single-agent-architecture evaluation gate, not a corpus
+defect), is recorded in `status.md` - "Data and Corpus Status".
 
 **Makes true.** The authored corpus tells a physically coherent story with no leaked answers, and
 all five scenario classes are represented in what it contains.

@@ -29,7 +29,7 @@ notifications are off the critical purchase path, so this was scoped SEV3. Rolli
 back the worker and dead-lettering the poison message cleared the backlog.
 
 ## Impact
-- ~2 hours 10 minutes of delayed order notifications (emails via `email-provider`).
+- ~28 minutes of delayed order notifications (emails via `email-provider`).
 - `active_message_count` on the Service Bus queue grew steadily throughout the window.
 - `notification-worker` `restart_count` climbed as the new revision crash-looped.
 - No impact to checkout, payments, inventory, or catalog — purchases still completed;
@@ -37,17 +37,18 @@ back the worker and dead-lettering the poison message cleared the backlog.
   notifications were permanently lost.
 
 ## Timeline
-All times UTC. Active revision at incident start: `notification-worker--rev-12`
-(newly deployed).
+All times UTC on 2026-06-10. Active revision at incident start:
+`notification-worker--rev-12` (deployed as `dep-20260610-01`, newly rolled out).
 
-- 13:20 — `notification-worker--rev-12` deployed via Azure Container Apps and takes 100% traffic.
-- 13:26 — Worker receives a malformed message; the new revision throws and crashes instead of handling it.
-- 13:26–14:00 — Container Apps restarts the crashed replica repeatedly; each restart re-reads the same poison message and crashes again (`restart_count` rising). No messages are consumed.
-- 14:05 — `active_message_count` crosses the backlog alert threshold; Azure Monitor alert fires; on-call paged (SEV3).
-- 14:18 — Responder correlates the crash loop and rising `restart_count` to `notification-worker--rev-12` in Application Insights.
-- 14:22 — Worker rolled back to the previous good revision `notification-worker--rev-11` via Container Apps.
-- 14:29 — Poison message identified and moved to the dead-letter queue so it stops blocking the consumer.
-- 15:30 — Backlog drained/reprocessed; `active_message_count` back to baseline. Incident resolved.
+- 19:45: `notification-worker--rev-12` (`dep-20260610-01`) deployed via Azure Container Apps and takes 100% traffic.
+- 20:00: Worker receives a malformed message; the new revision throws and crashes instead of handling it; the crash loop begins.
+- 20:00–20:05: Container Apps restarts the crashed replica repeatedly; each restart re-reads the same poison message and crashes again (`restart_count` climbing). No messages are consumed; `msg_processed_rate` drops toward zero.
+- 20:05: With nothing draining the queue, `active_message_count` begins climbing.
+- 20:10: `active_message_count` crosses the backlog alert threshold; Azure Monitor alert fires; on-call paged (SEV3).
+- 20:15: Responder correlates the crash loop and rising `restart_count` to `notification-worker--rev-12` (`dep-20260610-01`).
+- 20:20: Worker rolled back to the previous known-good revision via Container Apps.
+- 20:24: Poison message identified and moved to the dead-letter queue so it stops blocking the consumer.
+- 20:28: Backlog drained/reprocessed; `active_message_count` back to baseline. Incident resolved.
 
 ## Root cause
 The new `notification-worker` revision lacked safe handling for a malformed message.

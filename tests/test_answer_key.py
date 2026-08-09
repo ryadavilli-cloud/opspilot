@@ -125,6 +125,20 @@ def test_red_herring_is_declared_evidence():
             assert rh in s["expected_evidence"], f"{s['id']}: red_herring must also be in evidence"
 
 
+def test_inc_006_represents_multiple_independent_contributing_signals():
+    """inc-006 is the corpus's multi-contributor representative (status.md "Data and Corpus
+    Status"). Relabeling a single linear chain as "multi-contributor" without a second
+    independently observable signal would not actually close the coverage gap, so this
+    checks structure, not prose: contributing metric evidence must span at least two
+    distinct entities."""
+    inc6 = next(s for s in SCENARIOS if s["id"] == "inc-006")
+    metric_entities = {
+        ref.split(":", 2)[1] for ref in inc6["expected_evidence"] if ref.startswith("metrics:")
+    }
+    assert len(metric_entities) >= 2, (
+        "inc-006 must evidence contributing signals on at least two distinct entities")
+
+
 def test_retrieval_ids_follow_namespaces():
     for s in SCENARIOS:
         for ref in s["expected_retrieval"]:
