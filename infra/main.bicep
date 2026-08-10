@@ -61,11 +61,29 @@ param cosmosAccountName string = toLower('${namePrefix}-cosmos-${uniqueString(re
 @description('Create the Cosmos DB Built-in Data Contributor role assignment for the app identity. This is a Microsoft.DocumentDB data-plane role assignment (plain Contributor on the account is enough to create it), unlike the Microsoft.Authorization assignments above — kept as its own guard for symmetry and in case the deploy principal ever needs it bootstrapped imperatively instead.')
 param manageCosmosRoleAssignment bool = true
 
-@description('Cosmos SQL database holding every OpsPilot container. Must match AZURE_COSMOS_DATABASE (config.COSMOS_DATABASE).')
+@description('Cosmos SQL database holding the application\'s own writable state. Must match AZURE_COSMOS_DATABASE (config.COSMOS_DATABASE).')
 param cosmosDatabaseName string = 'opspilot'
 
 @description('Container for completed investigation records. Partitioned by /investigation_id.')
 param cosmosInvestigationContainerName string = 'investigations'
+
+@description('Cosmos SQL database holding the RetailEase corpus the application only ever reads. Separate from the OpsPilot database so the read-only grant is scoped to a database rather than enumerated per container.')
+param retailEaseDatabaseName string = 'retailease'
+
+@description('Categorized knowledge container: runbooks, service knowledge, and incident history in one container, distinguished by a collection category field. Partitioned by /category, which is what retrieval routes on.')
+param knowledgeContainerName string = 'knowledge'
+
+@description('Operational records container: incidents, alerts, deployments, dependencies, logs, and metric series. Hierarchically partitioned by /kind then /service, matching how the capabilities query it.')
+param operationalRecordsContainerName string = 'operational-records'
+
+@description('Azure OpenAI embedding deployment used by corpus preparation at load time and by retrieval at query time.')
+param embeddingDeploymentName string = 'text-embedding-3-small'
+
+@description('Embedding model for the deployment above. Its dimension count must match the knowledge container vector policy.')
+param embeddingModelName string = 'text-embedding-3-small'
+
+@description('Vector dimensions the embedding model emits. Cosmos fixes this per embedding path; changing it means removing and re-adding the path, so it is a parameter rather than a literal.')
+param embeddingDimensions int = 1536
 
 @description('Entra tenant id that issues reviewer tokens for the HITL decision endpoint (G-01). Injected as AZURE_TENANT_ID. Defaults to the deployment tenant; override only for a cross-tenant setup.')
 param entraTenantId string = tenant().tenantId
@@ -89,6 +107,7 @@ var openAiUserRoleId = '5e0bd9bd-7b93-4f28-af87-19fc36ad61bd'
 // Cosmos DB Built-in Data Contributor — the well-known built-in data-plane role id (same value in
 // every Cosmos account; not a subscription-scoped built-in role definition like the two above).
 var cosmosDataContributorRoleId = '00000000-0000-0000-0000-000000000002'
+var cosmosDataReaderRoleId = '00000000-0000-0000-0000-000000000001'
 
 resource logs 'Microsoft.OperationalInsights/workspaces@2023-09-01' = {
   name: logAnalyticsName
@@ -137,6 +156,28 @@ resource chatDeployment 'Microsoft.CognitiveServices/accounts/deployments@2024-1
       format: 'OpenAI'
       name: chatModelName
       version: chatModelVersion
+    }
+    versionUpgradeOption: 'NoAutoUpgrade'
+  }
+}
+
+// Embedding deployment: corpus preparation embeds passages at load time and retrieval embeds the
+// query at read time, so both sides must resolve to the same model. It is declared after the chat
+// deployment and depends on it, because an Azure OpenAI account serializes deployment writes and
+// two parallel creates on the same account intermittently fail with a conflict.
+resource embeddingDeployment 'Microsoft.CognitiveServices/accounts/deployments@2024-10-01' = {
+  parent: openai
+  name: embeddingDeploymentName
+  dependsOn: [chatDeployment]
+  sku: {
+    name: 'Standard'
+    capacity: 30
+  }
+  properties: {
+    model: {
+      format: 'OpenAI'
+      name: embeddingModelName
+      version: '1'
     }
     versionUpgradeOption: 'NoAutoUpgrade'
   }
@@ -220,6 +261,84 @@ resource cosmosContainerResources 'Microsoft.DocumentDB/databaseAccounts/sqlData
     }
   }
 ]
+
+// --- RetailEase: the corpus the application reads and never writes -----------------------------
+// A separate database, not just separate containers, so the application's read-only grant is one
+// assignment scoped to a database rather than one per container that must be extended every time a
+// container is added.
+resource retailEaseDb 'Microsoft.DocumentDB/databaseAccounts/sqlDatabases@2024-08-15' = {
+  parent: cosmos
+  name: retailEaseDatabaseName
+  properties: {
+    resource: {
+      id: retailEaseDatabaseName
+    }
+  }
+}
+
+// Knowledge: one container holding the three routed logical collections, distinguished by
+// `category`, which is also the partition key because routing selects a category filter.
+//
+// The vector policy is declared here, but it is NOT a point of no return. Probed 2026-08-09: a
+// vectorEmbeddingPolicy can be added to a container that lacks one, and an existing path can be
+// removed and re-added at a different dimension. Only in-place modification of a live path is
+// refused. The partition key is the genuinely fixed choice.
+//
+// `/embedding` is excluded from the normal index deliberately. The vector index already covers it,
+// and range-indexing a 1536-element float array costs storage and RU for queries nobody issues.
+resource knowledgeContainer 'Microsoft.DocumentDB/databaseAccounts/sqlDatabases/containers@2024-08-15' = {
+  parent: retailEaseDb
+  name: knowledgeContainerName
+  properties: {
+    resource: {
+      id: knowledgeContainerName
+      partitionKey: {
+        paths: ['/category']
+        kind: 'Hash'
+      }
+      indexingPolicy: {
+        indexingMode: 'consistent'
+        automatic: true
+        includedPaths: [{ path: '/*' }]
+        excludedPaths: [{ path: '/"_etag"/?' }, { path: '/embedding/*' }]
+        vectorIndexes: [{ path: '/embedding', type: 'diskANN' }]
+      }
+      vectorEmbeddingPolicy: {
+        vectorEmbeddings: [
+          {
+            path: '/embedding'
+            dataType: 'float32'
+            dimensions: embeddingDimensions
+            distanceFunction: 'cosine'
+          }
+        ]
+      }
+      defaultTtl: -1
+    }
+  }
+}
+
+// Operational records: six record kinds in one container. Hierarchically partitioned because the
+// capabilities query on two different axes and no single field serves both. Logs, metrics, and
+// deployments are always scoped by service; incidents and alerts by incident, and incidents carry
+// no service field at all. `/kind` then `/service` scopes the service-keyed queries fully and
+// leaves the 19 service-less documents (7 incidents, 12 dependency edges) under an undefined
+// second level, which Cosmos permits.
+resource operationalRecordsContainer 'Microsoft.DocumentDB/databaseAccounts/sqlDatabases/containers@2024-08-15' = {
+  parent: retailEaseDb
+  name: operationalRecordsContainerName
+  properties: {
+    resource: {
+      id: operationalRecordsContainerName
+      partitionKey: {
+        paths: ['/kind', '/service']
+        kind: 'MultiHash'
+        version: 2
+      }
+      defaultTtl: -1
+    }
+  }
+}
 
 resource env 'Microsoft.App/managedEnvironments@2024-03-01' = {
   name: environmentName
@@ -323,6 +442,29 @@ resource app 'Microsoft.App/containerApps@2024-03-01' = {
               name: 'AZURE_COSMOS_INVESTIGATION_CONTAINER'
               value: cosmosInvestigationContainerName
             }
+            // The RetailEase corpus the application reads and never writes. Named here so the
+            // runtime resolves the same containers corpus preparation wrote, rather than each side
+            // defaulting independently.
+            {
+              name: 'AZURE_COSMOS_RETAILEASE_DATABASE'
+              value: retailEaseDatabaseName
+            }
+            {
+              name: 'AZURE_COSMOS_KNOWLEDGE_CONTAINER'
+              value: knowledgeContainerName
+            }
+            {
+              name: 'AZURE_COSMOS_OPERATIONAL_RECORDS_CONTAINER'
+              value: operationalRecordsContainerName
+            }
+            {
+              name: 'AZURE_OPENAI_EMBEDDING_DEPLOYMENT'
+              value: embeddingDeploymentName
+            }
+            {
+              name: 'AZURE_OPENAI_EMBEDDING_DIMENSIONS'
+              value: string(embeddingDimensions)
+            }
             // Reviewer identity for the HITL decision endpoint (G-01). The tenant + audience are
             // what a reviewer token is validated against; the approver role is what it must carry
             // to publish. These are configuration, not secrets — the app holds no client secret,
@@ -424,14 +566,40 @@ resource cosmosDataContributorRoleDefinition 'Microsoft.DocumentDB/databaseAccou
   name: cosmosDataContributorRoleId
 }
 
+resource cosmosDataReaderRoleDefinition 'Microsoft.DocumentDB/databaseAccounts/sqlRoleDefinitions@2024-08-15' existing = {
+  parent: cosmos
+  name: cosmosDataReaderRoleId
+}
+
+// The application holds ONE identity with TWO differently scoped data-plane grants, not an
+// account-wide one. `runtime-and-deployment.md` requires read and write on the investigations
+// container and read-only on every RetailEase container, with the write boundary "enforced by the
+// role assignment, not by application convention" (NFR-1). The hosted suite checks exactly that:
+// the application writes the Record and is refused a write to any RetailEase container. An
+// account-wide contributor grant would make that check unpassable, because the application would
+// genuinely be able to rewrite the corpus it is reading.
 resource cosmosDataContributor 'Microsoft.DocumentDB/databaseAccounts/sqlRoleAssignments@2024-08-15' = if (manageCosmosRoleAssignment) {
   parent: cosmos
-  name: guid(cosmos.id, app.id, cosmosDataContributorRoleId)
+  name: guid(cosmos.id, app.id, cosmosDataContributorRoleId, cosmosInvestigationContainerName)
   properties: {
     roleDefinitionId: cosmosDataContributorRoleDefinition.id
     principalId: app.identity.principalId
-    scope: cosmos.id
+    scope: '${cosmos.id}/dbs/${cosmosDatabaseName}/colls/${cosmosInvestigationContainerName}'
   }
+  dependsOn: [cosmosContainerResources]
+}
+
+// Read-only over the whole RetailEase database rather than per container, so adding a corpus
+// container later does not silently arrive ungranted or tempt a widening of the grant above.
+resource cosmosDataReaderRetailEase 'Microsoft.DocumentDB/databaseAccounts/sqlRoleAssignments@2024-08-15' = if (manageCosmosRoleAssignment) {
+  parent: cosmos
+  name: guid(cosmos.id, app.id, cosmosDataReaderRoleId, retailEaseDatabaseName)
+  properties: {
+    roleDefinitionId: cosmosDataReaderRoleDefinition.id
+    principalId: app.identity.principalId
+    scope: '${cosmos.id}/dbs/${retailEaseDatabaseName}'
+  }
+  dependsOn: [knowledgeContainer, operationalRecordsContainer]
 }
 
 output acrLoginServer string = acr.properties.loginServer
