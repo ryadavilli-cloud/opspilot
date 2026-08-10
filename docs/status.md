@@ -205,7 +205,7 @@ classification is in sections 5 and 8; the files are: `test_answer_key`, `test_a
 
 | Path | What it is |
 | --- | --- |
-| `infra/main.bicep` (+ `infra/.gitkeep`) | Azure: Log Analytics, ACR, Container App (min 0 replicas), Azure OpenAI account + `gpt-5-mini` deployment, Cosmos account with `checkpoints`/`investigations`/`investigation-index` containers, role assignments, Entra params |
+| `infra/main.bicep` (+ `infra/.gitkeep`) | Azure: Log Analytics, ACR, Container App (min 0 replicas), Azure OpenAI account + `gpt-5-mini` deployment, vector-capable Cosmos account with one `investigations` container (2026-08-09), role assignments, Entra params |
 | `Dockerfile` | Multi-stage uv build; installs `llm` + `checkpoint` groups; packages corpus + KB; BM25 backend |
 | `.github/workflows/deploy.yml` | CI (ruff, mypy, pytest lanes) + ACR build + Bicep deploy + post-deploy smoke |
 | `scripts/smoke_deployment.py` | Post-deploy smoke: readiness, version, sync investigate, async 202+poll+decision path |
@@ -385,12 +385,28 @@ it settles (deployment and change history) is not among them. Note for `decision
 
 ### 6.8 Persistence (`runtime-and-deployment.md` §§3, 10)
 
-**MISALIGNED / OBSOLETE, with the account itself reusable.** What exists: a Cosmos account with
-`checkpoints`, `investigations`, and `investigation-index` containers, written through keyless
-managed identity with scoped data-plane roles (the identity/keyless posture matches §12's
-stored-data rule). The `checkpoints` container and its saver are checkpoint-recovery machinery the
-design prohibits (OBSOLETE). The investigations containers persist the job-record shape, not
-completed-turn artifacts. The categorized `knowledge` container and the `operational-records` container do not exist; the corpus ships as files inside the image.
+**Rebuilt 2026-08-09; the obsolete containers are gone.** The original account could not gain the
+`EnableNoSQLVectorSearch` capability, which Cosmos only accepts at account creation and which D-003's
+dense-retrieval choice requires, verified by a probe that saw every container vector policy rejected.
+The account was deleted and recreated under the same Bicep-derived name with the capability set. Its
+contents were inspected first and were entirely rejected-architecture data: 1229 checkpointer
+documents, one idempotency-index document, and eight job records carrying `pending_interrupt`,
+`publication_id`, and `decisions`.
+
+What exists now: a vector-capable Cosmos account declaring one container, `investigations`
+(`/investigation_id`), written through keyless managed identity with scoped data-plane roles (the
+identity/keyless posture matches §12's stored-data rule). `checkpoints` and `investigation-index`
+are gone from both Bicep and the account. Removing the declarations alone would not have held,
+because `cosmos_investigations.py` recreates its containers through create-if-not-exists, so the
+`OPSPILOT_CHECKPOINTER` and `OPSPILOT_INVESTIGATION_REPOSITORY` deployment settings were removed
+too and the application now takes its own defaults (`none` and `memory`). The hosted smoke's
+durable-pause leg was removed in the same change: it asserted that an in-flight pause survives a
+replica restart, which the accepted design does not claim.
+
+Still misaligned: the `investigations` container is declared but the application no longer writes
+to it, since the repository defaults to memory until the completed-turn artifact exists. The
+categorized `knowledge` container and the `operational-records` container do not exist; the corpus
+ships as files inside the image.
 
 ### 6.9 External interface and streaming (`runtime-and-deployment.md` §2)
 
@@ -485,8 +501,8 @@ Classifications per the required system: Keep, Keep with changes, Replace, Delet
 | --- | --- | --- | --- | --- | --- |
 | WIP commit `0c3c175` (`dispatch.py` 349 ln, `worker.py` 183 ln, lease/epoch machinery, Service Bus config) | Outbox + queue seam + worker skeleton | Queues, workers, and durable dispatch are deliberate absences; the code is also broken (mypy `call-arg` at `api.py:862/866`) and has zero tests, zero deps, zero infra | None outside itself (unpushed, untested) | None | Deleted: `git merge-base --is-ancestor 0c3c175 HEAD` exits nonzero on `main` (PR #54, squash commit `4c8f706`); the code was never present on the branch cut from `main` at `e567adf` |
 | HITL surface: `hitl_gate`, `apply_edit` nodes, `POST /investigations/{id}/decision`, `CommittedDecision`, decision idempotency, console approval UI, `Approver` role usage | Human approval pause/resume with report-hash binding | The accepted design has no approval, review, or publication stage; delivery follows the gate and commit directly | `test_investigations_api.py` (37 tests), `test_report_binding.py`, `test_checkpointer.py` HITL test, smoke steps 4-6 | The grounding gate + commit-before-terminal (different concept, already specified) | Delete together with its tests; keep the report-hash/content-hash technique for the completed-turn artifact |
-| Checkpointer stack: `checkpoint.py`, `langgraph-checkpoint-sqlite` dep, `checkpoints` Cosmos container (Bicep + live), msgpack allowlist | Per-super-step durable graph state | In-flight state is ephemeral by design (NFR-57); D-001 forbids checkpoint/replay features | `test_checkpointer.py`, Bicep container loop, `sqlite-vec` transitive | Nothing (completed-turn commit only) | Live container deletion deferred until the new persistence slice lands |
-| `investigation-index` container + versioned idempotency key machinery | Atomic accept-once index | Target creates the investigation at first completed-turn commit; no accept-time persistence, no index container | `cosmos_investigations.py`, Bicep | None | Same deferral as above |
+| Checkpointer stack: `checkpoint.py`, `langgraph-checkpoint-sqlite` dep, `checkpoints` Cosmos container (Bicep + live), msgpack allowlist | Per-super-step durable graph state | In-flight state is ephemeral by design (NFR-57); D-001 forbids checkpoint/replay features | `test_checkpointer.py`, Bicep container loop, `sqlite-vec` transitive | Nothing (completed-turn commit only) | **Container deleted 2026-08-09** (Bicep + live), with the `OPSPILOT_CHECKPOINTER` deployment setting and the hosted smoke's durable-pause leg. Code half (`checkpoint.py`, the dependency, msgpack allowlist, `test_checkpointer.py`) still pending |
+| `investigation-index` container + versioned idempotency key machinery | Atomic accept-once index | Target creates the investigation at first completed-turn commit; no accept-time persistence, no index container | `cosmos_investigations.py`, Bicep | None | **Container deleted 2026-08-09** (Bicep + live), with the `OPSPILOT_INVESTIGATION_REPOSITORY` deployment setting that caused it to be recreated at runtime. Idempotency-index code still pending |
 | Async job status vocabulary (`queued`/`running`/`awaiting_approval`/`degraded`/`escalated`...) and 202+poll transport | Job lifecycle over background tasks | One live streaming request owns the turn; live status is the 5-value stream vocabulary; completed outcomes are exactly three | `api.py`, console, smoke | Streaming turn endpoint + live statuses | Remove only after the streaming slice is demonstrable |
 | Unreachable model reranker: `retrieval/reranker.py`, `Retriever.rerank()`, `RERANK_CANDIDATES`, `reranker` test marker, `bge-reranker` references | CrossEncoder reranking (never reachable via factory) | No model reranker in the baseline (D-003); currently dead by construction anyway | `test_retrieval.py` reranker tests, `retrieval_scorecard.json` rerank mode | Deterministic identifier/metadata promotion | None |
 | Dead config: `PROD_MODELS`, `Tier`, `SEVERITY_TIER`, `resolve_tier`, `ENABLE_OPUS_SEV1`, `JUDGE_MODEL` (as-is), `MAX_TOOL_CALLS`, `CONFIDENCE_THRESHOLD`, `LANGSMITH_ENABLED`, dispatch knobs | Unreferenced severity-tier model routing and unenforced limits | Never called; contradicts D-002 (routing is by task label to two deployments, not severity tiers) | None (unreferenced) | D-002 task-label routing | None |
@@ -936,6 +952,14 @@ and `investigation-index` containers; the `Approver`/`Submitter`/`Reader` app-ro
 from `rg-opspilot`, confirmed via `az cognitiveservices account show` (`ResourceNotFound`) and
 `az cognitiveservices account list-deleted` (soft-deleted, recoverable, not yet purged). No other
 item in the excess/delete-candidates list above was touched.
+
+**Progress note (2026-08-09):** the `checkpoints` and `investigation-index` containers are deleted,
+not as a scoped live change but as a consequence of rebuilding the Cosmos account: vector search
+requires a capability Cosmos only accepts at account creation, so the account was deleted and
+recreated with it. Bicep now declares one container, `investigations`. The two deployment settings
+that would have recreated the deleted containers at runtime were removed with them, and the hosted
+smoke's durable-pause assertion went at the same time. The `Approver`/`Submitter`/`Reader` app-role
+machinery and the merged remote branches are untouched.
 
 **Deployment blockers:** the current pipeline deploys `main` green; the reconciled system will
 break the smoke contract immediately (it asserts `awaiting_approval` and the decision protocol),

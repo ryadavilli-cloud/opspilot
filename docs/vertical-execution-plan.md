@@ -655,6 +655,20 @@ client and client-disconnect detection on the streaming endpoint).
   `test_api.py` and `test_guardrails.py`. Dependencies removed from `pyproject.toml`, `uv.lock`,
   and the `Dockerfile` install groups: `langgraph`, `langchain-core`,
   `langgraph-checkpoint-sqlite`, `langchain-azure-cosmosdb`.
+  Divergence: the infrastructure half of this bullet already landed on 2026-08-09, ahead of this
+  slice. Cosmos NoSQL vector search needs an account capability that cannot be added after
+  creation, verified against the original account, so the account was deleted and recreated with
+  the capability set at creation. The `checkpoints` and `investigation-index` containers went with
+  it, along with their Bicep declarations and, necessarily, the deployment settings that selected
+  the Cosmos checkpointer and the Cosmos investigation repository: the application recreated both
+  containers at runtime through create-if-not-exists, so removing the declarations alone would not
+  have held. The hosted smoke's durable-pause leg was removed in the same change, because it
+  asserted that an in-flight pause survives a replica restart, a property the accepted design does
+  not claim and which would now fail against correct behavior. The deleted containers held only
+  rejected-architecture data, inspected first: 1229 checkpointer documents, one index document, and
+  eight job records. What remains this slice's to do is all of the code deletion above; only the
+  live containers, the Bicep declarations, the two deployment settings, and the smoke assertion are
+  discharged.
 - **Graph-dependent evaluation removed or parked in the same slice:** `eval/scenario_eval.py`,
   `eval/record_single_agent.py`, `tests/test_scenario_gate.py`, `tests/test_single_agent_gate.py`,
   the committed numeric scorecards, the stub `eval/harness.py` with `tests/test_scaffold.py`, and
@@ -1002,6 +1016,14 @@ scoped to runtime paths and use exact symbols.
   it in place, which depends on the existing partition key and indexing policy, neither of which
   this plan has verified. Record one of three outcomes before writing code, and let the outcome
   decide whether this slice is additive:
+  Divergence: this check is already answered, and not by performing it. On 2026-08-09 the Cosmos
+  account was deleted and recreated to gain the vector-search capability, which cannot be added
+  after creation. No legacy `investigations` container survived, and the eight job records it held
+  were inspected first and confirmed to be rejected-architecture data with no retention value. The
+  three outcomes below therefore collapse: there is nothing to reuse, nothing to migrate, and
+  nothing to delete under approval. Bicep declares a fresh `investigations` container partitioned
+  by `/investigation_id`, and this slice writes the accepted artifact into it directly. The
+  separately approved container-replacement PR the third outcome describes is not needed.
   1. **Compatible: reuse in place.** The partition key and indexing policy accept the accepted
      artifact. No new container, no migration, nothing deleted. The container holds mixed shapes
      until A-1 clears the old documents.
@@ -1465,6 +1487,15 @@ then immediately require a regeneration against a changed environment.
   `az cognitiveservices account delete`. `az cognitiveservices account show` returns
   `ResourceNotFound`; `az cognitiveservices account list-deleted` shows it soft-deleted, not yet
   purged.
+  Second divergence: the live `checkpoints` and `investigation-index` containers, and the old
+  job-record data this bullet points at the S-7 migration decision for, are also already gone as of
+  2026-08-09. The Cosmos account was deleted and recreated to gain the vector-search capability,
+  which cannot be added to an existing account, so all three disappeared with the account rather
+  than through a verified per-container deletion here. Their contents were inspected before the
+  delete and were entirely rejected-architecture data. This also pre-empts the S-7 compatibility
+  check: there is no legacy `investigations` container left to reuse, so that check's three
+  outcomes collapse to a fresh container with the accepted partition key. What remains this slice's
+  to do is the interim smoke's removal and the eight-check suite.
 - **Code to replace:** `scripts/smoke_deployment.py`, superseded by the eight accepted checks.
 - **New implementation:** the eight-check hosted smoke: start, authentication, model reachability,
   Cosmos role access, one streamed turn, citations resolving after restart, telemetry arrival, and
