@@ -118,6 +118,25 @@ lands, which is 5.2. This is the one preparation item that is sequenced rather t
 because the live containers cannot go before the code that reads them does. The checkpointer stack
 itself is retired in 6.1, so `checkpoints` has no writer left after that slice either.
 
+**Superseded (2026-08-09): both containers are already gone, by a different route.** Cosmos NoSQL
+vector search requires an account capability that cannot be added to an existing account, verified
+against the original account, which rejected every container vector policy and could not be updated
+to accept one. The account was therefore deleted and recreated with `EnableNoSQLVectorSearch` set at
+creation. That reset removed `checkpoints` and `investigation-index` as a side effect of the
+rebuild rather than as a sequenced deletion, so the CLI-deletion sequencing described above no
+longer has a subject. Their contents were inspected first and were entirely rejected-architecture
+data: 1229 checkpointer documents, one idempotency-index document, and eight job records carrying
+`pending_interrupt`, `publication_id`, and `decisions`.
+
+Because the application recreated both containers at runtime through create-if-not-exists, removing
+them from the template alone would not have held. The Bicep settings that selected the Cosmos
+checkpointer and the Cosmos investigation repository were removed with them, so the application now
+takes its own defaults and nothing recreates either container. The hosted smoke's durable-pause
+check went at the same time and for the same reason: it asserted that an in-flight pause survives a
+replica restart, which the accepted design does not claim, so leaving it would have failed the
+deployment gate against correct behavior. What remains for 5.2 and 6.1 is the code deletion each
+already owns; the live containers and the deployment settings are done.
+
 ---
 
 ## Layer 1 - Ground-truth corpus
@@ -789,6 +808,15 @@ artifact," "Restart-safe citation resolution," and "No active-turn checkpoints, 
 container, or worker state," of which this slice removes the index container and the worker state
 while 6.1 removes the checkpoints and replay machinery.
 
+Divergence: the live `investigation-index` container is already gone, removed 2026-08-09 when the
+Cosmos account was deleted and recreated to gain the vector-search capability, which cannot be
+added to an existing account. The Bicep declaration and the deployment setting that selected the
+Cosmos investigation repository went with it, so nothing recreates it. What this slice still owns
+is the code: the idempotency-index machinery in the repository modules, and the job-record
+lifecycle around it. Entry into this slice does not need to delete a container or plan a live
+deletion, and the "Live containers the template will stop declaring" preparation note above is
+superseded for the same reason.
+
 **Retires.** `status.md` - "Deletion and Replacement Register", Delete: "Async job status vocabulary
 (`queued`/`running`/`awaiting_approval`/`degraded`/`escalated`...) and 202+poll transport," which
 carries "Streaming turn endpoint + live statuses" as its Replacement; "`investigation-index`
@@ -897,6 +925,16 @@ allowlist," "`postmortem` node output path," and the `hitl_gate` and `apply_edit
 intent taxonomy and known-issue fast path." The tests that die with these subjects are
 `test_checkpointer.py`, the sufficiency test, the triage and triager tests, and the escalate and
 sufficiency routing cases of the diagnose test.
+
+Divergence: the `checkpoints` Cosmos container, both its Bicep declaration and the live container,
+is already gone as of 2026-08-09, removed when the account was deleted and recreated to gain the
+vector-search capability. The deployment setting that selected the Cosmos checkpointer went with
+it, so the checkpointer has no live backing store and nothing recreates one. The hosted smoke's
+durable-pause assertion was removed in the same change, because it tested that an in-flight pause
+survives a replica restart, which the accepted design does not claim. What this slice still owns is
+the code and the dependency: `checkpoint.py`, the `langgraph-checkpoint-sqlite` dependency, the
+msgpack allowlist, and `test_checkpointer.py`. The "(Bicep + live)" half of that register entry is
+discharged.
 
 **Shape.** Rewrite. D-001 settles that the turn is an explicit state machine in ordinary application
 code with no orchestration framework, graph runtime, or checkpointing feature, so the graph build,

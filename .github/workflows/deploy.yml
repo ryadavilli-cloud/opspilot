@@ -139,9 +139,4 @@ jobs:
         # principal (granted the Approver role during the G-01 Entra bootstrap; see the ADR).
         env:
           OPSPILOT_SMOKE_AUDIENCE: ${{ vars.ENTRA_API_AUDIENCE }}
-          # Required by the G-02 durable-pause check: it restarts this app mid-pause and then
-          # re-polls. Without them the smoke test fails rather than skipping, because a skipped
-          # durability check passes identically against a non-durable in-memory store.
-          OPSPILOT_SMOKE_APP_NAME: opspilot-api
-          OPSPILOT_SMOKE_RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
         run: uv run python scripts/smoke_deployment.py "https://${{ steps.deploy.outputs.app_fqdn }}"
