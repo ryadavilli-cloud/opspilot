@@ -17,7 +17,13 @@ from opspilot.diagnosis.contracts import (
     ToolCallRequest,
 )
 from opspilot.diagnosis.cycle import run_cycle
-from opspilot.tools.contracts import DeploymentRecord, ToolMetadata, ToolResult
+from opspilot.tools.contracts import (
+    Completeness,
+    DeploymentRecord,
+    ExecutionOutcome,
+    ToolMetadata,
+    ToolResult,
+)
 from opspilot.tools.service import ToolService
 
 ONSET = datetime(2026, 7, 1, 9, 0, 0, tzinfo=UTC)
@@ -44,12 +50,17 @@ class _DeployService(ToolService):
         if tool_name == "get_deployments":
             refs = [f"deploys:{d.service}:{d.deploy_id}" for d in self._deploys]
             return ToolResult(
-                tool_name=tool_name, status="ok", results=self._deploys,
-                evidence_refs=refs, metadata=meta,
+                tool_name=tool_name,
+                outcome=ExecutionOutcome.SUCCEEDED,
+                completeness=Completeness.COMPLETE,
+                results=self._deploys,
+                evidence_refs=refs,
+                metadata=meta,
             )
         return ToolResult(
             tool_name=tool_name,
-            status="ok",
+            outcome=ExecutionOutcome.SUCCEEDED,
+            completeness=Completeness.EMPTY,
             metadata=ToolMetadata(tool_name=tool_name, duration_ms=1.0, result_count=0),
         )
 
@@ -59,7 +70,8 @@ def _plan() -> InvestigationPlan:
         max_iters=5,
         questions=[
             DiagnosticQuestion(
-                key="deployments", question="what changed?",
+                key="deployments",
+                question="what changed?",
                 call=ToolCallRequest(tool="get_deployments"),
             )
         ],

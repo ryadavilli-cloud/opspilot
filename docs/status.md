@@ -545,7 +545,6 @@ Classifications per the required system: Keep, Keep with changes, Replace, Delet
 
 | Behavior | Current location | Accepted realization |
 | --- | --- | --- |
-| Binary tool-result status | `tools/contracts.py` and every tool | Independent execution-outcome and completeness axes |
 | One planner gathers and concludes | `diagnosis/llm_planner.py`, `composition.py` | Evidence Investigator gathers; RCA Analyst is sole completed-turn synthesis authority |
 | Numeric confidence | `diagnosis/contracts.py`, `contracts.py`, `config.py` | Leading, Plausible, and Weakly supported qualitative labels only |
 | Severity-scaled sufficiency stop rule | `diagnosis/sufficiency.py`, `router.py` | Investigator proposes continuation; Supervisor authorizes against computable conditions |
@@ -585,7 +584,6 @@ Classifications per the required system: Keep, Keep with changes, Replace, Delet
 | --- | --- | --- |
 | Citation grounding | `guardrails/policies.py` and `diagnosis/admission.py` | One Supervisor grounding gate over the accepted assessment |
 | Runtime implementation selection | `composition.py` and evaluation scripts | One composition root; fixed script exists only as an evaluation plan |
-| Read-only capability inventory | static allowlist and registry keys | The explicit static capability registry |
 | Embedding/reranker model names | config and evaluation code | One task/config owner, with the model reranker removed |
 
 ## 9. Required-Capability Status Summary
@@ -662,10 +660,10 @@ owns order and PR structure.
 | --- | --- |
 | Closed static capability registry | Implemented and reusable |
 | Read-only operational capabilities | Implemented and well tested |
-| Two-axis result vocabulary | Scaffolded by the existing envelope; binary status must be replaced |
-| Deterministic evidence admission | Missing for observations |
-| Stable admitted-evidence and limitation structures | Missing |
-| `succeeded + empty` represented as a positive observation | Missing |
+| Two-axis result vocabulary | Implemented. Five execution outcomes and four completeness values in `tools/contracts.py`, with the legal-pairing table enforced on construction |
+| Deterministic evidence admission | Implemented. `evidence/admission.py` is the only door into the evidence set and assigns the reference |
+| Stable admitted-evidence and limitation structures | Implemented. Admitted observations carry identity, provenance, and completeness; limitations name the unanswered question. The operation ledger is kept separate |
+| `succeeded + empty` represented as a positive observation | Implemented. Admitted with a deterministic representation naming the queried scope and the absence |
 | Governed structured-query capability | Missing |
 
 ### 10.5 RCA Analyst and assessment

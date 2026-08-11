@@ -1,15 +1,21 @@
 """Typed contracts for the deterministic tools.
 
-Every tool takes a validated request and returns the uniform envelope `ToolResult`:
-`{tool_name, status, results, evidence_refs, error, metadata}`. Records mirror the corpus;
-`evidence_refs` use the frozen ref grammar (see data/answer_key/README.md) so a tool's output
-resolves against the answer key. Evidence-bearing tools (deployments now; logs/metrics later)
-populate `evidence_refs`; navigational record lookups may leave it empty.
+Every tool takes a validated request and returns the uniform envelope `ToolResult`. The envelope
+answers two independent questions: did the operation execute, and if it did, how complete was the
+answer. They are separate fields because collapsing them is the specific mistake that turns an
+unreachable source into a clean bill of health.
+
+Records mirror the corpus; `evidence_refs` carry the provenance keys admission assigns evidence
+references from (see `evidence/references.py`). A tool reports what it saw; it does not decide
+what becomes evidence.
 """
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from datetime import UTC, datetime
+from enum import StrEnum
+from types import MappingProxyType
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -92,8 +98,8 @@ class DependencyEdge(BaseModel):
 
 
 class DocHit(BaseModel):
-    doc_id: str        # the retrieval ref, e.g. runbook:payment-timeout — also the evidence ref
-    kind: str          # runbook | architecture | postmortem
+    doc_id: str  # the retrieval ref, e.g. runbook:payment-timeout, also the evidence ref
+    kind: str  # runbook | architecture | postmortem
     title: str
     services: list[str]
     score: float
@@ -138,8 +144,8 @@ class GetLogsRequest(BaseModel):
     service: str = Field(min_length=1)
     start_time: datetime | None = None
     end_time: datetime | None = None
-    level: str | None = None       # optional filter, e.g. "error"
-    contains: str | None = None    # optional case-insensitive message substring
+    level: str | None = None  # optional filter, e.g. "error"
+    contains: str | None = None  # optional case-insensitive message substring
 
     @model_validator(mode="after")
     def _check_window(self) -> GetLogsRequest:
@@ -151,8 +157,8 @@ class GetLogsRequest(BaseModel):
 
 
 class GetMetricsRequest(BaseModel):
-    service: str = Field(min_length=1)   # service or infra entity that emits metrics
-    metric: str | None = None            # optional single metric; else all for the entity
+    service: str = Field(min_length=1)  # service or infra entity that emits metrics
+    metric: str | None = None  # optional single metric; else all for the entity
     start_time: datetime | None = None
     end_time: datetime | None = None
 
@@ -166,20 +172,56 @@ class GetMetricsRequest(BaseModel):
 
 
 class GetServiceDependenciesRequest(BaseModel):
-    service: str | None = None           # None -> the whole graph
+    service: str | None = None  # None -> the whole graph
     direction: Literal["upstream", "downstream", "both"] = "both"
 
 
 class SearchRunbooksRequest(BaseModel):
     query: str = Field(min_length=1)
     k: int = Field(default=5, ge=1, le=MAX_RESULTS)
-    service: str | None = None           # optional metadata filter
+    service: str | None = None  # optional metadata filter
 
 
 class SearchPastIncidentsRequest(BaseModel):
     query: str = Field(min_length=1)
     k: int = Field(default=5, ge=1, le=MAX_RESULTS)
     service: str | None = None
+
+
+# --- the two axes -----------------------------------------------------------------------------
+class ExecutionOutcome(StrEnum):
+    """Whether the operation executed, and if not, why not."""
+
+    SUCCEEDED = "succeeded"
+    TIMED_OUT = "timed_out"
+    UNAVAILABLE = "unavailable"
+    REJECTED = "rejected"
+    FAILED = "failed"
+
+
+class Completeness(StrEnum):
+    """How complete a successful answer was. `not_applicable` is the only legal value when no
+    successful result exists, because completeness of a non-answer is not a question."""
+
+    COMPLETE = "complete"
+    EMPTY = "empty"
+    PARTIAL = "partial"
+    NOT_APPLICABLE = "not_applicable"
+
+
+# The legal pairings. Any other combination is a defect in the adapter that produced it, so the
+# envelope refuses to construct rather than carrying a pairing nothing downstream can read.
+LEGAL_PAIRINGS: Mapping[ExecutionOutcome, frozenset[Completeness]] = MappingProxyType(
+    {
+        ExecutionOutcome.SUCCEEDED: frozenset(
+            {Completeness.COMPLETE, Completeness.EMPTY, Completeness.PARTIAL}
+        ),
+        ExecutionOutcome.TIMED_OUT: frozenset({Completeness.NOT_APPLICABLE}),
+        ExecutionOutcome.UNAVAILABLE: frozenset({Completeness.NOT_APPLICABLE}),
+        ExecutionOutcome.REJECTED: frozenset({Completeness.NOT_APPLICABLE}),
+        ExecutionOutcome.FAILED: frozenset({Completeness.NOT_APPLICABLE}),
+    }
+)
 
 
 # --- uniform envelope -------------------------------------------------------------------------
@@ -192,8 +234,39 @@ class ToolMetadata(BaseModel):
 
 class ToolResult[T](BaseModel):
     tool_name: str
-    status: Literal["ok", "error"]
+    outcome: ExecutionOutcome
+    completeness: Completeness
     results: list[T] = Field(default_factory=list)
     evidence_refs: list[str] = Field(default_factory=list)
     error: str | None = None
     metadata: ToolMetadata
+
+    @model_validator(mode="after")
+    def _check_pairing(self) -> ToolResult[T]:
+        if self.completeness not in LEGAL_PAIRINGS[self.outcome]:
+            raise ValueError(
+                f"illegal result pairing {self.outcome}/{self.completeness} from {self.tool_name}"
+            )
+        if self.outcome is not ExecutionOutcome.SUCCEEDED and (self.results or self.evidence_refs):
+            raise ValueError(
+                f"{self.tool_name} returned content on a non-succeeded outcome {self.outcome}"
+            )
+        return self
+
+    @property
+    def answered(self) -> bool:
+        """Whether the source answered at all. Deliberately not named `ok`, and deliberately not
+        a substitute for reading the completeness: a source that answered with nothing has
+        `answered` True and `completeness` empty, which is a finding, not a failure."""
+        return self.outcome is ExecutionOutcome.SUCCEEDED
+
+
+def legacy_status(result: ToolResult[object]) -> str:
+    """TEMPORARY. Collapses the two axes back to the binary the old runtime reads.
+
+    It exists so the old planner keeps working through the change and dies with that runtime. No
+    new caller may use it: collapsing here is exactly the loss the two axes exist to prevent,
+    because an unreachable source and a source that answered with nothing both become "error" and
+    "ok" respectively, and the distinction is gone.
+    """
+    return "ok" if result.outcome is ExecutionOutcome.SUCCEEDED else "error"

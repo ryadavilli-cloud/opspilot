@@ -1,9 +1,13 @@
-"""Uniform envelope assembly: validate, time, cap, sanitize — no exception escapes a tool.
+"""Uniform envelope assembly: validate, time, cap, sanitize. No exception escapes a tool.
 
-`run_tool` is the single boundary every tool goes through. It validates raw kwargs into the
-request model, runs the tool's pure logic (which returns `(records, evidence_refs)`), applies the
-result cap, and stamps timing metadata. Bad input or bad data becomes a `status="error"` envelope
-with a short, sanitized message — never a raised exception, stack trace, or leaked path.
+`run_tool` is the single boundary every tool goes through, and therefore the one place that
+translates what happened into the two axes. Provider-shaped failure never travels further: a
+validation failure is `rejected`, an error inside the tool's own logic is `failed`, and a source
+that could not be reached is `unavailable`, reported by the caller that discovered it.
+
+The completeness axis is assigned here too, and only for a successful run: capped results are
+`partial` because the unseen remainder could change the picture, no results at all is `empty`
+because the source answered authoritatively with nothing, and everything else is `complete`.
 """
 
 from __future__ import annotations
@@ -15,7 +19,13 @@ from typing import Any
 from pydantic import BaseModel, ValidationError
 
 from opspilot.obs.tracing import span
-from opspilot.tools.contracts import MAX_RESULTS, ToolMetadata, ToolResult
+from opspilot.tools.contracts import (
+    MAX_RESULTS,
+    Completeness,
+    ExecutionOutcome,
+    ToolMetadata,
+    ToolResult,
+)
 
 
 def sanitize(exc: Exception) -> str:
@@ -38,11 +48,31 @@ def _metadata(tool_name: str, started: float, count: int, truncated: bool = Fals
     )
 
 
-def error_result(tool_name: str, message: str, started: float) -> ToolResult[Any]:
+def error_result(
+    tool_name: str,
+    message: str,
+    started: float,
+    outcome: ExecutionOutcome = ExecutionOutcome.FAILED,
+) -> ToolResult[Any]:
+    """A non-answering result. The caller names which way it failed; nothing defaults to a value
+    that would let an unreachable source read as an ordinary error."""
     return ToolResult(
-        tool_name=tool_name, status="error", error=message,
+        tool_name=tool_name,
+        outcome=outcome,
+        completeness=Completeness.NOT_APPLICABLE,
+        error=message,
         metadata=_metadata(tool_name, started, 0),
     )
+
+
+def _fail(
+    sp: Any, tool_name: str, message: str, started: float, outcome: ExecutionOutcome
+) -> ToolResult[Any]:
+    """Close the span with both axes and return the non-answering envelope."""
+    sp.status = "error"
+    sp.attributes["execution_outcome"] = outcome.value
+    sp.attributes["completeness"] = Completeness.NOT_APPLICABLE.value
+    return error_result(tool_name, message, started, outcome)
 
 
 def run_tool(
@@ -59,21 +89,31 @@ def run_tool(
         try:
             request = request_cls(**kwargs)
         except ValidationError as exc:
-            sp.status = "error"
-            return error_result(tool_name, sanitize(exc), started)
+            return _fail(sp, tool_name, sanitize(exc), started, ExecutionOutcome.REJECTED)
         except Exception:  # noqa: BLE001 — no exception may cross the boundary, even from a validator
-            sp.status = "error"
-            return error_result(tool_name, "invalid request", started)
+            return _fail(sp, tool_name, "invalid request", started, ExecutionOutcome.REJECTED)
         try:
             records, evidence_refs = logic(request)
         except Exception:  # noqa: BLE001 — no exception may cross the tool boundary
-            sp.status = "error"
-            return error_result(tool_name, "internal tool error", started)
+            return _fail(sp, tool_name, "internal tool error", started, ExecutionOutcome.FAILED)
+
         truncated = len(records) > MAX_RESULTS
         records = records[:MAX_RESULTS]
-        sp.attributes["status"] = "ok"
+        if truncated:
+            completeness = Completeness.PARTIAL
+        elif records:
+            completeness = Completeness.COMPLETE
+        else:
+            completeness = Completeness.EMPTY
+
+        sp.attributes["execution_outcome"] = ExecutionOutcome.SUCCEEDED.value
+        sp.attributes["completeness"] = completeness.value
         sp.attributes["result_count"] = len(records)
         return ToolResult(
-            tool_name=tool_name, status="ok", results=records, evidence_refs=evidence_refs,
+            tool_name=tool_name,
+            outcome=ExecutionOutcome.SUCCEEDED,
+            completeness=completeness,
+            results=records,
+            evidence_refs=evidence_refs[: len(records)] if truncated else evidence_refs,
             metadata=_metadata(tool_name, started, len(records), truncated),
         )
