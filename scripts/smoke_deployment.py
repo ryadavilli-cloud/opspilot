@@ -20,7 +20,6 @@ from pydantic import ValidationError
 from opspilot.api import (
     AcceptedInvestigation,
     InvestigationResponse,
-    InvestigationStatusResponse,
     ReadinessResponse,
     VersionResponse,
 )
@@ -36,9 +35,6 @@ REQUEST_TIMEOUT_S = 10.0
 # like a hang but is just the client giving up mid-investigation.
 INVESTIGATE_TIMEOUT_S = 180.0
 MAX_POLL_INTERVAL_S = 20.0
-# Generous enough for a slow reasoning model to reach awaiting_approval on the async leg.
-ASYNC_POLL_TIMEOUT_S = 300.0
-ASYNC_POLL_INTERVAL_S = 3.0
 
 
 class SmokeTestFailure(RuntimeError):
@@ -195,29 +191,6 @@ def run_investigation(client: httpx.Client, auth: dict[str, str]) -> Investigati
     return investigation
 
 
-def _poll_until_terminal_or_awaiting(
-    client: httpx.Client,
-    poll_url: str,
-    *,
-    auth: dict[str, str],
-    timeout_s: float,
-    poll_interval_s: float,
-) -> InvestigationStatusResponse:
-    deadline = time.monotonic() + timeout_s
-    last_status = "unknown"
-    while time.monotonic() < deadline:
-        resp = client.get(poll_url, headers=auth)
-        _require(resp.status_code == 200, f"{poll_url} returned HTTP {resp.status_code}")
-        status = InvestigationStatusResponse.model_validate(resp.json())
-        last_status = status.status
-        if status.status != "queued" and status.status != "running":
-            return status
-        time.sleep(poll_interval_s)
-    raise SmokeTestFailure(
-        f"{poll_url} did not leave queued/running within {timeout_s:.0f}s (last: {last_status!r})"
-    )
-
-
 def _reviewer_token(audience: str) -> str:
     """A reviewer bearer token for the decision endpoint, acquired as the deploy service principal
     via the already-authenticated `az` CLI. This is a WORKLOAD identity — the API accepts it but
@@ -302,78 +275,39 @@ def run_async_investigation(client: httpx.Client, auth: dict[str, str]) -> None:
     )
     accepted = AcceptedInvestigation.model_validate(resp.json())
 
-    paused = _poll_until_terminal_or_awaiting(
-        client,
-        accepted.poll_url,
-        auth=auth,
-        timeout_s=ASYNC_POLL_TIMEOUT_S,
-        poll_interval_s=ASYNC_POLL_INTERVAL_S,
-    )
-    _require(
-        paused.status == "awaiting_approval",
-        f"async investigation reached {paused.status!r}, expected 'awaiting_approval' "
-        f"(error={paused.error!r})",
-    )
-    _require(bool(paused.pending_decision), "awaiting_approval but pending_decision is empty")
-    assert paused.pending_decision is not None  # narrows for the type checker after _require
-    report_hash = paused.pending_decision["report_hash"]
-
-    # The durable-pause check that used to sit here (restart the replica mid-pause, re-poll, assert
-    # the investigation survived) was removed on 2026-08-09 with the Cosmos checkpointer and the
-    # Cosmos investigation repository it existed to prove. Active-turn state is deliberately
-    # ephemeral in the accepted design, so a pause surviving a restart is no longer a property this
-    # system claims, and a gate asserting it would fail against correct behavior. Durability
-    # returns as a check over committed completed turns, not over an in-flight pause.
-
-    # An unauthenticated decision MUST be refused — this is the property G-01 exists for, and it is
-    # checkable on every deploy regardless of whether the reviewer token is configured yet.
-    anon = client.post(
+    # This leg stops here deliberately. What used to follow (poll to `awaiting_approval`, submit an
+    # authenticated approval, resume, assert `completed`) asserted the human-approval surface: a
+    # pause between synthesis and delivery, a decision endpoint, and a resume. The accepted design
+    # has no approval stage at all, so those assertions test behavior the target system must not
+    # have, and holding a deploy gate to them fails correct behavior.
+    #
+    # It was also irreducibly flaky. Reaching `awaiting_approval` requires the diagnosis loop to
+    # satisfy the deterministic sufficiency gate first; when the planner exhausts its plan short of
+    # that, the graph legitimately routes to `escalated` instead. The deployed model is a reasoning
+    # model that takes neither `temperature` nor `seed`, so two runs of the same incident minutes
+    # apart genuinely differ, and inc-004 is one of the deliberately ambiguous scenarios.
+    #
+    # What is kept is every property that is both deterministic and still true of the target: an
+    # anonymous submit is refused, an authenticated submit is accepted, and an anonymous decision
+    # is refused. The synchronous leg above already proves the deployed app completes a real
+    # investigation against the real model, so nothing about "does it actually work" is lost.
+    #
+    # An unauthenticated decision MUST be refused, and this does not need a real pending decision
+    # to check: `submit_decision` authenticates before it looks the record up, deliberately, so
+    # that probing cannot reveal which investigation ids exist. The 401 therefore holds whatever
+    # state the investigation is in, which is what makes this assertion deterministic.
+    anon_decision = client.post(
         f"{accepted.poll_url}/decision",
-        json={"decision": "approve", "submitted_report_hash": report_hash},
+        json={"decision": "approve", "submitted_report_hash": "unauthenticated-probe"},
     )
     _require(
-        anon.status_code == 401,
-        f"unauthenticated decision returned HTTP {anon.status_code}, expected 401 — the approval "
-        f"gate is not enforcing reviewer identity",
-    )
-
-    decision = client.post(
-        f"{accepted.poll_url}/decision",
-        headers=auth,
-        json={"decision": "approve", "submitted_report_hash": report_hash},
-    )
-    _require(
-        decision.status_code == 202,
-        f"authenticated decision POST returned HTTP {decision.status_code}: {decision.text[:300]}",
-    )
-
-    final = _poll_until_terminal_or_awaiting(
-        client,
-        accepted.poll_url,
-        auth=auth,
-        timeout_s=ASYNC_POLL_TIMEOUT_S,
-        poll_interval_s=ASYNC_POLL_INTERVAL_S,
-    )
-    _require(
-        final.status == "completed",
-        f"async investigation ended {final.status!r} after approval, expected 'completed' "
-        f"(error={final.error!r})",
-    )
-    _require(final.result is not None, "completed async investigation has no result")
-    assert final.result is not None  # narrows for the type checker after _require
-    _require(
-        bool(final.result.report and final.result.report.citations),
-        "completed async investigation has no citations",
-    )
-    approval = final.result.approval
-    _require(
-        approval is not None and approval.kind == "service_principal",
-        f"smoke approval recorded as {getattr(approval, 'kind', None)!r}; a workload token must "
-        f"never be reported as human review (§15)",
+        anon_decision.status_code == 401,
+        f"unauthenticated decision returned HTTP {anon_decision.status_code}, expected 401; the "
+        f"decision endpoint is not enforcing caller identity",
     )
     print(
-        f"[smoke] async investigation: investigation_id={accepted.investigation_id} "
-        f"history={final.history} approval_kind={approval.kind}",  # type: ignore[union-attr]
+        f"[smoke] async submit accepted and both ingress gates enforced: "
+        f"investigation_id={accepted.investigation_id}",
         flush=True,
     )
 

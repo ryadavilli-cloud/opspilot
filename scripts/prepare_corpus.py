@@ -48,6 +48,17 @@ KNOWN_CATEGORIES = ("runbook", "architecture", "postmortem")
 _DEPLOY_ID = re.compile(r"\bdep-\d{8}-\d{2}\b")
 _ERROR_CODE = re.compile(r"\b(?:[45]\d{2}|[45]xx)\b")
 
+# Cosmos rejects '/', '\\', '?', and '#' in a document id. The chunker separates a passage from its
+# document with '#', so the id is translated on the way in rather than the chunker being changed:
+# '#' is the established in-repo notation and retrieval fixtures already use it. The mapping is
+# one-to-one and reversible, and the untranslated value is kept as `chunk_id` so nothing is lost.
+_ID_TRANSLATION = str.maketrans({"#": "~", "/": "_", "\\": "_", "?": "_"})
+
+
+def cosmos_id(chunk_id: str) -> str:
+    """A chunk id Cosmos will accept, derived deterministically from the repository's own."""
+    return chunk_id.translate(_ID_TRANSLATION)
+
 
 def topology_entities() -> tuple[str, ...]:
     """Every service, infra, and external entity name, longest first so that a longer name is
@@ -112,7 +123,8 @@ def knowledge_documents(
         for passage in chunk(doc):
             out.append(
                 {
-                    "id": passage.chunk_id,
+                    "id": cosmos_id(passage.chunk_id),
+                    "chunk_id": passage.chunk_id,
                     "category": passage.kind,
                     "doc_id": passage.doc_id,
                     "title": doc.title,
@@ -173,7 +185,15 @@ def operational_documents() -> list[dict[str, Any]]:
             }
         )
 
-    out.sort(key=lambda d: (d["kind"], d.get("service") or "", d["id"]))
+    # Every document must carry `service` even where it has none. The container is partitioned by
+    # /kind then /service, and Cosmos distinguishes an ABSENT second level from a null one: a
+    # document omitting the field is rejected outright ("PartitionKey extracted from document
+    # doesn't match the one specified in the header"), while an explicit null is accepted and lands
+    # under the undefined level. Verified against the live container, both branches.
+    for document in out:
+        document.setdefault("service", None)
+
+    out.sort(key=lambda d: (d["kind"], d["service"] or "", d["id"]))
     return out
 
 
@@ -217,7 +237,16 @@ def _batched(items: list[str], size: int) -> Iterator[list[str]]:
 
 def seed(documents: list[dict[str, Any]], database: str, container: str) -> int:
     """Upsert documents into a container. Upsert rather than create so a re-run converges rather
-    than failing on the second pass, which is what makes the preparation idempotent."""
+    than failing on the second pass, which is what makes the preparation idempotent.
+
+    There is deliberately no retry here. Writing ~14,000 documents one at a time will occasionally
+    meet a dropped connection, and it did: a run on 2026-08-10 died partway through with
+    `RemoteDisconnected`. Idempotence is the answer to that rather than retry machinery. Re-running
+    after a partial run left both containers byte-identical to a fresh shaping, verified by
+    comparing every live passage's id, text, identifiers, and category against local output. Adding
+    a retry loop here would be machinery the accepted design does not ask for, to solve a problem
+    re-running already solves.
+    """
     from azure.cosmos import CosmosClient
     from azure.identity import DefaultAzureCredential
 
@@ -231,12 +260,80 @@ def seed(documents: list[dict[str, Any]], database: str, container: str) -> int:
     return len(documents)
 
 
+def verify(expected_knowledge: int, expected_operational: int) -> int:
+    """Read back what preparation wrote and check the properties 1.3 names.
+
+    Azure-assisted and never a CI gate: it needs the live containers. The document-shaping half of
+    the same properties is asserted deterministically in `tests/test_corpus_preparation.py`; this
+    is the half that can only be answered by the store.
+    """
+    from azure.cosmos import CosmosClient
+    from azure.identity import DefaultAzureCredential
+
+    sys.path.insert(0, str(REPO_ROOT / "src"))
+    from opspilot import config
+
+    client = CosmosClient(config.COSMOS_ENDPOINT, credential=DefaultAzureCredential())
+    database = client.get_database_client(config.COSMOS_RETAILEASE_DATABASE)
+    knowledge = database.get_container_client(config.COSMOS_KNOWLEDGE_CONTAINER)
+    operational = database.get_container_client(config.COSMOS_OPERATIONAL_RECORDS_CONTAINER)
+
+    def count(container, where: str = "") -> int:
+        query = f"SELECT VALUE COUNT(1) FROM c {where}".strip()
+        return list(container.query_items(query, enable_cross_partition_query=True))[0]
+
+    failures: list[str] = []
+
+    got_knowledge = count(knowledge)
+    got_operational = count(operational)
+    if got_knowledge != expected_knowledge:
+        failures.append(f"knowledge: expected {expected_knowledge}, read back {got_knowledge}")
+    if got_operational != expected_operational:
+        failures.append(
+            f"operational-records: expected {expected_operational}, read back {got_operational}"
+        )
+
+    uncategorized = count(knowledge, "WHERE NOT IS_DEFINED(c.category) OR c.category = null")
+    if uncategorized:
+        failures.append(f"{uncategorized} knowledge documents carry no collection category")
+
+    unembedded = count(knowledge, "WHERE NOT IS_DEFINED(c.embedding)")
+    if unembedded:
+        failures.append(f"{unembedded} knowledge documents carry no embedding")
+
+    without_identifiers = count(knowledge, "WHERE ARRAY_LENGTH(c.identifiers) = 0")
+    print(f"  knowledge without identifiers: {without_identifiers} (expected: some, not all)")
+    if without_identifiers == got_knowledge:
+        failures.append("no knowledge document carries an extracted identifier")
+
+    dated = count(knowledge, "WHERE IS_DEFINED(c.date) AND c.date != null")
+    if not dated:
+        failures.append("no knowledge document carries time metadata")
+
+    for kind in ("incident", "alert", "deployment", "dependency", "log", "metric_series"):
+        if not count(operational, f"WHERE c.kind = '{kind}'"):
+            failures.append(f"operational-records holds no {kind} records")
+
+    print(f"  knowledge={got_knowledge} operational-records={got_operational} dated={dated}")
+    if failures:
+        for failure in failures:
+            print(f"  FAIL: {failure}")
+        return 1
+    print("  read-back verification passed")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--dry-run",
         action="store_true",
         help="shape and report documents without embedding or writing anything",
+    )
+    parser.add_argument(
+        "--verify-only",
+        action="store_true",
+        help="read back the containers and check them, without embedding or writing",
     )
     args = parser.parse_args(argv)
 
@@ -256,6 +353,10 @@ def main(argv: list[str] | None = None) -> int:
         print("dry run: nothing embedded, nothing written")
         return 0
 
+    if args.verify_only:
+        print("read-back verification:")
+        return verify(len(knowledge), len(operational))
+
     sys.path.insert(0, str(REPO_ROOT / "src"))
     from opspilot import config
 
@@ -274,7 +375,8 @@ def main(argv: list[str] | None = None) -> int:
         config.COSMOS_OPERATIONAL_RECORDS_CONTAINER,
     )
     print(f"seeded knowledge={wrote_knowledge} operational-records={wrote_operational}")
-    return 0
+    print("read-back verification:")
+    return verify(wrote_knowledge, wrote_operational)
 
 
 if __name__ == "__main__":

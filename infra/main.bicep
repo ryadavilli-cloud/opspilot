@@ -85,6 +85,9 @@ param embeddingModelName string = 'text-embedding-3-small'
 @description('Vector dimensions the embedding model emits. Cosmos fixes this per embedding path; changing it means removing and re-adding the path, so it is a parameter rather than a literal.')
 param embeddingDimensions int = 1536
 
+@description('Object id of the principal that runs corpus preparation. Corpus preparation writes the RetailEase containers; the application never does, so this grant belongs to a different principal than the app identity. Empty (the default) creates no assignment, which is correct for an environment nobody seeds from.')
+param corpusSetupPrincipalId string = ''
+
 @description('Entra tenant id that issues reviewer tokens for the HITL decision endpoint (G-01). Injected as AZURE_TENANT_ID. Defaults to the deployment tenant; override only for a cross-tenant setup.')
 param entraTenantId string = tenant().tenantId
 
@@ -556,6 +559,20 @@ resource openAiUser 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (m
   }
 }
 
+// Corpus preparation embeds passages at load time, so the setup principal needs the OpenAI
+// data-plane role as well as its Cosmos write grant. Being subscription Owner does not grant it:
+// calling a deployment is a data action, and the control-plane role does not imply it.
+// `principalType` is deliberately unset because this principal may be a user or a service
+// principal depending on who seeds; ARM infers it, and asserting the wrong one fails the create.
+resource openAiUserCorpusSetup 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (manageOpenAiRoleAssignment && !empty(corpusSetupPrincipalId)) {
+  name: guid(openai.id, corpusSetupPrincipalId, openAiUserRoleId)
+  scope: openai
+  properties: {
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', openAiUserRoleId)
+    principalId: corpusSetupPrincipalId
+  }
+}
+
 // Keyless auth to Cosmos DB: grant the app's managed identity data-plane read/write on the account.
 // Unlike the two assignments above, this is a Microsoft.DocumentDB data-plane role assignment, not
 // a Microsoft.Authorization one — creating it only needs plain Contributor on the Cosmos account
@@ -597,6 +614,23 @@ resource cosmosDataReaderRetailEase 'Microsoft.DocumentDB/databaseAccounts/sqlRo
   properties: {
     roleDefinitionId: cosmosDataReaderRoleDefinition.id
     principalId: app.identity.principalId
+    scope: '${cosmos.id}/dbs/${retailEaseDatabaseName}'
+  }
+  dependsOn: [knowledgeContainer, operationalRecordsContainer]
+}
+
+// The write half of the corpus boundary, held by a DIFFERENT principal than the application.
+// `system-design.md` places corpus preparation outside the application's permissions: the setup
+// task writes the RetailEase collections and the application only reads them. Declaring the grant
+// here rather than granting it by hand keeps "the setup identity is the only writer" a property of
+// the template that survives a redeploy, instead of an undocumented assignment somebody made once.
+// Scoped to the RetailEase database only: corpus preparation has no business in `investigations`.
+resource cosmosDataContributorCorpusSetup 'Microsoft.DocumentDB/databaseAccounts/sqlRoleAssignments@2024-08-15' = if (manageCosmosRoleAssignment && !empty(corpusSetupPrincipalId)) {
+  parent: cosmos
+  name: guid(cosmos.id, corpusSetupPrincipalId, cosmosDataContributorRoleId, retailEaseDatabaseName)
+  properties: {
+    roleDefinitionId: cosmosDataContributorRoleDefinition.id
+    principalId: corpusSetupPrincipalId
     scope: '${cosmos.id}/dbs/${retailEaseDatabaseName}'
   }
   dependsOn: [knowledgeContainer, operationalRecordsContainer]

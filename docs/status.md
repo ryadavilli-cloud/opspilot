@@ -403,10 +403,26 @@ too and the application now takes its own defaults (`none` and `memory`). The ho
 durable-pause leg was removed in the same change: it asserted that an in-flight pause survives a
 replica restart, which the accepted design does not claim.
 
+**Corpus containers added 2026-08-09.** A second database, `retailease`, holds the two containers
+the application reads and never writes: `knowledge` (partitioned by `/category`, vector policy
+1536/cosine/diskANN, `/embedding` excluded from the normal index) and `operational-records`
+(hierarchically partitioned by `/kind` then `/service`). Both are populated by
+`scripts/prepare_corpus.py`, which runs as a setup principal rather than as the application.
+
+The permission boundary is now the one the design requires, verified by inspection of the live role
+assignments: the application identity holds data-contributor scoped to the `investigations`
+container alone and data-reader scoped to the `retailease` database, and the setup principal holds
+data-contributor on `retailease` plus the Cognitive Services OpenAI User role it needs to embed. An
+account-wide data-contributor assignment left behind by the previous deployment was found and
+deleted; Bicep could not reclaim it because narrowing a role assignment changes its generated name,
+so the wide grant persisted alongside the narrow one rather than being replaced.
+
 Still misaligned: the `investigations` container is declared but the application no longer writes
-to it, since the repository defaults to memory until the completed-turn artifact exists. The
-categorized `knowledge` container and the `operational-records` container do not exist; the corpus
-ships as files inside the image.
+to it, since the repository defaults to memory until the completed-turn artifact exists. Nothing
+reads the two corpus containers yet either: retrieval still loads the knowledge corpus from files
+in the image, and the operational capabilities still read `data/repository.py`. Corpus preparation
+is therefore verifiable but not yet load-bearing, which is why "absent preparation is a
+deployment-time failure" is not implemented: no consumer exists that could fail.
 
 ### 6.9 External interface and streaming (`runtime-and-deployment.md` §2)
 
@@ -702,10 +718,10 @@ owns order and PR structure.
 | Reciprocal-rank fusion | Implemented in the evaluation-oriented hybrid path and reusable |
 | Deterministic identifier and metadata promotion | Missing |
 | Passage-budget truncation after promotion | Missing as the accepted pipeline |
-| Categorized `knowledge` container | Missing |
-| Azure OpenAI embeddings | Missing |
+| Categorized `knowledge` container | Implemented (2026-08-09). `retailease/knowledge`, partitioned by `/category`, vector policy 1536/cosine/diskANN with `/embedding` excluded from the normal index. Holds 196 passages from 28 documents |
+| Azure OpenAI embeddings | Implemented. `text-embedding-3-small` deployment; corpus preparation embeds at load time. Retrieval does not read them yet |
 | Retrieval influence captured in proposals and evaluation | Missing |
-| Identifier extraction and category metadata at load time | Missing |
+| Identifier extraction and category metadata at load time | Implemented. `scripts/prepare_corpus.py` extracts service names, error codes, and deployment identifiers deterministically, and carries the collection category, entity metadata, and a nullable date |
 
 ### 10.9 Governed structured query
 
@@ -734,8 +750,8 @@ owns order and PR structure.
 | --- | --- |
 | Completed-turn artifact | Missing |
 | One `investigations` container for that artifact | Existing container stores the wrong job record |
-| One categorized `knowledge` container | Missing |
-| One `operational-records` container | Missing |
+| One categorized `knowledge` container | Implemented (2026-08-09), in the `retailease` database |
+| One `operational-records` container | Implemented (2026-08-09), hierarchically partitioned by `/kind` then `/service`. Holds 14,013 records across six kinds |
 | Commit before successful terminal delivery | Partial publication ancestor exists, but the accepted path is missing |
 | Restart-safe citation resolution | Missing for the accepted artifact |
 | No active-turn checkpoints, replay, index container, or worker state | Conflicting machinery currently exists and is deleted |
@@ -775,8 +791,8 @@ owns order and PR structure.
 | Five-class evaluation coverage | Partial: multi-contributor absent; benign transient unscoreable |
 | Credible chronology and mechanism-consistent telemetry | Fails for several incidents and must be repaired |
 | No answer leakage | Fails in `inc-007` and deployment notes |
-| Categorized knowledge metadata and embeddings | Missing |
-| Operational-records seed process | Missing |
+| Categorized knowledge metadata and embeddings | Implemented (2026-08-09). Category, provenance, extracted identifiers, entity metadata, nullable date, and a 1536-dimension embedding on every passage |
+| Operational-records seed process | Implemented (2026-08-09). `scripts/prepare_corpus.py` seeds both containers idempotently by upsert and verifies by reading back what it wrote (`--verify-only`) |
 | Controlled variants clearly distinct from authored incidents | Missing as formal fixtures |
 
 ### 10.15 Azure and deployment
@@ -1111,9 +1127,19 @@ slice or a small decision update before code invents incompatible answers.
    must wait for the required repairs and coverage audit. Both happened: the repairs landed
    2026-08-09 (#56) and the five-class coverage audit in section 11 ran against the repaired
    corpus, so `decisions.md` D-006 is accepted with real identifiers for every criterion.
-7. **D-003 vector viability:** no Cosmos vector-index configuration exists. The first S-8 technical
-   PR must verify viability before choosing the implementation; an in-process cosine scan requires
-   the recorded explicit revision.
+7. **Resolved (2026-08-10).** D-003 vector viability: no Cosmos vector-index configuration exists.
+   One now does. The `knowledge` container carries a 1536-dimension cosine vector policy with a
+   diskANN index, 196 real embeddings are stored, and a `VectorDistance()` query returns the
+   semantically correct runbook with the same-domain distractor absent from the top results.
+   D-003's dense-retrieval choice is viable as written; the in-process cosine scan does not need
+   its recorded revision.
+
+   Two constraints found while establishing this, both worth keeping: the account capability
+   `EnableNoSQLVectorSearch` can only be set at account creation, which is why the account was
+   rebuilt; but a container's vector embedding policy is NOT fixed at creation. It can be added to
+   a container that lacks one, and a path can be removed and re-added at a different dimension.
+   Only in-place modification of a live path is refused. The partition key is the genuinely
+   immutable choice.
 
 ## 18. Final Status Assessment
 

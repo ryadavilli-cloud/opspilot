@@ -40,12 +40,27 @@ GOLDEN = yaml.safe_load(
 
 # --- chunking (D-003: one passage per section, no overlap; short documents stay whole) ---------
 def test_every_passage_belongs_to_exactly_one_document_section():
-    # No overlap means no passage text appears under two ids. Chunk ids are `<doc_id>#<n>`, so a
-    # duplicated id would also silently collapse documents on upsert.
+    # No overlap means no passage text appears under two ids. A duplicated id would also silently
+    # collapse documents on upsert.
     ids = [doc["id"] for doc in KNOWLEDGE]
     assert len(ids) == len(set(ids)), "duplicate passage id would overwrite on upsert"
     for doc in KNOWLEDGE:
-        assert doc["id"].startswith(f"{doc['doc_id']}#")
+        assert doc["chunk_id"].startswith(f"{doc['doc_id']}#")
+        assert doc["id"] == prep.cosmos_id(doc["chunk_id"])
+
+
+def test_document_ids_contain_no_character_cosmos_rejects():
+    # Cosmos rejects '/', '\\', '?', and '#' in an id, and rejects the whole write rather than
+    # sanitizing. The chunker's own separator is '#', so this is not hypothetical.
+    illegal = set("/\\?#")
+    for doc in KNOWLEDGE + OPERATIONAL:
+        assert not (illegal & set(doc["id"])), f"{doc['id']!r} contains a character Cosmos rejects"
+
+
+def test_the_id_translation_is_reversible_and_collision_free():
+    # A many-to-one translation would merge two passages into one document on upsert.
+    translated = {prep.cosmos_id(doc["chunk_id"]): doc["chunk_id"] for doc in KNOWLEDGE}
+    assert len(translated) == len(KNOWLEDGE), "the id translation collapsed two distinct passages"
 
 
 def test_a_document_with_no_headers_stays_whole():
@@ -169,6 +184,19 @@ def test_service_keyed_records_carry_the_second_partition_level():
         records = [d for d in OPERATIONAL if d["kind"] == kind]
         assert records, f"no {kind} records were produced"
         assert all(d.get("service") for d in records), f"{kind} records missing `service`"
+
+
+def test_every_operational_record_carries_the_service_key_even_when_it_has_none():
+    # Cosmos distinguishes an absent second partition level from a null one. Omitting `service`
+    # is rejected at write time; an explicit null is accepted and lands under the undefined level.
+    # Incidents and dependency edges genuinely have no service, so they must carry null, not gaps.
+    for doc in OPERATIONAL:
+        assert "service" in doc, f"{doc['kind']}:{doc['id']} omits the second partition level"
+
+    service_less = {doc["kind"] for doc in OPERATIONAL if doc["service"] is None}
+    assert service_less == {"incident", "dependency"}, (
+        f"unexpected kinds carry no service: {service_less}"
+    )
 
 
 def test_operational_record_ids_are_unique():
