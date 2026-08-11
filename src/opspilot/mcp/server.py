@@ -14,7 +14,12 @@ from mcp.server import Server
 from mcp.types import TextContent, Tool
 from pydantic import BaseModel
 
-from opspilot.tools.contracts import GetIncidentRequest, GetLogsRequest, SearchRunbooksRequest
+from opspilot.tools.contracts import (
+    ExecutionOutcome,
+    GetIncidentRequest,
+    GetLogsRequest,
+    SearchRunbooksRequest,
+)
 from opspilot.tools.errors import error_result
 from opspilot.tools.service import ToolService
 
@@ -46,7 +51,9 @@ def build_server(service: ToolService | None = None) -> Server:
     @server.call_tool(validate_input=False)
     async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
         if name not in EXPOSED_TOOLS:
-            result = error_result(name or "unknown", "unknown tool", time.perf_counter())
+            result = error_result(
+                name or "unknown", "unknown tool", time.perf_counter(), ExecutionOutcome.REJECTED
+            )
         else:
             result = svc.call(name, **(arguments or {}))
         return [TextContent(type="text", text=result.model_dump_json())]

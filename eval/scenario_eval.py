@@ -28,7 +28,8 @@ def _load_scenarios() -> list[dict[str, Any]]:
     import importlib.util
 
     spec = importlib.util.spec_from_file_location(
-        "build_goldens", REPO_ROOT / "data/answer_key/build_goldens.py")
+        "build_goldens", REPO_ROOT / "data/answer_key/build_goldens.py"
+    )
     assert spec and spec.loader
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
@@ -135,7 +136,11 @@ def _mcp_parity_ok() -> bool:
             return json.loads(result.content[0].text)
 
     over_mcp = asyncio.run(_go())
-    return over_mcp["status"] == direct["status"] and over_mcp["results"] == direct["results"]
+    return (
+        over_mcp["outcome"] == direct["outcome"]
+        and over_mcp["completeness"] == direct["completeness"]
+        and over_mcp["results"] == direct["results"]
+    )
 
 
 def evaluate(implementation: str = "deterministic", *, model: Any = None) -> dict[str, Any]:
@@ -160,10 +165,14 @@ def evaluate(implementation: str = "deterministic", *, model: Any = None) -> dic
             invoke_auto_approving(
                 app,
                 _initial_state({"incident_id": s["id"], "summary": s["alert"]["summary"]}),
-                config={"configurable": {
-                    "tool_service": svc, "planner": planner, "triager": triager,
-                    "thread_id": f"scenario-{s['id']}",
-                }},
+                config={
+                    "configurable": {
+                        "tool_service": svc,
+                        "planner": planner,
+                        "triager": triager,
+                        "thread_id": f"scenario-{s['id']}",
+                    }
+                },
             ),
             root_by_incident,
         )
@@ -179,8 +188,11 @@ def evaluate(implementation: str = "deterministic", *, model: Any = None) -> dic
     # scoring its recall as 0 would reward the WRONG routing (investigating a known recurrence) —
     # see inc-007. Recall now measures investigation completeness where investigation is the job.
     def mean_over_novel(key: str) -> float:
-        vals = [p[key] for p, s in zip(per, scenarios, strict=True)
-                if s.get("expected_intent") == Intent.NOVEL_INVESTIGATION.value]
+        vals = [
+            p[key]
+            for p, s in zip(per, scenarios, strict=True)
+            if s.get("expected_intent") == Intent.NOVEL_INVESTIGATION.value
+        ]
         return round(sum(vals) / len(vals), 4) if vals else 1.0
 
     return {

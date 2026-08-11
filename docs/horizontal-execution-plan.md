@@ -395,6 +395,17 @@ them turns an unreachable source into a clean bill of health.
 **Done when.** No path can produce a result outside the legal pairings, and no code reads a tool
 result as a boolean.
 
+**Already done, so this slice inherits it rather than performing it.** Separate work landed the
+contract on 2026-08-11 and both register rows above have been updated accordingly.
+`tools/contracts.py` carries the five execution outcomes, the four completeness values, and the
+legal-pairing table, enforced when the envelope is constructed rather than checked by a caller, so
+an illegal pairing cannot exist to be read. Every adapter assigns both axes at the single boundary
+in `tools/errors.py`, an unreachable retriever reports `unavailable` rather than a generic error,
+and the protocol boundary carries both axes across unchanged with parity asserted on each. One
+temporary collapse to the old binary remains for the legacy runtime, named in the coexistence
+register and deleted with that runtime. What is genuinely left for this slice is nothing; the
+retirement it names is complete.
+
 ### 2.2 Capability adapters over the operational-records container
 
 **Makes true.** The five operational capabilities read the operational-records container through the
@@ -456,8 +467,22 @@ collapsed into one reference model on 2026-08-11 by separate work, and the regis
 been retired accordingly. `src/opspilot/evidence/references.py` is that owner: one parser, one
 resolver, and one prefix-to-type map covering the four evidence and three knowledge prefixes.
 `diagnosis/sufficiency.py` and `diagnosis/admission.py` are now callers of it and hold no parsing
-of their own. What remains for this slice is admission itself, which assigns the reference; the
-reference model it assigns from already exists and must not be rebuilt.
+of their own.
+
+Admission itself landed the same day, so all three "Closes" rows above are now recorded as
+implemented. `evidence/admission.py` is the only door into the evidence set: it admits only a
+`succeeded` result, assigns the reference, and produces a limitation naming the unanswered
+question for everything else. An authoritative absence is admitted as a positive observation
+carrying the queried scope, deterministically rather than as generated prose. `evidence/
+operations.py` holds the operation ledger separately from the admitted set, which is the unmapped
+citation this slice recorded as having no register row of its own; that remains true, and the
+ledger exists regardless. Operation references are opaque and turn-scoped, deliberately outside
+the reference grammar so the two identifier spaces cannot be confused.
+
+What is left for this slice is the part its own tests name and this work did not do: proving that
+a `partial` observation stays marked partial everywhere it travels downstream, which cannot be
+shown until something consumes admitted evidence. Admission marks it; nothing yet carries it
+onward.
 
 **Shape.** New admission code inside the Evidence Access Layer, plus a rewrite of the evidence half
 of turn state. The hash-keyed first-seen-wins merge that keeps contradictory observations separate

@@ -13,7 +13,12 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from opspilot.data.repository import Repository
-from opspilot.tools.contracts import DeploymentRecord, IncidentRecord
+from opspilot.tools.contracts import (
+    Completeness,
+    DeploymentRecord,
+    ExecutionOutcome,
+    IncidentRecord,
+)
 from opspilot.tools.service import ToolService
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -32,19 +37,23 @@ def _dt(s: str) -> datetime:
 # --- get_incident -----------------------------------------------------------------------------
 def test_get_incident_success():
     r = SVC.get_incident(incident_id="inc-001")
-    assert r.status == "ok" and len(r.results) == 1
+    assert r.outcome is ExecutionOutcome.SUCCEEDED and r.completeness is Completeness.COMPLETE
+    assert len(r.results) == 1
     assert isinstance(r.results[0], IncidentRecord) and r.results[0].incident_id == "inc-001"
     assert r.metadata.result_count == 1 and r.metadata.duration_ms >= 0
 
 
 def test_get_incident_unknown_is_empty_not_error():
     r = SVC.get_incident(incident_id="inc-999")
-    assert r.status == "ok" and r.results == [] and r.error is None
+    assert r.outcome is ExecutionOutcome.SUCCEEDED and r.completeness is Completeness.EMPTY
+    assert r.results == [] and r.error is None
 
 
 def test_get_incident_invalid_input_is_error():
     r = SVC.get_incident(incident_id="")
-    assert r.status == "error" and r.error and "invalid request" in r.error
+    assert r.outcome is ExecutionOutcome.REJECTED
+    assert r.completeness is Completeness.NOT_APPLICABLE
+    assert r.error and "invalid request" in r.error
 
 
 def test_known_error_incident_yields_past_incident_ref():
@@ -55,79 +64,109 @@ def test_known_error_incident_yields_past_incident_ref():
 # --- get_correlated_alerts --------------------------------------------------------------------
 def test_correlated_alerts_returns_storm():
     r = SVC.get_correlated_alerts(incident_id="inc-004")
-    assert r.status == "ok" and len(r.results) >= 2
+    assert r.outcome is ExecutionOutcome.SUCCEEDED and r.completeness is Completeness.COMPLETE
+    assert len(r.results) >= 2
     assert "root_cause" in {a.role for a in r.results}
     assert sum(a.is_trigger for a in r.results) == 1
 
 
 def test_correlated_alerts_unknown_incident_empty():
     r = SVC.get_correlated_alerts(incident_id="inc-999")
-    assert r.status == "ok" and r.results == []
+    assert r.outcome is ExecutionOutcome.SUCCEEDED and r.completeness is Completeness.EMPTY
+    assert r.results == []
 
 
 def test_correlated_alerts_bad_window_is_error():
     r = SVC.get_correlated_alerts(
         incident_id="inc-004", start_time=_dt("2026-02-01"), end_time=_dt("2026-01-01")
     )
-    assert r.status == "error"
+    assert r.outcome is ExecutionOutcome.REJECTED
 
 
 # --- get_deployments --------------------------------------------------------------------------
 def test_get_deployments_success_and_refs_resolve():
-    r = SVC.get_deployments(services=["checkout-api"], start_time=_dt("2026-06-01"),
-                            end_time=_dt("2026-06-30"))
-    assert r.status == "ok" and r.results
+    r = SVC.get_deployments(
+        services=["checkout-api"], start_time=_dt("2026-06-01"), end_time=_dt("2026-06-30")
+    )
+    assert r.outcome is ExecutionOutcome.SUCCEEDED and r.results
     for rec, ref in zip(r.results, r.evidence_refs, strict=True):
         assert ref == f"deploys:{rec.service}:{rec.deploy_id}"
         assert rec.deploy_id in DEPLOY_IDS  # ref resolves to a real corpus row
 
 
 def test_get_deployments_unknown_service_empty():
-    r = SVC.get_deployments(services=["nope-api"], start_time=_dt("2026-06-01"),
-                            end_time=_dt("2026-06-30"))
-    assert r.status == "ok" and r.results == []
+    r = SVC.get_deployments(
+        services=["nope-api"], start_time=_dt("2026-06-01"), end_time=_dt("2026-06-30")
+    )
+    assert r.outcome is ExecutionOutcome.SUCCEEDED and r.completeness is Completeness.EMPTY
+    assert r.results == []
 
 
 def test_get_deployments_invalid_and_oversized_window_are_errors():
-    end_before_start = SVC.get_deployments(services=["checkout-api"], start_time=_dt("2026-06-30"),
-                                           end_time=_dt("2026-06-01"))
-    oversized = SVC.get_deployments(services=["checkout-api"], start_time=_dt("2026-01-01"),
-                                    end_time=_dt("2026-12-31"))
-    assert end_before_start.status == "error"
-    assert oversized.status == "error"  # > MAX_WINDOW_DAYS
+    end_before_start = SVC.get_deployments(
+        services=["checkout-api"], start_time=_dt("2026-06-30"), end_time=_dt("2026-06-01")
+    )
+    oversized = SVC.get_deployments(
+        services=["checkout-api"], start_time=_dt("2026-01-01"), end_time=_dt("2026-12-31")
+    )
+    assert end_before_start.outcome is ExecutionOutcome.REJECTED
+    assert oversized.outcome is ExecutionOutcome.REJECTED  # > MAX_WINDOW_DAYS
 
 
 def test_get_deployments_deterministic_ordering():
-    scrambled = Repository.from_records(deployments=[
-        {"deploy_id": "d-2", "service": "checkout-api", "ts": "2026-06-20T00:00:00Z",
-         "version": "v2", "note": ""},
-        {"deploy_id": "d-1", "service": "checkout-api", "ts": "2026-06-10T00:00:00Z",
-         "version": "v1", "note": ""},
-    ])
+    scrambled = Repository.from_records(
+        deployments=[
+            {
+                "deploy_id": "d-2",
+                "service": "checkout-api",
+                "ts": "2026-06-20T00:00:00Z",
+                "version": "v2",
+                "note": "",
+            },
+            {
+                "deploy_id": "d-1",
+                "service": "checkout-api",
+                "ts": "2026-06-10T00:00:00Z",
+                "version": "v1",
+                "note": "",
+            },
+        ]
+    )
     r = ToolService(scrambled).get_deployments(
-        services=["checkout-api"], start_time=_dt("2026-06-01"), end_time=_dt("2026-06-30"))
+        services=["checkout-api"], start_time=_dt("2026-06-01"), end_time=_dt("2026-06-30")
+    )
     assert [d.deploy_id for d in r.results] == ["d-1", "d-2"]  # sorted by ts
 
 
 def test_malformed_row_is_skipped_not_fatal():
-    repo = Repository.from_records(deployments=[
-        {"deploy_id": "ok", "service": "checkout-api", "ts": "2026-06-10T00:00:00Z",
-         "version": "v", "note": ""},
-        {"deploy_id": "bad", "service": "checkout-api"},  # missing ts/version/note
-    ])
-    r = ToolService(repo).get_deployments(services=["checkout-api"], start_time=_dt("2026-06-01"),
-                                          end_time=_dt("2026-06-30"))
-    assert r.status == "ok" and [d.deploy_id for d in r.results] == ["ok"]
+    repo = Repository.from_records(
+        deployments=[
+            {
+                "deploy_id": "ok",
+                "service": "checkout-api",
+                "ts": "2026-06-10T00:00:00Z",
+                "version": "v",
+                "note": "",
+            },
+            {"deploy_id": "bad", "service": "checkout-api"},  # missing ts/version/note
+        ]
+    )
+    r = ToolService(repo).get_deployments(
+        services=["checkout-api"], start_time=_dt("2026-06-01"), end_time=_dt("2026-06-30")
+    )
+    assert r.outcome is ExecutionOutcome.SUCCEEDED
+    assert [d.deploy_id for d in r.results] == ["ok"]
 
 
 def test_results_are_typed():
-    r = SVC.get_deployments(services=["checkout-api"], start_time=_dt("2026-06-01"),
-                            end_time=_dt("2026-06-30"))
+    r = SVC.get_deployments(
+        services=["checkout-api"], start_time=_dt("2026-06-01"), end_time=_dt("2026-06-30")
+    )
     assert all(isinstance(d, DeploymentRecord) for d in r.results)
 
 
 # --- dispatcher -------------------------------------------------------------------------------
 def test_call_dispatcher_allowlist():
-    assert SVC.call("get_incident", incident_id="inc-001").status == "ok"
+    assert SVC.call("get_incident", incident_id="inc-001").answered
     denied = SVC.call("delete_everything", target="prod")
-    assert denied.status == "error" and denied.error == "unknown tool"
+    assert denied.outcome is ExecutionOutcome.REJECTED and denied.error == "unknown tool"
