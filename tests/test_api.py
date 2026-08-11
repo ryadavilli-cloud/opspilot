@@ -25,18 +25,25 @@ from opspilot.api import (  # noqa: E402
 from opspilot.auth import ReviewerAuthError, ReviewerPrincipal  # noqa: E402
 from opspilot.config import RETRIEVAL_BACKEND  # noqa: E402
 from opspilot.data.repository import CORPUS_FILES, RuntimeAssetStatus  # noqa: E402
+from opspilot.tools.contracts import Completeness, ExecutionOutcome  # noqa: E402
 
 client = TestClient(app)
 
 # `/investigate` carries the submit role (G-03). Same fake-authenticator shape as the async API
 # tests: identity only, so the endpoint's own role check is what these tests exercise.
 _SUBMITTER = ReviewerPrincipal(
-    subject="oid-submitter-1", tenant_id="test-tenant", display_name="submitter@example.com",
-    roles=("Submitter",), auth_method="entra_jwt",
+    subject="oid-submitter-1",
+    tenant_id="test-tenant",
+    display_name="submitter@example.com",
+    roles=("Submitter",),
+    auth_method="entra_jwt",
 )
 _NO_ROLE = ReviewerPrincipal(
-    subject="oid-guest-1", tenant_id="test-tenant", display_name="guest@example.com",
-    roles=(), auth_method="entra_jwt",
+    subject="oid-guest-1",
+    tenant_id="test-tenant",
+    display_name="guest@example.com",
+    roles=(),
+    auth_method="entra_jwt",
 )
 _PRINCIPALS = {"submit-token": _SUBMITTER, "no-role-token": _NO_ROLE}
 
@@ -58,8 +65,20 @@ class _FakeAuthenticator:
 
 
 # --- fakes ------------------------------------------------------------------------------------
-def _result(status: str = "ok", results=None) -> SimpleNamespace:
-    return SimpleNamespace(status=status, results=results if results is not None else [])
+def _result(
+    outcome: ExecutionOutcome = ExecutionOutcome.SUCCEEDED,
+    completeness: Completeness = Completeness.COMPLETE,
+    results=None,
+) -> SimpleNamespace:
+    """A capability result on both axes, carrying `answered` exactly as the envelope derives it.
+    The doubles must not be able to satisfy a readiness check by way of a field the contract does
+    not have: that is what let a broken check pass while every real result failed it."""
+    return SimpleNamespace(
+        outcome=outcome,
+        completeness=completeness,
+        answered=outcome is ExecutionOutcome.SUCCEEDED,
+        results=results if results is not None else [],
+    )
 
 
 class _FakeService:
@@ -70,13 +89,20 @@ class _FakeService:
         self._incident, self._logs, self._retrieval = incident, logs, retrieval
 
     def get_incident(self, **_):
-        return _result("ok", [{"incident_id": "inc-004"}]) if self._incident else _result("ok", [])
+        # An unseeded repository answers: `succeeded` with `empty`, not a failure.
+        if self._incident:
+            return _result(results=[{"incident_id": "inc-004"}])
+        return _result(completeness=Completeness.EMPTY)
 
     def query_logs(self, **_):
-        return _result("ok") if self._logs else _result("error")
+        if self._logs:
+            return _result(completeness=Completeness.EMPTY)
+        return _result(ExecutionOutcome.UNAVAILABLE, Completeness.NOT_APPLICABLE)
 
     def search_runbooks(self, **_):
-        return _result("ok", [1]) if self._retrieval else _result("error")
+        if self._retrieval:
+            return _result(results=[1])
+        return _result(ExecutionOutcome.UNAVAILABLE, Completeness.NOT_APPLICABLE)
 
 
 def _healthy_corpus():
@@ -214,10 +240,14 @@ def _bm25_service():
 
 def test_investigation_smoke_path_over_bm25():
     _override(_bm25_service)
-    r = client.post("/investigate", headers=SUBMIT_AUTH, json={
-        "incident_id": "inc-004",
-        "summary": "checkout-api returning 500s shortly after this morning's deployment.",
-    })
+    r = client.post(
+        "/investigate",
+        headers=SUBMIT_AUTH,
+        json={
+            "incident_id": "inc-004",
+            "summary": "checkout-api returning 500s shortly after this morning's deployment.",
+        },
+    )
     assert r.status_code == 200
     body = r.json()
     assert body["incident_id"] == "inc-004"
@@ -233,10 +263,14 @@ def test_investigation_smoke_path_over_bm25():
 
 def test_investigation_unknown_incident_does_not_report_success():
     _override(_bm25_service)
-    r = client.post("/investigate", headers=SUBMIT_AUTH, json={
-        "incident_id": "inc-does-not-exist",
-        "summary": "unknown incident with no corpus record.",
-    })
+    r = client.post(
+        "/investigate",
+        headers=SUBMIT_AUTH,
+        json={
+            "incident_id": "inc-does-not-exist",
+            "summary": "unknown incident with no corpus record.",
+        },
+    )
     assert r.status_code == 200
     body = r.json()
     assert body["status"] != "completed"  # cannot complete without a real incident
@@ -270,10 +304,14 @@ def test_escalated_response_surfaces_the_graph_escalation_reason(monkeypatch):
 def test_degraded_response_surfaces_a_reason(monkeypatch):
     _override(_bm25_service)
     monkeypatch.setattr(api, "_safe_backend", lambda svc: "unavailable")
-    r = client.post("/investigate", headers=SUBMIT_AUTH, json={
-        "incident_id": "inc-004",
-        "summary": "checkout-api returning 500s shortly after this morning's deployment.",
-    })
+    r = client.post(
+        "/investigate",
+        headers=SUBMIT_AUTH,
+        json={
+            "incident_id": "inc-004",
+            "summary": "checkout-api returning 500s shortly after this morning's deployment.",
+        },
+    )
     body = r.json()
     assert body["status"] == "degraded"
     assert body["reason"] and "unavailable" in body["reason"]
