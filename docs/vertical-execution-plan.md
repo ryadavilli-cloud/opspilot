@@ -2,11 +2,14 @@
 
 **Status:** Working implementation plan.
 
-Vertical-slice implementation sequence derived from `docs/status.md` (repository inspected at
-branch `stage-5f-durable-dispatch`, `0c3c175`; `main` at `e567adf`) against the accepted
-documentation baseline (Phase 3A, 2026-08-05). The design is settled; this document owns order,
-migration mechanics, ownership, and PR structure. It does not restate the accepted design and it
-does not record build progress, which belongs to `status.md`.
+Vertical-slice implementation sequence derived from `docs/status.md` against the accepted
+documentation baseline. The design is settled; this document owns order, dependencies, migration
+mechanics, ownership, and PR structure. It does not restate the accepted design and it does not
+record build progress, which belongs to `status.md`.
+
+This is an execution specification, not a record of executing it. A reader should be able to take
+any remaining slice and know what to build, in what order, and what it must leave behind, without
+first working out which parts of the text have been overtaken.
 
 ---
 
@@ -33,10 +36,17 @@ These rules govern every slice. They are stated once here rather than repeated i
     owning authoritative document, or `decisions.md`, before its implementation PR is complete.
     `status.md` records that the question was resolved; it is never the design authority for the
     answer.
-11. `status.md` records current truth; this plan records remaining work. A landed slice is marked
-    **Completed** and collapsed to its outcome, merge commits, and verification evidence rather
-    than deleted, so that dependency reasoning, the course map, and the record of why each deletion
-    happened survive. Collapsed slices move to an appendix if the plan becomes unwieldy.
+11. `status.md` records current truth; this plan records remaining work. A completed slice retains
+    only the dependency information a remaining slice consumes: the contracts and capabilities it
+    stabilized, and a pointer to `status.md`. Merge history, verification evidence, test counts,
+    divergence explanations, and current implementation detail belong exclusively to `status.md`
+    and are not duplicated here.
+12. When work a later slice owns lands early, rewrite that slice to its remaining scope. Delete the
+    superseded branch of the plan rather than preserving it beside a note explaining that it no
+    longer applies, and make what already exists an entry criterion the slice consumes. The history
+    of why reality diverged is recorded in `status.md`, not carried in the plan as a correction
+    paragraph. A slice that has been overtaken should read as though it had always been scoped to
+    what is left.
 
 Slice identifiers are stable labels, not an execution order. Execution order is the order slices
 appear in this document, and it differs from numeric order in one place: A-1 runs before S-13, so
@@ -48,8 +58,6 @@ that the milestone report can include final hosted verification.
   is cut over and removed as soon as the replacement can execute one real investigation. The plan
   does not preserve the old architecture as a safety blanket through several capability slices.
 - Every slice ends with something a reviewer can run, see, or verify that was not available before.
-- The plan starts from `main` (`e567adf`). The unpushed durable-dispatch WIP commit is abandoned,
-  not repaired or built upon.
 - Existing code survives only when it directly supports the accepted design and is the simplest
   suitable realization. Production suitability is not a reason to retain it.
 - Azure is reconciled incrementally rather than in one late slice. A-0 aligns the hosted
@@ -66,8 +74,8 @@ that the milestone report can include final hosted verification.
 - The accepted corpus remains seven authored incidents across five families. Controlled fixture
   variants may fill evaluation classes, but the plan does not silently add authored incidents.
 - Course-material sequencing is an aid, not a straitjacket.
-- D-003, D-004, D-005, and D-006 remain open until a consuming slice has the evidence needed to
-  resolve them, and each carries a resolution deadline below.
+- A pending decision stays open until a consuming slice has the evidence needed to resolve it. The
+  decision-gates table below is the single list of which remain open and when each resolves.
 
 ## Standard slice template
 
@@ -286,15 +294,13 @@ Pending decisions carry a resolution point, so that "pending" does not become "f
 
 | Decision | Resolve when | Blocks |
 | --- | --- | --- |
-| D-003 Cosmos vector viability | Resolved 2026-08-10, ahead of this slice. A vector-capable container holds 196 real embeddings and `VectorDistance()` returns the semantically correct result, so the choice stands and no revision is needed | Nothing; the retrieval implementation is unblocked |
 | D-004 MCP library mechanics and transport carriage | Before S-11 implementation | Library usage, session handling, result carriage |
 | D-005 judge rubric version | First S-13 PR | Judge implementation and removal of the standalone judge configuration |
-| D-006 retrieval-influence selection | After the minimum S-9 data repair | Retrieval-influence demonstration |
+| D-006 retrieval-influence selection | Within S-9 | Retrieval-influence demonstration |
 | D-006 remaining corpus selections | End of S-12 | S-13 evaluation wiring |
 
-D-003 is the only gate that can force a documented design revision rather than a recorded
-selection. If Cosmos vector search proves unviable in the S-9 spike, stop and revise D-003
-explicitly before falling back to an in-process cosine scan.
+A gate that would force a documented design revision rather than a recorded selection is stopped
+on and revised explicitly, never worked around with a runtime fallback.
 
 D-004 does not reopen hosting. One real in-process MCP boundary inside the single application and
 process is frozen; D-004 settles library mechanics, session and transport handling, and result
@@ -307,14 +313,10 @@ before code invents an incompatible answer.
 
 | Clarification | Owning slice | Default position |
 | --- | --- | --- |
-| Normalized incident-context fields | S-1 | One typed contract; the current `Alert` shape is evidence, not authority |
-| Evidence and knowledge reference encoding, keys, and parsing | S-2 | One owner, one parser, one resolver; evaluate the existing frozen grammar rather than copying it |
 | Stateless clarification token | S-5 | Prefer simple resubmission of the original input; introduce a signed short-lived token only if resubmission demonstrably fails the requirement |
-| Evaluation artifact storage location | S-2 | Committed deterministic fixtures and reference reports under `eval/`; dated live-run outputs under a separate, gitignored, non-authoritative run directory; no database, telemetry store, or new Azure resource |
 | Minimal knowledge metadata contract | S-9, first PR | Identifier, container category, promotion date, and admission provenance only. No authoritative document fixes this today, so S-9 records it before implementing rather than treating it as a precondition |
 | D-004 library evidence | S-11 | In-process hosting is fixed; record the library findings |
-| D-006 corpus evidence | S-9, S-12 | Selections wait for repairs and the coverage audit |
-| D-003 vector viability | Resolved 2026-08-10 | Verified against a live container rather than deferred; the dense-retrieval choice stands and no revision is required |
+| D-006 corpus evidence | S-9, S-12 | Remaining selections wait for the coverage audit |
 
 ## Execution environment matrix
 
@@ -332,9 +334,9 @@ Azure is reconciled incrementally. The posture per slice is stated rather than l
 | S-3, S-4 | Local deterministic |
 | A-0 | Hosted verification |
 | S-5, S-6 | Local deterministic |
-| S-7 | Deterministic contract tests over the port; a separate Azure-assisted Cosmos integration lane for the compatibility check |
+| S-7 | Deterministic contract tests over the port; a separate Azure-assisted Cosmos integration lane |
 | S-8 | Local deterministic, with one optional Azure-assisted follow-up verification |
-| S-9 | Azure-assisted local required for the embedding and vector-viability spike; deterministic fixtures for CI |
+| S-9 | Azure-assisted local required for embedding and vector queries; deterministic fixtures for CI |
 | S-10 | Local fixture adapter first; Azure-assisted Cosmos integration second |
 | S-11 | Local deterministic |
 | S-12 | Local deterministic plus selected Azure-assisted model verification |
@@ -371,7 +373,6 @@ enforced against this table.
 | Old polling, HITL, decision, and job routes | The old runtime must stay runnable until the replacement can complete a grounded turn | Pre-existing | S-4 |
 | Legacy contract module `src/opspilot/contracts.py` | The accepted contracts land in `src/opspilot/assessment/contracts.py`; the old runtime keeps its own shapes until it is deleted | Pre-existing, frozen at S-2 | S-4, optionally leaving one narrow re-export |
 | Old approval console `src/opspilot/static/console.html` | The new screen is added at `static/investigation.html` on its own route, so the old runtime keeps a working UI until it is deleted | Pre-existing, frozen at S-1 | S-4 |
-| One-way projection from the accepted assessment to the old report shape | The old runtime still renders its own report while S-2 holds the accepted shape | S-2 | S-4 |
 | Two-axis to binary capability-result shim for old consumers | The old planner and claim admission read `status: ok\|error` | S-2 | S-4 |
 | Deprecated `EvalTargets` numeric thresholds | The old scenario and single-agent gates still consume them; removing the configuration before its consumers would break the S-0 baseline | Pre-existing, frozen and marked deprecated at S-0 | S-4, with the gates that read it |
 | Three incorrect MCP exposures (`get_incident`, `query_logs`, `search_runbooks`) | Parity must survive the S-2 envelope change continuously; narrowing the exposed set is a separate concern | Pre-existing, carried through S-2 | S-11 |
@@ -453,115 +454,27 @@ provisional placement until this structure exists.
 
 ## Horizon 1: Foundation cleanup, first executable flow, cutover, and hosted alignment
 
-### S-0 Repository reset and truthful baseline
+## Completed slices
 
-**Status: Completed.**
+Retained only for what remaining slices consume. Current implementation truth, landed PRs,
+verification evidence, and the history of where reality diverged from the original text are in
+`status.md`.
 
-**Outcome:** a clean `main`-based branch containing the authoritative documentation, truthful
-setup instructions, and none of the rejected unpushed dispatch skeleton, exactly as this slice's
-demonstrable outcome specified.
-
-**Merge commits:** branch `s0-repository-reset`, cut from `main` at `e567adf`; commits `c8ea681`
-(docs, hooks, README, env example), `4400d93` (debris, empty packages, dead severity-tier config,
-corpus-path collapse), `3e1f41d` (status.md landing record); merged to `main` via PR #54 as squash
-commit `4c8f706`.
-
-**Verification evidence (observed on `main` at `4c8f706`):**
-
-| Check | Result |
+| Slice | Provides to the remaining plan |
 | --- | --- |
-| Abandoned dispatch WIP is not an ancestor | `git merge-base --is-ancestor 0c3c175 HEAD` exits nonzero |
-| Dispatch code is absent | `git grep -n -e DispatchMessage -e relay_pending -e SERVICE_BUS -- src tests infra scripts` empty |
-| Dead severity routing is absent | `git grep -n -e PROD_MODELS -e resolve_tier -e SEVERITY_TIER -e ENABLE_OPUS_SEV1 -e CONFIDENCE_THRESHOLD -- src tests` empty |
-| Deprecated settings are marked, not orphaned | `EvalTargets`, `MAX_TOOL_CALLS`, `JUDGE_MODEL` remain in `config.py`, each with a deprecation comment, no new consumer |
-| Empty package placeholders are gone | `git ls-files src/opspilot/ops src/opspilot/eval` empty |
-| Stale root debris is gone | `git ls-files out.txt raw.txt infra/.gitkeep data/.gitkeep` empty |
-| Authoritative docs are committed | `git ls-files docs .githooks` lists the accepted set |
-| Environment example matches reality | `tests/test_env_example.py` asserts every setting `config.py` reads has a key in `.env.example` |
-| Baseline is green | `uv run ruff check`, `uv run mypy src` (0 errors, was 2), `uv run pytest -m "not reranker and not llm"` (382 passed, 5 deselected, 0 failed, was 31 failed/351 passed) all pass |
+| S-0 | A clean `main`-based baseline: the authoritative documentation committed, the rejected dispatch skeleton absent, dead severity-tier configuration and corpus-path duplication removed, and a green lint, type, and test baseline to build on. |
+| S-1 | Turn identity; the stream envelope and its ordering, identities first and close marker last; the normalized incident-context contract (`decisions.md` D-007); the `InteractionKind` type, shape only; the activity projection; client-disconnect detection; and the one-screen client at `/investigation`. |
 
-**Divergences from this slice's original text:**
+S-2 is in progress and stays fully scoped below; it collapses into this table when it completes.
 
-- The deprecation comments for `EvalTargets`, `MAX_TOOL_CALLS`, and `JUDGE_MODEL` do not name an
-  owning deletion slice in-code, as originally specified above. `code-guidelines.md` §12 (plan
-  vocabulary must not appear in the repository) postdates this slice's text and is merge-blocking
-  per its §13; the comments instead describe the condition or cite the relevant `decisions.md` ID
-  (`D-005` for `JUDGE_MODEL`) without a slice number. The same full-file scan retired existing
-  `Stage N`/`G-NN` references from `config.py`, the one file this slice already touched.
-- "Verified merged remote branches" from the code-and-data-to-delete list was not completed. The
-  six branches `status.md` names under "Documentation and Repository Hygiene" remain undeleted.
-
-### S-1 Streaming turn skeleton, turn identity, predefined intake, and one screen
-
-**Status: Completed.**
-
-**Outcome:** a predefined incident posted to `POST /turns` streams identities first, a compact
-sequence of safe activity entries, and a stream-close marker last, in one HTTP response; a minimal
-same-origin screen at `/investigation` renders intake, feed, brief region, and one expandable
-details area, exactly as this slice's demonstrable outcome specified. The closing event remains a
-transport demonstration marker, not a completed investigation outcome; accepted outcomes do not
-exist until S-3.
-
-**Merge commits:** branch `s1-turn-identity-and-contracts`, landed as three PRs: #59 (turn
-identity, the normalized incident-context contract settled as `decisions.md` D-007, the stream
-envelope and activity-projection contracts, `obs/tracing.py`'s `turn_id` extension); #60 (the
-streaming endpoint, plus scoping `ruff format` enforcement to touched files); #61 (the one-screen
-client and client-disconnect detection on the streaming endpoint).
-
-**Verification evidence:**
-
-| Check | Result |
-| --- | --- |
-| Local suite green | `ruff check .`, `ruff format --check` (scoped), `mypy src` (0 errors), `pytest -q -m "not reranker and not llm"` (412 passed, 1 xfailed, 5 deselected, 0 failed) |
-| Ordering | identities-first and close-marker-last asserted directly against the live endpoint and manually verified against the real corpus |
-| Sanitization | activity entries carry no prompt, hidden reasoning, provider content, or secret; a dedicated test asserts no answer-key content reaches the stream |
-| Turn isolation | concurrent turns get independent identities and independent activity sequences |
-| Client-disconnect detection | driven directly against the generator with a fake disconnect signal at three points (immediately, after one activity, never); emission (including the close marker) stops once the client has disconnected |
-| One-screen client | verified live in a real browser: incident selection, streamed activity feed, brief update, and details expansion all render correctly, no console errors |
-| Decision gate | the normalized incident-context clarification (status.md §17 item 1) settled as `decisions.md` D-007 before implementation |
-
-**Divergences from this slice's original text:**
-
-- The normalized incident-context contract required a new `decisions.md` entry (D-007) before
-  implementation could proceed. The original text above treated the shape as already knowable; it
-  was not, and a settled decision was the blocking step, not a gap to fill silently.
-- "Live-session identity" in this slice's original wording was corrected to "live-session
-  presentation state" during PR #59: `data-and-evidence.md` §3 names only investigation and turn
-  identity, no session identity. The text above reflects the correction, not the original wording.
-- The original text's "in-process cancellation signal" landed as client-disconnect detection only
-  (the streaming endpoint checks whether the client's own HTTP connection has dropped), not as the
-  accepted explicit cancellation-request mechanism. `runtime-and-deployment.md`'s interaction table
-  names cancellation as its own transport, "a small ordinary request that signals the in-memory
-  cancellation token," separate from the request the turn itself streams over, backed by "one small
-  in-memory map from active turn identity to a cancellation signal" that an external request writes
-  to and the running turn reads. Nothing built here shares state across two requests or exposes a
-  way to cancel a turn other than closing the connection. The explicit signal is genuinely missing,
-  not merely undocumented, and is assigned to S-6 PR 1, which cannot build safe-boundary
-  cancellation semantics without something to receive first.
-- S-1 introduced the `InteractionKind` type (the five request-shape kinds) but not the classifier
-  that produces a value of it; nothing yet reads a request shape and returns a kind. The type's
-  shape is what "stabilized" means here, per the contract-stabilization table above; the
-  classification behavior itself remains S-8's to build, consuming this now-fixed type without
-  needing to redefine it.
-- The path-level detail table originally assigned "`configure_exporter()` wired at startup" to this
-  slice. It did not land, and it was never this slice's to land: the wiring appears in no part of
-  this slice's outcome, contracts, tests, or completion evidence, and nothing built here needed it,
-  because the telemetry tests install the in-memory exporter directly through `tests/conftest.py`.
-  `configure_exporter` has exactly one occurrence in `src`, its own definition, so the process
-  exporter stays the no-op outside tests. Emission semantics are unaffected either way, since the
-  seam records the facts whether or not a sink is attached, and before A-0 there is no sink for it
-  to attach to. The table row was the defect and is corrected to A-0, which needs the same startup
-  hook for its own startup, configuration, and readiness diagnostics. This slice is complete as it
-  stands.
-
-**Telemetry seam this slice left, and what later slices attach to it:** `obs/tracing.py` provides
-the one seam, OTLP-shaped spans with nesting through context variables, an exporter selected by
-configuration, and the in-memory exporter that the deterministic telemetry assertions in every later
-slice run against. `standard_attributes` carries `investigation_id`, `incident_id`,
+**The one telemetry seam.** `obs/tracing.py` is the single emission seam every later slice attaches
+to, never a second one. It provides OTLP-shaped spans with nesting through context variables, an
+exporter selected by configuration, and the in-memory exporter that deterministic telemetry
+assertions run against. `standard_attributes` carries `investigation_id`, `incident_id`,
 `workflow_version`, and `turn_id`; `span()` carries duration. Those are the correlation columns of
-the common attribute set under "Diagnosability obligations"; every other column in that table is
-minted by the slice that introduces the behavior it describes, on this seam and not a second one.
-Request-to-turn correlation rides the same identifiers, since one streaming request owns one turn.
+the common attribute set under "Diagnosability obligations"; every other column is minted by the
+slice that introduces the behavior it describes. Request-to-turn correlation rides the same
+identifiers, since one streaming request owns one turn.
 
 ### S-2 Evidence, reference, and assessment contracts with one bounded model call
 
@@ -572,11 +485,11 @@ Request-to-turn correlation rides the same identifiers, since one streaming requ
   terminal delivery cannot occur until a commit succeeds.
 - **This slice deliberately does not conclude an investigation.** The four grounding checks do not
   exist until S-3, and an accepted completed outcome is a consequence of that gate. S-2 renders the
-  assessment as a non-terminal demonstration and closes the stream with the S-1 transport marker.
+  assessment as a non-terminal demonstration and closes the stream with the existing transport marker.
   It commits nothing as a completed turn, and it emits none of complete, partial, or inconclusive.
   Putting the gate here instead would make an already large slice larger; moving first completion
   to S-3 is the cleaner split.
-- **Entry criteria:** streaming ordering and activity sanitization tests pass; the S-1 stream
+- **Entry criteria:** streaming ordering and activity sanitization tests pass; the stream
   envelope and normalized context are stable and consumed by the new screen.
 - **Existing foundation retained:** LLM client, prompt registry, and cassette seams; `ToolService`,
   its closed registry, and its request validation and error sanitization; the MCP server, which
@@ -592,7 +505,6 @@ Request-to-turn correlation rides the same identifiers, since one streaming requ
   - the accepted contracts land in a new module, `src/opspilot/assessment/contracts.py`;
   - `src/opspilot/contracts.py` is frozen as legacy-only, gains no new members and no new callers,
     and is deleted in S-4, optionally leaving one narrow re-export;
-  - a one-way projection maps the accepted assessment to the old report shape for the old runtime;
   - a two-axis to binary shim serves the old planner and claim admission;
   - every adapter is registered in the coexistence register and carries an S-4 deletion comment.
 - **MCP impact, which is immediate rather than deferred to S-11:** the MCP server passes the
@@ -696,7 +608,7 @@ Request-to-turn correlation rides the same identifiers, since one streaming requ
 - **Small PR breakdown:** (1) evidence reference model, parser, and resolver, and the evaluation
   artifact home; (2) two-axis result vocabulary, Evidence Access Layer admission, the old-path
   shim, and the MCP envelope and parity update; (3) accepted assessment contracts in their new
-  module and the old-path projection adapter; (4) Investigation Record port, in-memory backend,
+  module; (4) Investigation Record port, in-memory backend,
   commit semantics, and the lifecycle delivery-ordering contract test; (5) synthesis task,
   deterministic brief projection, and streaming integration.
 - **Completion evidence:** one reproducible incident-to-assessment run in a single streamed
@@ -818,37 +730,15 @@ Request-to-turn correlation rides the same identifiers, since one streaming requ
   `test_api.py` and `test_guardrails.py`. Dependencies removed from `pyproject.toml`, `uv.lock`,
   and the `Dockerfile` install groups: `langgraph`, `langchain-core`,
   `langgraph-checkpoint-sqlite`, `langchain-azure-cosmosdb`.
-  Divergence: the infrastructure half of this bullet already landed on 2026-08-09, ahead of this
-  slice. Cosmos NoSQL vector search needs an account capability that cannot be added after
-  creation, verified against the original account, so the account was deleted and recreated with
-  the capability set at creation. The `checkpoints` and `investigation-index` containers went with
-  it, along with their Bicep declarations and, necessarily, the deployment settings that selected
-  the Cosmos checkpointer and the Cosmos investigation repository: the application recreated both
-  containers at runtime through create-if-not-exists, so removing the declarations alone would not
-  have held. The hosted smoke's durable-pause leg was removed in the same change, because it
-  asserted that an in-flight pause survives a replica restart, a property the accepted design does
-  not claim and which would now fail against correct behavior. The deleted containers held only
-  rejected-architecture data, inspected first: 1229 checkpointer documents, one index document, and
-  eight job records. What remains this slice's to do is all of the code deletion above; only the
-  live containers, the Bicep declarations, the two deployment settings, and the smoke assertion are
-  discharged.
+  The Cosmos containers, their Bicep declarations, the two deployment settings that selected
+  them, and the hosted smoke's durable-pause assertion are already gone; this slice's remaining
+  work here is the code deletion above.
 - **Graph-dependent evaluation removed or parked in the same slice:** `eval/scenario_eval.py`,
   `eval/record_single_agent.py`, `tests/test_scenario_gate.py`, `tests/test_single_agent_gate.py`,
-  the committed numeric scorecards, the stub `eval/harness.py` with `tests/test_scaffold.py`, and
-  the RCAEval probe (`eval/wild.py`, `record_wild.py`, its baseline and cassette,
-  `tests/fixtures/wild_ob/`, `tests/test_wild.py`). Parked material moves under a clearly archived
-  path excluded from CI; S-13 makes the final keep-or-delete call. Leaving these active would
+  the committed numeric scorecards, and the stub `eval/harness.py` with
+  `tests/test_scaffold.py`. Parked material moves under a clearly archived path excluded from CI;
+  S-13 makes the final keep-or-delete call. Leaving these active would
   leave the repository broken or misleading the moment the graph is deleted.
-  Divergence: the RCAEval probe named in this bullet is already deleted, not parked, as of
-  2026-08-09. Golden scenario records were authored (`data/answer_key/golden_scenarios.yaml`), and
-  since they are the evaluation input surface that supersedes the probe, and `requirements.md` §12
-  defers the capability the probe demonstrated, it was deleted outright rather than parked for a
-  later keep-or-delete call. `eval/wild.py`, `record_wild.py`, `wild_scorecard.json`,
-  `wild_single_agent.json`, `tests/fixtures/wild_ob/`, and `tests/test_wild.py` are gone; entry into
-  this slice does not need to park them, and S-13's final call on them is already made.
-  `data/profiles/rcaeval_profile.json` was verified to be a live corpus-generation input and is
-  deliberately retained. The rest of this bullet, the graph-dependent evaluation, is untouched and
-  still this slice's to do.
 - **Code to replace:** `graph.py` and `router.py`, superseded by a small explicit turn controller;
   the default client route, which now serves `static/investigation.html` as the only client;
   per-user and role-based concurrency admission, superseded by one configured application-level
@@ -1175,10 +1065,10 @@ scoped to runtime paths and use exact symbols.
   observation.
 - **Entry criteria:** S-5 agent boundaries and the six bounds are enforced and tested; the turn
   controller has identifiable safe boundaries to cancel at.
-- **Existing foundation retained:** S-1's client-disconnect detection on the streaming endpoint,
-  which stops emission but is not the accepted cancellation-request mechanism (see S-1's own
-  divergence note); the S-3 outcome vocabulary, which already carries inconclusive; the S-2 commit
-  ordering, which cancellation outcomes reuse rather than bypass.
+- **Existing foundation retained:** client-disconnect detection on the streaming endpoint, which
+  stops emission but is not the accepted cancellation-request mechanism; the S-3 outcome
+  vocabulary, which already carries inconclusive; the S-2 commit ordering, which cancellation
+  outcomes reuse rather than bypass.
 - **Code and data to delete:** none.
 - **Code to replace:** none.
 - **Missing foundation this slice must build first, before safe-boundary semantics:** the accepted
@@ -1256,36 +1146,10 @@ scoped to runtime paths and use exact symbols.
 - **Demonstrable outcome:** completed turns are persisted in Cosmos and, after a container restart,
   a completed turn is read back and every citation still resolves.
 - **Entry criteria:** S-6 outcome and cancellation semantics are stable, so the set of turns that
-  must be committed is fixed; the Cosmos compatibility check below has been performed and its
-  migration decision recorded before implementation starts.
-- **Cosmos compatibility check, performed first and not assumed:** an `investigations` container
-  already exists and stores the job-record shape. Determine whether the accepted artifact can reuse
-  it in place, which depends on the existing partition key and indexing policy, neither of which
-  this plan has verified. Record one of three outcomes before writing code, and let the outcome
-  decide whether this slice is additive:
-  Divergence: this check is already answered, and not by performing it. On 2026-08-09 the Cosmos
-  account was deleted and recreated to gain the vector-search capability, which cannot be added
-  after creation. No legacy `investigations` container survived, and the eight job records it held
-  were inspected first and confirmed to be rejected-architecture data with no retention value. The
-  three outcomes below therefore collapse: there is nothing to reuse, nothing to migrate, and
-  nothing to delete under approval. Bicep declares a fresh `investigations` container partitioned
-  by `/investigation_id`, and this slice writes the accepted artifact into it directly. The
-  separately approved container-replacement PR the third outcome describes is not needed.
-  1. **Compatible: reuse in place.** The partition key and indexing policy accept the accepted
-     artifact. No new container, no migration, nothing deleted. The container holds mixed shapes
-     until A-1 clears the old documents.
-  2. **Incompatible, old data worth keeping: add a second container.** Create a distinct container
-     alongside the existing one, write only accepted artifacts to it, and record the old container
-     for A-1 deletion. Additive, and the only outcome for which "additive" is the accurate word.
-  3. **Incompatible, old data worth nothing: replace it here, with narrow approval.** Every stored
-     record belongs to the deleted job lifecycle and has no retention value, so building a
-     migration mechanism to preserve dead data is waste. Delete and recreate the container with the
-     accepted partition key and indexing policy in its own separately approved PR. This is the
-     preferred outcome if compatibility fails, and it is the one named exception to the rule that
-     nothing is deleted outside A-1. The approval is explicit, the PR does nothing else, and the
-     deletion is recorded in `status.md` with the command run.
-  Do not call the slice additive before the check answers, and do not invent a migration mechanism
-  for data that outcome 3 says is worthless.
+  must be committed is fixed; a fresh `investigations` container partitioned by
+  `/investigation_id` already exists and holds nothing, so this slice writes the accepted artifact
+  into current infrastructure rather than migrating onto it. There is nothing to reuse, migrate, or
+  delete, and no compatibility question to answer first.
 - **Existing foundation retained:** the Investigation Record port and its commit semantics from
   S-2, and the completed-turn artifact and terminal ordering from S-3, none of which change here;
   the ETag compare-and-swap technique and the keyless managed identity posture from the old
@@ -1296,10 +1160,9 @@ scoped to runtime paths and use exact symbols.
 - **Code to replace:** the in-memory backend as the deployed backend, superseded by the Cosmos
   backend behind the same port. The in-memory implementation remains as the local and CI backend.
 - **New implementation:** the Cosmos completed-turn repository with the Supervisor as sole writer;
-  restart-safe read and citation resolution; the container or migration target chosen by the
-  compatibility check; the minimal retry the single-writer path requires; the Container App
-  managed identity's write-role assignment on the `investigations` container (or the outcome-3
-  replacement container), scoped to that container alone. This is the opposite posture from S-9's
+  restart-safe read and citation resolution; the minimal retry the single-writer path requires; the Container App
+  managed identity's write-role assignment on the `investigations` container, scoped to that
+  container alone. This is the opposite posture from S-9's
   and S-10's corpus containers, where the same identity is deliberately read-only, and it is settled
   here rather than left for A-1 to discover: the deployed app cannot write a completed turn without
   it, so the role assignment is part of this slice's own Bicep work, not a later cleanup task.
@@ -1329,21 +1192,16 @@ scoped to runtime paths and use exact symbols.
   real account or not at all.
 - **Evaluation increment:** none. Persistence is proven by tests and by the hosted check in A-1.
 - **Dataset or fixture work:** none.
-- **Azure impact:** Azure-assisted local required for the compatibility check and integration
-  tests. Whether this slice is additive is decided by that check: outcomes 1 and 2 add or reuse
-  without deleting anything; outcome 3 performs the one narrowly approved destructive replacement
-  this plan permits outside A-1, in its own PR. The interim smoke must still pass afterwards.
-- **Decision gates:** none pending, but the compatibility outcome is recorded as a decision note in
-  the owning document per operating rule 10, including which of the three branches was taken and
-  why.
+- **Azure impact:** Azure-assisted local required for the integration tests. This slice is
+  additive: it writes into an existing empty container and deletes nothing. The interim smoke must
+  still pass afterwards.
+- **Decision gates:** none.
 - **Explicit non-goals:** no follow-up, handoff, redirect, or supplied context, which are S-8; no
   checkpointing, reattachment, recovery scanning, or activity persistence; no unapproved container
   deletion.
-- **Small PR breakdown:** (1) compatibility check and recorded outcome; (2) if outcome 3, the
-  separately approved container replacement, doing nothing else; (3) Cosmos backend behind the
-  existing port, including the write-role assignment, with the shared contract suite run against
-  the stub; (4) restart-safe read and citation resolution, with the Azure-assisted integration
-  lane.
+- **Small PR breakdown:** (1) Cosmos backend behind the existing port, including the write-role
+  assignment, with the shared contract suite run against the stub; (2) restart-safe read and
+  citation resolution, with the Azure-assisted integration lane.
 - **Completion evidence:** the port contract suite green against both offline backends, and one
   recorded Azure-assisted run in which a completed turn is written to Cosmos, the app restarted,
   and the same turn read back with resolving citations. The offline suite also asserts that each
@@ -1360,15 +1218,15 @@ scoped to runtime paths and use exact symbols.
   submission each seed a new investigative turn.
 - **Entry criteria:** S-7 durable records exist and read back after restart, so retained state is
   real rather than in-process.
-- **Existing foundation retained:** the S-1 `InteractionKind` type, whose shape is fixed and not
+- **Existing foundation retained:** the `InteractionKind` type, whose shape is fixed and not
   reopened here; the S-5 task-labelled model-access seam, which gains the follow-up label this
   slice was the one deferred to add (`decisions.md` D-002 already fixed its deployment); the S-7
   record and its resolver; the S-2 brief projection, which handoff reuses as a projection rather
   than re-rendering.
 - **Code and data to delete:** none.
 - **Code to replace:** none.
-- **New implementation:** the request-shape classifier itself, which S-1 never built, producing a
-  value of the S-1 `InteractionKind` type from request shape or explicit UI action; the follow-up
+- **New implementation:** the request-shape classifier, producing a value of the existing
+  `InteractionKind` type from request shape or explicit UI action; the follow-up
   task on the primary deployment through the Supervisor; the retained-state validation rules;
   deterministic handoff projection; redirect and supplied-context seeding; the read endpoint.
 - **Constraints stated explicitly, because the old intent taxonomy could otherwise reappear as a
@@ -1434,9 +1292,12 @@ scoped to runtime paths and use exact symbols.
   metadata promotion, then passage-budget truncation. The feed shows used knowledge and the next
   proposal's informing references.
 - **Course concepts:** RAG and hybrid retrieval.
-- **Entry criteria:** S-5 authorization is stable, and the minimum demonstration-data repair set is
-  agreed before implementation starts. The knowledge metadata shape is **not** an entry criterion,
-  because no earlier slice owns it; it is this slice's first decision, below.
+- **Entry criteria:** S-5 authorization is stable. The demonstration-data repair this slice once
+  had to perform is already in the corpus: the cross-incident log leak is gone, the deployment-note
+  causal and red-herring annotations are removed, the inc-003 and inc-007 throughput contradiction
+  is repaired, and the recurrence-chain timing follows its causal log. `inc-007` is usable as
+  authored and needs no fixture variant. The knowledge metadata shape is **not** an entry
+  criterion, because no earlier slice owns it; it is this slice's first decision, below.
 - **First decision, taken inside this slice:** establish and record the minimal knowledge metadata
   contract that retrieval and admission actually require, then begin the vector and retrieval
   implementation. Today `kind` maps cleanly onto the three logical collections but no category or
@@ -1449,35 +1310,17 @@ scoped to runtime paths and use exact symbols.
 - **Code and data to delete:** `retrieval/embeddings.py` and the sentence-transformers stack,
   `retrieval/reranker.py` and the CrossEncoder path, `retrieval/index.py` and the local
   transformer vector-index stack, the unreachable rerank factory mode, the `reranker` test marker
-  and its tests, `RERANK_CANDIDATES`, and the divergent `bge-*` configuration. Verify here whether
-  `data/profiles/` calibration scripts are still an input to corpus regeneration; if they are not,
-  S-12 archives them.
-  Divergence: that verification is already done, 2026-08-09. `data/profiles/rcaeval_profile.json`
-  IS a live input: `data/synthetic/generate.py` reads it to calibrate noise density, confirmed by
-  running the generator, which reports `evidence refs required=42 resolved=42`. It is therefore
-  retained, and the archiving branch this bullet points S-12 at does not apply. Neither this slice
-  nor S-12 needs to re-verify or archive it.
+  and its tests, `RERANK_CANDIDATES`, and the divergent `bge-*` configuration. `data/profiles/`
+  is retained: `rcaeval_profile.json` is a live input to corpus regeneration, so it is not part of
+  this deletion set and S-12 does not archive it.
 - **Code to replace:** the retrieval factory and adapter mapping, superseded by the D-003 stack;
   the pointer-only hit shape, superseded by passage-bearing results, since an agent cannot reason
   over a pointer.
-- **Required pre-demonstration corpus repair:** before using `inc-007`, remove the log line that
-  names `inc-003`, remove causal and red-herring spoilers from tool-visible deployment notes,
-  correct the inc-003 and inc-007 throughput contradiction, and repair the timing needed for the
-  recurrence chain. Apply the corpus repair protocol. Retrieval influence must not be claimed when
-  ordinary evidence already states the answer. If the minimum repair cannot land in this slice, use
-  a controlled credible `inc-004` fixture variant instead and record that limitation.
-  Divergence: this minimum repair, and more of the full corpus repair besides, already landed ahead
-  of this slice as a standalone corpus repair, merged to main 2026-08-09 (#56). The `evt-007-01`
-  leak is removed, all five deployment-note causal/red-herring annotations are removed (not only
-  the ones this slice needed), the inc-003/inc-007 `msg_processed_rate` contradiction is repaired,
-  and the `active_message_count` onset now follows the causal log rather than preceding it. Entry
-  into this slice no longer needs to redo or gate on this bullet; see `status.md` - "Data and Corpus
-  Status" for the verification evidence.
 - **New implementation:** the categorized `knowledge` container and its seed script; Azure OpenAI
   embeddings; Cosmos vector query; lexical scoring; RRF; deterministic identifier and metadata
   promotion; passage-budget truncation; knowledge admission; and informing references on proposals.
-  Verify Cosmos vector viability first. If it is not viable, stop and make the explicit D-003
-  revision before using an in-process cosine scan.
+  The dense-retrieval stack is settled and verified against a live vector-capable container, so
+  this slice implements it rather than spiking it.
 - **Corpus setup identity, settled here and reused by S-10:** seeding writes corpus data; the
   application only ever reads it. Use the simplest posture that holds that line:
   - the CI principal, or a documented developer setup principal, performs the seed;
@@ -1524,16 +1367,15 @@ scoped to runtime paths and use exact symbols.
 - **Azure impact:** Azure-assisted local required. The embedding deployment and the `knowledge`
   container are added additively; no replica, authentication, or deletion change.
 - **Decision gates:** the minimal knowledge metadata contract is recorded in the first PR, before
-  implementation. D-003 resolves in the first technical PR. D-006 retrieval-influence selection
-  resolves after the minimum data repair. All three are written into the owning document per
-  operating rule 10.
+  implementation. The D-006 retrieval-influence selection resolves in this slice. Both are written
+  into the owning document per operating rule 10. Vector viability is already settled and is
+  consumed here, not re-established.
 - **Explicit non-goals:** no structured query, no further-evidence cycle, no full corpus repair,
   which is S-12.
 - **Small PR breakdown:** (1) the minimal knowledge metadata contract, recorded and applied to KB
-  frontmatter; (2) minimum demonstration-data repair; (3) D-003 viability spike and the recorded
-  outcome; (4) container, seed, and embedding setup; (5) retrieval, fusion, and deterministic
-  promotion; (6) informing references, feed integration, and the lexical baseline.
-- **Completion evidence:** the repaired `inc-007` or the controlled `inc-004` variant shows a
+  frontmatter; (2) retrieval, fusion, and deterministic promotion over the seeded container; (3)
+  informing references, feed integration, and the lexical baseline.
+- **Completion evidence:** `inc-007` shows a
   different investigation action because of retrieved knowledge, with the informing reference
   visible in the feed and the same influence readable from the run's spans, the promotion decision
   included.
@@ -1680,15 +1522,8 @@ tests, and its comments may legitimately use.
   path.
 - **Scope guard:** keep exactly seven authored incidents across five families. Do not add an eighth
   or ninth incident in this plan.
-- **Code and data to delete:** stale data documentation, including the `data/answer_key/README.md`
-  claim of six scenarios and the provenance sources that `provenance.md` does not support; the
-  `data/profiles/` external calibration pipeline and its cache dependence, if S-9 established that
-  it is no longer an input.
-  Divergence: the `data/answer_key/README.md` scenario-count claim was already fixed in the
-  2026-08-08 corpus repair (#56). The `data/profiles/` conditional is already resolved the other
-  way, 2026-08-09: the calibration profile IS a live corpus-generation input, so it is retained and
-  this slice deletes nothing under `data/profiles/`. The `provenance.md` sources are untouched and
-  still this slice's to do.
+- **Code and data to delete:** the provenance sources that `provenance.md` does not support.
+  `data/profiles/` is retained as a live corpus-generation input and is not deleted here.
 - **Code to replace:** the affected generator inputs, per the corpus repair protocol; goldens
   regenerated rather than hand-edited.
 - **New implementation, and nothing beyond it:** the further-evidence proposal; authorization
@@ -1712,38 +1547,15 @@ tests, and its comments may legitimately use.
   repeatability subset is wired and runnable. Both the D-006 selections and the repeatability
   subset are direct S-13 inputs: S-13 assembles its report from them rather than re-selecting
   scenarios or re-deriving the subset.
-- **Dataset or fixture work:** repair remaining mechanism-implied telemetry (inc-002 RU, inc-005
-  hit rate, inc-006 cache evidence), remaining effect-before-cause orderings and postmortem
-  timelines, stale data documentation, and templated leakage. Revise an existing scenario,
-  preferably inc-006, to represent multiple contributing failures while retaining its family and
-  identifier. Represent benign and transient behavior through a controlled non-incident fixture
-  derived from existing ambient events, not a new authored incident. Execute every change through
-  the corpus repair protocol.
-  Divergence: everything in this bullet except templated leakage already landed ahead of this
-  slice as a standalone corpus repair, merged to main 2026-08-09 (#56). inc-002 (`used_ru_pct`),
-  inc-005 (`hit_rate`), and inc-006 (`stale_read_rate`) each gained the missing evidence reference;
-  the inc-004/inc-006 log-ordering inversions and the inc-003/inc-007 metric-onset-before-cause
-  inversions are corrected; the three historical postmortem timelines are retimed within their
-  telemetry window with real dates and resolvable deploy ids; `data/answer_key/README.md`'s stale
-  scenario count is fixed; inc-006 is revised in place to require two independently evidenced
-  contributing signals, retaining its family and identifier; and
-  `data/answer_key/benign_fixture.yaml` represents the benign/transient class from the existing
-  ambient events, structurally distinct from the seven scenarios and carrying no golden record.
-  Templated noise realism (905 identical error strings, no pre-incident baseline history) is
-  untouched and still this slice's to do. The D-006 remaining corpus selections, the repeatability
-  subset, and the further-evidence mechanism itself are also still this slice's to do: the
-  divergence covers only the dataset-repair bullet above. See `status.md` - "Data and Corpus
-  Status" for verification evidence.
-- **Azure impact:** Local deterministic plus selected Azure-assisted model verification for the
-  live back-edge demonstration.
-- **Decision gates:** D-006 remaining corpus selections resolve at the end of this slice, and are
-  recorded in `decisions.md` per operating rule 10. The evaluation artifact home was settled in
-  S-2; this slice only assigns scenarios into it.
-- **Explicit non-goals:** no eighth incident, no new scenario family, no judge, no report assembly.
-- **Small PR breakdown:** (1) remaining generator and chronology repair; (2) revise one existing
-  incident for multi-contributor coverage and add the benign fixture variant; (3) the
-  further-evidence mechanism and its authorization tests; (4) D-006 decision update, regenerated
-  goldens, and the repeatability subset.
+- **Dataset or fixture work:** repair templated noise realism, which is the last outstanding
+  corpus defect: 905 identical error strings and no pre-incident baseline history. Mechanism-implied
+  telemetry, effect-before-cause orderings, postmortem timelines, stale data documentation, the
+  multi-contributor revision of inc-006, and the benign non-incident fixture are already in the
+  corpus and are consumed here rather than performed. Execute any change through the corpus repair
+  protocol.
+- **Small PR breakdown:** (1) templated-noise repair and regenerated goldens; (2) the
+  further-evidence mechanism and its authorization tests; (3) D-006 decision update and the
+  repeatability subset.
 - **Completion evidence:** a live back-edge on inc-004, and the corpus audit passing without
   expanding the authored incident count.
 - **Status updates required after landing:** the further-evidence row in section 9 moves to
@@ -1771,24 +1583,10 @@ then immediately require a regeneration against a changed environment.
   `operational-records` container under the same read-only posture; the model-import trick and the
   az-CLI restart technique from the old smoke script, reused for the citations-resolve-after-restart
   check. This slice verifies each of these; it does not create any of them for the first time.
-- **Code and data to delete:** performed only after the verification in each case: the live
-  `checkpoints` and `investigation-index` containers; the old job-record data or container, per the
-  S-7 migration decision; the interim smoke installed in S-4; the owner-confirmed orphan
-  `rytesting`, only with explicit approval. Divergence: the `rytesting` deletion was completed
-  ahead of this slice, during Preparation (2026-08-08), not withheld for A-1: user confirmed, then
-  deleted via `az resource delete` on the nested `proj-default` project followed by
-  `az cognitiveservices account delete`. `az cognitiveservices account show` returns
-  `ResourceNotFound`; `az cognitiveservices account list-deleted` shows it soft-deleted, not yet
-  purged.
-  Second divergence: the live `checkpoints` and `investigation-index` containers, and the old
-  job-record data this bullet points at the S-7 migration decision for, are also already gone as of
-  2026-08-09. The Cosmos account was deleted and recreated to gain the vector-search capability,
-  which cannot be added to an existing account, so all three disappeared with the account rather
-  than through a verified per-container deletion here. Their contents were inspected before the
-  delete and were entirely rejected-architecture data. This also pre-empts the S-7 compatibility
-  check: there is no legacy `investigations` container left to reuse, so that check's three
-  outcomes collapse to a fresh container with the accepted partition key. What remains this slice's
-  to do is the interim smoke's removal and the eight-check suite.
+- **Code and data to delete:** performed only after the verification in each case: the interim
+  smoke installed in S-4, and any orphaned resource confirmed with the owner, only with explicit
+  approval. No rejected-architecture container remains to delete; the live resource set is already
+  the accepted one.
 - **Code to replace:** `scripts/smoke_deployment.py`, superseded by the eight accepted checks.
 - **New implementation:** the eight-check hosted smoke: start, authentication, model reachability,
   Cosmos role access, one streamed turn, citations resolving after restart, telemetry arrival, and
@@ -1830,9 +1628,8 @@ then immediately require a regeneration against a changed environment.
 - **Explicit non-goals:** no Key Vault, VNet, second app, second frontend, or telemetry viewer; no
   new capability.
 - **Small PR breakdown:** (1) Bicep convergence on the accepted resource set; (2) the eight-check
-  smoke replacing the interim smoke; (3) separately approved live container deletion; (4)
-  separately approved orphan cleanup (the `rytesting` orphan is already deleted as of 2026-08-08,
-  ahead of this slice; see the divergence note above).
+  smoke replacing the interim smoke; (3)
+  separately approved orphan cleanup, if any orphan remains.
 - **Completion evidence:** hosted streamed turn, persisted artifact, citations resolving after
   restart, and a repeated deployment that converges. For telemetry, the concrete artifact is the two
   recorded queries themselves, with their text and their returned trails: one that reconstructs a
@@ -1854,7 +1651,7 @@ Live state is proven by query, not by reading Bicep.
 | Replicas are still zero to one | `az containerapp show -g rg-opspilot -n opspilot-api --query "properties.template.scale"` shows min 0, max 1 |
 | No orphan resources remain unapproved | `az resource list -g rg-opspilot --query "[].name"` matches the Bicep output set, or each difference is explicitly approved |
 | Application identity is read-only on corpus containers | The role assignments show the app identity with data-reader scope on `knowledge` and `operational-records`, and no write scope |
-| Application identity can write completed turns | The role assignments show the app identity with data-write scope on `investigations` (or the S-7 outcome-3 replacement container) and no other container |
+| Application identity can write completed turns | The role assignments show the app identity with data-write scope on `investigations` and no other container |
 | Hosted smoke is exactly the accepted suite | The smoke script defines eight checks and no assertion references approval, polling, or job status |
 | A known turn is reconstructable by correlation | Querying Application Insights on the smoke turn's `turn_id` returns startup, request and turn, stage, model, capability, grounding, commit, and terminal outcome, joined by fields rather than by message text |
 | A failure is diagnosable from telemetry alone | The deliberate, reversible failure check yields the stage, the operation category, the correlation identity, and a sanitized reason, and the emitted record contains no secret, token, prompt, or raw payload |
@@ -1880,12 +1677,8 @@ Live state is proven by query, not by reading Bicep.
   the judge, the baseline comparisons, and report assembly over that spine, not re-measuring any
   item on it.
 - **Code and data to delete:** the material parked in S-4, now finally deleted or archived by
-  explicit decision: old numeric scorecards, stale rerank claims, the RCAEval probe and its
-  fixtures, and the stub harness. The standalone judge configuration retained since S-0 is removed
+  explicit decision: old numeric scorecards, stale rerank claims, and the stub harness. The standalone judge configuration retained since S-0 is removed
   here, replaced by D-005 task routing.
-  Divergence: the RCAEval probe and its fixtures are already deleted as of 2026-08-09, when golden
-  scenario records superseded them, so this slice has no keep-or-delete call left to make on them.
-  The rest of this bullet is untouched and still this slice's to do.
 - **Code to replace:** the remaining scorecard vocabulary, superseded by the four accepted layers.
 - **New implementation:** the versioned judge rubric, dispatched through the existing S-5
   task-labelled model-access seam on the primary deployment, not a separate runtime model path; the
@@ -1957,7 +1750,7 @@ Live state is proven by query, not by reading Bicep.
   and screenshots if useful.
 - **Contract introduced or stabilized:** none.
 - **Telemetry and activity impact:** none.
-- **Deterministic tests:** feed grouping remains covered by the S-1 projection fidelity tests.
+- **Deterministic tests:** feed grouping remains covered by the existing projection fidelity tests.
 - **Evaluation increment:** none.
 - **Dataset or fixture work:** none.
 - **Azure impact:** Hosted verification only; no infrastructure change.
@@ -2051,7 +1844,7 @@ This plan is ready to execute when review confirms:
 13. every deletion checkpoint names an exact, scoped proving command, and no checkpoint rejects an
     accepted implementation;
 14. every contract has a stabilization point and is not reshaped afterwards;
-15. D-003, D-004, D-005, and D-006 have resolution deadlines, each status section 17 clarification
+15. every pending decision has a resolution deadline, each status section 17 clarification
     has an owning slice, and every resolution updates the owning authoritative document or
     `decisions.md`;
 16. the local, Azure-assisted, and hosted posture is stated for every slice; destructive
@@ -2133,8 +1926,6 @@ contract; Delete means it dies with its subject.
 | `test_tracing.py` | Keep | S-1, A-0 | Extended for turn identity and the real exporter |
 | `test_triage.py` | Delete | S-5 | Dies with `triage.py` |
 | `test_triager.py` | Delete | S-5 | Dies with the LLM triager |
-| `test_wild.py` | Deleted | Done 2026-08-09 | Deleted with the RCAEval probe when golden scenario records superseded it; neither S-4 nor S-13 has anything left to do here |
-| `tests/fixtures/wild_ob/` | Deleted | Done 2026-08-09 | Same disposition as `test_wild.py` |
 | `tests/conftest.py` | Keep | Across slices | Evolves with the fixtures it serves |
 
 New suites are named in the path-level detail table. Any test module added after this plan was
