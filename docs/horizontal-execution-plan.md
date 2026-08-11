@@ -335,24 +335,15 @@ registry, with validated parameters, scope limits, and the deadline they were gi
 **Requires.** 1.3: the populated operational-records container. 2.1: the two-axis result contract
 each adapter translates into.
 
-1.3 seeded and verified `operational-records` but did not implement "absent preparation is a
-deployment-time failure and must present as one", because at that point nothing read the container
-and a readiness check would have gated deployment on data no code consumed. This slice creates the
-first consumer, so the obligation attaches here: once these adapters read the container, an empty or
-missing container must fail at deployment rather than at turn time. The container itself is
-populated and does not need reseeding; what is missing is the failure behavior, not the data.
+1.3 left "absent preparation is a deployment-time failure and must present as one" unimplemented,
+because nothing read the container and a readiness check would have gated deployment on data no code
+consumed. This slice creates the first consumer, so the obligation attaches here: once these
+adapters read the container, an empty or missing container must fail at deployment rather than at
+turn time. The data is in place; the failure behavior is what is missing.
 
 **Closes.** No required behavior. `status.md` - "Detailed Missing and Partial Implementation
 Register", Evidence Access Layer and admission records "Closed static capability registry" as
 implemented and reusable and "Read-only operational capabilities" as implemented and well tested.
-
-**Inherited obligation, deliberately left open by 1.3.** 1.3 seeded and verified
-`operational-records` but did not implement "absent preparation is a deployment-time failure and
-must present as one", because at that point nothing read the container and a readiness check would
-have gated deployment on data no code consumed. This slice creates the first consumer, so the
-obligation attaches here: once these adapters read the container, an empty or missing container
-must fail at deployment rather than at turn time. The container itself is populated and does not
-need reseeding; what is missing is the failure behavior, not the data.
 
 **Retires.** `status.md` - "Deletion and Replacement Register", "Duplicated logic to collapse":
 "Corpus path resolution," whose two owners disappear with the file-backed corpus repository, and
@@ -497,39 +488,21 @@ identifiers.
 **Requires.** 1.3: the populated knowledge container and the embedding deployment. 2.1 and 2.3: the
 result contract and admission, which retrieval results use like any other capability.
 
-1.3 seeded and verified the `knowledge` container but did not implement "absent preparation is a
-deployment-time failure and must present as one", because nothing read the container yet and a
-readiness check would have gated deployment on data no code consumed. This slice creates the reading
-half, so the obligation attaches here alongside 2.2's. The container holds 196 embedded passages and
-does not need reseeding; what is missing is the failure behavior, not the data.
+1.3 left "absent preparation is a deployment-time failure and must present as one" unimplemented,
+because nothing read the container and a readiness check would have gated deployment on data no code
+consumed. This slice creates the reading half, so the obligation attaches here alongside 2.2's. The
+data is in place; the failure behavior is what is missing.
 
-Established by 1.3 and not re-verified here: the container carries a 1536-dimension cosine vector
-policy with a diskANN index, `/embedding` is excluded from the normal index, and `VectorDistance()`
-was demonstrated returning the semantically correct passage with a same-domain distractor present
-and not surfacing. That discharges the D-003 viability question the blocker table below used to
-assign here. Also useful and easy to get wrong: a container's vector embedding policy is NOT fixed
-at creation. It can be added to a container without one, and a path can be removed and re-added at a
-different dimension; only in-place modification is refused. The account capability is the
-creation-only part, and the partition key is the immutable one.
+The container's vector configuration is established by 1.3 and not re-verified here: a
+1536-dimension cosine policy with a diskANN index, `/embedding` excluded from the normal index, and
+`VectorDistance()` returning the semantically correct passage without a same-domain distractor
+surfacing. One property is easy to get wrong and worth stating: a container's vector embedding
+policy is not fixed at creation, and a path can be removed and re-added at a different dimension.
+Only in-place modification is refused. The account capability is the creation-only part, and the
+partition key is the immutable one.
 
 **Closes.** `status.md` - "Detailed Missing and Partial Implementation Register", Retrieval:
 "Passage-bearing semantic retrieval."
-
-**Inherited obligation, deliberately left open by 1.3.** 1.3 seeded and verified the `knowledge`
-container but did not implement "absent preparation is a deployment-time failure and must present
-as one", because nothing read the container yet and a readiness check would have gated deployment
-on data no code consumed. This slice creates the reading half, so the obligation attaches here
-alongside 2.2's. The container holds 196 embedded passages and does not need reseeding; what is
-missing is the failure behavior, not the data.
-
-**Already established by 1.3, so this slice does not re-verify it.** The container carries a
-1536-dimension cosine vector policy with a diskANN index, `/embedding` is excluded from the normal
-index, and `VectorDistance()` was demonstrated returning the semantically correct passage with a
-same-domain distractor present and not surfacing. That discharges the D-003 viability question the
-blocker table below used to assign here. Also useful and easy to get wrong: a container's vector
-embedding policy is NOT fixed at creation. It can be added to a container without one, and a path
-can be removed and re-added at a different dimension; only in-place modification is refused. The
-account capability is the creation-only part, and the partition key is the immutable one.
 
 **Retires.** `status.md` - "Deletion and Replacement Register", "Misaligned implementations":
 "Retrieval returns pointers without passages" and "Local sentence-transformers embeddings"; and "No
