@@ -64,7 +64,7 @@ from opspilot.repository import build_investigation_repository
 from opspilot.state import Intent
 from opspilot.stream.contracts import IdentityEvent, StreamCloseMarker
 from opspilot.stream.projection import ActivityProjector, emit
-from opspilot.tools.contracts import IncidentRecord
+from opspilot.tools.contracts import Completeness, IncidentRecord
 from opspilot.turn.identity import start_turn
 
 _log = logging.getLogger("opspilot.api")
@@ -556,23 +556,26 @@ def ready(
             errors.append(ReadinessError(component=name, code=code))
 
     def repository_ok() -> bool:
+        # This one check wants the seed incident actually present, so it reads the completeness
+        # too: a reachable but unseeded repository answers `succeeded` with `empty`, which is a
+        # true answer to the query and still not a ready repository.
         result = svc.get_incident(incident_id="inc-004")
-        return _tool_ok(result) and bool(result.results)
+        return result.answered and result.completeness is Completeness.COMPLETE
 
     def logs_ok() -> bool:
-        return _tool_ok(
-            svc.query_logs(
-                service="checkout-api",
-                start_time="2026-06-28T10:00:00Z",
-                end_time="2026-06-28T11:00:00Z",
-            )
-        )
+        # Readiness asks only whether the source answered. A window holding no logs is
+        # `succeeded`/`empty`, which is a healthy source reporting nothing, not a failure.
+        return svc.query_logs(
+            service="checkout-api",
+            start_time="2026-06-28T10:00:00Z",
+            end_time="2026-06-28T11:00:00Z",
+        ).answered
 
     def retrieval_ok() -> bool:
         return (
             backend != "unavailable"
             and backend == RETRIEVAL_BACKEND
-            and _tool_ok(svc.search_runbooks(query="payment timeout", k=1))
+            and svc.search_runbooks(query="payment timeout", k=1).answered
         )
 
     record("corpus", _check(lambda: corpus.ok), "CORPUS_INCOMPLETE")
@@ -668,10 +671,6 @@ def start_turn_endpoint(
         _predefined_turn_stream(body.incident_id, incident, request),
         media_type="application/x-ndjson",
     )
-
-
-def _tool_ok(result) -> bool:
-    return getattr(result, "status", "error") == "ok"
 
 
 def _safe_backend(svc) -> str:

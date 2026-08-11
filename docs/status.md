@@ -240,7 +240,7 @@ rather than contractual.
 | Run | Result |
 | --- | --- |
 | `ruff check` | Pass |
-| `ruff format --check` | 66 files would reformat. CI does not currently enforce formatting |
+| `ruff format --check` | 66 files would reformat at inspection, 46 now. Formatting is enforced, scoped to the files a change touches, by CI and by the `pre-commit` hook; the unformatted remainder is the tree no change has touched since |
 | `mypy src` | 2 errors, both in the WIP dispatch wiring at `api.py:862` and `api.py:866` |
 | `az bicep build` | Pass |
 | CI marker lane: `pytest -m "not reranker and not llm"` | 31 failed, 351 passed, 5 deselected. Repeated recorded wall times were 11m28s and 15m36s |
@@ -1029,7 +1029,7 @@ never re-verified in CI, and it was produced with `bge-small-en-v1.5` while conf
 | `openai`, `azure-identity` (`llm` group) | Keep | Azure OpenAI adapter, keyless auth |
 | `azure-cosmos` (`checkpoint` group) | Keep (regroup) | Needed for the Investigation Record and knowledge/operational containers |
 | `numpy`, `pandas` (`data` group) | Keep | Corpus generators; drop from the core CI lane if unused there |
-| `ruff`, `mypy`, `pytest`, `httpx` (dev) | Keep | Enforce `ruff format` in CI or stop claiming it |
+| `ruff`, `mypy`, `pytest`, `httpx` (dev) | Keep | `ruff format` is enforced, scoped to the files a change touches |
 | `langgraph`, `langchain-core` | Remove | D-001 rejects a graph runtime; brings `langsmith`, `langgraph-sdk` transitives |
 | `langgraph-checkpoint-sqlite`, `langchain-azure-cosmosdb` | Remove | Checkpointing is a deliberate absence; drags `sqlite-vec` into the runtime image |
 | `sentence-transformers` (`eval` group, torch + CUDA stack) | Remove | D-003 uses Azure OpenAI embeddings; CrossEncoder reranker is rejected |
