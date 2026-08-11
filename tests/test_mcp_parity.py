@@ -31,7 +31,11 @@ def _assert_parity(svc: ToolService, server, name: str, arguments: dict) -> None
     direct = svc.call(name, **arguments)
     over_mcp = _via_mcp(server, name, arguments)
     direct_json = json.loads(direct.model_dump_json())
-    assert over_mcp["status"] == direct.status
+    # Both axes cross the transport separately. Asserting only that "it worked" over MCP would
+    # let the protocol path collapse them and still pass.
+    assert over_mcp["outcome"] == direct.outcome.value
+    assert over_mcp["completeness"] == direct.completeness.value
+    assert "status" not in over_mcp
     assert over_mcp["evidence_refs"] == direct.evidence_refs
     assert over_mcp["results"] == direct_json["results"]
     assert over_mcp["error"] == direct.error
@@ -52,18 +56,25 @@ def test_parity_deterministic_tools():
     svc = ToolService()
     server = build_server(svc)
     _assert_parity(svc, server, "get_incident", {"incident_id": "inc-001"})
-    _assert_parity(svc, server, "get_incident", {"incident_id": "inc-999"})     # empty result
-    _assert_parity(svc, server, "get_incident", {"incident_id": ""})            # validation error
-    _assert_parity(svc, server, "query_logs", {
-        "service": "payment-api",
-        "start_time": "2026-06-28T09:45:00Z", "end_time": "2026-06-28T10:45:00Z",
-    })
+    _assert_parity(svc, server, "get_incident", {"incident_id": "inc-999"})  # empty result
+    _assert_parity(svc, server, "get_incident", {"incident_id": ""})  # validation error
+    _assert_parity(
+        svc,
+        server,
+        "query_logs",
+        {
+            "service": "payment-api",
+            "start_time": "2026-06-28T09:45:00Z",
+            "end_time": "2026-06-28T10:45:00Z",
+        },
+    )
 
 
 def test_mcp_rejects_unexposed_tool():
     server = build_server()
     over_mcp = _via_mcp(server, "get_metrics", {"service": "cosmos-db"})  # real tool, not exposed
-    assert over_mcp["status"] == "error" and over_mcp["error"] == "unknown tool"
+    assert over_mcp["outcome"] == "rejected" and over_mcp["error"] == "unknown tool"
+    assert over_mcp["completeness"] == "not_applicable"
 
 
 def test_parity_retrieval_tool():

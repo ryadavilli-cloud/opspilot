@@ -18,13 +18,19 @@ from __future__ import annotations
 from collections.abc import Iterable
 
 from opspilot.diagnosis.contracts import Hypothesis, SufficiencyState
+from opspilot.evidence.references import try_parse
 
 SEV1_REQUIRED = ("logs", "metrics", "deps", "deploys")  # deploys stands in for "recent change"
 
 
 def evidence_class(ref: str) -> str:
-    """The evidence class of a ref is its grammar prefix (`deploys:svc:id` -> `deploys`)."""
-    return ref.split(":", 1)[0]
+    """The evidence class of a ref is its grammar prefix (`deploys:svc:id` -> `deploys`).
+
+    Delegates to the single reference parser rather than splitting the string here; a reference
+    that parser rejects has no class, and counting one would let a malformed ref satisfy coverage.
+    """
+    parsed = try_parse(ref)
+    return parsed.prefix if parsed else ""
 
 
 def _coverage(severity: str, gathered: set[str]) -> tuple[float, list[str]]:
@@ -43,7 +49,7 @@ def compute_sufficiency(
     plan_can_advance: bool,
 ) -> SufficiencyState:
     produced = set(produced_refs)
-    gathered = {evidence_class(r) for r in produced}
+    gathered = {cls for cls in (evidence_class(r) for r in produced) if cls}
     coverage, required = _coverage(severity or "SEV3", gathered)
 
     cited = [c.ref for c in hypothesis.citations] if hypothesis else []

@@ -14,7 +14,11 @@ import pytest
 pytest.importorskip("sentence_transformers")
 pytest.importorskip("rank_bm25")
 
-from opspilot.tools.contracts import DocHit  # noqa: E402
+from opspilot.tools.contracts import (
+    Completeness,
+    DocHit,  # noqa: E402
+    ExecutionOutcome,
+)
 from opspilot.tools.service import ToolService  # noqa: E402
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -42,7 +46,7 @@ def svc() -> ToolService:
 
 def test_search_runbooks_returns_kb_docs_and_refs_resolve(svc):
     r = svc.search_runbooks(query="payment authorizations timing out", k=5)
-    assert r.status == "ok" and r.results
+    assert r.answered and r.results
     assert all(isinstance(h, DocHit) for h in r.results)
     assert all(h.kind in ("runbook", "architecture") for h in r.results)
     assert r.evidence_refs == [h.doc_id for h in r.results]
@@ -52,28 +56,29 @@ def test_search_runbooks_returns_kb_docs_and_refs_resolve(svc):
 
 def test_search_runbooks_ranked_and_metadata_filtered(svc):
     r = svc.search_runbooks(query="throttling", k=5, service="cosmos-db")
-    assert r.status == "ok" and r.results
+    assert r.answered and r.results
     assert all("cosmos-db" in h.services for h in r.results)
     assert r.results == sorted(r.results, key=lambda h: -h.score)
 
 
 def test_search_unknown_filter_is_empty_not_error(svc):
     r = svc.search_runbooks(query="anything", k=5, service="ghost-service")
-    assert r.status == "ok" and r.results == [] and r.error is None
+    assert r.answered and r.completeness is Completeness.EMPTY
+    assert r.results == [] and r.error is None
 
 
 def test_search_invalid_input_is_error(svc):
-    assert svc.search_runbooks(query="").status == "error"
+    assert svc.search_runbooks(query="").outcome is ExecutionOutcome.REJECTED
 
 
 def test_search_past_incidents_returns_postmortems(svc):
     r = svc.search_past_incidents(query="cosmos db 429 throttling on reads", k=3)
-    assert r.status == "ok" and r.results
+    assert r.answered and r.results
     assert all(h.kind == "postmortem" for h in r.results)
     for ref in r.evidence_refs:
         assert _kb_doc(ref) is not None, f"citation {ref} does not resolve to a KB doc"
 
 
 def test_search_tools_via_dispatcher(svc):
-    assert svc.call("search_runbooks", query="deployment rollback").status == "ok"
-    assert svc.call("search_past_incidents", query="service bus backlog").status == "ok"
+    assert svc.call("search_runbooks", query="deployment rollback").answered
+    assert svc.call("search_past_incidents", query="service bus backlog").answered

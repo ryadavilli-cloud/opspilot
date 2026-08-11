@@ -115,10 +115,12 @@ def test_tool_span_nests_under_node_and_inherits_trace(span_exporter):
 
     tool = next(s for s in span_exporter.spans if s.name == "tool.get_metrics")
     node = next(s for s in span_exporter.spans if s.name == "node.diagnose")
-    assert tool.trace_id == "t-9"                 # inherited from the node via the trace context
-    assert tool.parent_span_id == node.span_id    # nested under the node span
+    assert tool.trace_id == "t-9"  # inherited from the node via the trace context
+    assert tool.parent_span_id == node.span_id  # nested under the node span
     assert tool.attributes["tool_name"] == "get_metrics"
-    assert tool.attributes["status"] == "ok" and tool.attributes["result_count"] == 1
+    assert tool.attributes["execution_outcome"] == "succeeded"
+    assert tool.attributes["completeness"] == "complete"
+    assert tool.attributes["result_count"] == 1
 
 
 def test_model_span_captures_usage(span_exporter):
@@ -130,7 +132,9 @@ def test_model_span_captures_usage(span_exporter):
 
         def complete(self, messages, *, temperature=0.0):
             return ChatResult(
-                text="ok", model_id="gpt-5-mini", finish_reason="stop",
+                text="ok",
+                model_id="gpt-5-mini",
+                finish_reason="stop",
                 usage={"prompt_tokens": 12, "completion_tokens": 5},
             )
 

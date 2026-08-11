@@ -316,6 +316,17 @@ them turns an unreachable source into a clean bill of health.
 **Done when.** No path can produce a result outside the legal pairings, and no code reads a tool
 result as a boolean.
 
+**Already done, so this slice inherits it rather than performing it.** Separate work landed the
+contract on 2026-08-11 and both register rows above have been updated accordingly.
+`tools/contracts.py` carries the five execution outcomes, the four completeness values, and the
+legal-pairing table, enforced when the envelope is constructed rather than checked by a caller, so
+an illegal pairing cannot exist to be read. Every adapter assigns both axes at the single boundary
+in `tools/errors.py`, an unreachable retriever reports `unavailable` rather than a generic error,
+and the protocol boundary carries both axes across unchanged with parity asserted on each. One
+temporary collapse to the old binary remains for the legacy runtime, named in the coexistence
+register and deleted with that runtime. What is genuinely left for this slice is nothing; the
+retirement it names is complete.
+
 ### 2.2 Capability adapters over the operational-records container
 
 **Makes true.** The five operational capabilities read the operational-records container through the
@@ -334,6 +345,14 @@ populated and does not need reseeding; what is missing is the failure behavior, 
 **Closes.** No required behavior. `status.md` - "Detailed Missing and Partial Implementation
 Register", Evidence Access Layer and admission records "Closed static capability registry" as
 implemented and reusable and "Read-only operational capabilities" as implemented and well tested.
+
+**Inherited obligation, deliberately left open by 1.3.** 1.3 seeded and verified
+`operational-records` but did not implement "absent preparation is a deployment-time failure and
+must present as one", because at that point nothing read the container and a readiness check would
+have gated deployment on data no code consumed. This slice creates the first consumer, so the
+obligation attaches here: once these adapters read the container, an empty or missing container
+must fail at deployment rather than at turn time. The container itself is populated and does not
+need reseeding; what is missing is the failure behavior, not the data.
 
 **Retires.** `status.md` - "Deletion and Replacement Register", "Duplicated logic to collapse":
 "Corpus path resolution," whose two owners disappear with the file-backed corpus repository, and
@@ -375,6 +394,28 @@ rather than dropping it. That is a gap between the plan and the register, not a 
 
 **Retires.** `status.md` - "Deletion and Replacement Register", "Duplicated logic to collapse":
 "Evidence-reference parsing," whose two parsers become one reference model owned by admission.
+
+**Already done, so this slice inherits it rather than performing it.** The two parsers were
+collapsed into one reference model on 2026-08-11 by separate work, and the register row above has
+been retired accordingly. `src/opspilot/evidence/references.py` is that owner: one parser, one
+resolver, and one prefix-to-type map covering the four evidence and three knowledge prefixes.
+`diagnosis/sufficiency.py` and `diagnosis/admission.py` are now callers of it and hold no parsing
+of their own.
+
+Admission itself landed the same day, so all three "Closes" rows above are now recorded as
+implemented. `evidence/admission.py` is the only door into the evidence set: it admits only a
+`succeeded` result, assigns the reference, and produces a limitation naming the unanswered
+question for everything else. An authoritative absence is admitted as a positive observation
+carrying the queried scope, deterministically rather than as generated prose. `evidence/
+operations.py` holds the operation ledger separately from the admitted set, which is the unmapped
+citation this slice recorded as having no register row of its own; that remains true, and the
+ledger exists regardless. Operation references are opaque and turn-scoped, deliberately outside
+the reference grammar so the two identifier spaces cannot be confused.
+
+What is left for this slice is the part its own tests name and this work did not do: proving that
+a `partial` observation stays marked partial everywhere it travels downstream, which cannot be
+shown until something consumes admitted evidence. Admission marks it; nothing yet carries it
+onward.
 
 **Shape.** New admission code inside the Evidence Access Layer, plus a rewrite of the evidence half
 of turn state. The hash-keyed first-seen-wins merge that keeps contradictory observations separate
@@ -473,6 +514,22 @@ creation-only part, and the partition key is the immutable one.
 
 **Closes.** `status.md` - "Detailed Missing and Partial Implementation Register", Retrieval:
 "Passage-bearing semantic retrieval."
+
+**Inherited obligation, deliberately left open by 1.3.** 1.3 seeded and verified the `knowledge`
+container but did not implement "absent preparation is a deployment-time failure and must present
+as one", because nothing read the container yet and a readiness check would have gated deployment
+on data no code consumed. This slice creates the reading half, so the obligation attaches here
+alongside 2.2's. The container holds 196 embedded passages and does not need reseeding; what is
+missing is the failure behavior, not the data.
+
+**Already established by 1.3, so this slice does not re-verify it.** The container carries a
+1536-dimension cosine vector policy with a diskANN index, `/embedding` is excluded from the normal
+index, and `VectorDistance()` was demonstrated returning the semantically correct passage with a
+same-domain distractor present and not surfacing. That discharges the D-003 viability question the
+blocker table below used to assign here. Also useful and easy to get wrong: a container's vector
+embedding policy is NOT fixed at creation. It can be added to a container without one, and a path
+can be removed and re-added at a different dimension; only in-place modification is refused. The
+account capability is the creation-only part, and the partition key is the immutable one.
 
 **Retires.** `status.md` - "Deletion and Replacement Register", "Misaligned implementations":
 "Retrieval returns pointers without passages" and "Local sentence-transformers embeddings"; and "No

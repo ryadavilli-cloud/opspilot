@@ -545,7 +545,6 @@ Classifications per the required system: Keep, Keep with changes, Replace, Delet
 
 | Behavior | Current location | Accepted realization |
 | --- | --- | --- |
-| Binary tool-result status | `tools/contracts.py` and every tool | Independent execution-outcome and completeness axes |
 | One planner gathers and concludes | `diagnosis/llm_planner.py`, `composition.py` | Evidence Investigator gathers; RCA Analyst is sole completed-turn synthesis authority |
 | Numeric confidence | `diagnosis/contracts.py`, `contracts.py`, `config.py` | Leading, Plausible, and Weakly supported qualitative labels only |
 | Severity-scaled sufficiency stop rule | `diagnosis/sufficiency.py`, `router.py` | Investigator proposes continuation; Supervisor authorizes against computable conditions |
@@ -585,8 +584,6 @@ Classifications per the required system: Keep, Keep with changes, Replace, Delet
 | --- | --- | --- |
 | Citation grounding | `guardrails/policies.py` and `diagnosis/admission.py` | One Supervisor grounding gate over the accepted assessment |
 | Runtime implementation selection | `composition.py` and evaluation scripts | One composition root; fixed script exists only as an evaluation plan |
-| Evidence-reference parsing | `diagnosis/admission.py` and `diagnosis/sufficiency.py` | One reference model/parser |
-| Read-only capability inventory | static allowlist and registry keys | The explicit static capability registry |
 | Embedding/reranker model names | config and evaluation code | One task/config owner, with the model reranker removed |
 
 ## 9. Required-Capability Status Summary
@@ -663,10 +660,10 @@ owns order and PR structure.
 | --- | --- |
 | Closed static capability registry | Implemented and reusable |
 | Read-only operational capabilities | Implemented and well tested |
-| Two-axis result vocabulary | Scaffolded by the existing envelope; binary status must be replaced |
-| Deterministic evidence admission | Missing for observations |
-| Stable admitted-evidence and limitation structures | Missing |
-| `succeeded + empty` represented as a positive observation | Missing |
+| Two-axis result vocabulary | Implemented. Five execution outcomes and four completeness values in `tools/contracts.py`, with the legal-pairing table enforced on construction |
+| Deterministic evidence admission | Implemented. `evidence/admission.py` is the only door into the evidence set and assigns the reference |
+| Stable admitted-evidence and limitation structures | Implemented. Admitted observations carry identity, provenance, and completeness; limitations name the unanswered question. The operation ledger is kept separate |
+| `succeeded + empty` represented as a positive observation | Implemented. Admitted with a deterministic representation naming the queried scope and the absence |
 | Governed structured-query capability | Missing |
 
 ### 10.5 RCA Analyst and assessment
@@ -679,14 +676,15 @@ owns order and PR structure.
 | Supporting and weakening evidence per candidate | Missing |
 | Established and possible grounded elements | Missing |
 | Recommendation horizons and provenance categories | Missing |
-| Recorded limitations and further-evidence need | Missing |
+| Recorded limitations | Missing |
+| Further-evidence need and its one bounded cycle | Missing |
 | Deterministic brief projection | Partial rendering philosophy exists, but the contract is replaced |
 
 ### 10.6 Grounding and outcomes
 
 | Required behavior | Current standing |
 | --- | --- |
-| Citation resolution and role/type pairing | Partial ancestor exists |
+| Citation resolution and role/type pairing | Partial. `evidence/references.py` owns the one parser, resolver, and prefix-to-type map, so role compatibility is decidable from the reference type; the gate that applies it does not exist |
 | Operational support for established grounded elements | Missing |
 | Recommendation-provenance presence | Missing |
 | Limitation disclosure | Missing |
@@ -749,6 +747,7 @@ owns order and PR structure.
 | Required behavior | Current standing |
 | --- | --- |
 | Completed-turn artifact | Missing |
+| Investigation Record port and its commit contract | Missing |
 | One `investigations` container for that artifact | Existing container stores the wrong job record |
 | One categorized `knowledge` container | Implemented (2026-08-09), in the `retailease` database |
 | One `operational-records` container | Implemented (2026-08-09), hierarchically partitioned by `/kind` then `/service`. Holds 14,013 records across six kinds |
@@ -793,6 +792,7 @@ owns order and PR structure.
 | No answer leakage | Fails in `inc-007` and deployment notes |
 | Categorized knowledge metadata and embeddings | Implemented (2026-08-09). Category, provenance, extracted identifiers, entity metadata, nullable date, and a 1536-dimension embedding on every passage |
 | Operational-records seed process | Implemented (2026-08-09). `scripts/prepare_corpus.py` seeds both containers idempotently by upsert and verifies by reading back what it wrote (`--verify-only`) |
+| Absent preparation presents as a deployment-time failure | **Missing, and deliberately so.** Corpus preparation ran and both containers are populated, but nothing reads them yet: retrieval still loads knowledge from files in the image and the operational capabilities still read the file-backed repository. A readiness check today would gate deployment on data no code consumes. The obligation attaches to the first consumers, the operational-records adapters and passage retrieval, and is recorded in both of those slices rather than only here. The containers are seeded and need no reseeding; what is missing is the failure behavior |
 | Controlled variants clearly distinct from authored incidents | Missing as formal fixtures |
 
 ### 10.15 Azure and deployment
@@ -1111,15 +1111,20 @@ slice or a small decision update before code invents incompatible answers.
    `decisions.md` D-007 fixes the contract to five fields (`incident_id`, `scope`, `symptom`,
    `time_anchor`, `supplied_context`), deliberately excluding the raw `IncidentRecord`'s
    answer-leaking and ticket-workflow fields.
-2. **Evidence and knowledge reference encoding:** deterministic resolution needs one owner for
-   prefixes, keys, and parsing. The existing frozen grammar is a useful candidate and should be
-   evaluated rather than copied blindly.
+2. **Resolved (D-008).** Evidence and knowledge reference encoding: deterministic resolution needs
+   one owner for prefixes, keys, and parsing. The existing frozen grammar was evaluated rather than
+   copied, and `decisions.md` D-008 adopts it as the canonical encoding with the prefix as the
+   declared static discriminator for reference type, one authoritative prefix-to-type map,
+   `postmortem:` canonical and `past_incident:` retired, and admission rather than the capability as
+   the assigner of the evidence reference.
 3. **Stateless clarification token:** if the interface uses a short-lived normalization token, the
    signing, expiry, and payload rules need a small explicit contract. A simpler resubmission path
    should be preferred if it meets the requirement.
-4. **Evaluation artifact storage:** the report, fixtures, and historical runs need a physical
-   repository location before S-12. This should remain simple and must not become another telemetry
-   platform.
+4. **Resolved (D-009).** Evaluation artifact storage: the report, fixtures, and historical runs
+   needed a physical repository location. `decisions.md` D-009 fixes it as files under the existing
+   `eval/` tree, with committed `eval/fixtures/` and `eval/reports/` and an ignored `eval/runs/`,
+   and keeps authored golden scenario truth under `data/answer_key/`. No store, service, or hosted
+   resource is introduced.
 5. **D-004 evidence:** the current MCP SDK usage demonstrates in-process execution, same-service
    delegation, and canonical envelope passthrough. D-004 still needs the explicit library
    inspection and final record.

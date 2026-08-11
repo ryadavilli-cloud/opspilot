@@ -44,11 +44,11 @@ def test_chain_reconstructs_expected_deploy_evidence(scenario):
     incident_id = scenario["id"]
 
     incident = SVC.get_incident(incident_id=incident_id)
-    assert incident.status == "ok" and incident.results, f"{incident_id}: no incident"
+    assert incident.answered and incident.results, f"{incident_id}: no incident"
     opened_at = to_utc(incident.results[0].opened_at)
 
     alerts = SVC.get_correlated_alerts(incident_id=incident_id)
-    assert alerts.status == "ok" and alerts.results, f"{incident_id}: no alert storm"
+    assert alerts.answered and alerts.results, f"{incident_id}: no alert storm"
     affected_services = sorted({a.service for a in alerts.results})
 
     # Deployments in the window leading up to onset — "what changed" before the incident.
@@ -57,7 +57,7 @@ def test_chain_reconstructs_expected_deploy_evidence(scenario):
         start_time=opened_at - timedelta(hours=24),
         end_time=opened_at + timedelta(minutes=15),
     )
-    assert deploys.status == "ok"
+    assert deploys.answered
 
     expected = [r for r in scenario["expected_evidence"] if r.startswith("deploys:")]
     for ref in expected:

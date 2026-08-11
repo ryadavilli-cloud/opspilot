@@ -32,6 +32,7 @@ from opspilot.diagnosis.contracts import (
 )
 from opspilot.diagnosis.observe import summarize
 from opspilot.guardrails.policies import is_read_only
+from opspilot.tools.contracts import legacy_status
 
 if TYPE_CHECKING:
     from opspilot.tools.service import ToolService
@@ -64,35 +65,52 @@ def plan_investigation(ctx: DiagnosisContext) -> InvestigationPlan:
             DiagnosticQuestion(
                 key="deployments",
                 question="What changed before onset? (recent deployments to the affected services)",
-                call=ToolCallRequest(tool="get_deployments", params={
-                    "services": services,
-                    "start_time": (onset - timedelta(hours=DEPLOY_LOOKBACK_HOURS)).isoformat(),
-                    "end_time": (onset + timedelta(minutes=15)).isoformat(),
-                }),
+                call=ToolCallRequest(
+                    tool="get_deployments",
+                    params={
+                        "services": services,
+                        "start_time": (onset - timedelta(hours=DEPLOY_LOOKBACK_HOURS)).isoformat(),
+                        "end_time": (onset + timedelta(minutes=15)).isoformat(),
+                    },
+                ),
             ),
             DiagnosticQuestion(
                 key="error_logs",
                 question="Are there error logs on the customer-facing service around onset?",
-                call=ToolCallRequest(tool="query_logs", params={
-                    "service": trigger, "level": "error",
-                    "start_time": window_start, "end_time": window_end,
-                }),
+                call=ToolCallRequest(
+                    tool="query_logs",
+                    params={
+                        "service": trigger,
+                        "level": "error",
+                        "start_time": window_start,
+                        "end_time": window_end,
+                    },
+                ),
             ),
             # Counter-evidence: before trusting a deploy, check whether the trigger's downstream
             # dependencies are the real story (the inc-004 red-herring discriminator).
             DiagnosticQuestion(
                 key="dependency_health",
                 question="What does the customer-facing service depend on? (blast radius)",
-                call=ToolCallRequest(tool="get_service_dependencies", params={
-                    "service": trigger, "direction": "downstream",
-                }),
+                call=ToolCallRequest(
+                    tool="get_service_dependencies",
+                    params={
+                        "service": trigger,
+                        "direction": "downstream",
+                    },
+                ),
             ),
             DiagnosticQuestion(
                 key="downstream_metrics",
                 question="Do the trigger's own metrics show degradation in the window?",
-                call=ToolCallRequest(tool="get_metrics", params={
-                    "service": trigger, "start_time": window_start, "end_time": window_end,
-                }),
+                call=ToolCallRequest(
+                    tool="get_metrics",
+                    params={
+                        "service": trigger,
+                        "start_time": window_start,
+                        "end_time": window_end,
+                    },
+                ),
             ),
         ],
     )
@@ -120,16 +138,28 @@ def run_cycle(
             stop = StopReason(reason="iteration_limit", detail=f"hit max_iters={plan.max_iters}")
             break
         if not is_read_only(q.call.tool):  # read-only tool policy
-            observations.append(ToolObservation(
-                question=q.question, tool=q.call.tool, status="blocked:not_read_only",
-                evidence_refs=[], result_count=0))
+            observations.append(
+                ToolObservation(
+                    question=q.question,
+                    tool=q.call.tool,
+                    status="blocked:not_read_only",
+                    evidence_refs=[],
+                    result_count=0,
+                )
+            )
             newly_answered.add(q.key)
             continue
         result = service.call(q.call.tool, **q.call.params)
-        observations.append(ToolObservation(
-            question=q.question, tool=q.call.tool, status=result.status,
-            evidence_refs=list(result.evidence_refs), result_count=len(result.results),
-            summary=summarize(q.call.tool, result.results, list(result.evidence_refs))))
+        observations.append(
+            ToolObservation(
+                question=q.question,
+                tool=q.call.tool,
+                status=legacy_status(result),
+                evidence_refs=list(result.evidence_refs),
+                result_count=len(result.results),
+                summary=summarize(q.call.tool, result.results, list(result.evidence_refs)),
+            )
+        )
         newly_answered.add(q.key)
 
         # Citations stay deploy-focused: the deterministic hypothesis names the deploy + a log.
@@ -145,24 +175,35 @@ def run_cycle(
             pre_onset = [d for d in result.results if onset_dt is not None and d.ts <= onset_dt]
             if pre_onset:
                 latest = max(pre_onset, key=lambda d: d.ts)  # closest deploy at/before onset
-                deploy_note = (f"deployment {latest.deploy_id} on {latest.service} "
-                               f"at {latest.ts.isoformat()}")
-                citations.append(EvidenceCitation(
-                    source="deploys", ref=f"deploys:{latest.service}:{latest.deploy_id}",
-                    note=f"{deploy_note}, preceding onset {ctx.onset}"))
+                deploy_note = (
+                    f"deployment {latest.deploy_id} on {latest.service} at {latest.ts.isoformat()}"
+                )
+                citations.append(
+                    EvidenceCitation(
+                        source="deploys",
+                        ref=f"deploys:{latest.service}:{latest.deploy_id}",
+                        note=f"{deploy_note}, preceding onset {ctx.onset}",
+                    )
+                )
         elif q.call.tool == "query_logs" and result.evidence_refs:
-            citations.append(EvidenceCitation(
-                source="logs", ref=result.evidence_refs[0],
-                note="error log on the affected service within the incident window"))
+            citations.append(
+                EvidenceCitation(
+                    source="logs",
+                    ref=result.evidence_refs[0],
+                    note="error log on the affected service within the incident window",
+                )
+            )
 
     if stop is None:
         stop = StopReason(
             reason="hypothesis_supported" if citations else "no_more_questions",
-            detail=f"{len(citations)} supporting citations")
+            detail=f"{len(citations)} supporting citations",
+        )
 
     if deploy_note:
-        statement = (f"Likely deployment regression: {deploy_note} preceded symptom onset at "
-                     f"{ctx.onset}.")
+        statement = (
+            f"Likely deployment regression: {deploy_note} preceded symptom onset at {ctx.onset}."
+        )
         confidence = 0.8
     elif citations:
         statement = "Partial evidence found but no implicated deployment; recommend manual review."

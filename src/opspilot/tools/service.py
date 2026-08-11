@@ -15,7 +15,7 @@ from typing import TYPE_CHECKING, Any
 
 from opspilot.data.repository import Repository, default_repository
 from opspilot.tools.alerts import get_correlated_alerts
-from opspilot.tools.contracts import ToolResult
+from opspilot.tools.contracts import ExecutionOutcome, ToolResult
 from opspilot.tools.dependencies import get_service_dependencies
 from opspilot.tools.deployments import get_deployments
 from opspilot.tools.errors import error_result
@@ -39,15 +39,12 @@ class ToolService:
         self._retriever: SearchRetriever | None = None
         self._retriever_attempted = False
         self._retriever_error: str | None = None
+        # Built against the one capability inventory, so the registry cannot drift from it. A
+        # name in the inventory with no implementation here is a defect, not a silent omission.
+        from opspilot.tools import CAPABILITY_NAMES
+
         self._registry: dict[str, Callable[..., ToolResult[Any]]] = {
-            "get_incident": self.get_incident,
-            "get_correlated_alerts": self.get_correlated_alerts,
-            "get_deployments": self.get_deployments,
-            "query_logs": self.query_logs,
-            "get_metrics": self.get_metrics,
-            "get_service_dependencies": self.get_service_dependencies,
-            "search_runbooks": self.search_runbooks,
-            "search_past_incidents": self.search_past_incidents,
+            name: getattr(self, name) for name in CAPABILITY_NAMES
         }
 
     # --- deterministic tools (repository-backed) ----------------------------------------------
@@ -78,6 +75,7 @@ class ToolService:
                     self._retriever = self._retriever_factory()
                 else:
                     from opspilot.retrieval.factory import build_retriever
+
                     self._retriever = build_retriever(include_distractors=False)
             except Exception as exc:  # noqa: BLE001 — degrade, but retain the sanitized reason
                 first_line = (str(exc).splitlines() or [""])[0][:200]
@@ -101,15 +99,22 @@ class ToolService:
     def search_runbooks(self, **kwargs: Any) -> ToolResult[Any]:
         retriever = self._get_retriever()
         if retriever is None:
-            return error_result("search_runbooks", "retrieval unavailable", time.perf_counter())
+            return self._unavailable("search_runbooks")
         return search_runbooks(retriever, **kwargs)
 
     def search_past_incidents(self, **kwargs: Any) -> ToolResult[Any]:
         retriever = self._get_retriever()
         if retriever is None:
-            return error_result(
-                "search_past_incidents", "retrieval unavailable", time.perf_counter())
+            return self._unavailable("search_past_incidents")
         return search_past_incidents(retriever, self.repo, **kwargs)
+
+    @staticmethod
+    def _unavailable(tool_name: str) -> ToolResult[Any]:
+        """The source could not be reached. Distinct from a source that answered with nothing:
+        one leaves the question open, the other settles it."""
+        return error_result(
+            tool_name, "retrieval unavailable", time.perf_counter(), ExecutionOutcome.UNAVAILABLE
+        )
 
     # --- dispatch -----------------------------------------------------------------------------
     @property
@@ -120,5 +125,12 @@ class ToolService:
         """Dispatch by name against the allowlist; an unknown name is a sanitized error."""
         fn = self._registry.get(tool_name)
         if fn is None:
-            return error_result(tool_name or "unknown", "unknown tool", time.perf_counter())
+            # Refused at the boundary before anything executed, which is `rejected` rather than a
+            # failure: nothing ran, so there is nothing that could have gone wrong.
+            return error_result(
+                tool_name or "unknown",
+                "unknown tool",
+                time.perf_counter(),
+                ExecutionOutcome.REJECTED,
+            )
         return fn(**kwargs)

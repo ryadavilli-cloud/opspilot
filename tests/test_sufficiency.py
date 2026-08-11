@@ -14,9 +14,15 @@ from opspilot.state import InvestigationState
 
 
 def _suff(**over) -> SufficiencyState:
-    base = dict(evidence_classes=["logs"], required_classes=[">=1"], evidence_coverage=1.0,
-                citation_coverage=1.0, contradictions_unresolved=0,
-                unresolved_critical_questions=0, plan_can_advance=False)
+    base = dict(
+        evidence_classes=["logs"],
+        required_classes=[">=1"],
+        evidence_coverage=1.0,
+        citation_coverage=1.0,
+        contradictions_unresolved=0,
+        unresolved_critical_questions=0,
+        plan_can_advance=False,
+    )
     base.update(over)
     return SufficiencyState(**base)
 
@@ -32,7 +38,11 @@ def test_sev1_requires_all_four_core_classes():
     two = compute_sufficiency("SEV1", {"logs:a:1", "deploys:a:1"}, None, False)
     assert two.evidence_coverage == 0.5 and not two.ready
     four = compute_sufficiency(
-        "SEV1", {"logs:a:1", "metrics:a:m@t", "deps:a->b", "deploys:a:1"}, None, False)
+        "SEV1",
+        {"logs:a:1", "metrics:a:m@2026-06-28T10:10:00Z", "deps:a->b", "deploys:a:1"},
+        None,
+        False,
+    )
     assert four.evidence_coverage == 1.0 and four.ready
 
 
@@ -44,8 +54,11 @@ def test_sev2_requires_two_classes_sev3_requires_one():
 
 
 def test_citation_coverage_flags_ungrounded_citation():
-    hyp = Hypothesis(statement="x", confidence=0.8,
-                     citations=[EvidenceCitation(source="logs", ref="invented:ref")])
+    hyp = Hypothesis(
+        statement="x",
+        confidence=0.8,
+        citations=[EvidenceCitation(source="logs", ref="invented:ref")],
+    )
     s = compute_sufficiency("SEV3", {"logs:a:1"}, hyp, False)
     assert s.citation_coverage == 0.0 and not s.ready
 
@@ -55,7 +68,7 @@ def test_ready_only_when_every_dimension_passes():
     assert _suff().ready
     assert not _suff(evidence_coverage=0.5).ready
     assert not _suff(citation_coverage=0.5).ready
-    assert not _suff(contradictions_unresolved=1).ready       # unresolved contradiction blocks
+    assert not _suff(contradictions_unresolved=1).ready  # unresolved contradiction blocks
     assert not _suff(unresolved_critical_questions=1).ready
 
 
