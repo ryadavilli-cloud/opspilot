@@ -36,6 +36,22 @@ This version merges the corrected repository reconciliation draft with the earli
   (pass), `mypy src` (0 errors, was 2), full pytest with CI's marker filter (382 passed, 5
   deselected, 0 failed, was 31 failed/351 passed). `az bicep build` and the Azure inventory were
   not re-run; nothing under `infra/` or in the live subscription changed.
+- Streaming turn skeleton landed 2026-08-09: PR #59 (turn identity, the normalized
+  incident-context contract as `decisions.md` D-007, the stream envelope and activity-projection
+  contracts, `turn_id` on the telemetry seam), PR #60 (the streaming endpoint, plus `ruff format`
+  enforcement scoped to touched files), PR #61 (the one-screen client and client-disconnect
+  detection). Verified live in a browser and against the real corpus: identities first, close
+  marker last, no answer-key content on the stream, independent identities across concurrent
+  turns. Two gaps left deliberately: the accepted explicit cancellation-request mechanism does not
+  exist (only client-disconnect detection), and `InteractionKind` exists as a type with no
+  classifier producing it.
+- Evidence reference model and two-axis capability results landed 2026-08-11: PR #66 (one parser,
+  one resolver, one prefix-to-type map; `past_incident:` retired for `postmortem:`; `decisions.md`
+  D-008 and D-009), PR #67 (execution outcome and completeness as separate axes with the legal
+  pairing enforced on construction, evidence admission as the only door into the evidence set, the
+  operation ledger held separately, one capability inventory replacing the duplicate allowlist,
+  and the protocol boundary carrying both axes with parity asserted on each). Full suite 515
+  passed, 1 xfailed; `ruff`, `ruff format`, and `mypy src` clean.
 
 ## 2. Executive State
 
@@ -671,11 +687,11 @@ owns order and PR structure.
 | Required behavior | Current standing |
 | --- | --- |
 | Distinct RCA Analyst as sole synthesis authority | Missing |
-| Candidate cause set | Missing |
-| Qualitative support labels | Missing; current numeric confidence is removed |
-| Supporting and weakening evidence per candidate | Missing |
-| Established and possible grounded elements | Missing |
-| Recommendation horizons and provenance categories | Missing |
+| Candidate cause set | Contract implemented in `assessment/contracts.py`; nothing produces one yet |
+| Qualitative support labels | Contract implemented: leading, plausible, weakly supported, with no numeric field anywhere in the assessment. The legacy numeric confidence still exists on the old report and dies with it |
+| Supporting and weakening evidence per candidate | Contract implemented, with knowledge references refused in both roles |
+| Established and possible grounded elements | Contract implemented; an alternative and a historical comparison cannot be constructed as established |
+| Recommendation horizons and provenance categories | Contract implemented, with provenance and its knowledge reference checked together in both directions |
 | Recorded limitations | Missing |
 | Further-evidence need and its one bounded cycle | Missing |
 | Deterministic brief projection | Partial rendering philosophy exists, but the contract is replaced |
