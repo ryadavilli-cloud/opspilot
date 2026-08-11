@@ -272,6 +272,27 @@ identifiers.
 
 ### 1.3 Corpus preparation into the RetailEase containers
 
+**Status: Completed (2026-08-10), with one part deliberately left open.** `scripts/prepare_corpus.py`
+loads, chunks, embeds, and indexes the corpus into `retailease/knowledge` (196 passages from 28
+documents) and `retailease/operational-records` (14,013 records across six kinds), run as a setup
+principal that is not the application. Verification: `--verify-only` reads both containers back and
+checks counts, that every knowledge document carries a category and an embedding, that identifiers
+and time metadata are present, and that all six record kinds landed; 19 deterministic tests in
+`tests/test_corpus_preparation.py` cover the shaping half in CI.
+
+Idempotence is verified rather than assumed. A second run died partway through on a dropped
+connection, and re-running over the partial state left both containers unchanged at 196 and 14,013.
+Every live passage was then compared against a fresh local shaping: identical ids, passage text,
+identifiers, and categories, with no drift. Dense retrieval is also demonstrated working against
+the seeded container, which discharges the D-003 viability question a later slice had been holding.
+
+Left open, and recorded rather than quietly skipped: "absent preparation is a deployment-time
+failure and must present as one" is NOT implemented. Nothing reads these containers yet, so no
+dependency exists that could fail. Retrieval still loads knowledge from files in the image and the
+operational capabilities still read the file-backed repository. The property attaches when the
+layers that consume these containers arrive; asserting it now would gate a deployment on data
+nothing uses.
+
 **Makes true.** The corpus is loaded, chunked, embedded, and indexed into the containers the design
 reads at runtime, by a setup identity separate from the application's.
 
@@ -304,6 +325,27 @@ to either RetailEase container (`runtime-and-deployment.md` §16, check 4).
 **Done when.** Both RetailEase containers are populated from the authored corpus, the embedding
 deployment is provisioned and used at load time, the setup identity is the only writer, and a re-run
 of the preparation produces the same passages and the same identifiers.
+
+**Divergences from this slice's original text:**
+
+- The Retires clause names the "External ITSM/RCAEval profile-calibration pipeline" and justifies
+  it by saying nothing in the design derives telemetry proportions from an external dataset. That
+  premise does not hold: `data/synthetic/generate.py` reads `data/profiles/rcaeval_profile.json` to
+  calibrate noise density, verified 2026-08-09 by running the generator, which reports
+  `evidence refs required=42 resolved=42`. The profile is a live corpus-generation input and is
+  retained. Only the RCAEval evaluation probe was retired, in 1.2, and that is a different artifact
+  from the committed calibration constants. Nothing under `data/profiles/` was deleted here.
+- Four defects surfaced only against the live containers and are fixed in this slice, not deferred.
+  Metric series were keyed on service and metric alone, but the corpus carries one series per
+  service, metric, AND incident, so upsert would have collapsed 189 series into 27 and discarded
+  86% of the metric evidence with no write-time error. Distractors were not loaded at all, which
+  would have made retrieval precision 1.0 by construction. Cosmos rejects `#` in a document id,
+  which is the character the chunker uses to separate a passage from its document. And a document
+  omitting the second partition level is rejected outright, so records with no service carry an
+  explicit null rather than a missing field.
+- The setup principal needed two data-plane grants, not one. Corpus preparation writes Cosmos and
+  calls the embedding deployment, and ARM rights imply neither. Both are now declared in Bicep,
+  conditional on `corpusSetupPrincipalId`, so an environment nobody seeds from creates neither.
 
 ---
 
@@ -1465,7 +1507,7 @@ invents an incompatible answer.
 | Blocks | What is unsettled | Item |
 | --- | --- | --- |
 | 2.3 | One owner for reference prefixes, keys, and parsing; the existing frozen grammar is a candidate to evaluate rather than copy | "Evidence and knowledge reference encoding" |
-| 3.1 | No Cosmos vector-index configuration exists anywhere; viability is verified before the implementation is chosen, and an in-process cosine scan requires the recorded explicit revision | "D-003 vector viability" |
+| 3.1 | Discharged 2026-08-09/10. A vector-index configuration now exists (`knowledge`, 1536/cosine/diskANN) and viability is demonstrated end to end: 196 real embeddings written, and a `VectorDistance()` query returns the semantically correct runbook without the same-domain distractor surfacing. D-003's dense-retrieval choice stands and the in-process cosine scan does not need its recorded revision. What remains for this slice is the implementation, not the verification | "D-003 vector viability" |
 | 5.1 | The explicit library inspection and the final decision record, which repository evidence answers much of but does not close | "D-004 evidence" |
 | 7.2 | One typed contract for normalized input; the current `Alert` shape is evidence, not automatic authority | "Normalized incident context fields" |
 | 7.2 | The signing, expiry, and payload rules for a short-lived normalization token, where a simpler resubmission path does not meet the requirement | "Stateless clarification token" |

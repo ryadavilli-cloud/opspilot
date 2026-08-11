@@ -59,7 +59,10 @@ that the milestone report can include final hosted verification.
   increment for that behavior; S-13 completes the judge, baselines, and report rather than building
   the evaluation system from nothing.
 - Telemetry is emitted where behavior is added, not retrofitted. The Application Insights sink can
-  wait for the hosted slice; the emission semantics cannot.
+  wait for the hosted slice; the emission semantics cannot. A slice that adds runtime behavior and
+  leaves its `Telemetry and activity impact` field thin has deferred its own diagnosability, and
+  A-0 does not exist to catch up on it. The obligations this places on every slice are stated once
+  under "Diagnosability obligations" below.
 - The accepted corpus remains seven authored incidents across five families. Controlled fixture
   variants may fill evaluation classes, but the plan does not silently add authored incidents.
 - Course-material sequencing is an aid, not a straitjacket.
@@ -90,6 +93,98 @@ rather than being omitted, so that gaps stay visible.
 | Small PR breakdown | The PR sequence, one primary completion claim each |
 | Completion evidence | The concrete artifact or run that closes the slice |
 | Status updates required after landing | What must change in the status document |
+
+## Diagnosability obligations
+
+This section defines what the template's `Telemetry and activity impact` field must contain. It is
+stated once and is not repeated inside each slice; each slice names only the diagnostic facts its
+own behavior emits.
+
+**The bar.** `requirements.md` NFR-20 requires the deployed application to be diagnosable from its
+logs and telemetry without redeployment. This plan reads that operationally: a coding agent working
+only from Azure and GitHub evidence, with no human first reconstructing what happened, must be able
+to investigate a deployment failure or a runtime failure. Anything a human would have to remember,
+re-run locally, or infer from prose is a missing structured fact.
+
+The design owners are unchanged and are not restated here: the correlation obligation is
+`system-design.md` §10.3, the emitted set and the sink are `runtime-and-deployment.md` §14, the
+instrumentation rules are `code-guidelines.md` §10, and the activity projection is
+`system-design.md` §10.4.
+
+**The reconstruction chain.** For any turn, the trail that must be assemblable from telemetry alone
+is:
+
+```
+revision/startup -> request/turn -> stage/agent -> model call -> capability/tool
+                 -> retrieval/MCP where applicable -> grounding -> commit -> terminal outcome
+```
+
+Every link in that chain is owned by the slice that builds the behavior at that link. A-0 makes the
+chain queryable in a hosted environment; it does not author the links.
+
+**The common attribute set.** One small set of span and log attributes carries the chain. It is a
+shared vocabulary, not a telemetry domain model, and it grows only when a slice introduces the
+behavior an attribute describes:
+
+| Attribute | Present on | Owning slice |
+| --- | --- | --- |
+| `investigation_id`, `turn_id` | Every span and every log record emitted inside a turn | S-1 |
+| Request or operation correlation, joining a turn to the HTTP request that owns it | Turn-scoped spans | S-1 |
+| Stage | Stage spans and everything nested under them | S-4 |
+| Active agent, where an agent owns the operation | Agent-attributable spans | S-5 |
+| Capability or tool identity | Capability spans | S-2 |
+| Transport (`direct`, `mcp`) | Capability spans | S-2 mints the attribute, S-11 makes it vary |
+| Execution outcome and completeness, as two separate axes | Capability spans | S-2 |
+| Continuation or stop reason, where an operation ends a loop or a turn | Controller and bound spans | S-4, S-5, S-6 |
+| Duration | Every span | S-1 |
+| Sanitized error category and reason | Any span whose status is error, and any recorded limitation | S-2 |
+| Model deployment and task label | Model-call spans | S-2 mints the label, S-5 adds the deployment |
+| Backend identity, so a fixture or in-memory run is never mistaken for a live one | Persistence, retrieval, and structured-query spans | S-2 mints it on the commit span, S-7, S-9, and S-10 make it vary |
+| Retrieval leg, fusion, and promotion facts | Retrieval spans | S-9 |
+
+Nothing here is a new persistence concept. There is no telemetry store, event bus, replay store,
+metric registry, or observability screen, and none is added by any slice.
+
+**Diagnostic quality.** Four rules, enforced per slice rather than audited later.
+
+1. **Structured fields, not prose.** A fact a query must filter or group on is an attribute. A log
+   line whose only carrier of the fact is its message text does not satisfy this.
+2. **Stable operation names.** Span and operation names are fixed identifiers that survive
+   refactoring. A name assembled from runtime values is not queryable across turns; the varying part
+   belongs in an attribute.
+3. **Sanitized errors.** An error carries a category and a useful reason. It never carries a secret,
+   a token, a connection string, a prompt, hidden reasoning, a raw evidence or passage body, or a
+   stack trace exposed to a user. `code-guidelines.md` §9 telemetry hygiene governs; this plan adds
+   only that the sanitized remainder must still be enough to act on.
+4. **Failure classes stay distinguishable.** Telemetry must let a reader separate configuration
+   failure, Azure dependency failure, model failure, tool failure, retrieval failure, grounding
+   failure, persistence failure, cancellation, and an ordinary partial or inconclusive outcome. Two
+   of these collapsing into one category is the defect this section exists to prevent, and it is the
+   same failure mode the two-axis capability result already guards against at the source boundary.
+
+**Telemetry describes decisions, never reasoning.** Every fact above is an observable decision,
+input identity, or outcome. Chain-of-thought, prompts, and raw model output are excluded from
+telemetry as they are from the activity projection.
+
+**Deployment diagnostics, and where the boundary sits.** Two evidence surfaces, neither duplicating
+the other:
+
+- **GitHub Actions owns build and deploy evidence:** dependency restore, static checks, tests, image
+  build and push, `az deployment group` output and Bicep errors, revision creation, and the smoke
+  command's own output and exit status.
+- **OpsPilot and Application Insights own application evidence:** startup, configuration validation,
+  readiness, and everything the running application then does.
+
+Together they must let an automated agent trace a failed deployment from the failing workflow step,
+to the deployed revision, to that revision's application startup and readiness result, to a runtime
+request. The join is the revision identity: the workflow records which revision it deployed, and the
+application's startup telemetry records which revision is running. GitHub Actions logs are not
+copied into Application Insights, and application telemetry is not re-emitted into workflow output.
+
+**Completion evidence.** A slice with meaningful runtime behavior closes on a telemetry assertion as
+well as a functional one: the deterministic suite asserts that the facts the slice named are
+actually emitted, with the correlation attributes present, through the in-memory exporter fixture
+rather than a live sink. A-0 and A-1 close on a real query against Application Insights.
 
 ## PR-size guardrails
 
@@ -191,7 +286,7 @@ Pending decisions carry a resolution point, so that "pending" does not become "f
 
 | Decision | Resolve when | Blocks |
 | --- | --- | --- |
-| D-003 Cosmos vector viability | First S-9 technical PR | Retrieval implementation choice |
+| D-003 Cosmos vector viability | Resolved 2026-08-10, ahead of this slice. A vector-capable container holds 196 real embeddings and `VectorDistance()` returns the semantically correct result, so the choice stands and no revision is needed | Nothing; the retrieval implementation is unblocked |
 | D-004 MCP library mechanics and transport carriage | Before S-11 implementation | Library usage, session handling, result carriage |
 | D-005 judge rubric version | First S-13 PR | Judge implementation and removal of the standalone judge configuration |
 | D-006 retrieval-influence selection | After the minimum S-9 data repair | Retrieval-influence demonstration |
@@ -219,7 +314,7 @@ before code invents an incompatible answer.
 | Minimal knowledge metadata contract | S-9, first PR | Identifier, container category, promotion date, and admission provenance only. No authoritative document fixes this today, so S-9 records it before implementing rather than treating it as a precondition |
 | D-004 library evidence | S-11 | In-process hosting is fixed; record the library findings |
 | D-006 corpus evidence | S-9, S-12 | Selections wait for repairs and the coverage audit |
-| D-003 vector viability | S-9 | Verify before choosing; an in-process cosine scan requires a recorded revision |
+| D-003 vector viability | Resolved 2026-08-10 | Verified against a live container rather than deferred; the dense-retrieval choice stands and no revision is required |
 
 ## Execution environment matrix
 
@@ -319,7 +414,8 @@ provisional placement until this structure exists.
 | Activity projection from instrumentation facts | `src/opspilot/stream/projection.py` (proposed) | S-1 | Derives from `obs/tracing.py` span facts |
 | Turn identity and live-session presentation state | `src/opspilot/turn/identity.py` (proposed) | S-1 | No turn model exists today (status 10.12) |
 | Normalized incident context and intake classification | `src/opspilot/intake/contracts.py` (proposed) | S-1 | Predefined intake only; S-5 adds free text and clarification |
-| Telemetry seam | `src/opspilot/obs/tracing.py` | S-1 | Retained; `configure_exporter()` wired at startup, App Insights exporter added in A-0 |
+| Telemetry seam | `src/opspilot/obs/tracing.py` | S-1 | Retained as the one emission seam. Every later slice adds its facts here and asserts them through the in-memory exporter |
+| Application startup hook and exporter wiring | `src/opspilot/api.py` | A-0 | No startup hook exists today. A-0 adds one and calls `configure_exporter()` from it, alongside the startup, configuration-validation, and readiness records that need the same hook. Before A-0 there is no sink to select |
 | Streaming endpoint | `src/opspilot/api.py` | S-1 | Added beside the old routes; old routes removed in S-4 |
 | One-screen client | `src/opspilot/static/investigation.html` (proposed) | S-1 | New file on its own route; single file, no build step. The old console keeps working until S-4 |
 | Old approval console deletion | `src/opspilot/static/console.html` | S-4 | Deleted when the new screen becomes the sole client |
@@ -447,6 +543,25 @@ client and client-disconnect detection on the streaming endpoint).
   shape is what "stabilized" means here, per the contract-stabilization table above; the
   classification behavior itself remains S-8's to build, consuming this now-fixed type without
   needing to redefine it.
+- The path-level detail table originally assigned "`configure_exporter()` wired at startup" to this
+  slice. It did not land, and it was never this slice's to land: the wiring appears in no part of
+  this slice's outcome, contracts, tests, or completion evidence, and nothing built here needed it,
+  because the telemetry tests install the in-memory exporter directly through `tests/conftest.py`.
+  `configure_exporter` has exactly one occurrence in `src`, its own definition, so the process
+  exporter stays the no-op outside tests. Emission semantics are unaffected either way, since the
+  seam records the facts whether or not a sink is attached, and before A-0 there is no sink for it
+  to attach to. The table row was the defect and is corrected to A-0, which needs the same startup
+  hook for its own startup, configuration, and readiness diagnostics. This slice is complete as it
+  stands.
+
+**Telemetry seam this slice left, and what later slices attach to it:** `obs/tracing.py` provides
+the one seam, OTLP-shaped spans with nesting through context variables, an exporter selected by
+configuration, and the in-memory exporter that the deterministic telemetry assertions in every later
+slice run against. `standard_attributes` carries `investigation_id`, `incident_id`,
+`workflow_version`, and `turn_id`; `span()` carries duration. Those are the correlation columns of
+the common attribute set under "Diagnosability obligations"; every other column in that table is
+minted by the slice that introduces the behavior it describes, on this seam and not a second one.
+Request-to-turn correlation rides the same identifiers, since one streaming request owns one turn.
 
 ### S-2 Evidence, reference, and assessment contracts with one bounded model call
 
@@ -514,10 +629,23 @@ client and client-disconnect detection on the streaming endpoint).
   query results through this same two-axis vocabulary; S-11 carries this same canonical envelope
   through the MCP transport, changing only which capability is exposed; S-13 evaluates the golden
   record and the evaluation-artifact home this slice creates, rather than choosing a new location.
-- **Telemetry and activity impact:** capability request and admission results, including the
-  execution-outcome and completeness axes; model task label, prompt version, and usage totals;
-  the port's commit-attempt result. Admission facts appear in the activity projection in their safe
-  form.
+- **Telemetry and activity impact:** this slice mints most of the common attribute set, because it
+  is the first slice with a capability call, a model call, and a commit in it.
+  - **Capability spans:** capability identity, transport (`direct` here; S-11 makes it vary),
+    execution outcome and completeness as two separate attributes rather than one collapsed
+    verdict, duration, and, when the operation did not answer, the sanitized error category and
+    reason together with the limitation's identity. `succeeded + empty` is visibly distinct from
+    `unavailable` in telemetry, not only in the result type.
+  - **Admission spans:** what was admitted, the reference assigned, and reference-resolution
+    outcome, so an unresolvable citation is diagnosable without re-running the turn.
+  - **Model spans:** task label, prompt version, usage totals, duration, and a sanitized failure
+    category on error. Deployment identity is added at S-5, when routing gives it more than one
+    value.
+  - **Commit spans:** the port's commit-attempt result, backend identity, and a sanitized failure
+    category, so a persistence failure is never indistinguishable from a grounding or model
+    failure.
+  Operation names are fixed identifiers here, not assembled from capability or incident values.
+  Admission facts appear in the activity projection in their safe form.
 - **Deterministic tests:** legal execution-outcome and completeness pairings; reference resolution
   through the single parser; `succeeded + empty` admitted as a positive observation; structured
   output validation; rendering fidelity for populated fields; MCP parity against the new envelope;
@@ -548,7 +676,9 @@ client and client-disconnect detection on the streaming endpoint).
   deterministic brief projection, and streaming integration.
 - **Completion evidence:** one reproducible incident-to-assessment run in a single streamed
   request, the commit-semantics and lifecycle-ordering contract tests green, MCP parity green
-  against the new envelope, and the first golden record committed in its settled location.
+  against the new envelope, and the first golden record committed in its settled location. That
+  same run's spans, captured through the in-memory exporter, carry the capability, model, admission,
+  and commit attributes above with `investigation_id` and `turn_id` on every one of them.
 - **Status updates required after landing:** the evidence-admission rows in section 10.4 and the
   assessment rows in section 10.5 move to Implemented; the binary-status row in section 8.3.1 moves
   to Replaced; record the cassette identity, the incident used, the evaluation artifact location,
@@ -600,9 +730,15 @@ client and client-disconnect detection on the streaming endpoint).
   artifact shape fixed here; S-8 answers follow-up and handoff only from a completed turn this
   contract already produced; S-13 aggregates this conformance entry point rather than building a
   second one.
-- **Telemetry and activity impact:** grounding result per check, correction-allowance spend, the
-  outcome assignment, the commit result, and the terminal shape decision, all as span facts that
-  the projection renders safely.
+- **Telemetry and activity impact:** grounding result per check, naming which check failed rather
+  than reporting a single pass or fail; correction-allowance spend, and whether the correction was
+  the first or a refused second; the outcome assignment and the deterministic reason for it; the
+  commit result; and the terminal shape decision, all as span facts that the projection renders
+  safely. Failed execution emits its own terminal fact with a sanitized failure category, so a
+  turn that delivered nothing is distinguishable in telemetry from one that completed
+  inconclusively, and a persistent grounding failure is distinguishable from a commit failure that
+  followed a passing gate. These are the `grounding` and `commit` links of the reconstruction
+  chain.
 - **Deterministic tests:** each check independently; the fixed four-check set with no fifth;
   single-spend correction allowance; rendering remains a projection; the full terminal ordering
   asserted end to end; persistent failure delivers nothing, commits nothing, and is not one of the
@@ -621,6 +757,8 @@ client and client-disconnect detection on the streaming endpoint).
 - **Completion evidence:** one incident run end to end producing a committed completed turn
   delivered after its commit, one visible correction demonstration, one persistent-failure run that
   delivers and persists nothing, and a conformance aggregation run over the first golden record.
+  The persistent-failure run is diagnosable from its spans alone: which check failed, that the
+  correction allowance was spent, that no commit was attempted, and the sanitized failure category.
 - **Status updates required after landing:** the grounding rows in section 10.6 and the
   commit-before-terminal row in section 10.11 move to Implemented; the one-check safety gate row in
   section 8.3.1 moves to Replaced; the guardrails row in section 7 moves to Replaced.
@@ -706,11 +844,32 @@ client and client-disconnect detection on the streaming endpoint).
   replaces it with the eight-check suite once later capabilities exist to check. This slice adds no
   agent and no cancellation semantics itself; both are named here only so the next two slices know
   exactly what they extend.
-- **Telemetry and activity impact:** the turn controller emits stage transitions through the same
-  seam the graph node wrapper used, so no instrumentation fact is lost in the swap.
+- **Telemetry and activity impact: diagnostic continuity through the cutover is this slice's
+  obligation, not a side effect of it.** Deleting the graph deletes `traced_node`, the wrapper that
+  today establishes the root span and attaches the correlation attributes to everything nested
+  under it. The controller takes over that job, and the swap is complete only when the replacement
+  emits at least what the wrapper emitted:
+  - one root turn span the whole turn nests under, carrying the correlation attributes, replacing
+    the wrapper's per-node root;
+  - a stage span per controller stage, with a stable stage name as an attribute rather than
+    encoded into the span name, covering objective, evidence, synthesis, gate, and commit;
+  - stage entry and exit with duration, the transition taken, and the stop reason when a stage
+    ends the turn, so an unfinished turn shows where it stopped;
+  - a sanitized failure category on any stage that errors, and error status propagated to the root
+    span, replacing the wrapper's reflection of a node's `error`/`degraded` return;
+  - the same attributes on nested capability, model, and commit spans as before, since the
+    controller establishes the context they inherit.
+  Adding `stage` to the common attribute set is this slice's contribution to it. This closes the
+  `request/turn` and `stage` links of the reconstruction chain, and it is why the swap loses
+  nothing.
 - **Deterministic tests:** one complete streamed turn; one gate failure; old route absence; no
   runnable approval or checkpoint behavior; the suite green after obsolete tests are removed rather
-  than rewritten to validate deleted behavior.
+  than rewritten to validate deleted behavior. One continuity test that a reviewer would not
+  predict: capture the node wrapper's emitted fact set before it is deleted, then assert that a turn
+  run through the controller against the in-memory exporter emits at least that set, with the
+  correlation attributes present on every span. The cutover then fails the suite rather than
+  silently going dark. The appendix's dispositions for `test_telemetry.py` and `test_tracing.py` are
+  unchanged; this is a new assertion, not a re-owned module.
 - **Evaluation increment:** the old numeric ratchets stop gating CI and the accepted spine replaces
   them as the only active evaluation.
 - **Dataset or fixture work:** none.
@@ -752,6 +911,7 @@ scoped to runtime paths and use exact symbols.
 | No graph-dependent evaluation is active | `git ls-files eval tests` shows no `scenario_eval`, `record_single_agent`, `test_scenario_gate`, `test_single_agent_gate`, `wild`, or `harness` outside an archived, CI-excluded path |
 | The accepted spine is the only evaluation | `uv run python -m eval.conformance` runs and reports categorical results with no numeric threshold |
 | Tests for deleted behavior are gone | `git ls-files tests` shows none of the modules named above; `uv run pytest -m "not reranker and not llm"` is green |
+| Stage telemetry survived the cutover | `git grep -n -e traced_node -- src` is empty, and the continuity test asserts the controller emits a root turn span, a span per stage with a stable name, duration, stop reason where a stage ends the turn, and `investigation_id`/`turn_id` on every span |
 
 ### A-0 Minimal hosted alignment
 
@@ -770,8 +930,18 @@ scoped to runtime paths and use exact symbols.
   identity header, with a documented local development bypass.
 - **New implementation:** replica range set to zero-to-one; Container Apps built-in authentication
   with one app registration and no role machinery; an Application Insights component wired to the
-  telemetry seam through `configure_exporter()` at startup; the lower-cost chat deployment added so
-  that S-5 has a routing target; the interim smoke run as the post-deploy gate.
+  telemetry seam through `configure_exporter()`; the lower-cost chat deployment added so that S-5
+  has a routing target; the interim smoke run as the post-deploy gate.
+  **The application startup hook is built here, and it is a precondition for the rest of this
+  slice rather than an incidental.** `api.py` constructs its application object and registers no
+  startup hook at all, and `configure_exporter()` is called only by `tests/conftest.py`, so the
+  process exporter is the no-op in every non-test run today. One hook serves four things this slice
+  needs: exporter selection, the startup record, configuration validation, and readiness. No
+  earlier slice needs it, because before this slice there is no sink an exporter could select.
+  The exporter is the smallest one that carries the seam's spans to Application Insights with the
+  correlation attributes intact. Adopting a vendor telemetry SDK is justified only if the existing
+  seam demonstrably cannot reach the sink, and that finding is recorded in the owning document per
+  operating rule 10 before the dependency is added. No second emission path is created either way.
   **Who builds on each:** S-5's intake-normalization task label routes to the lower-cost deployment
   created here, and to no other; A-1 verifies, rather than creates, the zero-to-one replica posture,
   built-in authentication, and Application Insights sink this slice establishes, and replaces this
@@ -795,22 +965,54 @@ scoped to runtime paths and use exact symbols.
   Any grant the CI principal needs is recorded in the deployment documentation, not left implicit.
 - **Contract introduced or stabilized:** none. This slice makes the hosted environment match
   contracts already stabilized.
-- **Telemetry and activity impact:** the existing spans reach a real sink for the first time. No
-  new emission points; correlation must survive the exporter.
-- **Deterministic tests:** unchanged. Hosted behavior is not re-asserted in deterministic tests.
+- **Telemetry and activity impact: hosted telemetry availability, plus the hosting facts no earlier
+  slice could emit.** The application-level spans S-1 through S-4 already emit reach a real sink for
+  the first time, and correlation must survive the exporter: `investigation_id` and `turn_id` must
+  be queryable as fields in Application Insights, not buried in a message string, and parent and
+  child spans must still resolve into one trail after export. That is the larger half of this slice.
+  The smaller half is that "no new emission points" would be a false claim, because nothing before
+  this slice runs in a hosted environment and therefore nothing emits the facts that make a
+  deployment failure diagnosable. This slice adds those, and only those:
+  - **Startup:** one startup record naming the running revision, the image tag, and the environment,
+    so a workflow step that deployed a revision can be joined to the application that started from
+    it. Without this join, a failed deployment is diagnosable only from the workflow side.
+  - **Configuration validation:** the result of the startup validation
+    `runtime-and-deployment.md` §13 already requires, and on refusal, which setting or posture was
+    unacceptable, by name and never by value. A refusal to start is the most common deployment
+    failure and the least self-explanatory one.
+  - **Readiness:** the readiness result and, on failure, the reason category, so a revision that
+    starts but never becomes ready is distinguishable from one that never started.
+  - **Uncaught runtime exceptions:** a sanitized record with the error category, the operation, and
+    the correlation attributes if the failure occurred inside a turn. An unhandled exception that
+    reaches no sink is the single largest opaque case.
+  Nothing else is added. No hosting metric, no dashboard, no alert rule, no log-analytics workbook,
+  and no telemetry viewer, per `runtime-and-deployment.md` §14.
+- **Deterministic tests:** hosted behavior is not re-asserted in deterministic tests. Two things
+  this slice adds are application behavior rather than hosted behavior and are tested offline: that
+  a configuration refusal emits the offending setting by name and never its value, and that a
+  sanitized exception record carries a category and correlation attributes and carries no secret,
+  prompt, or raw payload.
 - **Evaluation increment:** none.
 - **Dataset or fixture work:** none.
 - **Azure impact:** Hosted verification. This slice changes the deployed contract; A-1 is the only
   other slice that does.
 - **Decision gates:** none.
 - **Explicit non-goals:** no Cosmos container change, no embedding deployment, no eight-check
-  smoke, no live container deletion, no Key Vault, no VNet.
+  smoke, no live container deletion, no Key Vault, no VNet. No dashboard, workbook, alert rule,
+  retention tier, or telemetry viewer, and no copying of GitHub Actions build or deploy output into
+  Application Insights; the two evidence surfaces stay separate per "Diagnosability obligations".
 - **Small PR breakdown:** (1) replicas, probes, and the `/health` alias removal; (2) built-in
   authentication, the documented smoke-caller identity and audience, and removal of the
-  hand-rolled JWT path; (3) Application Insights and exporter wiring; (4) lower-cost chat
-  deployment.
-- **Completion evidence:** one hosted streamed turn observed end to end, with its spans visible in
-  Application Insights and the interim smoke green in CD.
+  hand-rolled JWT path; (3) the application startup hook, Application Insights, exporter wiring on
+  that hook, and the startup, configuration-validation, readiness, and sanitized-exception records;
+  (4) lower-cost chat deployment.
+- **Completion evidence:** one hosted streamed turn whose complete diagnostic trail is queryable in
+  Application Insights, and the interim smoke green in CD. "Complete" means the trail reconstructs
+  the chain named under "Diagnosability obligations" as far as this slice's capabilities reach:
+  the revision's startup record, the request and turn, each stage, the model call, each capability
+  call, the grounding result, the commit, and the terminal outcome, retrieved by querying on
+  `investigation_id` or `turn_id` and not by reading raw message text. The queries actually run are
+  recorded, so A-1 verifies rather than rediscovers them.
 - **Status updates required after landing:** section 12 is rewritten from a fresh live inspection
   rather than from the template; the replica, authentication, and Application Insights rows in
   section 10.15 move to Implemented; record the `az` queries actually run.
@@ -823,6 +1025,9 @@ scoped to runtime paths and use exact symbols.
 | Built-in authentication is enabled | `az containerapp auth show -g rg-opspilot -n opspilot-api` reports an enabled platform with one registration |
 | Hand-rolled authorization is gone | `git grep -n -e pyjwt -e jwks -e ReviewerPrincipal -- src tests` is empty; `uv tree` shows no `pyjwt` |
 | Application Insights is connected | `az monitor app-insights component show -g rg-opspilot --app <name>` resolves and one turn's spans are queryable |
+| Correlation survives export | A query filtering on `turn_id` returns that turn's spans, and their parent and child relationships still resolve into one trail. Message-text matching is not accepted as proof |
+| The revision joins to its deployment | The startup record names the running revision and image tag, and matches what the deploying workflow run reported |
+| Configuration and readiness failures are legible | A deliberate local run with a required setting removed emits a refusal naming that setting and not its value, and the readiness failure reason is a category rather than prose |
 | The lower-cost deployment exists | `az cognitiveservices account deployment list -g rg-opspilot -n <account> --query "[].name"` lists the primary and lower-cost chat deployments |
 | The deprecated health alias is gone | `git grep -n -e "\"/health\"" -- src infra scripts` is empty |
 | The smoke authenticates as a named identity | The workflow acquires its token for the recorded audience through the existing OIDC principal, and the interim smoke passes in CD without a manual step |
@@ -900,9 +1105,14 @@ scoped to runtime paths and use exact symbols.
   one further-evidence cycle against the flag this slice mints; S-8's follow-up task, S-10's
   structured-query task, and S-13's judge task each add their own label to this same routing seam
   rather than building a second one.
-- **Telemetry and activity impact:** agent identity on every operation; proposal, authorization,
-  and refusal facts; bound-stop reason; task label on every model call. Clarification appears as an
-  interaction fact, not as model content.
+- **Telemetry and activity impact:** agent identity as an attribute on every operation an agent
+  owns, which is this slice's addition to the common attribute set; the handoff between agents as
+  its own fact, so a turn that stalled between two agents is visible; proposal, authorization, and
+  refusal each as separate facts, with the refusal carrying which computable condition failed rather
+  than a bare refusal; the bound-stop reason naming which of the six bounds stopped the turn; the
+  task label and the resolved deployment on every model call, so a routing mistake is visible in
+  telemetry rather than only in a bill. Clarification appears as an interaction fact, not as model
+  content, and no proposal, authorization, or refusal fact carries the model's reasoning for it.
 - **Deterministic tests:** authorization is required for continuation; model output alone cannot
   continue; the deadline reaches every operation; all six bounds are enforced; parallel independent
   actions inside one authorized cycle; turn isolation; at most one clarification per turn; no
@@ -922,7 +1132,9 @@ scoped to runtime paths and use exact symbols.
   live-model test removal; (6) free-text normalization and the single clarification; (7) bounds and
   their tests, and deletion of the superseded modules.
 - **Completion evidence:** role-attributed feed, distinct execution paths for two incidents, one
-  free-text submission normalized, and one clarification exchange.
+  free-text submission normalized, and one clarification exchange. The two divergent paths are
+  distinguishable from their spans alone, with agent identity, the authorization decisions, and the
+  routed deployment per model call visible without reading the feed.
 - **Status updates required after landing:** sections 10.2, 10.3, and 10.5 move to Implemented for
   the roles and the proposal contract; the intake rows in section 10.1 move to Implemented; the
   six-boundary row in section 9 may now move to Implemented because the Investigation Record
@@ -982,8 +1194,16 @@ scoped to runtime paths and use exact symbols.
   complete, closed set of situations that produce a completed turn (normal completion, cancellation,
   or degradation, always one of the three accepted outcomes), and S-7 persists exactly that set;
   nothing later adds a new way to reach a completed turn.
-- **Telemetry and activity impact:** cancellation-received and cancellation-effective facts at the
-  safe boundary, the materiality decision on the source-failure path, and the stop reason.
+- **Telemetry and activity impact:** three separable facts, because collapsing them is what makes a
+  cancelled turn look like a crashed one. First, receipt of the cancellation request on the
+  signalling endpoint, correlated to the target `turn_id` even though it arrives on a different
+  request than the turn owns, including the case where the target turn is not active. Second,
+  observation of the signal at a named safe boundary, with which boundary observed it and how long
+  after receipt. Third, the terminal cancellation outcome, the evidence-admitted decision that chose
+  partial over inconclusive, and the commit result, so the persistence matrix row that was taken is
+  readable from telemetry. The materiality decision on the source-failure path and the stop reason
+  are recorded alongside. Cancellation is a normal outcome and is categorized as one, never as an
+  error status.
 - **Deterministic tests:** the cancellation-request signal reaches a running turn from a separate
   request and is distinguishable from a disconnect in the resulting outcome; every row of the
   matrix above; disconnect discards and commits nothing; no fabricated evidence in a degraded
@@ -1000,7 +1220,9 @@ scoped to runtime paths and use exact symbols.
   disconnect and materiality-gated degradation contracts; (3) the persistence matrix and its tests.
 - **Completion evidence:** early-cancel and late-cancel demonstrations in the same one-screen UI,
   each with the committed record inspected afterwards, plus one demonstration that cancellation and
-  a bare disconnect produce different recorded outcomes.
+  a bare disconnect produce different recorded outcomes. The two are also distinguishable in
+  telemetry: cancellation shows receipt, a named safe boundary, and a commit; disconnect shows
+  neither a cancellation receipt nor a commit.
 - **Status updates required after landing:** the cancellation rows in section 10.7 move to
   Implemented; record which cancellation paths have deterministic tests.
 
@@ -1062,8 +1284,14 @@ scoped to runtime paths and use exact symbols.
   **Who builds on each:** S-8 reads and resolves citations against exactly this storage layout when
   it answers a follow-up or handoff from retained state; A-1 verifies the write-role assignment and
   the container this slice chose, rather than inventing or granting it for the first time.
-- **Telemetry and activity impact:** persistence result, backend identity, and retry facts on the
-  commit span.
+- **Telemetry and activity impact:** the commit span gains the facts that make a hosted persistence
+  failure diagnosable without a local repro: the commit attempt and its result as separate facts, so
+  an attempt that never returned is distinguishable from one that failed; backend identity, so an
+  in-memory run is never mistaken for a durable one; the container and partition key written to;
+  each retry with its attempt number and outcome; and a sanitized Cosmos access-failure category
+  separating authorization refusal, throttling, timeout, and not-found from each other and from a
+  contract or serialization failure. Never the artifact body, the account key, or the connection
+  string. The activity projection continues to show only that persistence succeeded or failed.
 - **Deterministic tests:** one port contract suite run against the in-memory backend and against a
   fake or stub implementing the Cosmos port, so both satisfy one contract offline: commit ordering,
   persistence-failure behavior, nothing persisted for a disconnect, and resolver semantics after a
@@ -1093,7 +1321,9 @@ scoped to runtime paths and use exact symbols.
   lane.
 - **Completion evidence:** the port contract suite green against both offline backends, and one
   recorded Azure-assisted run in which a completed turn is written to Cosmos, the app restarted,
-  and the same turn read back with resolving citations.
+  and the same turn read back with resolving citations. The offline suite also asserts that each
+  Cosmos access-failure category above reaches the commit span distinctly, driven from the stub
+  rather than by revoking a live role assignment.
 - **Status updates required after landing:** the persistence rows in section 10.11 move to
   Implemented; section 12 records the container change only if Azure was actually rechecked, and
   records which compatibility outcome was taken along with any deletion command run.
@@ -1139,8 +1369,13 @@ scoped to runtime paths and use exact symbols.
   genuinely cannot hold, S-9 owns the fix, not a return trip through this slice.
 - **Contract introduced or stabilized:** follow-up, handoff, redirect, and supplied-context
   semantics.
-- **Telemetry and activity impact:** interaction kind, retained-state validation result, and the
-  fact that handoff made no model call.
+- **Telemetry and activity impact:** the classified interaction kind and what determined it, request
+  shape or explicit UI action, so a misrouted interaction is diagnosable without guessing; which of
+  the four retained-state paths was taken; the identity of the prior turn the retained state came
+  from, which is the only correlation link between two turns of one investigation and is what makes
+  a follow-up traceable back to the turn it answers from; the retained-state validation result and,
+  on refusal, which constraint refused it; and the fact that handoff made no model call, recorded
+  positively rather than inferred from an absent span.
 - **Deterministic tests:** the classifier maps each of the five request shapes to the correct
   `InteractionKind` value, with an ambiguous ordinary follow-up defaulting to a question; each
   constraint above as its own test; a follow-up that would require new evidence is refused with the
@@ -1237,8 +1472,24 @@ scoped to runtime paths and use exact symbols.
   verifies the read-only posture and the seeded `knowledge` container this slice creates, rather
   than inventing either; A-2's retrieval-influence demonstration journey runs against exactly the
   repaired scenario this slice's completion evidence names.
-- **Telemetry and activity impact:** retrieval query, fusion and promotion decisions, passage
-  budget applied, and the informing references carried into the next proposal.
+- **Telemetry and activity impact:** retrieval is the slice with the most ways to fail quietly, so
+  its spans carry each stage separately rather than one retrieval result:
+  - the retrieval query executed, by its structured parameters and category filter, never as raw
+    passage text;
+  - the lexical and vector legs as separate facts, each with its own candidate count, duration, and
+    outcome, so a leg that returned nothing is distinguishable from a leg that failed and from a
+    leg that never ran;
+  - the fusion result and the deterministic identifier and metadata promotion decisions, including
+    what was promoted above its fused position, which is the check that proves the promotion stage
+    did not silently disappear;
+  - the passage budget applied and what truncation dropped;
+  - retrieval influence: which admitted knowledge references informed the next proposal, carried on
+    the proposal span, so influence is a recorded fact rather than a claim made in the report;
+  - embedding and vector-query failures as their own sanitized categories, separating an embedding
+    deployment failure, a vector-query failure, and an empty-but-successful result, since all three
+    otherwise present as an investigation that simply found no knowledge.
+  The backend identity attribute is set here, so a run against fixtures is never mistaken for a run
+  against the live `knowledge` container.
 - **Deterministic tests:** identifier promotion above fused position; passage budget; category
   filtering; knowledge-reference closure through the single parser; retrieval floor fixtures.
 - **Evaluation increment:** the lexical-only retrieval baseline and the retrieval-influence
@@ -1259,7 +1510,8 @@ scoped to runtime paths and use exact symbols.
   promotion; (6) informing references, feed integration, and the lexical baseline.
 - **Completion evidence:** the repaired `inc-007` or the controlled `inc-004` variant shows a
   different investigation action because of retrieved knowledge, with the informing reference
-  visible in the feed.
+  visible in the feed and the same influence readable from the run's spans, the promotion decision
+  included.
 - **Status updates required after landing:** the retrieval rows in section 10.8 move to
   Implemented; the retrieval dependency rows in section 14 move to Removed; record the D-003
   outcome and the D-006 retrieval-influence selection.
@@ -1306,8 +1558,13 @@ tests, and its comments may legitimately use.
   application access, rather than creating either; A-2's governed-structured-query demonstration
   journey runs against exactly the approved surface and refusal case this slice's completion
   evidence names.
-- **Telemetry and activity impact:** query validation result, rejection reason, scope and limit
-  applied, and execution provenance.
+- **Telemetry and activity impact:** acceptance or rejection as an explicit fact, with the rejection
+  carrying whether it failed structured decoding or validation and which rule refused it, so a
+  refusal is never indistinguishable from an execution that found nothing; the approved surface, the
+  scope, the limit, and the timeout actually applied; the execution outcome and completeness on the
+  same two axes as every other capability, with row count and provenance; and, on failure, a
+  sanitized category separating a timeout, a limit stop, and a backend access failure. No
+  reconstructed query text is emitted, because none is constructed anywhere.
 - **Deterministic tests:** lookup, filter, and COUNT against fixture truth; rejection before
   execution; scope, limit, and timeout enforcement; read-only enforcement on this path as on every
   other.
@@ -1354,8 +1611,14 @@ tests, and its comments may legitimately use.
   same canonical result and provenance as the direct path. **Who builds on each:** A-2's
   direct-versus-MCP demonstration journey runs against exactly this one exposure; nothing later
   adds a second one.
-- **Telemetry and activity impact:** transport identity on the capability span, and MCP operation
-  spans, which do not exist today.
+- **Telemetry and activity impact:** the transport attribute S-2 minted now actually varies, so
+  `direct` and `mcp` are distinguishable on the capability span for the one shared implementation.
+  MCP operation spans, which do not exist today, cover invocation and result under the same
+  correlation attributes, so an MCP call is traceable to its turn like any other operation.
+  Failures separate into three sanitized categories that would otherwise be one: an MCP invocation
+  failure at the transport, a result-carriage or deserialization failure, and a parity divergence
+  where the two transports returned different canonical results. Registration refusal of an
+  unregistered capability is its own fact, not a generic error.
 - **Deterministic tests:** result, provenance, and permission parity between transports;
   registration enforcement; no MCP-only vocabulary; the three removed exposures are unreachable.
 - **Evaluation increment:** parity is asserted by tests; no evaluation change.
@@ -1368,7 +1631,8 @@ tests, and its comments may legitimately use.
 - **Small PR breakdown:** (1) D-004 inspection and decision update; (2) remove all three exposures
   and add the accepted one; (3) parity tests and the activity transport tag.
 - **Completion evidence:** side-by-side direct and MCP invocation of deployment and change history
-  produces the same canonical result and provenance.
+  produces the same canonical result and provenance, and the two runs are distinguishable only by
+  the transport attribute on their spans.
 - **Status updates required after landing:** the rows in section 10.10 move to Implemented; the
   three-wrong-capabilities row in section 8.3.1 moves to Replaced; section 16 records D-004 as
   resolved and drops it from the blocked list.
@@ -1410,8 +1674,12 @@ tests, and its comments may legitimately use.
   mechanism, second correction allowance, or new loop framework is introduced here.
 - **Contract introduced or stabilized:** evaluation scenario and fixture assignments, written into
   the evaluation artifact home settled in S-2.
-- **Telemetry and activity impact:** further-evidence proposal, its authorization decision against
-  the four conditions, and the one-cycle flag state.
+- **Telemetry and activity impact:** the further-evidence proposal, its authorization decision
+  naming which of the four conditions decided it, the one-cycle flag state before and after, and the
+  back-edge itself as a stage transition, so a turn that took the back-edge is distinguishable from
+  one that ran long. A refusal to authorize a second cycle is recorded as a normal bound stop, not
+  an error. The corpus half of this slice adds no runtime telemetry: corpus gates report through the
+  test suite, and evaluation artifacts do not become runtime telemetry.
 - **Deterministic tests:** the one-cycle bound; each authorization condition; seven-incident and
   five-family counts; closure; chronology; leakage; and the scenario-versus-variant distinction.
 - **Evaluation increment:** D-006 selections recorded for further evidence, retrieval influence,
@@ -1500,9 +1768,30 @@ then immediately require a regeneration against a changed environment.
 - **New implementation:** the eight-check hosted smoke: start, authentication, model reachability,
   Cosmos role access, one streamed turn, citations resolving after restart, telemetry arrival, and
   Bicep repeatability. Bicep converges on exactly the accepted resource set.
+- **Check 7 is diagnosability, not arrival.** `runtime-and-deployment.md` §16 states check 7 as
+  "telemetry reconstructs one turn", and "some telemetry exists" does not satisfy that. This slice
+  implements it as two verifications, both against the live component:
+  1. **Locate a known turn by correlation.** Take the `investigation_id` and `turn_id` the smoke's
+     own streamed turn returned, query Application Insights for them, and assert that the trail
+     contains the startup record for the running revision, the request and turn, each stage, the
+     model call, each capability call, retrieval and MCP where the turn used them, the grounding
+     result, the commit, and the terminal outcome. Filtering is on fields; a check that passes by
+     matching message text does not count.
+  2. **Prove a failure path is legible.** Drive one deterministic, reversible failure and assert
+     that its sanitized telemetry identifies where it failed, what category of operation failed, the
+     correlation identity it belonged to, and a non-secret reason. Use a safe mechanism: a request
+     that fails validation deterministically, a capability deliberately configured as unavailable
+     for the check, or the application's own configuration-refusal path exercised against a
+     throwaway local start. Do not revoke a role assignment, delete a container, corrupt a
+     deployment, or otherwise break a production-like Azure resource to produce the failure.
+  If either verification cannot be satisfied, the missing emission point belongs to the slice that
+  owns the behavior, and that is a defect in that slice rather than new work invented here.
 - **Contract introduced or stabilized:** none. This slice makes live state match contracts already
   stabilized.
-- **Telemetry and activity impact:** none new. Telemetry arrival becomes a hosted check.
+- **Telemetry and activity impact:** no new emission point, and any that proves to be needed is
+  raised against its owning slice rather than added here. What is new is verification: A-0 proved
+  telemetry arrives with correlation intact, and this slice proves the arrived telemetry is
+  sufficient to diagnose both a healthy turn and a failing one.
 - **Deterministic tests:** unchanged. Exact ordering and persistence-failure branches remain
   deterministic-test responsibilities and are not re-asserted in smoke.
 - **Evaluation increment:** the hosted smoke result becomes an input that S-13's report aggregates
@@ -1520,7 +1809,12 @@ then immediately require a regeneration against a changed environment.
   separately approved orphan cleanup (the `rytesting` orphan is already deleted as of 2026-08-08,
   ahead of this slice; see the divergence note above).
 - **Completion evidence:** hosted streamed turn, persisted artifact, citations resolving after
-  restart, telemetry correlation visible, and a repeated deployment that converges.
+  restart, and a repeated deployment that converges. For telemetry, the concrete artifact is the two
+  recorded queries themselves, with their text and their returned trails: one that reconstructs a
+  named healthy turn from its `investigation_id` or `turn_id`, and one that locates the deliberate
+  failure and shows its stage, operation category, correlation identity, and sanitized reason.
+  Someone handed only those two queries and the deployment must be able to repeat the diagnosis
+  without further explanation, which is the whole point of the exercise.
 - **Status updates required after landing:** section 12 is rewritten from a fresh live inspection;
   the remaining rows in section 10.15 move to Implemented; record the `az` queries actually run.
 
@@ -1537,6 +1831,9 @@ Live state is proven by query, not by reading Bicep.
 | Application identity is read-only on corpus containers | The role assignments show the app identity with data-reader scope on `knowledge` and `operational-records`, and no write scope |
 | Application identity can write completed turns | The role assignments show the app identity with data-write scope on `investigations` (or the S-7 outcome-3 replacement container) and no other container |
 | Hosted smoke is exactly the accepted suite | The smoke script defines eight checks and no assertion references approval, polling, or job status |
+| A known turn is reconstructable by correlation | Querying Application Insights on the smoke turn's `turn_id` returns startup, request and turn, stage, model, capability, grounding, commit, and terminal outcome, joined by fields rather than by message text |
+| A failure is diagnosable from telemetry alone | The deliberate, reversible failure check yields the stage, the operation category, the correlation identity, and a sanitized reason, and the emitted record contains no secret, token, prompt, or raw payload |
+| Deployment evidence joins to application evidence | The workflow run's deployed revision matches the revision named in that revision's startup record, and no GitHub Actions build or deploy output has been copied into Application Insights |
 | Deployment is repeatable | `az deployment group what-if` against unchanged parameters reports no create, delete, or modify actions. Optionally follow with a real deployment and confirm that resource IDs and the properties the accepted design names are unchanged. A plain repeat deployment is not proof, because Azure records deployment operations even when effective properties do not change |
 
 ### S-13 Evaluation completion and the milestone report
@@ -1580,7 +1877,10 @@ Live state is proven by query, not by reading Bicep.
      byte-identical, and never the source of a committed comparison.
 - **Contract introduced or stabilized:** evaluation result and report model.
 - **Telemetry and activity impact:** judge calls carry a task label and usage totals like any other
-  model call, and never appear in the live investigation path.
+  model call, and never appear in the live investigation path. Nothing further is added. Evaluation
+  results, scores, baselines, and report contents are artifacts, not telemetry, and no runtime
+  emission point is created to carry them; a report is diagnosed by reading it, not by querying
+  Application Insights.
 - **Deterministic tests:** fixture and report schema; ownership boundaries, so evaluation does not
   re-assert what deterministic tests own; deterministic aggregation; the deterministic report is
   reproducible.
@@ -1736,7 +2036,9 @@ This plan is ready to execute when review confirms:
 17. no environment-dependent test is labelled deterministic;
 18. the corpus repair workflow is explicit and referenced rather than restated;
 19. S-0 through S-5 and A-0 contain path-level execution detail;
-20. telemetry emission is assigned per slice rather than deferred to the hosted sink;
+20. telemetry emission is assigned per slice rather than deferred to the hosted sink, every slice
+    that adds runtime behavior names its own diagnostic facts and closes on a telemetry assertion,
+    and no slice defers application instrumentation to A-0;
 21. the accepted evaluation grows with capability rather than arriving at the end, and its artifact
     home exists before its first artifact;
 22. every existing test module has exactly one disposition and one owning slice;
@@ -1744,7 +2046,11 @@ This plan is ready to execute when review confirms:
 24. every slice answers what a reviewer can run, see, or verify;
 25. no slice is merely framework or infrastructure construction;
 26. no slice depends on a mechanism, contract, resource, fixture, or test seam unless the producing
-    slice explicitly owns its implementation and proof.
+    slice explicitly owns its implementation and proof;
+27. every link of the reconstruction chain under "Diagnosability obligations" has an owning slice,
+    the failure classes named there are separable in telemetry, A-0 makes the chain queryable and
+    adds the hosting diagnostics no earlier slice could emit, and A-1 proves both a healthy turn and
+    a deliberate failure are diagnosable from correlation identifiers alone.
 
 ---
 

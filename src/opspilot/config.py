@@ -127,7 +127,7 @@ IMPLEMENTATION = _env("OPSPILOT_IMPLEMENTATION", "deterministic")
 # --------------------------------------------------------------------------------------
 # Retrieval / embedding models
 # --------------------------------------------------------------------------------------
-EMBEDDING_MODEL = "BAAI/bge-m3"               # dense + sparse in one model
+EMBEDDING_MODEL = "BAAI/bge-m3"  # dense + sparse in one model
 RERANKER_MODEL = "BAAI/bge-reranker-v2-m3"
 
 # Depth of the first-stage (hybrid) candidate set handed to the cross-encoder reranker.
@@ -165,6 +165,25 @@ COSMOS_INVESTIGATION_CONTAINER = _env("AZURE_COSMOS_INVESTIGATION_CONTAINER", "i
 COSMOS_INVESTIGATION_INDEX_CONTAINER = _env(
     "AZURE_COSMOS_INVESTIGATION_INDEX_CONTAINER", "investigation-index"
 )
+
+
+# --------------------------------------------------------------------------------------
+# RetailEase corpus: the containers corpus preparation writes and the application only reads
+# --------------------------------------------------------------------------------------
+# A separate database from the application's own state, so the read-only grant is scoped once at
+# the database rather than enumerated per container. The application never writes here; the write
+# boundary is the Cosmos role assignment, not a convention in this file.
+COSMOS_RETAILEASE_DATABASE = _env("AZURE_COSMOS_RETAILEASE_DATABASE", "retailease")
+COSMOS_KNOWLEDGE_CONTAINER = _env("AZURE_COSMOS_KNOWLEDGE_CONTAINER", "knowledge")
+COSMOS_OPERATIONAL_RECORDS_CONTAINER = _env(
+    "AZURE_COSMOS_OPERATIONAL_RECORDS_CONTAINER", "operational-records"
+)
+
+# The embedding deployment corpus preparation uses at load time and retrieval uses at query time.
+# The dimension count must match the knowledge container's vector policy: Cosmos fixes it per
+# embedding path, and changing it means removing and re-adding that path.
+EMBEDDING_DEPLOYMENT = _env("AZURE_OPENAI_EMBEDDING_DEPLOYMENT", "text-embedding-3-small")
+EMBEDDING_DIMENSIONS = _env_int("AZURE_OPENAI_EMBEDDING_DIMENSIONS", 1536)
 
 
 # --------------------------------------------------------------------------------------
