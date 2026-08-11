@@ -21,6 +21,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, get_args
 
 from opspilot.diagnosis.contracts import CausalClaim, OnsetWindow, ReportClaim
+from opspilot.evidence.references import entities_named
 
 if TYPE_CHECKING:
     from opspilot.llm.schema import CausalClaimResponse, ReportClaimResponse
@@ -33,26 +34,12 @@ _CLAIM_KINDS: frozenset[str] = frozenset(get_args(ReportClaim.model_fields["kind
 
 
 def entities_from_refs(refs: set[str]) -> set[str]:
-    """Service names carried by the frozen evidence-ref grammar.
+    """Service names carried by the reference grammar.
 
-    `logs:<svc>:<id>`, `metrics:<svc>:<metric>@<ts>` and `deploys:<svc>:<id>` name one service in
-    the second field; `deps:<from>-><to>` names two. Refs with no service (`runbook:<id>`,
-    `past_incident:<id>`) contribute nothing, which is correct: a runbook cannot be a cause entity.
+    Delegates to the single reference parser. Knowledge references contribute nothing, which is
+    correct: a runbook cannot be a cause entity.
     """
-    found: set[str] = set()
-    for ref in refs:
-        head, _, rest = ref.partition(":")
-        if not rest:
-            continue
-        if head == "deps":
-            left, arrow, right = rest.partition("->")
-            if arrow:
-                found.update({left.strip(), right.strip()} - {""})
-        elif head in ("logs", "metrics", "deploys"):
-            service = rest.split(":", 1)[0].split("@", 1)[0].strip()
-            if service:
-                found.add(service)
-    return found
+    return entities_named(refs)
 
 
 def admit_causal_claim(
