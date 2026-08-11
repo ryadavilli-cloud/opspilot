@@ -289,7 +289,13 @@ resource retailEaseDb 'Microsoft.DocumentDB/databaseAccounts/sqlDatabases@2024-0
 //
 // `/embedding` is excluded from the normal index deliberately. The vector index already covers it,
 // and range-indexing a 1536-element float array costs storage and RU for queries nobody issues.
-resource knowledgeContainer 'Microsoft.DocumentDB/databaseAccounts/sqlDatabases/containers@2024-08-15' = {
+// Pinned to 2024-11-15 rather than the 2024-08-15 used by the other Cosmos resources here:
+// `vectorEmbeddingPolicy` and `indexingPolicy.vectorIndexes` were added to the deployment schema in
+// 2024-11-15 and do not exist in the earlier contract. The service accepts them either way, but
+// declaring them against an API version that does not define them relies on behavior outside the
+// declared contract, and Bicep says so (BCP037). Only this resource needs the newer version, so
+// only this resource takes it.
+resource knowledgeContainer 'Microsoft.DocumentDB/databaseAccounts/sqlDatabases/containers@2024-11-15' = {
   parent: retailEaseDb
   name: knowledgeContainerName
   properties: {
