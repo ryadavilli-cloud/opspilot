@@ -606,6 +606,26 @@ Request-to-turn correlation rides the same identifiers, since one streaming requ
   subset needed by the first scenario. Do not introduce a temporary result schema that S-3
   immediately replaces. The completed-outcome vocabulary belongs to S-3 and is not anticipated
   here.
+- **Four realization constraints, stated so the accepted semantics are not elaborated into
+  schemas they do not call for.** Each realizes a rule the accepted documents already settled;
+  none of them is a new concept, and none needs a decision record.
+  - **Limitation shape.** A limitation carries the unanswered question, the reason derived from
+    the capability's execution outcome, the producing operation reference, and the capability.
+    No limitation-category enum. The accepted vocabulary is the execution outcome that already
+    travels on the result; a second classification beside it would be an invented taxonomy.
+  - **Evidence-type assignment.** One static capability-to-evidence-type mapping beside the
+    capability registry, drawn only from the seven accepted evidence types. S-2 introduces no new
+    evidence type and no per-source subtype. Evidence type represents meaning, never access path,
+    so the mapping is by what the capability observes rather than by how it reached it.
+  - **Authoritative empty observation.** A `succeeded + empty` result is admitted with a
+    deterministic canonical representation carrying the queried scope and an explicit
+    nothing-matched marker. No model call and no generated prose stands in for it. This is the
+    realization of the rule that an authoritative absence is a positive observation, so it must be
+    as inspectable as any other admitted observation.
+  - **Operation reference.** An opaque, turn-scoped identifier minted at capability dispatch and
+    carried unchanged for correlation, duplicate-action detection, retry attribution, and
+    provenance. It encodes no source semantics and does not reuse or parallel the evidence
+    reference grammar, because it names an attempt rather than an observation.
 - **New implementation:** the evidence reference model with exactly one parser and one resolver;
   Evidence Access Layer owned admission of normalized observations into an admitted-evidence set
   with first-class limitations, including `succeeded + empty` as a positive observation; the
@@ -647,10 +667,15 @@ Request-to-turn correlation rides the same identifiers, since one streaming requ
   Operation names are fixed identifiers here, not assembled from capability or incident values.
   Admission facts appear in the activity projection in their safe form.
 - **Deterministic tests:** legal execution-outcome and completeness pairings; reference resolution
-  through the single parser; `succeeded + empty` admitted as a positive observation; structured
-  output validation; rendering fidelity for populated fields; MCP parity against the new envelope;
-  commit semantics on the port, including its failure contract; a lifecycle contract test proving
-  that a stub delivery step cannot run until a commit succeeds; replay-cassette end-to-end path.
+  through the single parser; `succeeded + empty` admitted as a positive observation, carrying the
+  queried scope and its nothing-matched marker rather than empty content; every non-answering
+  outcome producing a limitation that names its unanswered question and resolves its operation
+  reference, with no admitted observation; capability-to-evidence-type mapping covering every
+  registered capability and yielding only accepted types; an operation reference that is opaque,
+  unique within a turn, and rejected by the evidence-reference parser; structured output
+  validation; rendering fidelity for populated fields; MCP parity against the new envelope; commit
+  semantics on the port, including its failure contract; a lifecycle contract test proving that a
+  stub delivery step cannot run until a commit succeeds; replay-cassette end-to-end path.
 - **Evaluation increment:** the evaluation artifact home is settled and created here, because the
   first artifacts appear here: committed deterministic fixtures under `eval/fixtures/` and
   reference reports under `eval/reports/`, with dated live-run outputs under a gitignored

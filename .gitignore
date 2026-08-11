@@ -75,6 +75,8 @@ models/
 logs/
 eval_runs/
 eval_results/
+# Dated live-run outputs (D-009). Fixtures and reference reports under eval/ stay committed.
+eval/runs/
 scorecards/
 
 # ── IaC / build artifacts ──────────────────────────────────────

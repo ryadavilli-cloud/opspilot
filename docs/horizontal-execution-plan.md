@@ -405,6 +405,14 @@ Register", Evidence Access Layer and admission records "Closed static capability
 implemented and reusable and "Read-only operational capabilities" as implemented and well tested;
 this slice is the consumer half of the containers closed in 1.3.
 
+**Inherited obligation, deliberately left open by 1.3.** 1.3 seeded and verified
+`operational-records` but did not implement "absent preparation is a deployment-time failure and
+must present as one", because at that point nothing read the container and a readiness check would
+have gated deployment on data no code consumed. This slice creates the first consumer, so the
+obligation attaches here: once these adapters read the container, an empty or missing container
+must fail at deployment rather than at turn time. The container itself is populated and does not
+need reseeding; what is missing is the failure behavior, not the data.
+
 **Retires.** `status.md` - "Deletion and Replacement Register", "Duplicated logic to collapse":
 "Corpus path resolution," whose two owners disappear with the file-backed corpus repository, and
 "Read-only capability inventory," which collapses into the explicit static capability registry.
@@ -443,16 +451,26 @@ rather than dropping it. That is a gap between the plan and the register, not a 
 **Retires.** `status.md` - "Deletion and Replacement Register", "Duplicated logic to collapse":
 "Evidence-reference parsing," whose two parsers become one reference model owned by admission.
 
+**Already done, so this slice inherits it rather than performing it.** The two parsers were
+collapsed into one reference model on 2026-08-11 by separate work, and the register row above has
+been retired accordingly. `src/opspilot/evidence/references.py` is that owner: one parser, one
+resolver, and one prefix-to-type map covering the four evidence and three knowledge prefixes.
+`diagnosis/sufficiency.py` and `diagnosis/admission.py` are now callers of it and hold no parsing
+of their own. What remains for this slice is admission itself, which assigns the reference; the
+reference model it assigns from already exists and must not be rebuilt.
+
 **Shape.** New admission code inside the Evidence Access Layer, plus a rewrite of the evidence half
 of turn state. The hash-keyed first-seen-wins merge that keeps contradictory observations separate
 survives and is what the admitted set is built on; the existing admission module, which admits
 model-proposed claims, is a different thing and is untouched here.
 
-**Blocked detail.** `status.md` - "Implementation Clarifications Exposed by the Repository",
-"Evidence and knowledge reference encoding" records that deterministic resolution needs one owner
-for prefixes, keys, and parsing. This slice cannot assign a reference without that being settled.
-The repository's frozen grammar is a candidate to be evaluated rather than copied, and choosing it
-is a decision for `decisions.md`, not for this plan.
+**Blocked detail, now discharged.** `status.md` - "Implementation Clarifications Exposed by the
+Repository", "Evidence and knowledge reference encoding" recorded that deterministic resolution
+needs one owner for prefixes, keys, and parsing, and this slice could not assign a reference until
+that was settled. It is settled: the grammar was evaluated rather than copied, and `decisions.md`
+D-008 adopts it with the prefix as the declared type discriminator, `postmortem:` canonical with
+`past_incident:` retired, and admission rather than the capability as the assigner of the
+reference. This slice is unblocked and inherits that encoding rather than choosing one.
 
 **Tests.** Two properties a reviewer would not predict. First, admission must refuse anything whose
 execution outcome is not `succeeded`, including a result that carries plausible content alongside a
@@ -526,6 +544,22 @@ identifiers.
 
 **Closes.** `status.md` - "Detailed Missing and Partial Implementation Register", Retrieval:
 "Passage-bearing semantic retrieval."
+
+**Inherited obligation, deliberately left open by 1.3.** 1.3 seeded and verified the `knowledge`
+container but did not implement "absent preparation is a deployment-time failure and must present
+as one", because nothing read the container yet and a readiness check would have gated deployment
+on data no code consumed. This slice creates the reading half, so the obligation attaches here
+alongside 2.2's. The container holds 196 embedded passages and does not need reseeding; what is
+missing is the failure behavior, not the data.
+
+**Already established by 1.3, so this slice does not re-verify it.** The container carries a
+1536-dimension cosine vector policy with a diskANN index, `/embedding` is excluded from the normal
+index, and `VectorDistance()` was demonstrated returning the semantically correct passage with a
+same-domain distractor present and not surfacing. That discharges the D-003 viability question the
+blocker table below used to assign here. Also useful and easy to get wrong: a container's vector
+embedding policy is NOT fixed at creation. It can be added to a container without one, and a path
+can be removed and re-added at a different dimension; only in-place modification is refused. The
+account capability is the creation-only part, and the partition key is the immutable one.
 
 **Retires.** `status.md` - "Deletion and Replacement Register", "Misaligned implementations":
 "Retrieval returns pointers without passages" and "Local sentence-transformers embeddings"; and "No
