@@ -296,9 +296,18 @@ def run_async_investigation(client: httpx.Client, auth: dict[str, str]) -> None:
     # to check: `submit_decision` authenticates before it looks the record up, deliberately, so
     # that probing cannot reveal which investigation ids exist. The 401 therefore holds whatever
     # state the investigation is in, which is what makes this assertion deterministic.
+    #
+    # The body must still be WELL FORMED, which is a separate ordering from the one above. FastAPI
+    # validates the request body before the handler runs at all, so a body missing a required field
+    # returns 422 and the auth check never executes. `InvestigationDecision` requires `decision_id`
+    # and forbids extra fields, so an incomplete probe would test Pydantic rather than the gate.
     anon_decision = client.post(
         f"{accepted.poll_url}/decision",
-        json={"decision": "approve", "submitted_report_hash": "unauthenticated-probe"},
+        json={
+            "decision_id": "smoke-unauthenticated-probe",
+            "decision": "approve",
+            "submitted_report_hash": "unauthenticated-probe",
+        },
     )
     _require(
         anon_decision.status_code == 401,
