@@ -52,6 +52,18 @@ This version merges the corrected repository reconciliation draft with the earli
   operation ledger held separately, one capability inventory replacing the duplicate allowlist,
   and the protocol boundary carrying both axes with parity asserted on each). Full suite 515
   passed, 1 xfailed; `ruff`, `ruff format`, and `mypy src` clean.
+- Operational capabilities moved onto the container 2026-08-11. The five operational capabilities,
+  the incident lookup behind predefined intake, and reference resolution read
+  `operational-records` through `data/operational_records.py`; `data/repository.py` is deleted and
+  the image no longer ships the operational corpus. Each capability takes an explicit deadline and
+  hands it to the source, a request naming its own is refused at dispatch, and a container that
+  cannot answer reports `unavailable` rather than `failed`. Readiness now counts every record kind
+  and fails closed. Preparation was found to be overwriting each dependency edge's own relationship
+  kind with the partition value, since `/kind` is both a partition path and a field the edges carry;
+  the edge's kind is now carried as `dependency_kind` and mapped back at the adapter, which means
+  the live container holds clobbered edges until it is reseeded. Repository inspected at
+  `f5c2b42`. Full suite 600 passed, 11 skipped, 1 xfailed across 59 test files (606 collected);
+  `ruff check`, `ruff format`, and `mypy src` clean.
 
 ## 2. Executive State
 
@@ -116,7 +128,7 @@ See the authoritative documents for the complete target design and
 | Area | Contents | Size |
 | --- | --- | --- |
 | `src/opspilot/` | FastAPI app (`api.py` 1,153 ln), LangGraph orchestration (`graph.py`, `nodes/investigation.py` 12 nodes, `router.py`), state/contracts, async-job repositories (`investigations.py`, `cosmos_investigations.py`), WIP dispatch (`dispatch.py`, `worker.py`), auth (`auth.py`), config, diagnosis (planner/sufficiency/admission/render), guardrails (2 policies), llm (client/prompts/cassettes/manifest), mcp (stdio server), obs (hand-rolled tracing), retrieval (BM25 + dense + RRF + unreachable CrossEncoder), tools (8 read-only), static console (870 ln polling client) | 9,429 lines |
-| `tests/` | 47 files, ~365 tests; strongest on HITL/decision protocol, auth, tools, corpus integrity; zero tests for dispatch/worker, cancellation, follow-up, handoff, structured query, streaming | 5,749 lines |
+| `tests/` | 59 files, 606 collected (re-measured 2026-08-11); strongest on HITL/decision protocol, auth, capabilities, corpus integrity; zero tests for dispatch/worker, cancellation, follow-up, handoff, structured query | 5,749 lines |
 | `eval/` | scenario/retrieval/wild evaluators, 4 recorded baselines, 2 cassettes, 2 goldens, stub harness | 5,300 lines |
 | `data/` | answer key (7 scenarios YAML + topology), synthetic telemetry (13,780 logs, 175 metric series, 16 alerts, 9 deploys, 7 incidents, 12 edges), KB (12 docs), distractors (16), profiles; 5.2 GB gitignored third-party caches | ~2.9 MB committed |
 | `infra/` | one `main.bicep` (469 ln): Log Analytics, ACR, Azure OpenAI (one `gpt-5-mini` deployment), Cosmos serverless (3 containers: `checkpoints`, `investigations`, `investigation-index`), managed environment, one Container App (0-3 replicas), role assignments | 469 lines |
@@ -136,7 +148,7 @@ See the authoritative documents for the complete target design and
 | `auth.py` | Entra JWT validation (JWKS, issuer, audience, expiry) producing a `ReviewerPrincipal`; role authorization (`Approver`/`Submitter`/`Reader`); human vs service-principal labelling |
 | `checkpoint.py` | LangGraph checkpointer factory: `none`/`memory`/`sqlite`/`cosmos` backends |
 | `composition.py` | Composition root selecting `deterministic` vs `single_agent` diagnosis (planner + triager), with explicit fallback and reason surfaced in `/version` |
-| `config.py` | Env-driven settings: corpus paths, retrieval backend, severity→model-tier map (Claude tiers), LLM provider seam, reasoning effort, sampling seed, checkpointer/repository/dispatch backends, Entra roles, concurrency caps, loop bounds, up-front numeric eval targets (`EvalTargets`) |
+| `config.py` | Env-driven settings: KB and distractor paths, the source-call deadline ceiling, retrieval backend, severity→model-tier map (Claude tiers), LLM provider seam, reasoning effort, sampling seed, checkpointer/repository/dispatch backends, Entra roles, concurrency caps, loop bounds, up-front numeric eval targets (`EvalTargets`) |
 | `contracts.py` | Frozen `IncidentReport` with content hash; discriminated result union `GroundedRcaReport` / `PartialInvestigationReport` / `KnowledgeBriefing` / `EscalationNotice` |
 | `cosmos_investigations.py` | Cosmos-backed `InvestigationRepository`: two containers (records + idempotency index), ETag optimistic concurrency, atomic decision commit, publication sink, lease/fencing epoch |
 | `dispatch.py` | Durable dispatch queue seam: `DispatchMessage`, classified settlement (`complete`/`abandon`/`dead_letter`), `inline`/`memory`/`servicebus` backends, outbox relay (`relay_pending`) |
@@ -147,7 +159,7 @@ See the authoritative documents for the complete target design and
 | `state.py` | Pydantic `InvestigationState`: identifiers, evidence-by-hash with merge reducers, hypothesis, causal claim, report/report_hash/publication_id, safety/approval dicts |
 | `triage.py` | Triager seam: deterministic self-match floor + LLM triager (recurrence detection) |
 | `worker.py` | Queue-triggered worker: claim with lease/fencing epoch, drive the checkpointed graph, classified message settlement |
-| `data/repository.py` | Deterministic corpus repository (incidents/alerts/deployments/logs/metrics/dependencies) + corpus validation |
+| `data/operational_records.py` | Read-only, partition-scoped queries over the `operational-records` container; per-kind counts for the preparation check; the lazy process-wide reader. Replaced `data/repository.py`, the file-backed corpus repository, deleted 2026-08-11 |
 | `diagnosis/admission.py` | Deterministic admission of proposed causal/report claims: entity resolution against touched entities, support-ref grounding, fail-closed refusal |
 | `diagnosis/contracts.py` | Diagnosis contracts: `EvidenceCitation` (with proposed role), `Hypothesis`, `CausalClaim`, `ReportClaim`, `Acknowledgement`, `SufficiencyState`, `StopReason`, plans/questions |
 | `diagnosis/cycle.py` | One deterministic diagnostic cycle: fixed deploy-regression plan + counter-evidence, onset clamp, citation assembly |
@@ -180,7 +192,7 @@ See the authoritative documents for the complete target design and
 | `tools/contracts.py` | Tool request models + uniform `ToolResult` envelope (`status: ok\|error`, evidence refs, metadata) |
 | `tools/errors.py` | `run_tool` boundary: validate, time, cap, sanitize |
 | `tools/service.py` | `ToolService`: eight read-only tools + allowlisted `call()` dispatch, lazy retriever |
-| `tools/{alerts,dependencies,deployments,incidents,logs,metrics,search}.py` | The individual read-only tools over the corpus repository and retriever |
+| `tools/{alerts,dependencies,deployments,incidents,logs,metrics,search}.py` | The individual read-only tools over the `operational-records` container and the retriever; each takes an explicit deadline and hands it to the source |
 | `tools/__init__.py`, `data/__init__.py`, `diagnosis/__init__.py`, `llm/__init__.py`, `mcp/__init__.py`, `nodes/__init__.py`, `obs/__init__.py`, `ops/__init__.py`, `guardrails/__init__.py`, `retrieval/__init__.py`, `eval/__init__.py` | Package markers (`ops/` and `eval/` are empty placeholders) |
 | `static/console.html` | 870-line self-contained operator console: submit/poll/review, Entra sign-in, decision buttons (approve/edit/reject/request-more-evidence) |
 
@@ -222,7 +234,7 @@ classification is in sections 5 and 8; the files are: `test_answer_key`, `test_a
 | Path | What it is |
 | --- | --- |
 | `infra/main.bicep` (+ `infra/.gitkeep`) | Azure: Log Analytics, ACR, Container App (min 0 replicas), Azure OpenAI account + `gpt-5-mini` deployment, vector-capable Cosmos account with one `investigations` container (2026-08-09), role assignments, Entra params |
-| `Dockerfile` | Multi-stage uv build; installs `llm` + `checkpoint` groups; packages corpus + KB; BM25 backend |
+| `Dockerfile` | Multi-stage uv build; installs `llm` + `checkpoint` groups; packages the KB only, the operational corpus having no runtime reader left; BM25 backend |
 | `.github/workflows/deploy.yml` | CI (ruff, mypy, pytest lanes) + ACR build + Bicep deploy + post-deploy smoke |
 | `scripts/smoke_deployment.py` | Post-deploy smoke: readiness, version, sync investigate, async 202+poll+decision path |
 | `.dockerignore`, `.gitignore`, `.env.example`, `.python-version`, `pyproject.toml`, `uv.lock`, `README.md` | Build/config housekeeping |
@@ -434,11 +446,14 @@ deleted; Bicep could not reclaim it because narrowing a role assignment changes 
 so the wide grant persisted alongside the narrow one rather than being replaced.
 
 Still misaligned: the `investigations` container is declared but the application no longer writes
-to it, since the repository defaults to memory until the completed-turn artifact exists. Nothing
-reads the two corpus containers yet either: retrieval still loads the knowledge corpus from files
-in the image, and the operational capabilities still read `data/repository.py`. Corpus preparation
-is therefore verifiable but not yet load-bearing, which is why "absent preparation is a
-deployment-time failure" is not implemented: no consumer exists that could fail.
+to it, since the repository defaults to memory until the completed-turn artifact exists.
+
+The operational-records container acquired its first reader on 2026-08-11: the five operational
+capabilities and the incident lookup behind predefined intake read it through
+`data/operational_records.py`, and the file-backed repository is deleted. The knowledge container
+still has none, since retrieval loads the knowledge corpus from files in the image. Half of corpus
+preparation is therefore load-bearing and half is not, which is why "absent preparation is a
+deployment-time failure" now holds for operational records and not yet for knowledge.
 
 ### 6.9 External interface and streaming (`runtime-and-deployment.md` §2)
 
@@ -516,7 +531,7 @@ Classifications per the required system: Keep, Keep with changes, Replace, Delet
 | `src/opspilot/static/console.html` | 870-line polling console with PKCE sign-in and approve/edit/reject UI | One screen: intake/follow-up control, compact activity feed, dominant brief, one expandable details area; reads the streaming body | Replace | Polling + decision UI realize the old contract; the same-origin, no-build-step, single-file approach is right and carries over | system-design "Activity projection"; requirements 7.7 | S-1/S-4 |
 | `src/opspilot/obs/tracing.py` | Hand-rolled spans, 3 seams instrumented; `configure_exporter()` never called (inert) | Telemetry seam feeding App Insights; activity projection produced at the same instrumentation points | Keep with changes | Wire the exporter at startup, add App Insights export, derive activity events from the same span facts | system-design 10.3/10.4; runtime "Observability" | S-1/A-1 |
 | `src/opspilot/config.py` | Env constants incl. dead severity-tier routing (`PROD_MODELS`, `resolve_tier`, `JUDGE_MODEL` unused), unenforced `MAX_TOOL_CALLS`/`CONFIDENCE_THRESHOLD`, dispatch knobs | Configuration for the six bound mechanisms, deployments, containers, capabilities | Keep with changes | Delete dead tables and dispatch keys; add the six bounds and two-deployment routing | runtime "Configuration" | S-3/S-5 |
-| `src/opspilot/data/repository.py` + `data/synthetic/` loaders | JSON corpus loader, closure-validated | Corpus preparation is an offline setup task; operational records move to Cosmos; local fixture mode remains for tests | Keep with changes | Loader survives as the local/test evidence source and the seed script input | system-design "Corpus preparation, which no component owns" | S-8/S-9/S-11 |
+| ~~`src/opspilot/data/repository.py`~~ + `data/synthetic/` loaders | JSON corpus loader, closure-validated | Corpus preparation is an offline setup task; operational records move to Cosmos; local fixture mode remains for tests | Done (2026-08-11) | `data/repository.py` is deleted and the image no longer ships the operational corpus. `data/synthetic/` survives as the seed script's input, and `scripts/prepare_corpus.py` shapes it into container documents for the fixture the tests read | system-design "Corpus preparation, which no component owns" | S-8/S-9/S-11 |
 | `data/answer_key/`, `data/kb/`, `data/distractors/`, `data/synthetic/` | 7 scenarios, closure-verified refs, KB with recurrence signatures, distractors | Same role, plus five-class coverage and demonstration suitability | Keep with changes | Real quality defects to repair (section 11); READMEs stale ("Six scenarios") | evaluation "Scenario Corpus and Coverage Audit"; D-006 | S-8/S-11 |
 | `eval/` evaluators + baselines + cassettes | Scorecard metrics (13 numeric), recorded self-baselines, wild RCAEval probe, stub harness | Four layers, categorical judge, lexical + fixed-script baselines, aggregation of tests/smoke | Replace (keep recording/replay technique) | Metric vocabulary and baseline concept differ; `wild.py`/RCAEval probe is a deferred capability in requirements section 12 (held-out probe) and should be parked; judge missing entirely | evaluation (all); D-005 | S-12 |
 | `infra/main.bicep` | Old deployed-resource composition: Log Analytics without Application Insights, wrong Cosmos containers, one chat deployment, and 0-3 replicas | Accepted six-service composition including Application Insights; 3 target containers; 3 OpenAI deployments; 0-1 replicas | Keep with changes | Solid OIDC/keyless skeleton; container and deployment set changes; `checkpoints`/`investigation-index` removed after migration | runtime "Azure Services", "Cosmos Layout and Access", "Model Connectivity" | S-7/S-8/A-1 |
@@ -808,7 +823,7 @@ owns order and PR structure.
 | No answer leakage | Fails in `inc-007` and deployment notes |
 | Categorized knowledge metadata and embeddings | Implemented (2026-08-09). Category, provenance, extracted identifiers, entity metadata, nullable date, and a 1536-dimension embedding on every passage |
 | Operational-records seed process | Implemented (2026-08-09). `scripts/prepare_corpus.py` seeds both containers idempotently by upsert and verifies by reading back what it wrote (`--verify-only`) |
-| Absent preparation presents as a deployment-time failure | **Missing, and deliberately so.** Corpus preparation ran and both containers are populated, but nothing reads them yet: retrieval still loads knowledge from files in the image and the operational capabilities still read the file-backed repository. A readiness check today would gate deployment on data no code consumes. The obligation attaches to the first consumers, the operational-records adapters and passage retrieval, and is recorded in both of those slices rather than only here. The containers are seeded and need no reseeding; what is missing is the failure behavior |
+| Absent preparation presents as a deployment-time failure | **Partial (2026-08-11).** Implemented for operational records: readiness counts every record kind in the container and reports not-ready when any is zero or the container cannot answer, so an unprepared or unreachable container fails the probe rather than answering turns with nothing. Still missing for knowledge, which has no reader: retrieval loads it from files in the image, so a readiness check on it would gate deployment on data no code consumes. The obligation for that half attaches to passage retrieval and is recorded in that slice |
 | Controlled variants clearly distinct from authored incidents | Missing as formal fixtures |
 
 ### 10.15 Azure and deployment

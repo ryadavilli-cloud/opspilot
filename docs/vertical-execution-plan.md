@@ -1451,7 +1451,17 @@ tests, and its comments may legitimately use.
 - **Status updates required after landing:** the rows in section 10.9 move to Implemented; record
   the approved surface.
 
-### S-11 In-process MCP parity
+**Two of this step's stated inputs no longer describe the repository (2026-08-11).** The corpus
+loader named as the retained local fixture source, `data/repository.py`, is deleted; the operational
+capabilities read the `operational-records` container through `data/operational_records.py`, tests
+inject a container implementing `query_items`, and the image no longer ships the operational corpus.
+The container and its seed, named here as new implementation, exist and are read: `incidents`,
+`deployments`, and `alerts` are all present in it as record kinds, so the approved surface this step
+governs is already reachable. What remains for this step is the governed query structure, its
+deterministic validation, and its execution, none of which exists. The read-only application access
+and setup-identity posture it would have established are also already in place. One defect found by
+that work bears on the approved surface: the container partitions on `/kind`, and a record carrying
+a field of that name has it overwritten by the partition value unless preparation relocates it.
 
 - **Demonstrable outcome:** deployment-and-change-history is accessible through direct and MCP
   transports with identical canonical results and provenance; the feed reveals transport without

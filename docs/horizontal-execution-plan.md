@@ -366,6 +366,16 @@ refuses a write; a capability constructed to mutate must fail on the role.
 **Done when.** No adapter reads the corpus from the image, no path reaches a source without dispatch
 validation, and every capability carries a bounded timeout.
 
+**Complete (PR #72).** Two divergences the slice text did not anticipate. First, its two named
+retirements, "Corpus path resolution" and "Read-only capability inventory," have no counterpart in
+the register: neither row exists in "Duplicated logic to collapse," which holds only citation
+grounding, runtime implementation selection, and embedding and reranker model names. The work both
+rows describe is done, and no row was authored to record it. Second, the container partitions on
+`/kind` and a dependency edge carries a field of that name, so preparation had been overwriting each
+edge's relationship kind with the partition value. Nothing failed at write time and the read side
+found every edge claiming the same kind. Preparation now carries the edge's own kind as
+`dependency_kind`; the live container holds clobbered edges until it is reseeded.
+
 ### 2.3 Evidence admission, limitations, and the operation ledger
 
 **Makes true.** A normalized result becomes evidence only by passing deterministic admission, which
@@ -492,6 +502,11 @@ result contract and admission, which retrieval results use like any other capabi
 because nothing read the container and a readiness check would have gated deployment on data no code
 consumed. This slice creates the reading half, so the obligation attaches here alongside 2.2's. The
 data is in place; the failure behavior is what is missing.
+
+2.2 has since implemented its half: readiness counts every operational record kind and fails closed
+on zero or unreachable. The knowledge half remains, and remains here. Knowledge continued to load
+from files in the image through that slice, which deleted only the file-backed operational
+repository, so the retrieval work this slice owns was not pulled forward.
 
 The container's vector configuration is established by 1.3 and not re-verified here: a
 1536-dimension cosine policy with a diskANN index, `/embedding` excluded from the normal index, and
