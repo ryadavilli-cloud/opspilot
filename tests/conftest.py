@@ -7,9 +7,41 @@ from collections.abc import Iterator
 import pytest
 from fake_operational_records import FakeContainer, corpus_container
 
+from opspilot import api
+from opspilot.data import operational_records
 from opspilot.data.operational_records import OperationalRecords
 from opspilot.obs import tracing
+from opspilot.tools import service as tool_service_module
 from opspilot.tools.service import ToolService
+
+
+@pytest.fixture(autouse=True)
+def _no_deployed_container(monkeypatch: pytest.MonkeyPatch) -> None:
+    """No test may fall through to the deployed container.
+
+    `ToolService()` and the nodes' `_svc(None)` both default to `default_operational_records()`,
+    which builds a Cosmos client from the optional Azure packages. A test that reaches it is not
+    deterministic, and the way that surfaces depends on which dependency groups happen to be
+    installed: an ImportError where they are absent, a live credential lookup where they are not.
+    Neither says what actually went wrong, and the lane that installs the most groups is the one
+    that fails.
+
+    Failing here names the defect instead: the test did not inject a source.
+
+    Patched at every module that imported the name, not only where it is defined, because
+    `from ... import default_operational_records` binds it into the importing module at import
+    time and a patch on the source module would never be consulted.
+    """
+
+    def _refuse() -> OperationalRecords:
+        raise AssertionError(
+            "a test reached the deployed operational-records container. Inject a source: "
+            "ToolService(corpus_records()), or pass one through the node config as "
+            "{'configurable': {'tool_service': ...}}"
+        )
+
+    for module in (operational_records, tool_service_module, api):
+        monkeypatch.setattr(module, "default_operational_records", _refuse)
 
 
 @pytest.fixture

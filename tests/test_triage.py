@@ -16,9 +16,12 @@ import pytest
 pytest.importorskip("sentence_transformers")
 pytest.importorskip("rank_bm25")
 
+from fake_operational_records import corpus_records  # noqa: E402
+
 from opspilot.nodes.investigation import ingest, triage_router  # noqa: E402
 from opspilot.router import route_by_intent  # noqa: E402
 from opspilot.state import InvestigationState  # noqa: E402
+from opspilot.tools.service import ToolService  # noqa: E402
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
@@ -42,10 +45,13 @@ ENTITIES = (
 
 
 def _front(scenario) -> tuple[InvestigationState, str]:
+    # One service for the whole investigation, injected through every node that resolves one.
+    # A node called without it falls back to the deployed default, which reaches Cosmos.
+    config = {"configurable": {"tool_service": ToolService(corpus_records())}}
     alert = {"incident_id": scenario["id"], "summary": scenario["alert"]["summary"]}
     state = InvestigationState(alert=alert)
     state = state.model_copy(update=ingest(state))
-    state = state.model_copy(update=triage_router(state))
+    state = state.model_copy(update=triage_router(state, config))
     return state, route_by_intent(state)
 
 
@@ -61,8 +67,7 @@ def test_ingest_triage_routes_and_classifies(scenario):
         assert state.intent == "novel_investigation"
         assert state.matched_incident == ""
     else:
-        expected_route = ("known_issue_fast_path" if scenario["type"] == "historical"
-                          else "retrieve")
+        expected_route = "known_issue_fast_path" if scenario["type"] == "historical" else "retrieve"
         assert route == expected_route, f"{scenario['id']}: routed to {route}"
         assert state.intent == scenario["expected_intent"]
         assert (state.matched_incident or None) == scenario["expected_match"]
@@ -90,4 +95,5 @@ def test_recurrence_candidate_is_surfaced_at_triage():
     state, _ = _front(recurrence)
     assert recurrence["expected_match"] in state.triage["top_past_incidents"], (
         f"{recurrence['id']}: {recurrence['expected_match']} not among the triage candidates "
-        f"{state.triage['top_past_incidents']}")
+        f"{state.triage['top_past_incidents']}"
+    )

@@ -27,10 +27,13 @@ from opspilot.tools.service import ToolService  # noqa: E402
 
 
 def _front(inc_id: str, summary: str) -> InvestigationState:
+    # One service for the whole investigation, injected through every node that resolves one.
+    # A node called without it falls back to the deployed default, which reaches Cosmos.
+    config = {"configurable": {"tool_service": ToolService(corpus_records())}}
     state = InvestigationState(alert={"incident_id": inc_id, "summary": summary})
     state = state.model_copy(update=ingest(state))
-    state = state.model_copy(update=triage_router(state))
-    state = state.model_copy(update=diagnose(state))
+    state = state.model_copy(update=triage_router(state, config))
+    state = state.model_copy(update=diagnose(state, config))
     return state
 
 
