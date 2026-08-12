@@ -331,7 +331,7 @@ through deterministic admission, never through intake.
 **Status:** Accepted
 
 **Decision.** The reference grammar authored in `data/answer_key/README.md` becomes the canonical
-encoding for both reference types. Seven prefixes exist, and the prefix is the declared static
+encoding for both reference types. Eight prefixes exist, and the prefix is the declared static
 discriminator for reference type.
 
 | Reference type | Prefix | Key structure |
@@ -340,6 +340,7 @@ discriminator for reference type.
 | Evidence | `metrics` | `metrics:<service or infra entity>:<metric>@<ts>` |
 | Evidence | `deploys` | `deploys:<service>:<deploy_id>` |
 | Evidence | `deps` | `deps:<from>-><to>` |
+| Evidence | `absence` | `absence:<capability>:<operation_ref>` |
 | Knowledge | `runbook` | `runbook:<doc_id>` |
 | Knowledge | `architecture` | `architecture:<doc_id>` |
 | Knowledge | `postmortem` | `postmortem:<incident_id>` |
@@ -355,6 +356,25 @@ contextual role, with no model judgment involved.
 `past_incident:<incident_id>` is retired. Both spellings naming one underlying document would defeat
 a single resolver and corrupt admission's duplicate check, so the two do not coexist beyond the
 slice that deletes the runtime still emitting the retired form.
+
+`absence:<capability>:<operation_ref>` names an authoritative empty result: the approved capability
+executed successfully over the recorded scope and observed no matching item. A `succeeded` and
+`empty` result is admitted as a positive observation, and every admitted observation carries an
+evidence reference, so this form is what that observation is assigned. Without it the finding would
+be uncitable, because the only identity available would be the operation reference, and a citation
+never points only at an operation reference.
+
+The two identities stay distinct. The operation reference names an attempt and remains preserved
+separately as provenance; it is not a reference to an observation and is rejected on its own by the
+evidence-reference parser. The absence form embeds it to make the admitted observation's identity
+stable, and the embedding does not make the bare operation reference citable.
+
+`absence:` classifies the reference as operational evidence and introduces no evidence type. The
+evidence type of an authoritative absence continues to come from the static
+capability-to-evidence-type mapping, so an empty log query remains the log evidence type its
+capability observes; the reference uses `absence:` only because no concrete row exists to identify.
+It resolves to the admitted absence observation, which carries the queried scope and the explicit
+nothing-matched marker, rather than to a source row whose non-existence is the finding.
 
 `architecture:` is a knowledge reference. It is retrievable and may orient an investigation, but the
 citation-role rules keep it out of the roles reserved for current operational proof. That

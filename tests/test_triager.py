@@ -1,4 +1,4 @@
-"""Triager seam (Stage 4c) — no ML stack.
+"""Triager seam, no ML stack.
 
 The deterministic triager reproduces the exact self-match baseline; the LLM triager classifies
 intent + a recurrence candidate and fails closed — a hallucinated, over-confident, or unparseable
@@ -80,6 +80,8 @@ def test_llm_novel_carries_no_match():
 
 def test_build_triager_known_and_unknown():
     assert isinstance(build_triager("deterministic"), DeterministicTriager)
-    assert build_triager("single_agent").name == "single_agent"  # lazy client, no network
+    # The model is supplied rather than config-resolved: what is asserted is which triager the
+    # label selects, not which provider the environment happens to hold.
+    assert build_triager("single_agent", model=ScriptedModel("{}")).name == "single_agent"
     with pytest.raises(ValueError, match="unknown triage implementation"):
         build_triager("nope")

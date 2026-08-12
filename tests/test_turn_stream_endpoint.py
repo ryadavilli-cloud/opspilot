@@ -16,9 +16,16 @@ pytest.importorskip("httpx")  # FastAPI's TestClient transport
 from fake_operational_records import corpus_records  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 
-from opspilot.api import _predefined_turn_stream, app, get_operational_records  # noqa: E402
+from opspilot.api import (  # noqa: E402
+    _predefined_turn_stream,
+    app,
+    get_operational_records,
+    get_service,
+    get_synthesis_model,
+)
 from opspilot.config import SOURCE_DEADLINE_SECONDS  # noqa: E402
 from opspilot.tools.contracts import IncidentRecord  # noqa: E402
+from opspilot.tools.service import ToolService  # noqa: E402
 
 client = TestClient(app)
 
@@ -29,10 +36,29 @@ RECORDS = corpus_records()
 
 
 @pytest.fixture(autouse=True)
-def _records_override():
+def _injected_dependencies():
+    """One fixture owning every override these tests need, installed per test.
+
+    Two separate autouse fixtures would fight: whichever tears down first calls `clear()` and
+    removes the other's override, so which test fails would depend on fixture ordering rather than
+    on behavior.
+    """
     app.dependency_overrides[get_operational_records] = lambda: RECORDS
+    app.dependency_overrides[get_service] = lambda: ToolService(RECORDS)
+    app.dependency_overrides[get_synthesis_model] = _NoOpModel
     yield
     app.dependency_overrides.clear()
+
+
+class _NoOpModel:
+    """A turn now makes one synthesis call, so these transport tests inject a model rather than
+    reaching for a real provider. They assert ordering and sanitization, not synthesis: an empty
+    proposal still produces an assessment, and the stream shape is what is under test."""
+
+    def complete(self, messages, **_):
+        from opspilot.llm.base import ChatResult
+
+        return ChatResult(text="{}", model_id="fake")
 
 
 class _DisconnectAfter:
@@ -61,10 +87,11 @@ def test_identities_first_activity_then_close_marker_last():
     assert events[0]["event_type"] == "identity"
     assert events[0]["turn_id"] and events[0]["investigation_id"]
 
-    middle = events[1:-1]
-    assert middle, "expected at least one activity entry between identity and close"
-    assert all(event["event_type"] == "activity" for event in middle)
-    assert [event["sequence"] for event in middle] == list(range(1, len(middle) + 1))
+    activity = [event for event in events if event["event_type"] == "activity"]
+    assert activity, "expected at least one activity entry between identity and close"
+    # The activity sequence is unbroken and starts at 1, with the brief carried as its own event
+    # rather than as another activity entry.
+    assert [event["sequence"] for event in activity] == list(range(1, len(activity) + 1))
 
     assert events[-1]["event_type"] == "close"
     assert events[-1]["turn_id"] == events[0]["turn_id"]
@@ -92,7 +119,9 @@ def _run_stream(disconnect_after: int) -> list[dict]:
         disconnect = _DisconnectAfter(stay_connected_for=disconnect_after)
         lines = [
             json.loads(line)
-            async for line in _predefined_turn_stream("inc-001", incident, disconnect)
+            async for line in _predefined_turn_stream(
+                "inc-001", incident, disconnect, ToolService(RECORDS), _NoOpModel()
+            )
         ]
         return lines
 
@@ -100,16 +129,24 @@ def _run_stream(disconnect_after: int) -> list[dict]:
 
 
 def test_stream_completes_normally_when_never_disconnected():
+    """A full turn now gathers evidence, synthesizes, and renders, so the activity count varies
+    with what the corpus holds. What is fixed is the envelope: identities first, the brief before
+    the close, and the close marker last."""
     events = _run_stream(disconnect_after=99)
-    assert [e["event_type"] for e in events] == ["identity", "activity", "activity", "close"]
+    kinds = [e["event_type"] for e in events]
+    assert kinds[0] == "identity" and kinds[-1] == "close"
+    assert kinds.count("brief") == 1
+    assert kinds.index("brief") < kinds.index("close")
+    assert all(k == "activity" for k in kinds[1:-2])
 
 
 def test_stream_stops_emitting_once_the_client_has_disconnected():
-    # Connected for the identity event and one activity check, gone after that: nothing past the
-    # point of detection is emitted, including the close marker.
+    # Connected for the identity event and one further check, gone after that: nothing past the
+    # point of detection is emitted, including the brief and the close marker.
     events = _run_stream(disconnect_after=1)
-    assert [e["event_type"] for e in events] == ["identity", "activity"]
-    assert not any(e["event_type"] == "close" for e in events)
+    kinds = [e["event_type"] for e in events]
+    assert kinds[0] == "identity"
+    assert "close" not in kinds and "brief" not in kinds
 
 
 def test_stream_emits_nothing_but_the_identity_when_disconnected_immediately():
@@ -128,8 +165,8 @@ def test_concurrent_turns_get_independent_identities_and_sequences():
 
     # Each stream's own activity sequence starts at 1 again: no shared projector state leaked
     # between turns.
-    first_sequences = [e["sequence"] for e in first[1:-1]]
-    second_sequences = [e["sequence"] for e in second[1:-1]]
+    first_sequences = [e["sequence"] for e in first if e["event_type"] == "activity"]
+    second_sequences = [e["sequence"] for e in second if e["event_type"] == "activity"]
     assert first_sequences[0] == 1
     assert second_sequences[0] == 1
 

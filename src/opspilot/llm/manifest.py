@@ -14,7 +14,9 @@ What the manifest covers, and what it deliberately does not:
 - **Prompt text** is substituted into the messages, so a prompt edit already changes the key. The
   resolved prompt *versions* are still recorded, because the registry is append-only: adding
   `diagnose_synthesize.v2` silently re-points `get_prompt` at new text, and pinning the versions
-  turns that into a loud cache miss.
+  turns that into a loud, named drift report. Only the prompts a recording actually pinned are
+  compared: the registry is global, so registering a prompt for one workflow must not invalidate
+  cassettes recorded for another that never resolved it.
 - **Provider identity is excluded on purpose.** Replay legitimately runs under the `replay`
   provider while the recording ran under `ollama` or `azure`, so comparing it would fail every
   time and teach everyone to ignore the check. The provider *knobs* that shape output are compared
@@ -52,9 +54,33 @@ def behaviour_manifest(*, model_id: str) -> dict[str, str]:
 
 
 def manifest_digest(manifest: dict[str, str]) -> str:
-    """Stable hash of a manifest, used as the per-request key's prefix component."""
+    """Stable hash of a manifest, used as the per-request key's prefix component.
+
+    Hashes the manifest whole. Replay keys off the manifest the cassette recorded, not the current
+    one, so narrowing this would only invalidate every key already written.
+    """
     blob = json.dumps(manifest, sort_keys=True, ensure_ascii=False)
     return hashlib.sha256(blob.encode("utf-8")).hexdigest()
+
+
+def _prompt_map(value: str) -> dict[str, str]:
+    pairs = (part.split("=", 1) for part in value.split(",") if "=" in part)
+    return {name: version for name, version in pairs}
+
+
+def _prompt_drift(recorded: str, current: str) -> list[str]:
+    """Drift only among the prompts the recording actually pinned.
+
+    A prompt registered after the recording is not drift: the recorded run never resolved it, so it
+    cannot have shaped the response. A prompt the recording pinned that has since moved or vanished
+    is drift, because that one did.
+    """
+    was, now = _prompt_map(recorded), _prompt_map(current)
+    return [
+        f"prompt {name}: recorded {version!r}, current {now.get(name, '(absent)')!r}"
+        for name, version in sorted(was.items())
+        if now.get(name) != version
+    ]
 
 
 def manifest_drift(recorded: dict[str, str], current: dict[str, str]) -> list[str]:
@@ -63,6 +89,8 @@ def manifest_drift(recorded: dict[str, str], current: dict[str, str]) -> list[st
     drift = []
     for key in sorted(set(recorded) | set(current)):
         was, now = recorded.get(key, "(absent)"), current.get(key, "(absent)")
-        if was != now:
+        if key == "prompt_versions":
+            drift.extend(_prompt_drift(was, now))
+        elif was != now:
             drift.append(f"{key}: recorded {was!r}, current {now!r}")
     return drift
