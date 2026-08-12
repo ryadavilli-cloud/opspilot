@@ -265,6 +265,12 @@ class Assessment(BaseModel):
                 raise ValueError("relevant retrieved knowledge must be knowledge references")
         return self
 
+    def candidates(self) -> list[CandidateCause]:
+        """Every candidate in presentation order: the leading one first, then the alternatives
+        the evidence keeps open. Ordering them does not create several conclusions."""
+        ordered = [self.leading_candidate] if self.leading_candidate else []
+        return ordered + list(self.supported_alternatives)
+
 
 # The brief's logical sections, in the order a reader needs them. Sections of one brief, not eight
 # separately persisted objects. The projection that fills them is deterministic and renders only

@@ -763,7 +763,7 @@ owns order and PR structure.
 | Required behavior | Current standing |
 | --- | --- |
 | Completed-turn artifact | Missing |
-| Investigation Record port and its commit contract | Missing |
+| Investigation Record port and its commit contract | Implemented over an in-memory backend. `record/port.py` fixes the commit success and failure contract and the commit-before-delivery ordering; a durable backend later replaces what sits behind the port, not the port |
 | One `investigations` container for that artifact | Existing container stores the wrong job record |
 | One categorized `knowledge` container | Implemented (2026-08-09), in the `retailease` database |
 | One `operational-records` container | Implemented (2026-08-09), hierarchically partitioned by `/kind` then `/service`. Holds 14,013 records across six kinds |
