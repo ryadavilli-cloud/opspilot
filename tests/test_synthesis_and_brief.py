@@ -33,16 +33,28 @@ LOG = "logs:checkout-api:evt-005-01"
 UNADMITTED = "logs:payment-api:evt-999-99"
 
 
-def _observation(ref: str) -> AdmittedObservation:
+def _observation(
+    ref: str,
+    completeness: Completeness = Completeness.COMPLETE,
+    *,
+    operation_ref: str = "op-0001",
+) -> AdmittedObservation:
     return AdmittedObservation(
         evidence_ref=ref,
         investigation_id="inv-1",
         turn_id="turn-1",
-        operation_ref="op-0001",
+        operation_ref=operation_ref,
         evidence_type=EvidenceType.METRIC,
         source="get_metrics",
-        completeness=Completeness.COMPLETE,
+        completeness=completeness,
         observation={"value": 99.0},
+        provenance="get_metrics(service=redis-cache)",
+        # What admission attaches to a partial observation, and the words the disclosure carries.
+        limitations=(
+            ("the source returned part of the requested scope",)
+            if completeness is Completeness.PARTIAL
+            else ()
+        ),
     )
 
 
@@ -56,13 +68,18 @@ def _limitation() -> Limitation:
     )
 
 
-def _admit(proposal: AssessmentProposal, refs=(MEMORY, EVICTED, LOG), limitations=()):
+def _admit(
+    proposal: AssessmentProposal, refs=(MEMORY, EVICTED, LOG), limitations=(), *, partial=()
+):
     return admit_assessment(
         proposal,
         investigation_id="inv-1",
         turn_id="turn-1",
         objective="explain the checkout latency rise",
-        observations=[_observation(r) for r in refs],
+        observations=[
+            _observation(r, Completeness.PARTIAL if r in partial else Completeness.COMPLETE)
+            for r in refs
+        ],
         limitations=list(limitations),
     )
 
@@ -182,6 +199,59 @@ def test_limitations_travel_from_admission_into_the_assessment():
     assessment = _admit(_full_proposal(), limitations=[_limitation()])
     assert len(assessment.limitations) == 1
     assert assessment.limitations[0].outcome is ExecutionOutcome.UNAVAILABLE
+
+
+# --- a partial observation stays marked partial where a claim rests on it ------------------------
+def test_a_claim_resting_on_a_partial_observation_discloses_what_it_did_not_see():
+    """The unseen remainder could change the picture, so an element resting on a capped read must
+    say so. Without this the assessment reads as though the whole scope was observed, which is the
+    one reading a partial observation must never support."""
+    assessment = _admit(_full_proposal(), partial=(MEMORY,))
+
+    disclosures = [lim for lim in assessment.limitations if lim.operation_ref == "op-0001"]
+    assert disclosures, "a cited partial observation disclosed nothing"
+    assert "did not return" in disclosures[0].question
+    assert "part of the requested scope" in disclosures[0].reason
+
+
+def test_an_incompleteness_disclosure_stays_distinguishable_from_a_source_that_did_not_answer():
+    """Both are limitations, and they mean different things: one source answered incompletely, the
+    other did not answer. The execution outcome is what tells them apart, so it must not be
+    flattened onto a single failure value."""
+    assessment = _admit(_full_proposal(), limitations=[_limitation()], partial=(MEMORY,))
+
+    outcomes = {lim.capability: lim.outcome for lim in assessment.limitations}
+    assert outcomes["get_deployments"] is ExecutionOutcome.UNAVAILABLE  # did not answer
+    assert outcomes["get_metrics"] is ExecutionOutcome.SUCCEEDED  # answered, but not in full
+
+
+def test_a_complete_observation_discloses_nothing():
+    """A false disclosure is its own defect: it would understate evidence the turn fully saw."""
+    assessment = _admit(_full_proposal())
+    assert assessment.limitations == []
+
+
+def test_a_partial_observation_no_claim_rests_on_is_not_disclosed_as_a_gap_in_a_claim():
+    """LOG is admitted partial but the proposal below cites only the two metrics. The assessment
+    makes no claim on it, so there is no claim whose completeness is in question."""
+    proposal = _full_proposal().model_copy(update={"what_happened_refs": [MEMORY]})
+    assessment = _admit(proposal, partial=(LOG,))
+    assert assessment.limitations == []
+
+
+def test_several_references_capped_by_one_read_disclose_once():
+    """MEMORY and EVICTED come from the same operation. Two disclosures would read as two separate
+    incomplete answers when there was one."""
+    assessment = _admit(_full_proposal(), partial=(MEMORY, EVICTED))
+    assert len([lim for lim in assessment.limitations if lim.operation_ref == "op-0001"]) == 1
+
+
+def test_the_incompleteness_disclosure_reaches_the_brief():
+    """The brief renders the assessment and introduces nothing it does not contain, so a
+    disclosure that stopped at the assessment would never reach the engineer who has to weigh it."""
+    brief = project(_admit(_full_proposal(), partial=(MEMORY,)))
+    body = "\n".join(section.body for section in brief.sections)
+    assert "part of the requested scope" in body
 
 
 # --- parsing the model's response ----------------------------------------------------------------
