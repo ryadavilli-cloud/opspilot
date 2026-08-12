@@ -74,6 +74,16 @@ This version merges the corrected repository reconciliation draft with the earli
   so no vocabulary was extended. Measured with the fuller lane's own command,
   `pytest -q -m "not reranker and not llm"` against the `eval` group: 642 passed, 5 deselected,
   1 xfailed; `ruff check`, `ruff format`, and `mypy src` clean.
+- The governed structured-query path landed 2026-08-12. A bounded structure over an approved
+  surface of three collections, validated before execution, translated into one parameterized
+  read-only Cosmos query, and admitted through the same two axes as every other capability. The
+  approved surface was not named by any accepted document; the selection is recorded in the plan
+  alongside the field-level exclusions. Two things were established against the live container
+  rather than assumed: the translated queries return exactly what the authored corpus predicts
+  across six cases, and a bounded count is not expressible in Cosmos NoSQL, which a deterministic
+  golden assertion had locked in wrongly because it proves the translator consistent rather than
+  valid. Core lane 634 passed, 8 skipped; full lane 703 passed, 1 xfailed after merging main;
+  `ruff check`, `ruff format`, and `mypy src` clean.
 - Cosmos data-plane permissions inspected live, 2026-08-11 (read-only, nothing modified). The
   application identity holds two differently scoped grants and no account-wide one: Data
   Contributor on `opspilot/investigations`, and Data Reader on the whole `retailease` database. The
@@ -725,7 +735,7 @@ owns order and PR structure.
 | Deterministic evidence admission | Implemented. `evidence/admission.py` is the only door into the evidence set and assigns the reference |
 | Stable admitted-evidence and limitation structures | Implemented. Admitted observations carry identity, provenance, and completeness; limitations name the unanswered question. The operation ledger is kept separate |
 | `succeeded + empty` represented as a positive observation | Implemented. Admitted with a deterministic representation naming the queried scope and the absence, and assigned an `absence:<capability>:<operation_ref>` evidence reference (D-008) so the finding is citable |
-| Governed structured-query capability | Missing |
+| Governed structured-query capability | Implemented. Registered like any other capability, so it is reachable only through dispatch and admits through the same two axes |
 
 ### 10.5 RCA Analyst and assessment
 
@@ -786,12 +796,12 @@ owns order and PR structure.
 
 | Required behavior | Current standing |
 | --- | --- |
-| Approved operational-records surface | Data files exist; container and capability do not |
-| Canonical query structure with predicates, projection, and COUNT | Missing |
-| Mandatory scope, result limit, and timeout | Missing |
-| Decode or validation rejection before execution | Missing |
-| Fixture-truth and rejection tests | Missing |
-| No grouping, ordering, joins, writes, or non-count aggregates in baseline | No implementation exists, so the future contract must preserve this absence |
+| Approved operational-records surface | Implemented. `data/structured_query.py` holds an explicit static mapping of three collections (`incident`, `deployment`, `alert`) to typed fields. Deliberately narrower than the stored record: the incident answer fields and deployment notes are absent, because this is the one path where a model chooses its own projection |
+| Canonical query structure with predicates, projection, and COUNT | Implemented. One collection per query; equality, inequality, membership, bounded range, and presence predicates combined by conjunction, with disjunction only within one field; a named projection or the count form, never both |
+| Mandatory scope, result limit, and timeout | Implemented. The collection scopes every read to its partition, a limit is mandatory and bounded by a configured ceiling, and the deadline reaches the source like any other capability. The count form carries no row limit: it returns one value, and Cosmos rejects every bounded-count form, verified live |
+| Decode or validation rejection before execution | Implemented. Validation runs before anything executes and a refusal is `rejected` with no read spent, including a structure that is well formed and addresses an approved collection this request was not granted |
+| Fixture-truth and rejection tests | Implemented. Rejection and translation are deterministic tests over the emitted text and bound parameter values; fixture-truth comparison ran against the live container over six cases, each compared to a golden result computed from the authored corpus |
+| No grouping, ordering, joins, writes, or non-count aggregates in baseline | Preserved. None has a field to occupy in the structure, so each is unsupported rather than forbidden-but-expressible; the structure refuses unknown keys outright |
 
 ### 10.10 MCP
 

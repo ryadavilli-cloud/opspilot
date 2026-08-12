@@ -493,6 +493,30 @@ and completeness axes as any other.
 **Done when.** No query text is constructed anywhere, an out-of-surface or mutating structure is
 unrepresentable or rejected before execution, and results admit through 2.3.
 
+**Complete (PR #74).** Three divergences.
+
+First, the approved surface had no counterpart to cite. No accepted document names which
+operational records the path may address, and the one place a selection appeared cited a section
+that does not contain it and named JSON files that stopped being a runtime source. The surface was
+therefore chosen rather than derived: `incident`, `deployment`, and `alert`. Its fields are
+narrower than the stored records, because this is the only path on which a model selects its own
+projection and the corpus carries its own answers; the incident root cause, resolution, and close
+code, and deployment notes, are absent from the surface rather than trusted not to be requested.
+That narrowing does not close the exposure, since the incident capability returns those fields
+today and the old runtime reads the resolution for its known-issue path.
+
+Second, a count cannot be row-bounded. Every form that tries is rejected by the source: a counted
+subquery, aliased or not, projecting a literal or a field, and the OFFSET/LIMIT variant. The limit
+remains mandatory in the structure, and the deadline is what bounds that form's work.
+
+Third, the slice's fixture-truth obligation cannot be discharged by a test double. A stand-in that
+filtered rows would have to be a query engine to disagree with the translator, so the two would be
+wrong together. What the query says is asserted deterministically on the emitted text and its bound
+values; what an outcome means is asserted against a stand-in that ignores the query entirely; and
+that the query means what it appears to mean was established against the live container. The second
+divergence above was found only by that last step, after a deterministic assertion had accepted the
+broken form.
+
 ---
 
 ## Layer 3 - Retrieval
