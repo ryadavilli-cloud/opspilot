@@ -296,12 +296,16 @@ def translate(query: StructuredQuery) -> tuple[str, list[dict[str, Any]]]:
 
     where = " AND ".join(conditions)
     if query.aggregate == "count":
-        # The limit bounds the rows the count runs over, so a count cannot become the one
-        # unbounded read on this path.
-        return (
-            f"SELECT VALUE COUNT(1) FROM (SELECT TOP {query.limit} 1 FROM c WHERE {where}) c",
-            parameters,
-        )
+        # No TOP here, and not by oversight. A count returns one value rather than rows, so there
+        # is nothing for a row limit to bound, and Cosmos rejects every form that tries to impose
+        # one: a counted subquery, aliased or not, projecting a literal or a field, and the
+        # OFFSET/LIMIT variant are all BadRequest. Established against the live container, because
+        # a query this module only ever asserted against itself would have looked correct.
+        #
+        # The limit stays mandatory in the structure: it is what the structure guarantees, and a
+        # query may not omit it. What bounds the work this form does is the deadline every read on
+        # this path carries.
+        return f"SELECT VALUE COUNT(1) FROM c WHERE {where}", parameters
 
     projected = ", ".join(f"c.{approved(name)}" for name in query.projection)
     return f"SELECT TOP {query.limit} {projected} FROM c WHERE {where}", parameters

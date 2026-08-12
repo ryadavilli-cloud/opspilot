@@ -94,10 +94,16 @@ def test_presence_and_absence_bind_nothing():
     assert parameters == [{"name": "@kind", "value": "incident"}]
 
 
-def test_the_count_form_still_bounds_the_rows_it_counts():
-    """A count over an unbounded read would be the one operation on this path with no limit."""
+def test_the_count_form_carries_no_row_limit_because_it_returns_no_rows():
+    """A count answers with one value, so there are no rows for a limit to bound, and Cosmos
+    rejects every form that tries to impose one. The limit is still mandatory in the structure;
+    what bounds this form's work is the deadline.
+
+    Asserted as the exact text because the earlier bounded form also passed a text assertion and
+    was refused by the source: a golden query proves the translator consistent, never valid."""
     text, _ = translate(_query(projection=[], aggregate="count", limit=25))
-    assert text == ("SELECT VALUE COUNT(1) FROM (SELECT TOP 25 1 FROM c WHERE c.kind = @kind) c")
+    assert text == "SELECT VALUE COUNT(1) FROM c WHERE c.kind = @kind"
+    assert "TOP" not in text
 
 
 def test_no_caller_supplied_string_reaches_the_query_text():
