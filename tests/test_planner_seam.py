@@ -1,4 +1,4 @@
-"""Planner seam + dispatch (Stage 4a) — no ML stack.
+"""Planner seam + dispatch, no ML stack.
 
 The deterministic planner behind the seam must be identical to calling `plan_investigation`
 directly (the no-behavior-change guarantee), the `diagnose` node must route through the injected
@@ -13,6 +13,7 @@ from fake_operational_records import corpus_records
 from opspilot.diagnosis.contracts import DiagnosisContext
 from opspilot.diagnosis.cycle import plan_investigation
 from opspilot.diagnosis.planner import DeterministicPlanner, build_planner
+from opspilot.llm.fake import FakeChatModel
 from opspilot.nodes.investigation import _planner, diagnose
 from opspilot.state import InvestigationState
 from opspilot.tools.service import ToolService
@@ -41,8 +42,9 @@ def test_deterministic_planner_ignores_loop_state():
 
 def test_build_planner_known_and_unknown():
     assert isinstance(build_planner("deterministic"), DeterministicPlanner)
-    # single_agent builds the LLM planner (no network at construction — the client is lazy).
-    assert build_planner("single_agent").name == "single_agent"
+    # single_agent builds the LLM planner. The model is supplied rather than config-resolved: what
+    # is asserted here is which planner the label selects, not which provider the environment holds.
+    assert build_planner("single_agent", model=FakeChatModel([])).name == "single_agent"
     with pytest.raises(ValueError, match="unknown diagnosis implementation"):
         build_planner("nope")
 

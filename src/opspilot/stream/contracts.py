@@ -12,6 +12,8 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from opspilot.assessment.contracts import Brief
+
 
 class IdentityEvent(BaseModel):
     """The stream's first event: the investigation and turn identities, and nothing else."""
@@ -42,6 +44,18 @@ class ActivityEvent(BaseModel):
     references: list[str] = Field(default_factory=list)
 
 
+class BriefEvent(BaseModel):
+    """The rendered brief, carried as its own event so the screen can replace the brief region
+    wholesale rather than assembling it from activity entries. Not a terminal outcome: no grounding
+    gate has run, so this is a rendered assessment and nothing is committed."""
+
+    model_config = ConfigDict(frozen=True)
+
+    event_type: Literal["brief"] = "brief"
+    turn_id: str
+    brief: Brief
+
+
 class StreamCloseMarker(BaseModel):
     """The stream's closing event. A transport-ordering proof only, not a completed-turn outcome."""
 
@@ -52,6 +66,6 @@ class StreamCloseMarker(BaseModel):
 
 
 StreamEvent = Annotated[
-    IdentityEvent | ActivityEvent | StreamCloseMarker,
+    IdentityEvent | ActivityEvent | BriefEvent | StreamCloseMarker,
     Field(discriminator="event_type"),
 ]

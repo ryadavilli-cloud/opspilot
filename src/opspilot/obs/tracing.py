@@ -1,15 +1,16 @@
-"""Observability emission seam (Stage 5g) — spans emitted ONCE at the shared primitives.
+"""Observability emission seam: spans emitted ONCE at the shared primitives.
 
-Per code-guidelines §23 and adr-observability-tracing.md: a new node / tool / LLM / MCP call
-inherits a span for free; hand-instrumenting an individual node is prohibited. Spans are OTLP-shaped
+A new node / tool / LLM / MCP call inherits a span for free; hand-instrumenting an individual node
+is prohibited, because instrumentation built per call site drifts and drifted attributes cannot be
+correlated. Spans are OTLP-shaped
 (`trace_id` / `span_id` / `parent_span_id` / name / attributes / timing / status) and go to a
 config-selected exporter (`none` in prod until a real sink is wired, `memory` for tests, `stdout`
 for dev). Spans are NOT behaviour-affecting inputs, so this adds zero cassette churn —
 instrumentation may land at any stage with no re-record.
 
 This module is the seam itself + the node-dispatch wrapper. The `run_tool`/`gateway`, `ChatModel`,
-and MCP wrappers are the remaining primitives (following slices); each reuses `span()` here, never
-its own bespoke tracing.
+and MCP wrappers are the remaining primitives; each reuses `span()` here, never its own bespoke
+tracing.
 """
 
 from __future__ import annotations
@@ -30,7 +31,7 @@ from opspilot import config
 
 @dataclass
 class Span:
-    """One OTLP-shaped span. `attributes` carries the §23 standard set plus primitive specifics."""
+    """One OTLP-shaped span. `attributes` carries the standard set plus primitive specifics."""
 
     trace_id: str
     span_id: str
@@ -64,7 +65,7 @@ class InMemorySpanExporter:
 
 
 class _NoopExporter:
-    """Default in prod: emission is instrumented but no sink is attached until Stage 5g/11."""
+    """Default in prod: emission is instrumented but no sink is attached."""
 
     def export(self, span: Span) -> None:
         return
@@ -102,6 +103,14 @@ _current_span: contextvars.ContextVar[str | None] = contextvars.ContextVar(
 _current_trace_id: contextvars.ContextVar[str] = contextvars.ContextVar(
     "opspilot_current_trace_id", default=""
 )
+# The correlation attributes every span emitted inside a turn must carry. Propagated down the call
+# tree so a nested primitive is attributed without its call site knowing the turn it belongs to:
+# `trace_id` alone would leave a child diagnosable only by first finding its root and reading the
+# identity off that, which is reassembly at read time rather than context attached at the boundary.
+_CORRELATION_KEYS = ("investigation_id", "turn_id")
+_current_correlation: contextvars.ContextVar[dict[str, str] | None] = contextvars.ContextVar(
+    "opspilot_current_correlation", default=None
+)
 
 
 def configure_exporter(exporter: SpanExporter | None = None) -> SpanExporter:
@@ -123,7 +132,7 @@ def _new_id() -> str:
 
 
 def standard_attributes(state: Any) -> dict[str, Any]:
-    """The run-level attributes every span carries (§23). Primitive wrappers add their specifics
+    """The run-level attributes every span carries. Primitive wrappers add their specifics
     (tool_name/hashes/tokens/cost). Reads defensively so a partial state never breaks emission.
 
     `turn_id`: the correlation id for one bounded evidence-gathering and synthesis cycle
@@ -144,18 +153,32 @@ def span(
     """Emit one span under the current parent (contextvar-nested). `trace_id` defaults to the
     current run's id from the context, so nested primitive spans (tool/model/MCP) inherit it —
     pass it explicitly only at the root (the node wrapper). Exported on exit, with `status`
-    flipped to `error` if the body raised (the exception still propagates)."""
+    flipped to `error` if the body raised (the exception still propagates).
+
+    `investigation_id` and `turn_id` are inherited from the enclosing span the same way, so every
+    span emitted inside a turn carries them without its call site passing them. A span that names
+    either explicitly wins, and an empty value never propagates: an absent identity stays absent
+    rather than overwriting a real one further down."""
     resolved_trace = trace_id or _current_trace_id.get()
+    inherited = _current_correlation.get() or {}
+    merged = {**inherited, **(attributes or {})}
+    # `standard_attributes` reads defensively and yields "" for an identity its state does not
+    # carry. An explicit blank must not erase an identity the enclosing turn already established.
+    for key in _CORRELATION_KEYS:
+        if not merged.get(key) and inherited.get(key):
+            merged[key] = inherited[key]
     sp = Span(
         trace_id=resolved_trace,
         span_id=_new_id(),
         parent_span_id=_current_span.get(),
         name=name,
-        attributes=dict(attributes or {}),
+        attributes=merged,
         start_ms=time.monotonic() * 1000.0,
     )
     span_token = _current_span.set(sp.span_id)
     trace_token = _current_trace_id.set(resolved_trace)
+    carried = {key: merged[key] for key in _CORRELATION_KEYS if merged.get(key)}
+    correlation_token = _current_correlation.set(carried)
     try:
         yield sp
     except BaseException:
@@ -166,12 +189,13 @@ def span(
         sp.attributes.setdefault("latency_ms", sp.latency_ms)
         _current_span.reset(span_token)
         _current_trace_id.reset(trace_token)
+        _current_correlation.reset(correlation_token)
         _exporter.export(sp)
 
 
 def traced_node(name: str, fn: Callable[..., dict[str, Any]]) -> Callable[..., dict[str, Any]]:
     """Wrap a graph node so every dispatch emits a span under the run's `trace_id` — one wrapper for
-    all nodes, so a new node is traced with no per-site code (§23).
+    all nodes, so a new node is traced with no per-site code.
 
     LangGraph injects the `RunnableConfig` (which carries the per-run `ToolService` etc.) into nodes
     that declare a `config` parameter, and it decides that by INSPECTING THE SIGNATURE. So the

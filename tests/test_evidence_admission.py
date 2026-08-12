@@ -19,7 +19,7 @@ from opspilot.evidence.admission import (
     admit,
 )
 from opspilot.evidence.operations import TurnEvidence, is_operation_ref
-from opspilot.evidence.references import try_parse
+from opspilot.evidence.references import ReferenceType, try_parse
 from opspilot.tools import CAPABILITY_NAMES
 from opspilot.tools.contracts import (
     LEGAL_PAIRINGS,
@@ -88,6 +88,43 @@ def test_empty_is_admitted_as_a_positive_observation():
     assert observation.observation.nothing_matched
     assert "payment-api" in str(observation.observation)
     assert turn.limitations == []
+
+
+def test_an_absence_is_assigned_a_canonical_evidence_reference():
+    """It must be citable. A reference that is only an operation identifier would make the finding
+    uncitable, because an operation names an attempt rather than an observation."""
+    turn = _turn()
+    outcome = admit(
+        _result("get_deployments", ExecutionOutcome.SUCCEEDED, Completeness.EMPTY),
+        turn=turn,
+        question="did anything change before the incident",
+        request_scope={"service": "payment-api"},
+    )
+    observation = outcome.observations[0]
+    operation_ref = outcome.operation.operation_ref
+
+    assert observation.evidence_ref == f"absence:get_deployments:{operation_ref}"
+    parsed = try_parse(observation.evidence_ref)
+    assert parsed is not None and parsed.reference_type is ReferenceType.EVIDENCE
+    assert parsed.capability == "get_deployments"
+    assert parsed.identifier == operation_ref
+
+
+def test_the_operation_reference_stays_distinct_from_the_evidence_reference():
+    """The absence reference embeds the operation reference; it does not replace it, and the bare
+    operation reference must remain uncitable."""
+    turn = _turn()
+    outcome = admit(
+        _result("get_deployments", ExecutionOutcome.SUCCEEDED, Completeness.EMPTY),
+        turn=turn,
+        question="did anything change before the incident",
+    )
+    observation = outcome.observations[0]
+    operation_ref = outcome.operation.operation_ref
+
+    assert observation.operation_ref == operation_ref
+    assert observation.evidence_ref != operation_ref
+    assert try_parse(operation_ref) is None
 
 
 def test_unavailable_produces_a_limitation_and_no_observation():

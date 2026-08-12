@@ -398,7 +398,9 @@ regression there produces output that still looks correct:
 
 Models, capability sources, and persistence MUST be replaceable at their seams so these tests can
 run without live dependencies (`system-design.md` §10.1). Prompts and output contracts live behind
-the model seam for the same reason.
+the model seam for the same reason. The substitute for a seam is planned and injected before the
+production default that reaches it changes, not supplied afterwards to a test that has already
+failed or hung: §15 owns that sequence, and §15.4 owns the order independence these tests require.
 
 Hosted deployment verification is defined in `runtime-and-deployment.md` ("Verification Suite") and
 is not duplicated here; these deterministic tests own the environment-independent behavior that
@@ -464,6 +466,9 @@ why:
   or an artifact (§9);
 * new operations emit through the telemetry seam with correlation context (§10);
 * deterministic tests cover the behavior added, including how it refuses or degrades (§11);
+* the preflight in §15 was carried out where it applies: consumers of any changed shared default
+  were identified before the change, deterministic callers received explicit substitutes, and the
+  affected tests pass individually, in a different order, and under the exact CI-lane commands;
 * the design documents are updated where a contract or a decision changed;
 * no file the change touches carries prohibited plan vocabulary, the change description carries
   none, and any name-level occurrence found has been reported (§12).
@@ -471,7 +476,9 @@ why:
 The advisory evaluation signal informs a change; it does not gate the merge
 (`runtime-and-deployment.md`, "Build and Deployment").
 
-A change that reports a passing happy path and nothing else has not met this standard.
+A change that reports a passing happy path and nothing else has not met this standard. Neither has
+one whose isolation defects were found by CI whenever a repository search would have found them
+first (§15).
 
 ## 14. Prohibited Patterns
 
@@ -500,3 +507,171 @@ Each has a specific failure mode, and each has a defined alternative earlier in 
 | Exceptions as ordinary workflow routing in domain code | Normal outcomes become indistinguishable from defects |
 | A credential in code, configuration, logs, traces, health output, or an artifact | Unrecoverable once distributed |
 | Live-model tests as the only protection for core behavior | The guarantee is only as stable as the sampling |
+| Using CI to discover which callers relied on a default that was just changed | A repository search answers it before the change; CI answers it one red build at a time |
+| A deterministic test that depends on another test having run, or on collection order | It passes for a reason unrelated to the behavior it claims to protect |
+| Pinning test order, widening a timeout, or retrying to make an isolation defect pass | The coupling survives, and the next order change reveals it again |
+## 15. Change Preflight and Test Isolation
+
+**Boundary, dependency, and test-isolation analysis is a pre-implementation obligation.** Do not
+wait for CI, a full-suite run, or a different test order to reveal a hidden dependency. Before
+changing a shared default and before writing tests around it, determine its consumers, its
+environmental boundaries, its dependency profile, its mutable state, and the test seams it needs.
+
+CI confirms this analysis. It is not the mechanism by which basic dependency and isolation mistakes
+are discovered. A failure a repository search would have predicted is a preflight that was skipped,
+not an unlucky build.
+
+This section applies when a change touches a shared contract, a factory, a backend, a service, a
+configuration default, a dependency group, mutable process-wide state, or an environmental
+boundary. §15.7 states when it does not apply.
+
+### 15.1 Before changing implementation: audit the consumers
+
+Before deciding *how* to change a shared default, establish *who reaches it*. Identify the default,
+factory, backend, contract, or dependency behavior that will change, then classify every concrete
+caller that can observe the change:
+
+| Caller class | What it needs from this change |
+| --- | --- |
+| Runtime | Continues to reach the production default |
+| Deterministic test | An explicit injected substitute, planned as part of this change |
+| Azure-assisted or integration | A stated profile, and a lane that installs its dependencies |
+| Hosted | Verification through the hosted suite, not this one |
+| Transitional, scheduled for deletion | A decision to adapt it or leave it, made deliberately |
+
+Where repository search shows deterministic callers relying implicitly on the current production
+default, their explicit test seam is part of this change and lands with it. A caller discovered by
+its own failure was a caller a search would have listed.
+
+### 15.2 Whenever a production default changes
+
+These questions MUST have concrete answers before implementation proceeds:
+
+1. Who reaches this default implicitly today?
+2. Which of those callers should keep reaching the production default?
+3. Which are deterministic and now require an explicit substitute?
+4. Which optional dependencies does the new default pull in?
+5. Which CI lanes install those dependencies?
+6. Can any deterministic test reach the new default accidentally?
+7. How is that accidental access made to fail immediately, rather than quietly succeed or hang?
+
+### 15.3 Before writing tests: design the isolation boundary
+
+Decide, before authoring the tests rather than in response to them: which environmental dependency
+is being replaced; what fake, fixture, in-memory backend, cassette, or stub owns it; whether that
+substitute is mutable; what fixture scope is safe; whether any singleton, cache, global, registry,
+environment variable, exporter, file, or process-wide configuration can leak between tests; how
+initial state is established; and how it is restored or discarded automatically.
+
+**The default for a mutable test dependency is fresh per test.** A broader scope is adopted only
+where immutability or deterministic reset is demonstrated. It is never adopted first for speed and
+narrowed later, once tests have begun affecting one another.
+
+Whenever implementation introduces or modifies a module global, a singleton, a lazily constructed
+process-wide client, a cache, a memoized factory, a registry, or an exporter, the same change
+defines how deterministic tests isolate or reset it.
+
+### 15.4 Test-order independence is designed, not repaired
+
+Every deterministic test MUST establish all of its own preconditions, obtain its dependencies
+through fixtures or explicit construction, start from known state, perform its own operation,
+assert its own result, and clean up automatically. No other test may form part of its setup or its
+teardown.
+
+A deterministic test MUST NOT assume that another test has initialized a singleton, populated a
+cache, created a record or a file, set an environment variable, reset telemetry or configuration
+state, or simply run first because collection currently orders it that way.
+
+Where several operations genuinely form one required sequence, they are one test scenario, not
+several ordered test functions. Tests are not workflow steps.
+
+A test that registers a process-wide override MUST make that registration per-test. A sibling
+module that resets all overrides will otherwise disarm it silently, and the resulting failure
+depends on collection order rather than on behavior.
+
+### 15.5 A deterministic test MUST be structurally unable to reach a live backend
+
+Where deterministic execution is expected to inject a local substitute, accidental construction of
+the production backend MUST fail immediately and visibly. That guard is established **when the seam
+is introduced**, not after a deterministic test has reached a live resource, consumed quota, or
+blocked on a connection that never resolves.
+
+This covers Cosmos clients, Azure OpenAI clients, outbound HTTP clients, hosted persistence, and
+any other live resource. An existing fixture, a sentinel factory, or a monkeypatch is sufficient.
+Do not build a testing framework for it.
+
+Failing immediately matters as much as failing at all. A substitute that is merely absent produces
+a hang or a timeout, which reads as a slow suite rather than as a missing seam, and sends the next
+hour into the wrong investigation.
+
+### 15.6 Dependency groups, CI profiles, and verification order
+
+Before adding an import from an optional dependency group, determine which code path owns it,
+whether that path is runtime-only, integration-only, or deterministic, which CI lanes can reach it,
+and which lanes install the group. A lazy import is acceptable only after reachability has been
+established; laziness does not make an unreachable dependency safe.
+
+Before local verification, identify the actual CI lanes the change must satisfy and the dependency
+profile each installs, then reproduce those profiles closely enough to expose missing isolation.
+Verifying only on a workstation holding every optional dependency proves nothing about a lane that
+holds fewer. Where dependency isolation changed, begin from a fresh or resynchronized environment.
+
+Verification proceeds outward, and the full suite is the last confirmation rather than the first
+probe:
+
+1. the changed or new test, individually;
+2. its module, independently;
+3. the affected subset;
+4. where shared mutable state, globals, caches, or fixture scope changed, the affected tests in a
+   different order;
+5. the exact CI-lane command, with that lane's dependency groups;
+6. broader repository verification.
+
+### 15.7 Proportion
+
+This preflight is a short working analysis, not a deliverable. A repository search, a mental
+classification of callers, explicit fixtures, and verification against the real CI profiles are
+normally the whole of it.
+
+A small pure-function change with no shared default, no environmental dependency, no mutable shared
+state, and no dependency-group impact needs none of it beyond ordinary testing. The stronger
+preflight applies where hidden coupling is realistically possible.
+
+Do not produce impact-analysis documents, dependency matrices committed to the repository, service
+containers, dependency-injection frameworks, elaborate mocks, or test-ordering machinery. Each
+replaces a few minutes of analysis with a permanent structure.
+
+### 15.8 Preflight checklist
+
+Run before coding where applicable, revisited while tests are authored, and confirmed before the
+change is declared complete. The change is not complete while an applicable item is unanswered.
+
+* [ ] Every concrete consumer of the shared or default behavior being changed is identified.
+* [ ] Callers are classified as runtime, deterministic, integration, hosted, or transitional.
+* [ ] The dependency groups each reachable path requires are known.
+* [ ] Deterministic callers were given explicit substitutes before the production default changed.
+* [ ] Deterministic execution cannot construct a production backend; where it could, a guard makes
+      it fail immediately.
+* [ ] Every new or changed test establishes all of its own state.
+* [ ] No mutable fixture is shared more broadly than function scope without safe sharing proven.
+* [ ] Any singleton, cache, global, environment variable, registry, or exporter introduced or
+      changed has its test isolation defined in this change.
+* [ ] Every important changed test passes when run individually.
+* [ ] Changing execution order alters no result.
+* [ ] The CI dependency profiles this change must satisfy are identified, and verification ran
+      against them rather than against a dependency superset.
+* [ ] The exact CI-equivalent lane commands have passed.
+
+### 15.9 When something still fails
+
+Preflight does not make every failure predictable, and CI will still surface genuine surprises.
+This guidance is secondary to the rules above, and applies to what they did not anticipate.
+
+When a deterministic test fails only in the full suite, or only in some orders, treat it as shared
+state rather than as flakiness, and find what the test did not establish for itself. When a suite
+becomes slow rather than red, suspect a missing substitute blocking on a live backend before
+suspecting the tests. When output is discarded or unreadable, obtain a readable result before
+drawing any conclusion from an exit code: a green status nobody read is not evidence.
+
+Repair the isolation defect itself. Pinning an order, widening a timeout, or retrying a test
+records the symptom and keeps the coupling.

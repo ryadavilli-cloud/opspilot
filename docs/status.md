@@ -81,6 +81,19 @@ This version merges the corrected repository reconciliation draft with the earli
   `items/read`, so no write action exists for the application to attempt. Corpus preparation's
   Contributor grant on `retailease` belongs to a different principal. Nothing asserts this yet; the
   check that will is named in `runtime-and-deployment.md` §16.
+- One incident to a rendered assessment landed 2026-08-12: PR #69 (assessment contracts), PR #70
+  (Investigation Record port, commit semantics, and commit-before-delivery ordering), PR #71
+  (synthesis admission and deterministic brief projection), and the branch that wires the streamed
+  turn to gather, admit, synthesize, and render. Correlation identities now propagate through the
+  tracing seam so every span emitted inside a turn carries `investigation_id` and `turn_id` rather
+  than the root alone, and admission emits its own span. `decisions.md` D-008 was amended with the
+  `absence:` evidence prefix, so an authoritative empty result is citable instead of being
+  identified only by the operation that produced it. The synthesis path is deterministic in CI
+  through `eval/cassettes/turn_synthesis.json`, recorded once against `gpt-5-mini` on `inc-005`;
+  replay needs no provider SDK, so it runs in the lane that installs none. Two CI-equivalent lanes
+  run with their own dependency groups, re-measured after merging the partial-observation work
+  above: dev+data+eval 675 passed, 5 deselected, 1 xfailed; dev+data 639 passed, 8 skipped,
+  3 deselected, 1 xfailed. `ruff check` and `mypy src` (81 files) clean.
 
 ## 2. Executive State
 
@@ -711,7 +724,7 @@ owns order and PR structure.
 | Two-axis result vocabulary | Implemented. Five execution outcomes and four completeness values in `tools/contracts.py`, with the legal-pairing table enforced on construction |
 | Deterministic evidence admission | Implemented. `evidence/admission.py` is the only door into the evidence set and assigns the reference |
 | Stable admitted-evidence and limitation structures | Implemented. Admitted observations carry identity, provenance, and completeness; limitations name the unanswered question. The operation ledger is kept separate |
-| `succeeded + empty` represented as a positive observation | Implemented. Admitted with a deterministic representation naming the queried scope and the absence |
+| `succeeded + empty` represented as a positive observation | Implemented. Admitted with a deterministic representation naming the queried scope and the absence, and assigned an `absence:<capability>:<operation_ref>` evidence reference (D-008) so the finding is citable |
 | Governed structured-query capability | Missing |
 
 ### 10.5 RCA Analyst and assessment
@@ -719,14 +732,14 @@ owns order and PR structure.
 | Required behavior | Current standing |
 | --- | --- |
 | Distinct RCA Analyst as sole synthesis authority | Missing |
-| Candidate cause set | Contract implemented in `assessment/contracts.py`; nothing produces one yet |
+| Candidate cause set | Implemented. One bounded `rca_synthesis` call proposes candidates and `assessment/synthesis.py` admits them against the admitted evidence set |
 | Qualitative support labels | Contract implemented: leading, plausible, weakly supported, with no numeric field anywhere in the assessment. The legacy numeric confidence still exists on the old report and dies with it |
 | Supporting and weakening evidence per candidate | Contract implemented, with knowledge references refused in both roles |
 | Established and possible grounded elements | Contract implemented; an alternative and a historical comparison cannot be constructed as established |
 | Recommendation horizons and provenance categories | Contract implemented, with provenance and its knowledge reference checked together in both directions |
 | Recorded limitations | Implemented. `Assessment.limitations` carries both kinds and the brief renders them: an operation that did not answer, and the incompleteness of a `partial` observation an element rests on. The execution outcome distinguishes them, so a source that answered in part stays separable from one that did not answer |
 | Further-evidence need and its one bounded cycle | Missing |
-| Deterministic brief projection | Partial rendering philosophy exists, but the contract is replaced |
+| Deterministic brief projection | Implemented. `assessment/brief.py` projects the admitted assessment by traversal alone. Proven end to end by replaying `eval/cassettes/turn_synthesis.json` (inc-005, recorded against `gpt-5-mini`, the deployed model), where every reference the brief carries was one admission assigned |
 
 ### 10.6 Grounding and outcomes
 
@@ -1164,7 +1177,8 @@ slice or a small decision update before code invents incompatible answers.
    copied, and `decisions.md` D-008 adopts it as the canonical encoding with the prefix as the
    declared static discriminator for reference type, one authoritative prefix-to-type map,
    `postmortem:` canonical and `past_incident:` retired, and admission rather than the capability as
-   the assigner of the evidence reference.
+   the assigner of the evidence reference. Amended since, adding the `absence:` evidence prefix so an
+   authoritative empty result is citable; see D-008 for the encoding and its bounds.
 3. **Stateless clarification token:** if the interface uses a short-lived normalization token, the
    signing, expiry, and payload rules need a small explicit contract. A simpler resubmission path
    should be preferred if it meets the requirement.

@@ -17,9 +17,15 @@ Grammar, as authored in `data/answer_key/README.md`:
     metrics:<service or infra entity>:<metric>@<ts>
     deploys:<service>:<deploy_id>
     deps:<from>-><to>
+    absence:<capability>:<operation_ref>
     runbook:<doc_id>
     architecture:<doc_id>
     postmortem:<incident_id>
+
+`absence:` names an authoritative empty result: the capability executed successfully over the
+recorded scope and observed no matching item. It is an evidence reference like any other, and it
+embeds the producing operation reference without becoming one: a bare operation reference is
+still not citable, because an operation names an attempt rather than an observation.
 
 Parsing validates shape only. Whether a reference names something that exists is resolution, and
 whether a metric timestamp lands on the corpus sample boundary is an authoring rule the answer
@@ -28,7 +34,7 @@ key's own gate enforces; neither belongs to the grammar check.
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from enum import StrEnum
@@ -65,6 +71,7 @@ PREFIX_TYPES: Mapping[str, ReferenceType] = MappingProxyType(
         "metrics": ReferenceType.EVIDENCE,
         "deploys": ReferenceType.EVIDENCE,
         "deps": ReferenceType.EVIDENCE,
+        "absence": ReferenceType.EVIDENCE,
         "runbook": ReferenceType.KNOWLEDGE,
         "architecture": ReferenceType.KNOWLEDGE,
         "postmortem": ReferenceType.KNOWLEDGE,
@@ -101,6 +108,8 @@ class Reference:
     identifier: str | None = None
     metric: str | None = None
     observed_at: datetime | None = None
+    # Only an `absence:` reference names one: the capability whose empty answer was admitted.
+    capability: str | None = None
 
     @property
     def is_evidence(self) -> bool:
@@ -195,6 +204,23 @@ def parse(raw: str) -> Reference:
             text, prefix, reference_type, entities=(entity.strip(),), identifier=identifier.strip()
         )
 
+    if prefix == "absence":
+        capability, separator, operation_ref = rest.partition(":")
+        _require(bool(separator), text, "absence reference needs a capability and an operation")
+        _require(
+            bool(capability.strip()) and bool(operation_ref.strip()),
+            text,
+            "empty capability or operation reference",
+        )
+        _require(":" not in operation_ref, text, "absence reference carries one operation")
+        return Reference(
+            text,
+            prefix,
+            reference_type,
+            identifier=operation_ref.strip(),
+            capability=capability.strip(),
+        )
+
     # Knowledge references are a single opaque document identity.
     _require(":" not in rest, text, "knowledge reference carries one identifier")
     return Reference(text, prefix, reference_type, identifier=rest.strip())
@@ -242,6 +268,11 @@ class ReferenceResolver:
     rather than sweeping the container. What is read is cached per entity for the resolver's life,
     because resolving a brief's citations asks about the same few services repeatedly. Each read
     carries the deadline the resolver was given, like any other source call.
+
+    An `absence:` reference is the one form with no source row behind it, by definition: it names a
+    scope that contained nothing. It resolves against the admitted absence observations passed in
+    at construction, so this stays one resolver rather than two. Searching the container for it
+    would ask a source to produce the row whose non-existence is the finding.
     """
 
     def __init__(
@@ -250,8 +281,14 @@ class ReferenceResolver:
         kb_dir: Path | str | None = None,
         *,
         deadline_s: float | None = None,
+        absences: Iterable[Any] = (),
     ) -> None:
         self._records = records
+        # Indexed by the reference admission assigned. Duck-typed rather than importing the
+        # admission contract, which imports this module.
+        self._absences: dict[str, Any] = {
+            str(getattr(obs, "evidence_ref", "")): obs for obs in absences
+        }
         self._kb_dir = Path(kb_dir) if kb_dir is not None else KB_DIR
         self._deadline_s = deadline_s if deadline_s is not None else config.SOURCE_DEADLINE_SECONDS
         self._logs: dict[str, dict[str, dict[str, Any]]] = {}
@@ -326,6 +363,9 @@ class ReferenceResolver:
             edge = (ref.entities[0], ref.entities[1])
             found = edge in self._edge_index()
             record = edge if found else None
+        elif ref.prefix == "absence":
+            record = self._absences.get(ref.raw)
+            found = record is not None
         else:
             found, record = self._resolve_metric(ref)
 
