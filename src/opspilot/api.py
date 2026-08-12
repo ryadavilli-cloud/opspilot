@@ -27,6 +27,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
 from opspilot import __version__, config
+from opspilot.assessment.brief import project
 from opspilot.auth import (
     ReviewerAuthenticator,
     ReviewerAuthError,
@@ -48,6 +49,8 @@ from opspilot.contracts import (
 )
 from opspilot.data.repository import Repository, default_repository
 from opspilot.diagnosis.contracts import CausalClaim
+from opspilot.evidence.admission import admit
+from opspilot.evidence.operations import TurnEvidence
 from opspilot.graph import _initial_state, build_graph, invoke_auto_approving
 from opspilot.intake.contracts import from_predefined_incident
 from opspilot.investigations import (
@@ -62,10 +65,11 @@ from opspilot.investigations import (
 from opspilot.obs import tracing
 from opspilot.repository import build_investigation_repository
 from opspilot.state import Intent
-from opspilot.stream.contracts import IdentityEvent, StreamCloseMarker
+from opspilot.stream.contracts import BriefEvent, IdentityEvent, StreamCloseMarker
 from opspilot.stream.projection import ActivityProjector, emit
 from opspilot.tools.contracts import Completeness, IncidentRecord
 from opspilot.turn.identity import start_turn
+from opspilot.turn.synthesis_step import capability_event, evidence_plan, synthesize
 
 _log = logging.getLogger("opspilot.api")
 
@@ -149,6 +153,22 @@ def get_service():
 
                 _tool_service = ToolService()
     return _tool_service
+
+
+_synthesis_model = None
+
+
+def get_synthesis_model():
+    """The chat model the synthesis task runs on. One per process, injected so a test can supply a
+    replay cassette or a fake without the endpoint knowing which."""
+    global _synthesis_model
+    if _synthesis_model is None:
+        with _singleton_lock:
+            if _synthesis_model is None:
+                from opspilot.llm.client import build_chat_model
+
+                _synthesis_model = build_chat_model()
+    return _synthesis_model
 
 
 def get_diagnosis() -> DiagnosisComposition:
@@ -603,8 +623,17 @@ def ready(
 # last. This closing event is a transport-ordering proof only; no accepted completed-turn outcome
 # exists yet, so the stub assessment/brief here demonstrates transport and rendering, nothing more.
 # --------------------------------------------------------------------------------------
+# The evidence path for a predefined incident. Deterministic and fixed: adaptive source selection
+# belongs to the Evidence Investigator, which does not exist yet, so this gathers a small standing
+# set rather than pretending to choose. It starts from correlated alerts because predefined intake
+# normalizes to an incident id with no affected service (the incident record names no service), so
+# the alerts are what identify the entities the remaining calls are scoped to.
 async def _predefined_turn_stream(
-    incident_id: str, incident: IncidentRecord, disconnect: Request
+    incident_id: str,
+    incident: IncidentRecord,
+    disconnect: Request,
+    svc,
+    model,
 ) -> AsyncIterator[str]:
     # Async, not a plain generator: Starlette drives a sync generator's `next()` through a worker
     # threadpool call per yield, and a contextvars token set before one yield cannot be reset after
@@ -641,15 +670,69 @@ async def _predefined_turn_stream(
         if await disconnect.is_disconnected():
             return
 
-        stub = emit(
-            "turn.synthesizing",
-            turn,
-            projector,
-            phase="synthesizing",
-            action="stub assessment produced",
-            detail="Deterministic stub assessment produced to prove transport and rendering.",
+        # --- gather, and admit ------------------------------------------------------------
+        evidence = TurnEvidence(investigation_id=turn.investigation_id, turn_id=turn.turn_id)
+
+        alerts = svc.call("get_correlated_alerts", incident_id=incident_id)
+        admit(
+            alerts,
+            turn=evidence,
+            question="which alerts correlate with this incident",
+            request_scope={"incident_id": incident_id},
         )
-        yield stub.model_dump_json() + "\n"
+        yield (
+            capability_event(
+                turn, projector, "get_correlated_alerts", alerts, admitted=0
+            ).model_dump_json()
+            + "\n"
+        )
+
+        for capability, question, params in evidence_plan(context, alerts.results):
+            if await disconnect.is_disconnected():
+                return
+            result = svc.call(capability, **params)
+            outcome = admit(result, turn=evidence, question=question, request_scope=params)
+            yield (
+                capability_event(
+                    turn,
+                    projector,
+                    capability,
+                    result,
+                    admitted=len(outcome.observations),
+                    references=[o.evidence_ref for o in outcome.observations],
+                ).model_dump_json()
+                + "\n"
+            )
+
+        if await disconnect.is_disconnected():
+            return
+
+        # --- one bounded synthesis call ---------------------------------------------------
+        assessment = synthesize(model, context, evidence, f"Explain: {context.symptom}")
+        yield (
+            emit(
+                "turn.synthesizing",
+                turn,
+                projector,
+                phase="synthesizing",
+                action="assessment produced",
+                detail=(
+                    f"Assessment produced: {assessment.disposition.value}, "
+                    f"{len(assessment.candidates())} candidate(s), "
+                    f"{len(assessment.limitations)} limitation(s)."
+                ),
+                outcome=assessment.disposition.value,
+            ).model_dump_json()
+            + "\n"
+        )
+
+        if await disconnect.is_disconnected():
+            return
+
+        # The brief renders that assessment and nothing else. Deliberately non-terminal: no
+        # grounding gate has run, so nothing is committed and no accepted outcome is emitted.
+        # The close marker below stays a transport marker.
+        yield BriefEvent(turn_id=turn.turn_id, brief=project(assessment)).model_dump_json() + "\n"
 
         if await disconnect.is_disconnected():
             return
@@ -662,13 +745,15 @@ def start_turn_endpoint(
     body: StartTurnRequest,
     request: Request,
     repo: Repository = Depends(get_corpus_repository),
+    svc=Depends(get_service),
+    model=Depends(get_synthesis_model),
 ) -> StreamingResponse:
     raw = repo.incident(body.incident_id)
     if raw is None:
         raise HTTPException(status_code=404, detail="Unknown incident_id.")
     incident = IncidentRecord(**raw)
     return StreamingResponse(
-        _predefined_turn_stream(body.incident_id, incident, request),
+        _predefined_turn_stream(body.incident_id, incident, request, svc, model),
         media_type="application/x-ndjson",
     )
 
