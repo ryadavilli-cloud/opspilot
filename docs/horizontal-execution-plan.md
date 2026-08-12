@@ -425,8 +425,8 @@ a `partial` observation stays marked partial everywhere it travels downstream, w
 shown until something consumes admitted evidence. Admission marks it; nothing yet carries it
 onward.
 
-**Complete.** The consumer arrived with synthesis, so the property became showable and is now
-enforced: an element citing a `partial` observation produces a limitation naming what the source
+**Complete (PR #73).** The consumer arrived with synthesis, so the property became showable and is
+now enforced: an element citing a `partial` observation produces a limitation naming what the source
 did not return, and the brief renders it. One divergence. The design requires the acknowledgement
 (`data-and-evidence.md` §4 and its invariant 5) but names no carrier for it, and the two candidates
 were not equal: the citation is authored as a reference and a role and nothing else, so the
