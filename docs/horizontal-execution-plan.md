@@ -374,7 +374,14 @@ rows describe is done, and no row was authored to record it. Second, the contain
 `/kind` and a dependency edge carries a field of that name, so preparation had been overwriting each
 edge's relationship kind with the partition value. Nothing failed at write time and the read side
 found every edge claiming the same kind. Preparation now carries the edge's own kind as
-`dependency_kind`; the live container holds clobbered edges until it is reseeded.
+`dependency_kind`; the live container was reseeded and read back against the shaping.
+
+This slice's deployment verification has no counterpart of its own to build. The refusal it names
+is check 4 of the eight in `runtime-and-deployment.md` §16, which 8.2 owns and which pairs it with
+the write half this layer cannot yet perform. What belongs here is the posture that check will
+assert, and it holds: inspected live, the application identity carries Data Reader on the
+`retailease` database and Contributor only on its own investigations container, and the reader
+definition contains no write action.
 
 ### 2.3 Evidence admission, limitations, and the operation ledger
 
@@ -417,6 +424,15 @@ What is left for this slice is the part its own tests name and this work did not
 a `partial` observation stays marked partial everywhere it travels downstream, which cannot be
 shown until something consumes admitted evidence. Admission marks it; nothing yet carries it
 onward.
+
+**Complete (PR #73).** The consumer arrived with synthesis, so the property became showable and is
+now enforced: an element citing a `partial` observation produces a limitation naming what the source
+did not return, and the brief renders it. One divergence. The design requires the acknowledgement
+(`data-and-evidence.md` §4 and its invariant 5) but names no carrier for it, and the two candidates
+were not equal: the citation is authored as a reference and a role and nothing else, so the
+limitation is the carrier, which is also the word the design itself uses for what a partial
+observation omits. The execution outcome keeps an incomplete answer separable from an operation
+that did not answer, so nothing was added to a vocabulary.
 
 **Shape.** New admission code inside the Evidence Access Layer, plus a rewrite of the evidence half
 of turn state. The hash-keyed first-seen-wins merge that keeps contradictory observations separate

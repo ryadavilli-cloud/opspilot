@@ -63,7 +63,24 @@ This version merges the corrected repository reconciliation draft with the earli
   the edge's kind is now carried as `dependency_kind` and mapped back at the adapter, which means
   the live container holds clobbered edges until it is reseeded. Repository inspected at
   `f5c2b42`. Full suite 600 passed, 11 skipped, 1 xfailed across 59 test files (606 collected);
-  `ruff check`, `ruff format`, and `mypy src` clean.
+  `ruff check`, `ruff format`, and `mypy src` clean. The container was reseeded on 2026-08-11 and
+  read back: all 14,013 documents match the shaping, and the twelve edges now carry their own
+  relationship kind.
+- A partial observation now stays marked partial where a claim rests on it, 2026-08-11. An element
+  citing a `partial` observation produces a limitation in the assessment naming what the source did
+  not return, deduplicated per producing operation and rendered by the brief. Carried as a
+  limitation rather than on the citation, which is authored as a reference and a role and nothing
+  else; the execution outcome separates an incomplete answer from an operation that did not answer,
+  so no vocabulary was extended. Measured with the fuller lane's own command,
+  `pytest -q -m "not reranker and not llm"` against the `eval` group: 642 passed, 5 deselected,
+  1 xfailed; `ruff check`, `ruff format`, and `mypy src` clean.
+- Cosmos data-plane permissions inspected live, 2026-08-11 (read-only, nothing modified). The
+  application identity holds two differently scoped grants and no account-wide one: Data
+  Contributor on `opspilot/investigations`, and Data Reader on the whole `retailease` database. The
+  reader definition's data actions are `readMetadata`, `executeQuery`, `readChangeFeed`, and
+  `items/read`, so no write action exists for the application to attempt. Corpus preparation's
+  Contributor grant on `retailease` belongs to a different principal. Nothing asserts this yet; the
+  check that will is named in `runtime-and-deployment.md` §16.
 
 ## 2. Executive State
 
@@ -707,7 +724,7 @@ owns order and PR structure.
 | Supporting and weakening evidence per candidate | Contract implemented, with knowledge references refused in both roles |
 | Established and possible grounded elements | Contract implemented; an alternative and a historical comparison cannot be constructed as established |
 | Recommendation horizons and provenance categories | Contract implemented, with provenance and its knowledge reference checked together in both directions |
-| Recorded limitations | Missing |
+| Recorded limitations | Implemented. `Assessment.limitations` carries both kinds and the brief renders them: an operation that did not answer, and the incompleteness of a `partial` observation an element rests on. The execution outcome distinguishes them, so a source that answered in part stays separable from one that did not answer |
 | Further-evidence need and its one bounded cycle | Missing |
 | Deterministic brief projection | Partial rendering philosophy exists, but the contract is replaced |
 

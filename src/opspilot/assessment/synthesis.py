@@ -41,6 +41,7 @@ from opspilot.assessment.contracts import (
 )
 from opspilot.evidence.admission import AdmittedObservation, Limitation
 from opspilot.evidence.references import CitationRole, try_parse
+from opspilot.tools.contracts import Completeness, ExecutionOutcome
 
 SYNTHESIS_TASK = "rca_synthesis"
 
@@ -97,6 +98,49 @@ def parse_proposal(text: str) -> AssessmentProposal:
 
 def _admitted_refs(observations: list[AdmittedObservation]) -> set[str]:
     return {obs.evidence_ref for obs in observations}
+
+
+def _incompleteness_limitations(
+    observations: list[AdmittedObservation], cited: list[str]
+) -> list[Limitation]:
+    """What a claim resting on a `partial` observation must acknowledge.
+
+    A partial observation participates in reasoning, and its incompleteness travels with it
+    (`data-and-evidence.md` §4, invariant 5): the unseen remainder could change the picture, so an
+    element resting on one has to disclose that rather than read as though the scope were fully
+    seen. Admission marks the observation; this is where the mark reaches the assessment, and the
+    brief renders it from there like any other limitation.
+
+    Only cited observations produce one. An admitted partial observation no element rests on is not
+    something the assessment claims, so disclosing it would describe a gap in a claim nobody made.
+
+    The outcome carried is the operation's own, `succeeded`: the source answered, and what is
+    limited is how much of the scope it covered. That is what separates this from a limitation for
+    an operation that did not answer, and it is why no second vocabulary is introduced here.
+    """
+    by_ref = {obs.evidence_ref: obs for obs in observations}
+    limitations: list[Limitation] = []
+    disclosed: set[str] = set()
+    for ref in cited:
+        observation = by_ref.get(ref)
+        if observation is None or observation.completeness is not Completeness.PARTIAL:
+            continue
+        # One disclosure per producing operation: several references capped by the same read are
+        # one incomplete answer, not several.
+        if observation.operation_ref in disclosed:
+            continue
+        disclosed.add(observation.operation_ref)
+        limitations.append(
+            Limitation(
+                question=f"what {observation.provenance or observation.source} did not return",
+                reason="; ".join(observation.limitations)
+                or "the source returned part of the requested scope",
+                operation_ref=observation.operation_ref,
+                capability=observation.source,
+                outcome=ExecutionOutcome.SUCCEEDED,
+            )
+        )
+    return limitations
 
 
 def _grounded(refs: list[str], admitted: set[str]) -> list[str]:
@@ -203,6 +247,15 @@ def admit_assessment(
         if rec is not None
     ]
 
+    # Every reference the finished assessment rests on, in the order it rests on them. Collected
+    # from the built elements rather than from the proposal, so a reference the grounding above
+    # dropped cannot pull a disclosure along behind it.
+    cited = list(happened_refs)
+    for candidate in (leading, *alternatives):
+        if candidate is not None:
+            cited.extend(candidate.supporting)
+            cited.extend(candidate.weakening)
+
     return Assessment(
         investigation_id=investigation_id,
         turn_id=turn_id,
@@ -212,6 +265,8 @@ def admit_assessment(
         leading_candidate=leading,
         supported_alternatives=alternatives,
         unresolved_discriminator=proposal.unresolved_discriminator.strip() or None,
-        limitations=list(limitations),
+        # The turn's own limitations first, then what the cited evidence does not cover. Both are
+        # limitations in the same sense: something the assessment cannot claim to have established.
+        limitations=[*limitations, *_incompleteness_limitations(observations, cited)],
         recommendations=recommendations,
     )
