@@ -14,6 +14,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 import pytest
+from fake_operational_records import corpus_records
 
 from opspilot.tools.contracts import to_utc
 from opspilot.tools.service import ToolService
@@ -30,7 +31,7 @@ def _load(name: str, rel: str):
 
 
 SCENARIOS = _load("build_goldens", "data/answer_key/build_goldens.py").load_scenarios()
-SVC = ToolService()
+SVC = ToolService(corpus_records())
 
 
 def _center(scenario) -> datetime:
@@ -57,7 +58,8 @@ def test_all_expected_evidence_is_surfaced(scenario):
         elif source == "deploys":
             svc = rest.split(":", 1)[0]
             refs = SVC.get_deployments(
-                services=[svc], start_time=dep_start, end_time=w_end).evidence_refs
+                services=[svc], start_time=dep_start, end_time=w_end
+            ).evidence_refs
         elif source == "deps":
             frm = rest.split("->", 1)[0]
             refs = SVC.get_service_dependencies(service=frm).evidence_refs

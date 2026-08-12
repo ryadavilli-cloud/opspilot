@@ -2,8 +2,9 @@
 
 Health is split three ways so an orchestrator can tell the states apart:
   - `/health/live`  — the process is running (touches nothing else). Used for liveness probes.
-  - `/health/ready` — the app can actually investigate: corpus validated, repository + logs
-    reachable, retrieval initialized and matching the configured backend. 503 when not.
+  - `/health/ready`  the app can actually investigate: the operational-records container holds
+    every record kind, incident + log lookups answer, retrieval initialized and matching the
+    configured backend. 503 when not.
   - `/version`       — build/runtime metadata.
 
 The investigation endpoint returns a typed contract that represents degraded and escalated
@@ -46,7 +47,13 @@ from opspilot.contracts import (
     KnowledgeBriefing,
     PartialInvestigationReport,
 )
-from opspilot.data.repository import Repository, default_repository
+from opspilot.data.operational_records import (
+    RECORD_KINDS,
+    OperationalRecords,
+    PreparationStatus,
+    default_operational_records,
+    preparation_status,
+)
 from opspilot.diagnosis.contracts import CausalClaim
 from opspilot.graph import _initial_state, build_graph, invoke_auto_approving
 from opspilot.intake.contracts import from_predefined_incident
@@ -160,20 +167,20 @@ def get_diagnosis() -> DiagnosisComposition:
     return _diagnosis
 
 
-# The read-only corpus repository predefined intake resolves an incident_id against. Separate from
-# the async job store below: selecting a predefined incident is not evidence-gathering (the
-# Engineer Interaction Interface must not call operational tools), so this reads the corpus
+# The read-only reader predefined intake resolves an incident_id against. Separate from the async
+# job store below: selecting a predefined incident is not evidence-gathering (the Engineer
+# Interaction Interface must not call operational capabilities), so this reads the container
 # directly rather than going through ToolService.
-_corpus_repository: Repository | None = None
+_operational_records: OperationalRecords | None = None
 
 
-def get_corpus_repository() -> Repository:
-    global _corpus_repository
-    if _corpus_repository is None:
+def get_operational_records() -> OperationalRecords:
+    global _operational_records
+    if _operational_records is None:
         with _singleton_lock:
-            if _corpus_repository is None:
-                _corpus_repository = default_repository()
-    return _corpus_repository
+            if _operational_records is None:
+                _operational_records = default_operational_records()
+    return _operational_records
 
 
 # One investigation repository per process (the async resource store), selected by
@@ -269,10 +276,20 @@ def require_reader(
     return principal
 
 
-def get_corpus_status():
-    from opspilot.data.repository import validate_corpus
+def get_records_status(
+    records: OperationalRecords = Depends(get_operational_records),
+) -> PreparationStatus:
+    """Whether corpus preparation has run against the container this application reads.
 
-    return validate_corpus(config.CORPUS_DIR)
+    Fail closed: a container that cannot answer reports every kind missing rather than raising,
+    because a dependency that raised would answer the probe with a 500 and lose the distinction
+    readiness exists to draw. Absent preparation must present as a deployment failure, so a probe
+    that cannot see the data is never ready.
+    """
+    try:
+        return preparation_status(records, deadline_s=config.SOURCE_DEADLINE_SECONDS)
+    except Exception:  # noqa: BLE001, readiness converts every failure into a failed check
+        return PreparationStatus(counts={}, missing=RECORD_KINDS)
 
 
 # --------------------------------------------------------------------------------------
@@ -544,7 +561,7 @@ def _check(fn) -> bool:
 def ready(
     response: Response,
     svc=Depends(get_service),
-    corpus=Depends(get_corpus_status),
+    records=Depends(get_records_status),
 ) -> ReadinessResponse:
     checks: dict[str, str] = {}
     errors: list[ReadinessError] = []
@@ -578,7 +595,7 @@ def ready(
             and svc.search_runbooks(query="payment timeout", k=1).answered
         )
 
-    record("corpus", _check(lambda: corpus.ok), "CORPUS_INCOMPLETE")
+    record("operational_records", _check(lambda: records.ok), "OPERATIONAL_RECORDS_INCOMPLETE")
     record("repository", _check(repository_ok), "REPOSITORY_LOOKUP_FAILED")
     record("logs", _check(logs_ok), "LOG_QUERY_FAILED")
     record("retrieval", _check(retrieval_ok), "RETRIEVAL_INITIALIZATION_FAILED")
@@ -661,9 +678,9 @@ async def _predefined_turn_stream(
 def start_turn_endpoint(
     body: StartTurnRequest,
     request: Request,
-    repo: Repository = Depends(get_corpus_repository),
+    records: OperationalRecords = Depends(get_operational_records),
 ) -> StreamingResponse:
-    raw = repo.incident(body.incident_id)
+    raw = records.incident(body.incident_id, deadline_s=config.SOURCE_DEADLINE_SECONDS)
     if raw is None:
         raise HTTPException(status_code=404, detail="Unknown incident_id.")
     incident = IncidentRecord(**raw)

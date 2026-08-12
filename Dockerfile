@@ -24,15 +24,16 @@ RUN uv sync --no-install-project --no-dev --group llm --group checkpoint
 COPY src/ ./src/
 RUN uv sync --no-dev --group llm --group checkpoint
 
-# Package only the operational runtime data: the synthetic corpus and the KB. Not the answer key,
-# distractors, calibration datasets, eval baselines, generators, or docs (see .dockerignore).
-COPY data/synthetic/ ./data/synthetic/
+# Package only the runtime data still read from the image: the KB. The operational corpus is not
+# here, and its absence is the guarantee rather than a convention — every operational capability
+# reads the `operational-records` container, so an image that shipped the files could not fall back
+# to them. Not the answer key, distractors, calibration datasets, eval baselines, generators, or
+# docs either (see .dockerignore).
 COPY data/kb/ ./data/kb/
 
 # Point the runtime at the packaged data explicitly (never inferred from the source-tree layout),
 # and select the lexical BM25 backend so the image needs no embedding model.
-ENV OPSPILOT_CORPUS_DIR=/app/data/synthetic \
-    OPSPILOT_KB_DIR=/app/data/kb \
+ENV OPSPILOT_KB_DIR=/app/data/kb \
     OPSPILOT_RETRIEVAL_BACKEND=bm25
 
 EXPOSE 8000

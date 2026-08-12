@@ -13,13 +13,26 @@ import pytest
 
 pytest.importorskip("httpx")  # FastAPI's TestClient transport
 
+from fake_operational_records import corpus_records  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 
-from opspilot.api import _predefined_turn_stream, app  # noqa: E402
-from opspilot.data.repository import default_repository  # noqa: E402
+from opspilot.api import _predefined_turn_stream, app, get_operational_records  # noqa: E402
+from opspilot.config import SOURCE_DEADLINE_SECONDS  # noqa: E402
 from opspilot.tools.contracts import IncidentRecord  # noqa: E402
 
 client = TestClient(app)
+
+# The endpoint resolves the selected incident against the container, not a file on disk, so the
+# tests hand it one seeded with the authored corpus. Installed per test rather than once at import:
+# `app` is a process-wide singleton and other modules clear its overrides.
+RECORDS = corpus_records()
+
+
+@pytest.fixture(autouse=True)
+def _records_override():
+    app.dependency_overrides[get_operational_records] = lambda: RECORDS
+    yield
+    app.dependency_overrides.clear()
 
 
 class _DisconnectAfter:
@@ -74,7 +87,7 @@ def test_unknown_incident_id_returns_404_before_any_stream_opens():
 # --- in-process cancellation signal ---------------------------------------------------------
 def _run_stream(disconnect_after: int) -> list[dict]:
     async def _go() -> list[dict]:
-        raw = default_repository().incident("inc-001")
+        raw = RECORDS.incident("inc-001", deadline_s=SOURCE_DEADLINE_SECONDS)
         incident = IncidentRecord(**raw)
         disconnect = _DisconnectAfter(stay_connected_for=disconnect_after)
         lines = [

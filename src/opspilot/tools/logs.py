@@ -3,28 +3,31 @@
 Evidence-bearing: each returned row yields `logs:<service>:<event_id>`. The signal events are
 returned alongside the noise floor for that service/window — separating them is the agent's job,
 not the tool's.
+
+The service narrows the read at the source; window, level, and substring narrow it here, where the
+request's validated parameters are interpreted.
 """
 
 from __future__ import annotations
 
-from opspilot.data.repository import Repository
+from opspilot.data.operational_records import OperationalRecords
 from opspilot.tools.contracts import GetLogsRequest, LogRecord, ToolResult, to_utc
 from opspilot.tools.errors import run_tool
 
 
-def query_logs(repo: Repository, **kwargs) -> ToolResult[LogRecord]:
+def query_logs(
+    records: OperationalRecords, *, deadline_s: float, **kwargs
+) -> ToolResult[LogRecord]:
     def logic(req: GetLogsRequest) -> tuple[list[LogRecord], list[str]]:
         start = to_utc(req.start_time) if req.start_time else None
         end = to_utc(req.end_time) if req.end_time else None
         want_level = req.level.lower() if req.level else None
         needle = req.contains.lower() if req.contains else None
         recs: list[LogRecord] = []
-        for raw in repo.logs():
+        for raw in records.logs(req.service, deadline_s=deadline_s):
             try:
                 rec = LogRecord(**raw)
             except Exception:  # noqa: BLE001 — skip malformed rows
-                continue
-            if rec.service != req.service:
                 continue
             t = to_utc(rec.ts)
             if (start and t < start) or (end and t > end):

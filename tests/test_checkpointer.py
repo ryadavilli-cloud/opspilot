@@ -138,18 +138,26 @@ def test_hitl_interrupt_resumes_across_a_fresh_checkpointer_instance(tmp_path):
     interrupt() on one sqlite-backed instance; a brand-new instance over the SAME file (a
     simulated process restart) resumes it with a human decision and reaches the byte-exact
     approved report."""
+    from fake_operational_records import corpus_records
     from langgraph.types import Command
 
     from opspilot.graph import _initial_state, build_graph
     from opspilot.tools.service import ToolService
 
     db = str(tmp_path / "checkpoints.sqlite")
-    alert = {"incident_id": "inc-004",
-             "summary": "checkout-api returning 500s shortly after this morning's deployment."}
+    alert = {
+        "incident_id": "inc-004",
+        "summary": "checkout-api returning 500s shortly after this morning's deployment.",
+    }
 
     # Instance A: run to the hitl_gate pause; the checkpoint is written to the sqlite file.
     graph_a = build_checkpointer("sqlite", sqlite_path=db)
-    cfg_a = {"configurable": {"tool_service": ToolService(), "thread_id": "inc-restart-test"}}
+    cfg_a = {
+        "configurable": {
+            "tool_service": ToolService(corpus_records()),
+            "thread_id": "inc-restart-test",
+        }
+    }
     paused = build_graph(graph_a).invoke(_initial_state(alert), cfg_a)
     pending = paused["__interrupt__"]
     report_hash = pending[0].value["report_hash"]
@@ -159,8 +167,14 @@ def test_hitl_interrupt_resumes_across_a_fresh_checkpointer_instance(tmp_path):
     graph_b = build_checkpointer("sqlite", sqlite_path=db)
     cfg_b = {"configurable": {"thread_id": "inc-restart-test"}}
     result = build_graph(graph_b).invoke(
-        Command(resume={"decision": "approve", "approver": "ops-oncall", "edits": None,
-                        "submitted_report_hash": report_hash}),
+        Command(
+            resume={
+                "decision": "approve",
+                "approver": "ops-oncall",
+                "edits": None,
+                "submitted_report_hash": report_hash,
+            }
+        ),
         cfg_b,
     )
     assert result["report"].content_hash() == report_hash

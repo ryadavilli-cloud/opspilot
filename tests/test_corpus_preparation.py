@@ -204,6 +204,26 @@ def test_operational_record_ids_are_unique():
     assert len(ids) == len(set(ids)), "duplicate (kind, id) would overwrite on upsert"
 
 
+def test_a_record_field_colliding_with_a_partition_path_is_relocated_not_overwritten():
+    """A dependency edge names its own relationship kind, and `kind` is also the container's first
+    partition level. Spreading the edge and then setting the partition value overwrites the
+    relationship with the literal "dependency", and nothing fails at write time: the read side
+    simply finds every edge claiming the same kind. This is the only kind whose own field collides
+    with a partition path, so it is the only one relocated.
+    """
+    source = {
+        (edge["from"], edge["to"]): edge["kind"] for edge in prep._records("dependencies", "edges")
+    }
+    prepared = [doc for doc in OPERATIONAL if doc["kind"] == "dependency"]
+
+    assert len(prepared) == len(source)
+    for doc in prepared:
+        assert doc["dependency_kind"] == source[(doc["from"], doc["to"])]
+    assert len({doc["dependency_kind"] for doc in prepared}) > 1, (
+        "every edge reporting one relationship kind is what the collision looked like"
+    )
+
+
 @pytest.mark.parametrize(
     "name,key,kind,id_field",
     [

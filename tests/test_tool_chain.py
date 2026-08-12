@@ -16,6 +16,7 @@ from datetime import timedelta
 from pathlib import Path
 
 import pytest
+from fake_operational_records import corpus_records
 
 from opspilot.tools.contracts import to_utc
 from opspilot.tools.service import ToolService
@@ -32,7 +33,7 @@ def _load(name: str, rel: str):
 
 
 SCENARIOS = _load("build_goldens", "data/answer_key/build_goldens.py").load_scenarios()
-SVC = ToolService()
+SVC = ToolService(corpus_records())
 
 DEPLOY_SCENARIOS = [
     s for s in SCENARIOS if any(r.startswith("deploys:") for r in s["expected_evidence"])
