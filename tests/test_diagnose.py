@@ -12,6 +12,8 @@ import pytest
 pytest.importorskip("sentence_transformers")
 pytest.importorskip("rank_bm25")
 
+from fake_operational_records import corpus_records  # noqa: E402
+
 from opspilot.diagnosis.contracts import (  # noqa: E402
     DiagnosisContext,
     DiagnosticQuestion,
@@ -55,13 +57,14 @@ def test_loop_obeys_hard_iteration_limit():
     plan = InvestigationPlan(
         max_iters=2,
         questions=[
-            DiagnosticQuestion(key=f"q{i}", question=f"q{i}",
-                               call=ToolCallRequest(tool="get_service_dependencies"))
+            DiagnosticQuestion(
+                key=f"q{i}", question=f"q{i}", call=ToolCallRequest(tool="get_service_dependencies")
+            )
             for i in range(5)
         ],
     )
     ctx = DiagnosisContext(incident_id="inc-006", onset="2026-06-25T16:20:00+00:00")
-    _, observations, stop, _ = run_cycle(ToolService(), ctx, plan)
+    _, observations, stop, _ = run_cycle(ToolService(corpus_records()), ctx, plan)
     assert len(observations) == 2 and stop.reason == "iteration_limit"
 
 
@@ -75,10 +78,11 @@ def test_novel_scenario_reaches_sufficiency_with_counter_evidence():
 
 
 def test_plan_advancement_does_not_reask_answered_questions():
-    ctx = DiagnosisContext(incident_id="inc-006", affected_services=["checkout-api"],
-                           onset="2026-06-25T16:20:00+00:00")
+    ctx = DiagnosisContext(
+        incident_id="inc-006", affected_services=["checkout-api"], onset="2026-06-25T16:20:00+00:00"
+    )
     plan = plan_investigation(ctx)
-    svc = ToolService()
+    svc = ToolService(corpus_records())
     _, obs1, _, answered1 = run_cycle(svc, ctx, plan)
     assert obs1 and answered1 == {q.key for q in plan.questions}  # first pass answers everything
     _, obs2, _, answered2 = run_cycle(svc, ctx, plan, answered=answered1)

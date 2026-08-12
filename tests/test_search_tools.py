@@ -14,6 +14,8 @@ import pytest
 pytest.importorskip("sentence_transformers")
 pytest.importorskip("rank_bm25")
 
+from fake_operational_records import corpus_records  # noqa: E402
+
 from opspilot.tools.contracts import (
     Completeness,
     DocHit,  # noqa: E402
@@ -41,7 +43,7 @@ def _kb_doc(ref: str) -> Path | None:
 
 @pytest.fixture(scope="module")
 def svc() -> ToolService:
-    return ToolService()
+    return ToolService(corpus_records())
 
 
 def test_search_runbooks_returns_kb_docs_and_refs_resolve(svc):

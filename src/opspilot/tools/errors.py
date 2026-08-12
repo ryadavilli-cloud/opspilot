@@ -3,7 +3,8 @@
 `run_tool` is the single boundary every tool goes through, and therefore the one place that
 translates what happened into the two axes. Provider-shaped failure never travels further: a
 validation failure is `rejected`, an error inside the tool's own logic is `failed`, and a source
-that could not be reached is `unavailable`, reported by the caller that discovered it.
+that could not be reached is `unavailable`, raised as `SourceUnavailable` by the source itself, so
+an unreachable container cannot present as a defect in the capability that queried it.
 
 The completeness axis is assigned here too, and only for a successful run: capped results are
 `partial` because the unseen remainder could change the picture, no results at all is `empty`
@@ -18,6 +19,7 @@ from typing import Any
 
 from pydantic import BaseModel, ValidationError
 
+from opspilot.data.operational_records import SourceUnavailable
 from opspilot.obs.tracing import span
 from opspilot.tools.contracts import (
     MAX_RESULTS,
@@ -94,6 +96,11 @@ def run_tool(
             return _fail(sp, tool_name, "invalid request", started, ExecutionOutcome.REJECTED)
         try:
             records, evidence_refs = logic(request)
+        except SourceUnavailable:
+            # The source did not answer. Reported apart from `failed` so the question this
+            # capability was asked stays open rather than reading as a defect in the code that
+            # asked it. The provider's own message never travels with it.
+            return _fail(sp, tool_name, "source unavailable", started, ExecutionOutcome.UNAVAILABLE)
         except Exception:  # noqa: BLE001 — no exception may cross the tool boundary
             return _fail(sp, tool_name, "internal tool error", started, ExecutionOutcome.FAILED)
 

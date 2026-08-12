@@ -28,17 +28,30 @@ _spec.loader.exec_module(scenario_eval)
 
 
 def _replay_scorecard(monkeypatch) -> dict:
+    from fake_operational_records import corpus_records
+
     from opspilot import config
     from opspilot.llm.cassette import ReplayChatModel
+    from opspilot.tools.service import ToolService
 
     monkeypatch.setattr(config, "RETRIEVAL_BACKEND", "bm25")
-    return scenario_eval.evaluate("single_agent", model=ReplayChatModel(str(CASSETTE)))
+    return scenario_eval.evaluate(
+        "single_agent",
+        model=ReplayChatModel(str(CASSETTE)),
+        service=ToolService(corpus_records()),
+    )
 
 
 def test_single_agent_replay_reproduces_committed_baseline(monkeypatch):
     sc = _replay_scorecard(monkeypatch)
-    for metric in ("evidence_recall", "rca_correctness", "tool_selection_accuracy",
-                   "routing_accuracy", "unsupported_evidence_rate", "red_herring_avoidance"):
+    for metric in (
+        "evidence_recall",
+        "rca_correctness",
+        "tool_selection_accuracy",
+        "routing_accuracy",
+        "unsupported_evidence_rate",
+        "red_herring_avoidance",
+    ):
         assert sc[metric] == SINGLE[metric], f"{metric} drifted from the recorded cassette"
 
 

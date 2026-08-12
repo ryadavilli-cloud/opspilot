@@ -16,21 +16,27 @@ pytest.importorskip("rank_bm25")
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from fake_operational_records import corpus_records  # noqa: E402
+
 from opspilot.contracts import IncidentReport  # noqa: E402
 from opspilot.graph import _initial_state, build_graph, invoke_auto_approving  # noqa: E402
 from opspilot.tools.service import ToolService  # noqa: E402
 
 
 def _run(alert: dict) -> dict:
-    config = {"configurable": {
-        "tool_service": ToolService(), "thread_id": f"state-contract-{alert['incident_id']}",
-    }}
+    config = {
+        "configurable": {
+            "tool_service": ToolService(corpus_records()),
+            "thread_id": f"state-contract-{alert['incident_id']}",
+        }
+    }
     return invoke_auto_approving(build_graph(), _initial_state(alert), config=config)
 
 
 def test_novel_scenario_produces_valid_cited_report() -> None:
-    result = _run({"incident_id": "inc-006",
-                   "summary": "Reservation conflicts and oversells at checkout."})
+    result = _run(
+        {"incident_id": "inc-006", "summary": "Reservation conflicts and oversells at checkout."}
+    )
 
     report = IncidentReport.model_validate(result["report"])  # the silent-failure guard
     assert report.incident_id == "inc-006"
@@ -41,8 +47,12 @@ def test_novel_scenario_produces_valid_cited_report() -> None:
 
 
 def test_known_issue_scenario_fast_paths_through_approval_and_postmortem() -> None:
-    result = _run({"incident_id": "inc-001",
-                   "summary": "Elevated checkout failures; payment authorizations timing out."})
+    result = _run(
+        {
+            "incident_id": "inc-001",
+            "summary": "Elevated checkout failures; payment authorizations timing out.",
+        }
+    )
 
     assert result["approval"]["decision"] == "approve"
     assert result["postmortem"]["incident_id"] == "inc-001"
@@ -51,8 +61,9 @@ def test_known_issue_scenario_fast_paths_through_approval_and_postmortem() -> No
 
 
 def test_evidence_is_deduplicated_and_ids_are_separated() -> None:
-    result = _run({"incident_id": "inc-006",
-                   "summary": "Reservation conflicts and oversells at checkout."})
+    result = _run(
+        {"incident_id": "inc-006", "summary": "Reservation conflicts and oversells at checkout."}
+    )
 
     # the content-hash reducer guarantees one entry per distinct piece of evidence
     refs = [item.ref for item in result["evidence_by_id"].values()]

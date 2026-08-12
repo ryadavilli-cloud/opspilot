@@ -11,7 +11,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from opspilot.data.repository import Repository
+from opspilot.data.operational_records import OperationalRecords
 from opspilot.tools.contracts import (
     DocHit,
     SearchPastIncidentsRequest,
@@ -36,8 +36,13 @@ def _titles_services(retriever: SearchRetriever) -> tuple[dict[str, str], dict[s
 def _to_hits(retriever: SearchRetriever, hits) -> list[DocHit]:
     titles, services = _titles_services(retriever)
     return [
-        DocHit(doc_id=h.doc_id, kind=h.kind, title=titles.get(h.doc_id, ""),
-               services=services.get(h.doc_id, []), score=round(h.score, 6))
+        DocHit(
+            doc_id=h.doc_id,
+            kind=h.kind,
+            title=titles.get(h.doc_id, ""),
+            services=services.get(h.doc_id, []),
+            score=round(h.score, 6),
+        )
         for h in hits
     ]
 
@@ -45,8 +50,9 @@ def _to_hits(retriever: SearchRetriever, hits) -> list[DocHit]:
 def search_runbooks(retriever: SearchRetriever, **kwargs) -> ToolResult[DocHit]:
     def logic(req: SearchRunbooksRequest) -> tuple[list[DocHit], list[str]]:
         services = (req.service,) if req.service else None
-        hits = retriever.search(req.query, k=req.k, kinds=("runbook", "architecture"),
-                                services=services)
+        hits = retriever.search(
+            req.query, k=req.k, kinds=("runbook", "architecture"), services=services
+        )
         recs = _to_hits(retriever, hits)
         return recs, [h.doc_id for h in recs]
 
@@ -54,21 +60,35 @@ def search_runbooks(retriever: SearchRetriever, **kwargs) -> ToolResult[DocHit]:
 
 
 def search_past_incidents(
-    retriever: SearchRetriever, repo: Repository, **kwargs
+    retriever: SearchRetriever, records: OperationalRecords, *, deadline_s: float, **kwargs
 ) -> ToolResult[DocHit]:
     def logic(req: SearchPastIncidentsRequest) -> tuple[list[DocHit], list[str]]:
         services = (req.service,) if req.service else None
         # Over-fetch, then recency-weight the postmortems by their incident's onset.
-        hits = retriever.search(req.query, k=max(req.k * 2, req.k), kinds=("postmortem",),
-                                services=services)
+        hits = retriever.search(
+            req.query, k=max(req.k * 2, req.k), kinds=("postmortem",), services=services
+        )
+
+        def incident_id(doc_id: str) -> str:
+            return doc_id.split(":", 1)[1] if ":" in doc_id else doc_id
+
+        # One read for every candidate rather than one per candidate: the reads are issued together
+        # and share the deadline they were given, which a fan-out of single lookups would exceed in
+        # aggregate while each stayed inside it.
+        opened = {
+            rec["incident_id"]: rec.get("opened_at")
+            for rec in records.incidents(
+                [incident_id(h.doc_id) for h in hits], deadline_s=deadline_s
+            )
+            if "incident_id" in rec
+        }
 
         def onset(doc_id: str) -> float | None:
-            inc_id = doc_id.split(":", 1)[1] if ":" in doc_id else doc_id
-            rec = repo.incident(inc_id)
-            if not rec or "opened_at" not in rec:
+            raw = opened.get(incident_id(doc_id))
+            if not raw:
                 return None
             try:
-                return to_utc(datetime.strptime(rec["opened_at"], "%Y-%m-%dT%H:%M:%SZ")).timestamp()
+                return to_utc(datetime.strptime(raw, "%Y-%m-%dT%H:%M:%SZ")).timestamp()
             except ValueError:
                 return None
 

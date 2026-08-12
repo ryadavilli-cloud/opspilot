@@ -2,8 +2,8 @@
 
 Covers the required surface: success, unknown, empty, invalid window, unknown service,
 deterministic ordering, schema validity, malformed-data handling, metadata, refs resolve, and the
-allowlisted dispatcher. Runs against the real corpus except where a hand-built repository is needed
-to inject edge cases.
+allowlisted dispatcher. Runs against the authored corpus, container-shaped, except where
+hand-built documents are needed to inject edge cases.
 """
 
 from __future__ import annotations
@@ -12,7 +12,8 @@ import json
 from datetime import UTC, datetime
 from pathlib import Path
 
-from opspilot.data.repository import Repository
+from fake_operational_records import corpus_records, deployment_documents, records_from
+
 from opspilot.tools.contracts import (
     Completeness,
     DeploymentRecord,
@@ -22,7 +23,7 @@ from opspilot.tools.contracts import (
 from opspilot.tools.service import ToolService
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-SVC = ToolService()
+SVC = ToolService(corpus_records())
 
 DEPLOY_IDS = {
     d["deploy_id"]
@@ -114,23 +115,25 @@ def test_get_deployments_invalid_and_oversized_window_are_errors():
 
 
 def test_get_deployments_deterministic_ordering():
-    scrambled = Repository.from_records(
-        deployments=[
-            {
-                "deploy_id": "d-2",
-                "service": "checkout-api",
-                "ts": "2026-06-20T00:00:00Z",
-                "version": "v2",
-                "note": "",
-            },
-            {
-                "deploy_id": "d-1",
-                "service": "checkout-api",
-                "ts": "2026-06-10T00:00:00Z",
-                "version": "v1",
-                "note": "",
-            },
-        ]
+    scrambled = records_from(
+        deployment_documents(
+            [
+                {
+                    "deploy_id": "d-2",
+                    "service": "checkout-api",
+                    "ts": "2026-06-20T00:00:00Z",
+                    "version": "v2",
+                    "note": "",
+                },
+                {
+                    "deploy_id": "d-1",
+                    "service": "checkout-api",
+                    "ts": "2026-06-10T00:00:00Z",
+                    "version": "v1",
+                    "note": "",
+                },
+            ]
+        )
     )
     r = ToolService(scrambled).get_deployments(
         services=["checkout-api"], start_time=_dt("2026-06-01"), end_time=_dt("2026-06-30")
@@ -139,19 +142,21 @@ def test_get_deployments_deterministic_ordering():
 
 
 def test_malformed_row_is_skipped_not_fatal():
-    repo = Repository.from_records(
-        deployments=[
-            {
-                "deploy_id": "ok",
-                "service": "checkout-api",
-                "ts": "2026-06-10T00:00:00Z",
-                "version": "v",
-                "note": "",
-            },
-            {"deploy_id": "bad", "service": "checkout-api"},  # missing ts/version/note
-        ]
+    records = records_from(
+        deployment_documents(
+            [
+                {
+                    "deploy_id": "ok",
+                    "service": "checkout-api",
+                    "ts": "2026-06-10T00:00:00Z",
+                    "version": "v",
+                    "note": "",
+                },
+                {"deploy_id": "bad", "service": "checkout-api"},  # missing ts/version/note
+            ]
+        )
     )
-    r = ToolService(repo).get_deployments(
+    r = ToolService(records).get_deployments(
         services=["checkout-api"], start_time=_dt("2026-06-01"), end_time=_dt("2026-06-30")
     )
     assert r.outcome is ExecutionOutcome.SUCCEEDED

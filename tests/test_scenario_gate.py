@@ -27,7 +27,11 @@ _spec.loader.exec_module(scenario_eval)
 
 @pytest.fixture(scope="module")
 def scorecard() -> dict:
-    return scenario_eval.evaluate()
+    from fake_operational_records import corpus_records
+
+    from opspilot.tools.service import ToolService
+
+    return scenario_eval.evaluate(service=ToolService(corpus_records()))
 
 
 def test_all_scenarios_run_through_the_slice(scorecard):
@@ -35,17 +39,27 @@ def test_all_scenarios_run_through_the_slice(scorecard):
 
 
 def test_no_material_regression_vs_baseline(scorecard):
-    for metric in ("routing_accuracy", "category_accuracy", "evidence_recall",
-                   "rca_correctness", "tool_call_validity", "iteration_limit_compliance",
-                   "tool_selection_accuracy", "loop_termination_accuracy",
-                   "red_herring_avoidance"):
+    for metric in (
+        "routing_accuracy",
+        "category_accuracy",
+        "evidence_recall",
+        "rca_correctness",
+        "tool_call_validity",
+        "iteration_limit_compliance",
+        "tool_selection_accuracy",
+        "loop_termination_accuracy",
+        "red_herring_avoidance",
+    ):
         assert scorecard[metric] >= BASELINE[metric] - EPS, (
-            f"{metric} regressed: {scorecard[metric]} < baseline {BASELINE[metric]}")
+            f"{metric} regressed: {scorecard[metric]} < baseline {BASELINE[metric]}"
+        )
     assert scorecard["unsupported_evidence_rate"] <= BASELINE["unsupported_evidence_rate"] + EPS
     assert scorecard["mcp_parity"] is True is BASELINE["mcp_parity"]
 
 
 def _run_scenario(inc_id: str) -> dict:
+    from fake_operational_records import corpus_records
+
     from opspilot.graph import _initial_state, build_graph, invoke_auto_approving
     from opspilot.tools.service import ToolService
 
@@ -54,7 +68,13 @@ def _run_scenario(inc_id: str) -> dict:
     state = invoke_auto_approving(
         build_graph(),
         _initial_state({"incident_id": inc_id, "summary": by_id[inc_id]["alert"]["summary"]}),
-        config={"configurable": {"tool_service": ToolService(), "thread_id": f"gate-{inc_id}"}})
+        config={
+            "configurable": {
+                "tool_service": ToolService(corpus_records()),
+                "thread_id": f"gate-{inc_id}",
+            }
+        },
+    )
     return scenario_eval._score_one(by_id[inc_id], state, root)
 
 
@@ -63,8 +83,8 @@ def test_red_herring_is_grounded_but_scored_wrong():
     coincidental deploy as the root -> rca_correct 0. Grounding and correctness are separate axes;
     this is the honest floor the LLM diagnosis loop must beat."""
     s = _run_scenario("inc-004")
-    assert s["unsupported_rate"] == 0.0   # every citation is real (grounded)
-    assert s["rca_correct"] == 0.0        # but the named root is wrong (the red herring)
+    assert s["unsupported_rate"] == 0.0  # every citation is real (grounded)
+    assert s["rca_correct"] == 0.0  # but the named root is wrong (the red herring)
 
 
 def test_true_deploy_regression_is_scored_correct():

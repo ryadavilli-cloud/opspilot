@@ -14,13 +14,15 @@ import pytest
 @pytest.mark.llm
 def test_llm_planner_investigates_inc004_end_to_end():
     pytest.importorskip("openai")
+    from fake_operational_records import corpus_records
+
     from opspilot.diagnosis.planner import build_planner
     from opspilot.graph import _initial_state, build_graph, invoke_auto_approving
     from opspilot.tools.service import ToolService
 
     config = {
         "configurable": {
-            "tool_service": ToolService(),
+            "tool_service": ToolService(corpus_records()),
             "planner": build_planner("single_agent"),
             "thread_id": "llm-e2e-inc-004",
         }

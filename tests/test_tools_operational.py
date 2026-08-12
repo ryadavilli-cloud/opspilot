@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
+from fake_operational_records import corpus_records
+
 from opspilot.tools.contracts import (
     Completeness,
     DependencyEdge,
@@ -13,7 +15,7 @@ from opspilot.tools.contracts import (
 )
 from opspilot.tools.service import ToolService
 
-SVC = ToolService()
+SVC = ToolService(corpus_records())
 
 
 def _dt(s: str) -> datetime:

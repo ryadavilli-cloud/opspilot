@@ -9,6 +9,7 @@ turns an unreachable source into a clean bill of health.
 from __future__ import annotations
 
 import pytest
+from fake_operational_records import corpus_records
 from pydantic import ValidationError
 
 from opspilot.evidence.admission import (
@@ -254,7 +255,7 @@ def test_declared_evidence_types_are_all_accepted_ones():
 def test_the_capability_inventory_is_the_registry():
     """One list, not two. A second inventory is how a mutating capability eventually becomes
     reachable."""
-    assert set(ToolService().tool_names) == set(CAPABILITY_NAMES)
+    assert set(ToolService(corpus_records()).tool_names) == set(CAPABILITY_NAMES)
 
 
 # --- operation references -----------------------------------------------------------------------

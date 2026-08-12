@@ -36,8 +36,9 @@ from pathlib import Path
 from types import MappingProxyType
 from typing import Any
 
+from opspilot import config
 from opspilot.config import KB_DIR
-from opspilot.data.repository import Repository
+from opspilot.data.operational_records import OperationalRecords
 
 
 class ReferenceType(StrEnum):
@@ -231,63 +232,64 @@ class Resolution:
 
 
 class ReferenceResolver:
-    """Resolves references against the corpus the tools already read.
+    """Resolves references against the sources the capabilities already read.
 
-    Evidence references resolve against the operational repository; knowledge references against
-    the knowledge base on disk. The two live together because a caller resolving a citation should
-    not have to know which kind it holds.
+    Evidence references resolve against the operational-records container; knowledge references
+    against the knowledge base on disk. The two live together because a caller resolving a citation
+    should not have to know which kind it holds.
+
+    A reference names its own entity, so every read here is scoped to that entity's partition
+    rather than sweeping the container. What is read is cached per entity for the resolver's life,
+    because resolving a brief's citations asks about the same few services repeatedly. Each read
+    carries the deadline the resolver was given, like any other source call.
     """
 
-    def __init__(self, repo: Repository | None = None, kb_dir: Path | str | None = None) -> None:
-        self._repo = repo
+    def __init__(
+        self,
+        records: OperationalRecords,
+        kb_dir: Path | str | None = None,
+        *,
+        deadline_s: float | None = None,
+    ) -> None:
+        self._records = records
         self._kb_dir = Path(kb_dir) if kb_dir is not None else KB_DIR
-        self._logs: dict[tuple[str, str], dict[str, Any]] | None = None
-        self._deploys: dict[tuple[str, str], dict[str, Any]] | None = None
+        self._deadline_s = deadline_s if deadline_s is not None else config.SOURCE_DEADLINE_SECONDS
+        self._logs: dict[str, dict[str, dict[str, Any]]] = {}
+        self._deploys: dict[str, dict[str, dict[str, Any]]] = {}
         self._edges: set[tuple[str, str]] | None = None
-        self._metric_entities: dict[tuple[str, str], list[dict[str, Any]]] | None = None
+        self._metric_entities: dict[str, dict[str, list[dict[str, Any]]]] = {}
 
-    # --- lazy indexes over the repository -----------------------------------------------------
-    @property
-    def repo(self) -> Repository:
-        if self._repo is None:
-            from opspilot.data.repository import default_repository
+    # --- lazy, entity-scoped indexes over the container ---------------------------------------
+    def _log_index(self, service: str) -> dict[str, dict[str, Any]]:
+        if service not in self._logs:
+            rows = self._records.logs(service, deadline_s=self._deadline_s)
+            self._logs[service] = {row.get("event_id", ""): row for row in rows}
+        return self._logs[service]
 
-            self._repo = default_repository()
-        return self._repo
-
-    def _log_index(self) -> dict[tuple[str, str], dict[str, Any]]:
-        if self._logs is None:
-            self._logs = {
-                (row.get("service", ""), row.get("event_id", "")): row for row in self.repo.logs()
-            }
-        return self._logs
-
-    def _deploy_index(self) -> dict[tuple[str, str], dict[str, Any]]:
-        if self._deploys is None:
-            self._deploys = {
-                (row.get("service", ""), row.get("deploy_id", "")): row
-                for row in self.repo.deployments()
-            }
-        return self._deploys
+    def _deploy_index(self, service: str) -> dict[str, dict[str, Any]]:
+        if service not in self._deploys:
+            rows = self._records.deployments([service], deadline_s=self._deadline_s)
+            self._deploys[service] = {row.get("deploy_id", ""): row for row in rows}
+        return self._deploys[service]
 
     def _edge_index(self) -> set[tuple[str, str]]:
         if self._edges is None:
-            self._edges = {(edge.get("from", ""), edge.get("to", "")) for edge in self.repo.edges()}
+            edges = self._records.edges(deadline_s=self._deadline_s)
+            self._edges = {(edge.get("from", ""), edge.get("to", "")) for edge in edges}
         return self._edges
 
-    def _metric_index(self) -> dict[tuple[str, str], list[dict[str, Any]]]:
-        if self._metric_entities is None:
-            index: dict[tuple[str, str], list[dict[str, Any]]] = {}
-            for series in self.repo.metric_series():
-                key = (series.get("service", ""), series.get("metric", ""))
-                index.setdefault(key, []).append(series)
-            self._metric_entities = index
-        return self._metric_entities
+    def _metric_index(self, entity: str) -> dict[str, list[dict[str, Any]]]:
+        if entity not in self._metric_entities:
+            index: dict[str, list[dict[str, Any]]] = {}
+            for series in self._records.metric_series(entity, deadline_s=self._deadline_s):
+                index.setdefault(series.get("metric", ""), []).append(series)
+            self._metric_entities[entity] = index
+        return self._metric_entities[entity]
 
     # --- resolution ---------------------------------------------------------------------------
     def _resolve_metric(self, ref: Reference) -> tuple[bool, Any | None]:
         entity = ref.entities[0] if ref.entities else ""
-        for series in self._metric_index().get((entity, ref.metric or ""), []):
+        for series in self._metric_index(entity).get(ref.metric or "", []):
             for sample in series.get("samples", []):
                 stamp = sample.get("ts")
                 if stamp is None:
@@ -315,10 +317,10 @@ class ReferenceResolver:
         if ref.reference_type is ReferenceType.KNOWLEDGE:
             found, record = self._resolve_knowledge(ref)
         elif ref.prefix == "logs":
-            record = self._log_index().get((ref.entities[0], ref.identifier or ""))
+            record = self._log_index(ref.entities[0]).get(ref.identifier or "")
             found = record is not None
         elif ref.prefix == "deploys":
-            record = self._deploy_index().get((ref.entities[0], ref.identifier or ""))
+            record = self._deploy_index(ref.entities[0]).get(ref.identifier or "")
             found = record is not None
         elif ref.prefix == "deps":
             edge = (ref.entities[0], ref.entities[1])

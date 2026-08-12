@@ -10,8 +10,8 @@ from __future__ import annotations
 from datetime import UTC, datetime
 
 import pytest
+from fake_operational_records import corpus_records, log_documents, records_from
 
-from opspilot.data.repository import Repository
 from opspilot.evidence.references import (
     PREFIX_TYPES,
     RETIRED_PREFIXES,
@@ -158,7 +158,7 @@ def test_entities_named_ignores_unparseable_entries():
 # --- resolution -------------------------------------------------------------------------------
 @pytest.fixture(scope="module")
 def resolver() -> ReferenceResolver:
-    return ReferenceResolver()
+    return ReferenceResolver(corpus_records())
 
 
 @pytest.mark.parametrize(
@@ -180,7 +180,7 @@ def test_a_wellformed_reference_that_names_nothing_is_unresolved_not_malformed()
     """The distinction matters: malformed means nobody can interpret it, unresolved means it was
     interpreted fine and the thing is not there. Collapsing them hides a corpus gap as a syntax
     error."""
-    resolver = ReferenceResolver()
+    resolver = ReferenceResolver(corpus_records())
     result = resolver.resolve("logs:payment-api:evt-does-not-exist")
     assert result.reference.prefix == "logs"
     assert result.resolved is False
@@ -190,32 +190,32 @@ def test_a_wellformed_reference_that_names_nothing_is_unresolved_not_malformed()
 def test_a_metric_reference_off_the_sample_instant_does_not_resolve():
     """The instant is part of the reference. A near-miss resolving would let a citation point at a
     sample that never existed."""
-    resolver = ReferenceResolver()
+    resolver = ReferenceResolver(corpus_records())
     assert not resolver.resolves("metrics:redis-cache:used_memory_pct@2026-06-22T11:36:00Z")
 
 
 def test_a_reversed_dependency_edge_does_not_resolve():
     """Direction carries the meaning: checkout depends on redis, not the reverse."""
-    resolver = ReferenceResolver()
+    resolver = ReferenceResolver(corpus_records())
     assert resolver.resolves("deps:checkout-api->redis-cache")
     assert not resolver.resolves("deps:redis-cache->checkout-api")
 
 
 def test_resolves_is_false_for_a_malformed_reference_rather_than_raising():
-    assert ReferenceResolver().resolves("past_incident:inc-001") is False
+    assert ReferenceResolver(corpus_records()).resolves("past_incident:inc-001") is False
 
 
 def test_resolution_accepts_an_already_parsed_reference():
-    resolver = ReferenceResolver()
+    resolver = ReferenceResolver(corpus_records())
     parsed = parse("deps:checkout-api->redis-cache")
     assert resolver.resolve(parsed).resolved
 
 
-def test_resolver_reads_an_injected_repository_rather_than_the_default():
-    repo = Repository.from_records(
-        logs=[{"service": "svc-a", "event_id": "evt-9", "ts": "2026-01-01T00:00:00Z"}]
+def test_resolver_reads_the_container_it_was_given():
+    records = records_from(
+        log_documents([{"service": "svc-a", "event_id": "evt-9", "ts": "2026-01-01T00:00:00Z"}])
     )
-    resolver = ReferenceResolver(repo=repo)
+    resolver = ReferenceResolver(records)
     assert resolver.resolves("logs:svc-a:evt-9")
     assert not resolver.resolves("logs:svc-a:evt-8")
 

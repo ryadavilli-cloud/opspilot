@@ -337,7 +337,10 @@ def main(argv: list[str] | None = None) -> int:
             ready = wait_for_ready(
                 client, timeout_s=ready_timeout_s, poll_interval_s=poll_interval_s
             )
-            _require(ready.checks.get("corpus") == "ok", f"corpus check not ok: {ready.checks}")
+            _require(
+                ready.checks.get("operational_records") == "ok",
+                f"operational-records check not ok: {ready.checks}",
+            )
             _require(
                 ready.checks.get("repository") == "ok",
                 f"repository check not ok: {ready.checks}",
