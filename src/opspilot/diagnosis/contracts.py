@@ -10,9 +10,9 @@ from pydantic import BaseModel, Field
 class EvidenceCitation(BaseModel):
     """A reference to evidence produced during this run. `ref` uses the frozen grammar."""
 
-    source: str          # logs | metrics | deploys | deps | runbook | past_incident
+    source: str  # logs | metrics | deploys | deps | runbook | past_incident
     ref: str
-    note: str = ""       # why it supports the hypothesis
+    note: str = ""  # why it supports the hypothesis
     # The role this citation plays in the causal argument. The model PROPOSES a role; code ADMITS it
     # at Stage 6b (the role-admissibility check — a citation cannot carry a role its evidence type
     # cannot support). Defaults to the neutral "context" so an unlabelled citation is never silently
@@ -42,7 +42,7 @@ class ToolObservation(BaseModel):
     status: str
     evidence_refs: list[str]
     result_count: int
-    summary: str = ""   # compact `signal [ref]` view of the results, for a model planner
+    summary: str = ""  # compact `signal [ref]` view of the results, for a model planner
 
 
 class Hypothesis(BaseModel):
@@ -73,11 +73,15 @@ class CausalClaim(BaseModel):
     *refute* the claim both first-class, instead of a flat citation list."""
 
     cause_type: Literal[
-        "deployment", "dependency_failure", "resource_exhaustion",
-        "config_change", "external", "unknown",
+        "deployment",
+        "dependency_failure",
+        "resource_exhaustion",
+        "config_change",
+        "external",
+        "unknown",
     ]
-    cause_entity: str                          # a service / resource / dependency edge
-    cause_event_ref: str = ""                  # ref of the causing event (e.g. a deploy), if any
+    cause_entity: str  # a service / resource / dependency edge
+    cause_event_ref: str = ""  # ref of the causing event (e.g. a deploy), if any
     onset_window: OnsetWindow
     affected_entities: list[str] = Field(default_factory=list)
     support_refs: list[str] = Field(default_factory=list)
@@ -132,13 +136,13 @@ class SufficiencyState(BaseModel):
     confidence. Computed each diagnose turn over gathered evidence (see diagnosis.sufficiency).
     """
 
-    evidence_classes: list[str]        # distinct source types gathered
-    required_classes: list[str]        # what this severity requires (for the audit trail)
-    evidence_coverage: float = Field(ge=0.0, le=1.0)   # severity-scaled; 1.0 == requirement met
-    citation_coverage: float = Field(ge=0.0, le=1.0)   # cited refs that were produced
+    evidence_classes: list[str]  # distinct source types gathered
+    required_classes: list[str]  # what this severity requires (for the audit trail)
+    evidence_coverage: float = Field(ge=0.0, le=1.0)  # severity-scaled; 1.0 == requirement met
+    citation_coverage: float = Field(ge=0.0, le=1.0)  # cited refs that were produced
     contradictions_unresolved: int = 0
     unresolved_critical_questions: int = 0
-    plan_can_advance: bool = True      # unanswered questions remain (more loops could add evidence)
+    plan_can_advance: bool = True  # unanswered questions remain (more loops could add evidence)
 
     @property
     def ready(self) -> bool:
@@ -159,5 +163,5 @@ class InvestigationPlan(BaseModel):
 class DiagnosisContext(BaseModel):
     incident_id: str
     affected_services: list[str] = Field(default_factory=list)
-    onset: str = ""       # ISO timestamp
+    onset: str = ""  # ISO timestamp
     category: str = ""

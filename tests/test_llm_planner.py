@@ -138,7 +138,8 @@ def test_conclude_synthesizes_on_final_turn():
     )
     planner = LLMPlanner(model)
     conclusion = planner.conclude(
-        _BASE, ctx=CTX, produced_refs={"metrics:payment-api:p95@t"}, observations=[], final=True)
+        _BASE, ctx=CTX, produced_refs={"metrics:payment-api:p95@t"}, observations=[], final=True
+    )
     assert conclusion.hypothesis is not _BASE
     assert conclusion.hypothesis.statement == "payment-api timeouts"
     # No `causal` block was proposed, so nothing is admitted and the prose stands alone. This is

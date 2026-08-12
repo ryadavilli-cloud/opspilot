@@ -205,7 +205,8 @@ def test_7_verification_blocks_close_against_telemetry_and_postmortems():
         fm = _frontmatter(_kb_doc(f"postmortem:{s['id']}"))
         for field in VERIFICATION_FIELDS:
             assert fm.get(field) == verification[field], (
-                f"{s['id']}: postmortem frontmatter {field} drifted from the answer key")
+                f"{s['id']}: postmortem frontmatter {field} drifted from the answer key"
+            )
 
         # every descriptor resolves to a real telemetry signal class
         for descriptor in verification["required_signals"] + verification["disqualifying_signals"]:
@@ -226,7 +227,8 @@ def test_7_verification_blocks_close_against_telemetry_and_postmortems():
         for ref in causal:
             deploy = DEPLOY_BY_ID[ref.rsplit(":", 1)[1]]
             assert deploy["version"] in verification["affected_versions"], (
-                f"{s['id']}: causal deploy {deploy['version']} missing from affected_versions")
+                f"{s['id']}: causal deploy {deploy['version']} missing from affected_versions"
+            )
 
 
 # --- closure question 8: a recurrence must be verifiable against its matched postmortem --------
@@ -254,20 +256,22 @@ def test_8_recurrence_satisfies_its_matched_postmortems_signature():
 
         # no postmortem of its own — otherwise the fast path could self-match again
         assert _kb_doc(f"postmortem:{s['id']}") is None, (
-            f"{s['id']}: a recurrence must not have its own postmortem")
+            f"{s['id']}: a recurrence must not have its own postmortem"
+        )
 
         # every required signal is present in the recurrence's labeled telemetry
         metric_pairs = _scenario_metric_pairs(s)
-        labeled_logs = {(r["service"], r["level"]) for r in LOGS
-                        if r.get("incident_id") == s["id"]}
+        labeled_logs = {(r["service"], r["level"]) for r in LOGS if r.get("incident_id") == s["id"]}
         for descriptor in verification["required_signals"]:
             kind, entity, tail = descriptor.split(":")
             if kind == "metrics":
                 assert (entity, tail) in metric_pairs, (
-                    f"{s['id']}: required {descriptor!r} not in its labeled evidence")
+                    f"{s['id']}: required {descriptor!r} not in its labeled evidence"
+                )
             else:  # logs
                 assert (entity, tail) in labeled_logs, (
-                    f"{s['id']}: required {descriptor!r} not in its labeled log rows")
+                    f"{s['id']}: required {descriptor!r} not in its labeled log rows"
+                )
 
         # no disqualifying signal appears in its evidence or its alert storm
         storm_services = {a["service"] for a in ALERTS if a["incident_id"] == s["id"]}
@@ -275,9 +279,11 @@ def test_8_recurrence_satisfies_its_matched_postmortems_signature():
             kind, entity, tail = descriptor.split(":")
             if kind == "metrics":
                 assert (entity, tail) not in metric_pairs, (
-                    f"{s['id']}: disqualifying {descriptor!r} present in evidence")
+                    f"{s['id']}: disqualifying {descriptor!r} present in evidence"
+                )
             assert entity not in storm_services, (
-                f"{s['id']}: disqualifying entity {entity} alerts in the recurrence storm")
+                f"{s['id']}: disqualifying entity {entity} alerts in the recurrence storm"
+            )
 
         # the recurrence runs an affected version (its causal deploy is in the known range)
         causal = [r for r in s["expected_evidence"] if r.startswith("deploys:")]
@@ -285,4 +291,5 @@ def test_8_recurrence_satisfies_its_matched_postmortems_signature():
         for ref in causal:
             deploy = DEPLOY_BY_ID[ref.rsplit(":", 1)[1]]
             assert deploy["version"] in verification["affected_versions"], (
-                f"{s['id']}: deploy {deploy['version']} outside the matched affected_versions")
+                f"{s['id']}: deploy {deploy['version']} outside the matched affected_versions"
+            )

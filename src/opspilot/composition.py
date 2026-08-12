@@ -25,8 +25,8 @@ _log = logging.getLogger("opspilot.composition")
 class DiagnosisComposition:
     """The diagnosis pair the composition root injects, plus what it resolved to and why."""
 
-    implementation: str          # effective implementation that actually runs
-    requested: str               # what OPSPILOT_IMPLEMENTATION asked for
+    implementation: str  # effective implementation that actually runs
+    requested: str  # what OPSPILOT_IMPLEMENTATION asked for
     planner: Any
     triager: Any
     provider: str | None = None

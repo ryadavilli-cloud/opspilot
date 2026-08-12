@@ -172,8 +172,11 @@ def triage_router(
             "affected_services": affected,
             "onset": onset.isoformat(),
             "top_past_incidents": [h.doc_id for h in past],
-            "reason": (f"known-issue candidate: {matched}" if matched
-                       else "no prior postmortem matched as a recurrence"),
+            "reason": (
+                f"known-issue candidate: {matched}"
+                if matched
+                else "no prior postmortem matched as a recurrence"
+            ),
         },
     }
 
@@ -254,9 +257,7 @@ def diagnose(state: InvestigationState, config: RunnableConfig | None = None) ->
     # grounded conclusion from the full trail (the model's root cause replaces run_cycle's
     # provisional hypothesis; the deterministic planner no-ops, so its output is unchanged).
     stopping = (
-        sufficiency.ready
-        or state.diagnose_iters + 1 >= MAX_DIAGNOSE_ITERS
-        or not plan_can_advance
+        sufficiency.ready or state.diagnose_iters + 1 >= MAX_DIAGNOSE_ITERS or not plan_can_advance
     )
     # The entities a claim may blame: those named in refs the tools actually produced, plus the
     # triaged affected services. A claim about anything else is about something this run never
@@ -310,11 +311,12 @@ def synthesize_report(state: InvestigationState) -> dict[str, Any]:
         hypothesis=hyp.statement if hyp else "",
         confidence=hyp.confidence if hyp else 0.0,
         # published report evidence shape — the internal content_hash stays in state
-        evidence=[ReportEvidence(source=ev.source, ref=ev.ref, content=ev.content)
-                  for ev in state.evidence_by_id.values()],
+        evidence=[
+            ReportEvidence(source=ev.source, ref=ev.ref, content=ev.content)
+            for ev in state.evidence_by_id.values()
+        ],
         recommended_next_step=(
-            render_report_claim_statement(recommendation) if recommendation
-            else _NO_RECOMMENDATION
+            render_report_claim_statement(recommendation) if recommendation else _NO_RECOMMENDATION
         ),
         citations=state.evidence_refs(),
         report_claims=claims,
@@ -403,13 +405,14 @@ def hitl_gate(state: InvestigationState) -> dict[str, Any]:
         return {
             "approval": {
                 **identity,
-                "decision": "stale_rejected", "edits": edits,
-                "submitted_report_hash": submitted_hash, "current_report_hash": state.report_hash,
+                "decision": "stale_rejected",
+                "edits": edits,
+                "submitted_report_hash": submitted_hash,
+                "current_report_hash": state.report_hash,
                 "approved_report_hash": None,
             },
             "error": (
-                f"stale_approval: submitted for {submitted_hash}, "
-                f"current is {state.report_hash}"
+                f"stale_approval: submitted for {submitted_hash}, current is {state.report_hash}"
             ),
         }
 
@@ -423,7 +426,8 @@ def hitl_gate(state: InvestigationState) -> dict[str, Any]:
     return {
         "approval": {
             **identity,
-            "decision": decision, "edits": edits,
+            "decision": decision,
+            "edits": edits,
             "approved_report_hash": state.report_hash if decision == "approve" else None,
         },
         "error": blocked.get(str(decision), ""),

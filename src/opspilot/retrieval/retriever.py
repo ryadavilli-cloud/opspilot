@@ -40,8 +40,9 @@ class Retriever:
     ) -> None:
         self.embedder = embedder or Embedder()
         self._reranker = reranker  # lazily constructed on first rerank() call
-        self.docs = load_docs(kb_dir or KB_DIR, distractor_dir or DISTRACTOR_DIR,
-                              include_distractors)
+        self.docs = load_docs(
+            kb_dir or KB_DIR, distractor_dir or DISTRACTOR_DIR, include_distractors
+        )
         self.chunks: list[Chunk] = [c for d in self.docs for c in chunk(d)]
         self._doc_kind = {d.doc_id: d.kind for d in self.docs}
 
@@ -74,8 +75,10 @@ class Retriever:
     ) -> dict[str, float]:
         """Fused RRF score per chunk id — the shared first stage for hybrid and rerank."""
         qv = self.embedder.encode_query(query)
-        dense_rank = {cid: i for i, (cid, _) in enumerate(
-            self.index.search(qv, k=len(self.chunks), allowed=allowed))}
+        dense_rank = {
+            cid: i
+            for i, (cid, _) in enumerate(self.index.search(qv, k=len(self.chunks), allowed=allowed))
+        }
 
         bm25_scores = self._bm25.get_scores(tokenize(query))
         bm25_rank: dict[str, int] = {}

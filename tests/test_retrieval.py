@@ -24,7 +24,8 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 
 def _load_golden():
     spec = importlib.util.spec_from_file_location(
-        "retrieval_eval", REPO_ROOT / "eval/retrieval_eval.py")
+        "retrieval_eval", REPO_ROOT / "eval/retrieval_eval.py"
+    )
     assert spec and spec.loader
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
@@ -56,7 +57,7 @@ def test_corpus_loads_labeled_and_distractor_docs():
     docs = load_docs(KB_DIR, DISTRACTOR_DIR, include_distractors=True)
     assert any(not d.is_distractor for d in docs) and any(d.is_distractor for d in docs)
     assert len([d for d in docs if not d.is_distractor]) == 12  # the KB
-    assert len([d for d in docs if d.is_distractor]) >= 15      # the haystack
+    assert len([d for d in docs if d.is_distractor]) >= 15  # the haystack
 
 
 def test_chunking_carries_doc_metadata():

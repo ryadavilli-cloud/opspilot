@@ -42,7 +42,7 @@ def main() -> None:
     reassign = last["reassignment_count"].astype(int)
     profile = {
         "source": "UCI Incident Management Process Enriched Event Log (dataset 498, CC-BY-4.0). "
-                  "Anonymized real ServiceNow data; distributions only, not redistributed.",
+        "Anonymized real ServiceNow data; distributions only, not redistributed.",
         "n_incidents": int(last.shape[0]),
         "priority_distribution": _dist(last["priority"]),
         "impact_distribution": _dist(last["impact"]),

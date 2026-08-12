@@ -24,10 +24,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
-        with:
-          # Full history, not the default shallow single-commit checkout: the format-check step
-          # below diffs against the PR base / previous push to find which files it applies to.
-          fetch-depth: 0
       - uses: astral-sh/setup-uv@v9.0.0
         with:
           enable-cache: true
@@ -35,31 +31,8 @@ jobs:
         run: uv sync --group dev --group data
       - name: Lint
         run: uv run ruff check .
-      - name: Format check (files changed in this PR/push only)
-        # Scoped, not `ruff format --check .`: most of the tree predates formatting enforcement
-        # (status.md), so a repo-wide check would fail on every PR regardless of what it touches.
-        # Scoping to changed files converges the repo gradually as files get edited anyway,
-        # mirroring the pre-commit hook's local version of this same check.
-        run: |
-          BASE="${{ github.event.pull_request.base.sha }}"
-          if [ -z "$BASE" ]; then
-            BASE="${{ github.event.before }}"
-          fi
-          if [ -z "$BASE" ] || [ "$BASE" = "0000000000000000000000000000000000000000" ]; then
-            BASE=$(git rev-parse HEAD~1 2>/dev/null || echo "")
-          fi
-          if [ -z "$BASE" ]; then
-            echo "No base commit to diff against; skipping format check."
-            exit 0
-          fi
-          changed=$(git diff --name-only --diff-filter=ACM "$BASE" "${{ github.sha }}" -- '*.py')
-          if [ -z "$changed" ]; then
-            echo "No Python files changed; skipping format check."
-            exit 0
-          fi
-          echo "Checking format on:"
-          echo "$changed"
-          uv run ruff format --check $changed
+      - name: Format check
+        run: uv run ruff format --check .
       - name: Type-check
         run: uv run mypy
       - name: Tests (ML-gated tests skip here)

@@ -143,9 +143,9 @@ class LLMPlanner:
         from opspilot.llm.base import ChatMessage
 
         # str.replace (not str.format): the prompt embeds literal JSON braces in its examples.
-        rendered = self._prompt.text.replace(
-            "{incident_context}", _render_context(ctx)
-        ).replace("{observations}", _render_observations(observations))
+        rendered = self._prompt.text.replace("{incident_context}", _render_context(ctx)).replace(
+            "{observations}", _render_observations(observations)
+        )
 
         result = self._model.complete([ChatMessage(role="user", content=rendered)])
         try:
@@ -164,7 +164,8 @@ class LLMPlanner:
         # duplicate calls are dropped so the model can't spin by re-proposing them.
         calls = response.tool_calls or (
             [ToolCallSpec(tool=response.next_tool, params=response.params, why=response.why)]
-            if response.next_tool else []
+            if response.next_tool
+            else []
         )
 
         questions: list[DiagnosticQuestion] = []
@@ -250,9 +251,7 @@ class LLMPlanner:
         return Conclusion(
             hypothesis=self._ground(statement, response.citations, produced_refs),
             causal=causal,
-            report_claims=admit_report_claims(
-                response.report_claims, produced_refs=produced_refs
-            ),
+            report_claims=admit_report_claims(response.report_claims, produced_refs=produced_refs),
         )
 
     def conclude(

@@ -60,9 +60,20 @@ def test_scenario_count_and_split():
 
 def test_scenarios_have_required_fields_and_controlled_vocab():
     required = {
-        "id", "title", "type", "severity", "category", "occurred_at", "alert",
-        "expected_intent", "expected_match", "trigger", "root_cause",
-        "impacted_chain", "expected_evidence", "expected_retrieval",
+        "id",
+        "title",
+        "type",
+        "severity",
+        "category",
+        "occurred_at",
+        "alert",
+        "expected_intent",
+        "expected_match",
+        "trigger",
+        "root_cause",
+        "impacted_chain",
+        "expected_evidence",
+        "expected_retrieval",
     }
     seen_ids = set()
     for s in SCENARIOS:
@@ -136,7 +147,8 @@ def test_inc_006_represents_multiple_independent_contributing_signals():
         ref.split(":", 2)[1] for ref in inc6["expected_evidence"] if ref.startswith("metrics:")
     }
     assert len(metric_entities) >= 2, (
-        "inc-006 must evidence contributing signals on at least two distinct entities")
+        "inc-006 must evidence contributing signals on at least two distinct entities"
+    )
 
 
 def test_retrieval_ids_follow_namespaces():

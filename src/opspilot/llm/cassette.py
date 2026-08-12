@@ -29,9 +29,7 @@ class CassetteDriftError(RuntimeError):
     """
 
 
-def request_key(
-    manifest: dict[str, str], messages: list[ChatMessage], temperature: float
-) -> str:
+def request_key(manifest: dict[str, str], messages: list[ChatMessage], temperature: float) -> str:
     """Stable content hash of a request — the replay lookup key. Canonical JSON so it is
     reproducible across processes and machines.
 

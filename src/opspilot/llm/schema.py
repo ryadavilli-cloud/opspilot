@@ -29,7 +29,7 @@ class PlannerResponse(BaseModel):
     """A diagnosis-planner turn: a tool-call batch, a single `next_tool`, or a `done` verdict."""
 
     tool_calls: list[ToolCallSpec] = Field(default_factory=list)
-    next_tool: str | None = None            # single-call back-compat
+    next_tool: str | None = None  # single-call back-compat
     params: dict[str, Any] = Field(default_factory=dict)
     why: str = ""
     done: bool = False

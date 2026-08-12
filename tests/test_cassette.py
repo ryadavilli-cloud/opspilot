@@ -63,9 +63,9 @@ def test_record_then_replay_round_trip(tmp_path: Path):
     replay = ReplayChatModel(cassette)
     assert replay.model_id == "fake-1"
     played = replay.complete(MSGS)
-    assert played.text == "reply-1"          # served from disk...
+    assert played.text == "reply-1"  # served from disk...
     assert played.finish_reason == "stop"
-    assert live.calls == 1                    # ...the live model was not re-invoked
+    assert live.calls == 1  # ...the live model was not re-invoked
 
 
 def test_replay_unknown_request_fails_loud(tmp_path: Path):
@@ -101,9 +101,7 @@ def test_a_drifted_setting_fails_the_load_and_names_the_field(tmp_path: Path, mo
 def test_a_cassette_without_a_manifest_is_rejected(tmp_path: Path):
     """Pre-manifest cassettes cannot be validated, so they are stale by construction."""
     cassette = tmp_path / "old.json"
-    cassette.write_text(
-        json.dumps({"model_id": "fake-1", "interactions": []}), encoding="utf-8"
-    )
+    cassette.write_text(json.dumps({"model_id": "fake-1", "interactions": []}), encoding="utf-8")
     with pytest.raises(CassetteDriftError, match="re-record"):
         ReplayChatModel(cassette)
 

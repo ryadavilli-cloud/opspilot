@@ -26,9 +26,7 @@ InvestigationStatus = Literal[
     "queued", "running", "awaiting_approval", "completed", "degraded", "escalated", "failed"
 ]
 
-TERMINAL_STATUSES: frozenset[str] = frozenset(
-    {"completed", "degraded", "escalated", "failed"}
-)
+TERMINAL_STATUSES: frozenset[str] = frozenset({"completed", "degraded", "escalated", "failed"})
 
 
 def _now() -> datetime:
@@ -217,8 +215,7 @@ class StaleReportError(DecisionError):
     def __init__(self, *, submitted: str, current_report_hash: str | None) -> None:
         self.current_report_hash = current_report_hash
         super().__init__(
-            f"stale_report: decision submitted for {submitted}, "
-            f"current is {current_report_hash}"
+            f"stale_report: decision submitted for {submitted}, current is {current_report_hash}"
         )
 
 

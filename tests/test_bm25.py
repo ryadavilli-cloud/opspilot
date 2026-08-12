@@ -20,14 +20,16 @@ def test_backend_name_is_bm25():
 
 
 def test_runbook_query_returns_a_runbook():
-    hits = _bm25().search("payment gateway authorization timeout", k=5,
-                          kinds=("runbook", "architecture"))
+    hits = _bm25().search(
+        "payment gateway authorization timeout", k=5, kinds=("runbook", "architecture")
+    )
     assert hits and any(h.kind == "runbook" for h in hits)
 
 
 def test_architecture_query_returns_an_architecture_doc():
-    hits = _bm25().search("service dependencies blast radius architecture", k=5,
-                          kinds=("architecture",))
+    hits = _bm25().search(
+        "service dependencies blast radius architecture", k=5, kinds=("architecture",)
+    )
     assert hits and all(h.kind == "architecture" for h in hits)
 
 

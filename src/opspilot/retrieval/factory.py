@@ -35,8 +35,11 @@ def build_retriever(
         from opspilot.retrieval.retriever import Retriever
 
         return HybridRetrieverAdapter(
-            Retriever(kb_dir=kb_dir, distractor_dir=distractor_dir,
-                      include_distractors=include_distractors))
+            Retriever(
+                kb_dir=kb_dir,
+                distractor_dir=distractor_dir,
+                include_distractors=include_distractors,
+            )
+        )
 
-    raise ValueError(
-        f"unknown retrieval backend {backend!r}; expected one of {', '.join(_VALID)}")
+    raise ValueError(f"unknown retrieval backend {backend!r}; expected one of {', '.join(_VALID)}")

@@ -22,10 +22,14 @@ def _report(citations: list[str], **overrides) -> IncidentReport:
     """A valid, typed report carrying the given citations — the state now holds a real
     IncidentReport, not a loose dict."""
     base: dict = dict(
-        incident_id="inc-x", severity="SEV3", category="deployment",
-        hypothesis="a deployment regression", confidence=0.5,
+        incident_id="inc-x",
+        severity="SEV3",
+        category="deployment",
+        hypothesis="a deployment regression",
+        confidence=0.5,
         evidence=[{"source": "logs", "ref": "logs:a:b", "content": "c"}],
-        recommended_next_step="roll back", citations=citations,
+        recommended_next_step="roll back",
+        citations=citations,
     )
     base.update(overrides)
     return IncidentReport.model_validate(base)
@@ -92,9 +96,9 @@ def test_edited_report_re_enters_validation_and_an_ungrounded_edit_is_caught():
         approval={"decision": "edit", "edits": {"citations": ["invented:ref"]}},
     )
     edited = state.model_copy(update=apply_edit(state))
-    assert edited.report.citations == ["invented:ref"]           # the edit was applied
+    assert edited.report.citations == ["invented:ref"]  # the edit was applied
     result = safety_validate(edited)
-    assert result["safety"]["passed"] is False                    # re-validation catches it
+    assert result["safety"]["passed"] is False  # re-validation catches it
     assert after_safety_validate(edited.model_copy(update=result)) == "escalate"
 
 
@@ -127,8 +131,11 @@ def test_a_guardrail_block_escalates_with_a_guardrail_reason_not_a_budget_reason
         produced_refs=["logs:a:b"],
         diagnose_iters=MAX_DIAGNOSE_ITERS,
         sufficiency=SufficiencyState(
-            evidence_classes=[], required_classes=["logs"], evidence_coverage=0.0,
-            citation_coverage=0.0, plan_can_advance=False,
+            evidence_classes=[],
+            required_classes=["logs"],
+            evidence_coverage=0.0,
+            citation_coverage=0.0,
+            plan_can_advance=False,
         ),
     )
     blocked = state.model_copy(update=safety_validate(state))

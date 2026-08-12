@@ -59,21 +59,27 @@ def test_a_grounded_claim_is_admitted_into_the_strict_contract():
 
 
 def test_an_unresolvable_entity_is_refused():
-    assert admit_causal_claim(
-        _proposed(cause_entity="invented-service"),
-        produced_refs=_REFS,
-        known_entities=entities_from_refs(_REFS),
-    ) is None
+    assert (
+        admit_causal_claim(
+            _proposed(cause_entity="invented-service"),
+            produced_refs=_REFS,
+            known_entities=entities_from_refs(_REFS),
+        )
+        is None
+    )
 
 
 def test_a_claim_with_no_produced_support_ref_is_refused():
     """A deterministic check over a model-controlled input is deterministic in form only. A claim
     supported by nothing this run produced must not become a grounded RCA."""
-    assert admit_causal_claim(
-        _proposed(support_refs=["metrics:ghost:invented@t"]),
-        produced_refs=_REFS,
-        known_entities=entities_from_refs(_REFS),
-    ) is None
+    assert (
+        admit_causal_claim(
+            _proposed(support_refs=["metrics:ghost:invented@t"]),
+            produced_refs=_REFS,
+            known_entities=entities_from_refs(_REFS),
+        )
+        is None
+    )
 
 
 def test_an_unrecognized_cause_type_degrades_to_unknown_rather_than_failing_the_claim():
@@ -128,8 +134,14 @@ def test_the_rendered_statement_can_only_name_the_claimed_entity():
 
 def test_every_cause_type_renders_a_sentence_naming_the_entity():
     """A new Literal member without a template must not render an empty or misleading sentence."""
-    for cause_type in ("deployment", "dependency_failure", "resource_exhaustion",
-                       "config_change", "external", "unknown"):
+    for cause_type in (
+        "deployment",
+        "dependency_failure",
+        "resource_exhaustion",
+        "config_change",
+        "external",
+        "unknown",
+    ):
         claim = CausalClaim(
             cause_type=cause_type,  # type: ignore[arg-type]
             cause_entity="svc-a",
@@ -150,8 +162,14 @@ def test_a_report_claim_renders_its_kind_and_its_supporting_refs():
 # --- the result union (G-49) --------------------------------------------------------------------
 def _report(**overrides) -> IncidentReport:
     base: dict = dict(
-        incident_id="inc-004", severity="SEV2", category="deployment", hypothesis="h",
-        confidence=0.7, evidence=[], recommended_next_step="s", citations=["logs:svc-a:1"],
+        incident_id="inc-004",
+        severity="SEV2",
+        category="deployment",
+        hypothesis="h",
+        confidence=0.7,
+        evidence=[],
+        recommended_next_step="s",
+        citations=["logs:svc-a:1"],
     )
     return IncidentReport.model_validate({**base, **overrides})
 
@@ -164,8 +182,10 @@ def _outcome(state: dict, report=None, *, status="completed", reason=None):
 
 def test_a_run_with_an_admitted_claim_is_a_grounded_rca():
     claim = CausalClaim(
-        cause_type="deployment", cause_entity="checkout-api",
-        onset_window=OnsetWindow(start=""), support_refs=["deploys:checkout-api:d-9"],
+        cause_type="deployment",
+        cause_entity="checkout-api",
+        onset_window=OnsetWindow(start=""),
+        support_refs=["deploys:checkout-api:d-9"],
     )
     outcome = _outcome({"incident_id": "inc-004", "causal": claim}, _report())
     assert outcome.result_type == "grounded_rca"
@@ -190,7 +210,5 @@ def test_an_escalated_run_carries_the_machine_readable_reason():
 
 
 def test_an_info_only_reply_is_a_briefing_never_an_rca():
-    outcome = _outcome(
-        {"incident_id": "inc-004", "intent": Intent.INFO_ONLY.value}, _report()
-    )
+    outcome = _outcome({"incident_id": "inc-004", "intent": Intent.INFO_ONLY.value}, _report())
     assert outcome.result_type == "knowledge_briefing"

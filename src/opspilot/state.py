@@ -68,8 +68,12 @@ class EvidenceItem(BaseModel):
 
     @classmethod
     def make(cls, source: str, ref: str, content: str = "") -> EvidenceItem:
-        return cls(source=source, ref=ref, content=content,
-                   content_hash=evidence_hash(source, ref, content))
+        return cls(
+            source=source,
+            ref=ref,
+            content=content,
+            content_hash=evidence_hash(source, ref, content),
+        )
 
 
 def merge_evidence(
@@ -117,9 +121,9 @@ class InvestigationState(BaseModel):
 
     # identifiers — separated (never conflate incident_id with thread_id)
     incident_id: str = ""
-    investigation_id: str = ""   # one attempt; minted at ingest (UUID)
-    thread_id: str = ""          # derived from investigation_id
-    trace_id: str = ""           # span correlation id (Stage 5g); defaults to investigation_id
+    investigation_id: str = ""  # one attempt; minted at ingest (UUID)
+    thread_id: str = ""  # derived from investigation_id
+    trace_id: str = ""  # span correlation id (Stage 5g); defaults to investigation_id
     workflow_version: str = ""
     idempotency_key: str = ""
 
@@ -127,10 +131,10 @@ class InvestigationState(BaseModel):
     severity: str | None = None
     category: str | None = None
     intent: str | None = None
-    matched_incident: str = ""   # a past match (candidate + verification lands with the fast path)
+    matched_incident: str = ""  # a past match (candidate + verification lands with the fast path)
 
     affected_services: list[str] = Field(default_factory=list)
-    onset: str = ""              # earliest alert/incident time (ISO)
+    onset: str = ""  # earliest alert/incident time (ISO)
     triage: dict[str, Any] = Field(default_factory=dict)
 
     # keyed collection — dedup by content hash, never blind-append
@@ -141,15 +145,16 @@ class InvestigationState(BaseModel):
     # (built from the *cited* refs): a hypothesis may only cite what a tool actually produced.
     produced_refs: Annotated[list[str], merge_refs] = Field(default_factory=list)
 
-    hypothesis: Hypothesis | None = None       # single source of truth (statement/confidence/cites)
+    hypothesis: Hypothesis | None = None  # single source of truth (statement/confidence/cites)
     # Stage 5e structured conclusion — the typed claim the 6b checks validate and the report is
     # rendered from. None until the synth prompt produces it (3b); the prose hypothesis is the base.
     causal: CausalClaim | None = None
     report_claims: list[ReportClaim] = Field(default_factory=list)
-    diagnosis: DiagnosisTrace | None = None    # observations + stop reason (last turn only)
+    diagnosis: DiagnosisTrace | None = None  # observations + stop reason (last turn only)
     # full observation history across turns — what a model planner sees so it never repeats a call
     observation_trail: Annotated[list[ToolObservation], append_observations] = Field(
-        default_factory=list)
+        default_factory=list
+    )
     sufficiency: SufficiencyState | None = None  # deterministic stop-rule inputs (per turn)
     answered_questions: list[str] = Field(default_factory=list)  # plan-advancement: keys asked
     diagnose_iters: int = 0

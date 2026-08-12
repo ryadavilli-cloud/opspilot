@@ -91,20 +91,23 @@ def test_referenced_metrics_are_actually_deviated():
     for ref in ALL_REFS:
         if not ref.startswith("metrics:"):
             continue
-        svc, tail = ref[len("metrics:"):].split(":", 1)
+        svc, tail = ref[len("metrics:") :].split(":", 1)
         metric, ts = tail.split("@", 1)
         samples = METRIC_SERIES[(svc, metric)]
         baseline = samples[0]["value"]  # window start = steady state
         observed = METRIC_SAMPLES[(svc, metric, ts)]
         authored = generate.METRIC_DEFS[metric]
         assert authored["deviated"] != authored["baseline"], (
-            f"{metric} has no authored direction (baseline == deviated) but is referenced")
+            f"{metric} has no authored direction (baseline == deviated) but is referenced"
+        )
         if authored["deviated"] > authored["baseline"]:
             assert observed > baseline * 1.2 or (baseline == 0 and observed > 0), (
-                f"{ref} should have risen above baseline but did not")
+                f"{ref} should have risen above baseline but did not"
+            )
         else:
             assert observed < baseline * 0.8 or baseline == 0, (
-                f"{ref} should have dropped below baseline but did not")
+                f"{ref} should have dropped below baseline but did not"
+            )
 
 
 def test_causally_linked_log_pairs_stay_ordered():
@@ -113,24 +116,29 @@ def test_causally_linked_log_pairs_stay_ordered():
     effect happening for no reason, before its own cause exists."""
     for cause_id, effect_id in generate.CAUSE_BEFORE_EFFECT:
         assert LOG_EVENTS[cause_id]["ts"] <= LOG_EVENTS[effect_id]["ts"], (
-            f"{cause_id} did not precede {effect_id}")
+            f"{cause_id} did not precede {effect_id}"
+        )
 
 
 def test_metric_onset_follows_its_causal_log():
     """inc-003/inc-007: the backlog metric's ramp must not start before the crash-loop log
     that causes it. The ramp onset sits STEP_MIN before the referenced sample's timestamp, so
     an onset earlier than the causal log means the metric moved before its own cause fired."""
-    pairs = [("inc-003", "evt-003-01", "service-bus", "active_message_count"),
-             ("inc-007", "evt-007-01", "service-bus", "active_message_count")]
+    pairs = [
+        ("inc-003", "evt-003-01", "service-bus", "active_message_count"),
+        ("inc-007", "evt-007-01", "service-bus", "active_message_count"),
+    ]
     for inc_id, cause_event, svc, metric in pairs:
         cause_ts = LOG_EVENTS[cause_event]["ts"]
         scenario = next(s for s in SCENARIOS if s["id"] == inc_id)
-        ref = next(r for r in scenario["expected_evidence"]
-                   if r.startswith(f"metrics:{svc}:{metric}@"))
+        ref = next(
+            r for r in scenario["expected_evidence"] if r.startswith(f"metrics:{svc}:{metric}@")
+        )
         ref_ts = ref.split("@", 1)[1]
         onset = generate._dt(ref_ts) - timedelta(minutes=generate.STEP_MIN)
         assert generate._iso(onset) >= cause_ts, (
-            f"{inc_id}: {metric} onset {generate._iso(onset)} precedes cause log at {cause_ts}")
+            f"{inc_id}: {metric} onset {generate._iso(onset)} precedes cause log at {cause_ts}"
+        )
 
 
 def test_no_answer_leakage_in_tool_visible_fields():
@@ -140,10 +148,12 @@ def test_no_answer_leakage_in_tool_visible_fields():
     leak = re.compile(r"inc-\d{3}|red herring|causal:|trigger:", re.IGNORECASE)
     for row in LOGS:
         assert not leak.search(row["message"]), (
-            f"leak in log {row['event_id']!r}: {row['message']!r}")
+            f"leak in log {row['event_id']!r}: {row['message']!r}"
+        )
     for dep in DEPLOYS:
         assert not leak.search(dep["note"]), (
-            f"leak in deploy note {dep['deploy_id']!r}: {dep['note']!r}")
+            f"leak in deploy note {dep['deploy_id']!r}: {dep['note']!r}"
+        )
 
 
 def test_red_herring_deploy_present_but_uncorrelated():
@@ -165,7 +175,8 @@ def test_noise_floor_error_fraction_matches_profile():
 def test_metric_signal_is_sparse():
     """Only a small share of series deviate — the needle-in-haystack shape RCAEval showed."""
     deviated = sum(
-        1 for (svc, metric), samples in METRIC_SERIES.items()
+        1
+        for (svc, metric), samples in METRIC_SERIES.items()
         if max(p["value"] for p in samples) > 1.2 * max(samples[0]["value"], 1e-9)
     )
     assert deviated / len(METRIC_SERIES) < 0.25, "too many metrics deviate — signal not sparse"
