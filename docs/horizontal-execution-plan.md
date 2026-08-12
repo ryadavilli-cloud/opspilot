@@ -186,6 +186,15 @@ affected demonstrations are repaired; the multi-contributor and benign or transi
 represented; reference closure still verifies; and the corpus is not expected to change again for
 the rest of the plan.
 
+**Complete.** Both properties this slice named as uncaught by the existing closure gates are now
+asserted: a referenced series must move toward its own authored direction, which a metric with no
+authored direction fails outright, and no log message or deployment note may name an incident
+identifier or announce its own narrative role. The eight closure tests were retained rather than
+assumed. The multi-contributor class is represented by an existing authored incident carrying two
+independently evidenced conditions, and the benign or transient class by a controlled non-incident
+fixture derived from the ambient events, which is structurally invisible to scenario counting and
+carries no golden record. No eighth incident was authored.
+
 ### 1.2 Golden scenario records, the coverage audit, and the D-006 selections
 
 **Makes true.** Each authored incident carries one golden record stating what a correct
@@ -230,6 +239,15 @@ the audit table has one row per scenario class, with the multi-contributor and b
 recorded as represented; and the scenario selections D-006 lists are named against real incident
 identifiers.
 
+**Complete.** The golden records are authored beside the answer key rather than projected from it,
+one per authored incident, and the closure discipline extends to them: every reference a record
+requires must resolve in the repaired corpus, and evidence the corpus deliberately does not contain
+is held as prose so it can never be read as a reference. The audit carries one row per scenario
+class and records no corpus gap. D-006 is accepted with a real incident identifier against every
+criterion. The retirement is performed: the wild probe, its recorder, its scorecard, its cassette,
+its fixtures, and its test are gone, while the profile that calibrates corpus generation is
+retained as the live input this slice said it was.
+
 ### 1.3 Corpus preparation into the RetailEase containers
 
 **Makes true.** The corpus is loaded, chunked, embedded, and indexed into the containers the design
@@ -267,6 +285,14 @@ to either RetailEase container (`runtime-and-deployment.md` §16, check 4).
 **Done when.** Both RetailEase containers are populated from the authored corpus, the embedding
 deployment is provisioned and used at load time, the setup identity is the only writer, and a re-run
 of the preparation produces the same passages and the same identifiers.
+
+**Complete.** Two divergences. First, the readiness obligation this slice's tests named, that absent
+preparation must present as a deployment-time failure, was not implementable here: nothing read
+either container, so the check would have gated deployment on data no code consumed. It is recorded
+against the two slices that create the first readers, and the operational half has since landed
+while the knowledge half remains with passage retrieval. Second, the setup identity being the only
+writer is established by the data-plane role assignments rather than by anything this slice
+asserts; the check that will assert it is one of the eight the verification suite owns.
 
 ---
 
@@ -326,6 +352,12 @@ and the protocol boundary carries both axes across unchanged with parity asserte
 temporary collapse to the old binary remains for the legacy runtime, named in the coexistence
 register and deleted with that runtime. What is genuinely left for this slice is nothing; the
 retirement it names is complete.
+
+**Complete.** The distinction this slice asked to be protected holds structurally rather than by
+convention: the pairing is enforced where the envelope is constructed, so a source that answered
+authoritatively with nothing and a source that did not answer cannot be collapsed into one another
+by any caller. The property that reads a result as a boolean is unreachable except through the one
+named temporary collapse, which carries no new callers and dies with the runtime that reads it.
 
 ### 2.2 Capability adapters over the operational-records container
 
@@ -742,6 +774,19 @@ by horizon with their provenance, and a further-evidence need.
 **Requires.** 2.3: admission-assigned references, which supporting and weakening citations resolve
 to.
 
+The contract itself has landed. It carries the candidate set with its three qualitative labels,
+supporting and weakening references per candidate with a knowledge reference refused in either role,
+the established-or-possible markers with an established element requiring current operational
+support and an alternative and a historical comparison unable to be constructed as established,
+recommendations carrying exactly one horizon and one provenance category checked together with the
+reference that provenance implies, recorded limitations, and the ordered brief sections a
+deterministic projection fills by traversal alone. No numeric value exists anywhere in it.
+
+Two things remain. The further-evidence need has no representation in the assessment at all, so the
+half of this slice's closure that names it is untouched. Neither retirement has been performed: the
+superseded report object still carries its confidence float and the old console still renders that
+value as a percentage, so the two contracts coexist rather than one replacing the other.
+
 **Closes.** `status.md` - "Detailed Missing and Partial Implementation Register", RCA Analyst and
 assessment: "Candidate cause set," "Qualitative support labels," "Supporting and weakening evidence
 per candidate," "Established and possible grounded elements," "Recommendation horizons and
@@ -777,6 +822,17 @@ supported assessment, an explicit insufficiency statement, or one further-eviden
 
 **Requires.** 4.1: the model-access seam. 4.2: the Evidence Investigator it is split from. 4.3: the
 assessment contract it produces.
+
+The synthesis behavior has landed as a module rather than as a role. One task-labelled call proposes
+an assessment and deterministic code admits it against the admitted evidence set: a reference the
+turn never admitted is dropped, a candidate left with no surviving support is dropped entirely, the
+conclusion disposition follows from the evidence rather than from anything the model asserted about
+its own certainty, and a response that cannot be read degrades to a thin assessment rather than
+losing the turn. That module reaches no capability and no structured-query path, which is the
+structural half of what this slice asserts.
+
+What remains is the split. The fused planner still gathers and concludes, so the retirement this
+slice owns is outstanding and no code path yet makes it impossible for one role to do both.
 
 **Closes.** `status.md` - "Detailed Missing and Partial Implementation Register", RCA Analyst and
 assessment: "Distinct RCA Analyst as sole synthesis authority"; Evidence Investigator: "A distinct
@@ -895,6 +951,23 @@ completion.
 
 **Requires.** 2.3: admitted evidence and limitations. 4.3: the assessment the artifact carries.
 
+The port has landed ahead of the artifact it stores. It fixes the commit success and failure
+contract, carries a sanitized reason so a persistence problem is never indistinguishable from a
+grounding or model one, and is structural over anything carrying an investigation and turn identity,
+so the artifact can gain its fields without reopening it. Its in-memory backend refuses a second
+commit of the same turn rather than overwriting, and brings the investigation into existence on the
+first successful commit, which is what makes two of this slice's three named properties assertable
+today: a turn that never completes leaves nothing persisted, and a failed first execution leaves no
+investigation shell.
+
+What remains is the artifact and every removal. The completed-turn type does not exist, so nothing
+carries the terminal outcome, stop reason, admitted evidence, retrieved-knowledge references,
+assessment and brief, follow-up context, or the trace reference and its version stamp, and the third
+named property, that completed records stay readable after the code that wrote them changes, has
+nothing to assert against because no persisted type carries version information. The job record, its
+status machine, its leases, its idempotency index, the create-then-poll transport, and the decision
+endpoint are all still present, so the removals this slice owns are outstanding in full.
+
 **Closes.** `status.md` - "Detailed Missing and Partial Implementation Register", Investigation
 Record and persistence: "Completed-turn artifact," "One `investigations` container for that
 artifact," "Restart-safe citation resolution," and "No active-turn checkpoints, replay, index
@@ -986,6 +1059,19 @@ the one authorized further-evidence edge.
 
 **Requires.** 4.2 and 4.4: the roles it sequences. 4.1: the model-access seam. 2.3: admission.
 5.2: the artifact it delivers to.
+
+Turn identity has landed, and only that. The investigation and turn identities are minted together
+and carry the incident under study beside them, which is one input the state machine reads rather
+than any part of the machine itself; because nothing persists yet, an investigation lives only for
+the turn that opens it.
+
+Everything else this slice names remains. There is no stage sequence, no Supervisor owning the
+objective or authorizing continuation against computable conditions, no back-edge, and no
+enforcement of the six bound mechanisms as a set rather than as scattered local limits. Every
+retirement is outstanding: the graph build with its nodes and routers, the checkpointer stack and
+its dependency, and the old intent taxonomy and its known-issue path are all still present. The
+divergence recorded below discharges the container half of the checkpointer entry; the code half
+stands.
 
 **Closes.** `status.md` - "Detailed Missing and Partial Implementation Register", Supervisor: "Own
 the turn objective," "Separate deterministic control from model judgments," "Authorize continuation
@@ -1142,6 +1228,19 @@ outcome emitted.
 
 **Requires.** 6.1: the turn it terminates. 6.3: the assembled outcome. 5.2: the store it commits to.
 
+The ordering itself has landed with the port 5.2 built, expressed in one place that commits and
+delivers only where that commit succeeded. A caller cannot deliver first by accident, and a caller
+that ignores the returned result still cannot have delivered on a failed commit, because delivery is
+unreachable on that path rather than merely discouraged. The failed-execution branch is
+representable there, and the first successful commit is what creates the investigation.
+
+What remains is a caller and what it would commit. No runtime path invokes the ordering, since
+neither the assembled turn state nor the artifact type exists, so the property holds today only
+where tests drive it directly. The persistence-failure branch has no terminal outcome to resolve
+onto, the no-evidence cancellation path has no artifact whose omitted assessment and brief could be
+shown to be representable, and neither the write nor the terminal outcome is emitted, because the
+record modules carry no instrumentation.
+
 **Closes.** `status.md` - "Detailed Missing and Partial Implementation Register", Supervisor:
 "Commit completed turns before successful terminal delivery"; Investigation Record and persistence:
 "Commit before successful terminal delivery."
@@ -1187,6 +1286,22 @@ has succeeded.
 
 **Requires.** 6.1 through 6.4: a turn that executes, validates, resolves an outcome, and commits
 before delivery.
+
+The transport has landed ahead of the turn it exists to carry. One streaming request creates a turn,
+emits the identities as its first event, streams activity as it happens, and ends with a closing
+event, served as an ordinary streaming body with no create-then-attach pair, no reconnection, no
+event buffering, and no sequence cursor. The activity projection is built at the same call site that
+opens the telemetry span, from the same explicit facts, with no parameter through which a span's raw
+attributes could reach the projected event. Both properties this slice named are asserted: the
+projection carries no answer-key content, and turn isolation across concurrent investigations holds
+structurally rather than as a convention about keys.
+
+What remains depends on layer 6. The request is deliberately non-terminal, so no gate runs, nothing
+is committed, and the closing event is a transport-ordering proof rather than a delivered outcome,
+which leaves the deployment check that reads the persisted artifact for that turn without a subject.
+Both retirements are outstanding: per-user and global concurrency admission and the deprecated
+health alias are all still served. The surface sits beside the superseded job API rather than
+replacing it, because the removal half 5.2 owns has not run.
 
 **Closes.** `status.md` - "Detailed Missing and Partial Implementation Register", Turn lifecycle,
 cancellation, follow-up, and handoff: "One live streaming request owns a turn"; Engineer Interaction
@@ -1278,6 +1393,17 @@ boundary.
 **Requires.** 7.1: the streaming request it signals. 6.3: cancellation on both paths producing a
 completed turn.
 
+Client-disconnect detection landed with the streaming request, and it is not what this slice names.
+The turn checks whether the client has left before each further unit of work and abandons the turn
+by returning; nothing survives, because nothing on that path persists at all. That is the floor this
+slice signals into.
+
+The explicit cancellation signal remains, entirely. No request surface exists that would carry one,
+the screen offers no control that would send one, and there is no map from active turn identity to a
+signal. The difference bounds what can be shown: a departed client is observed between units of
+work, so cancellation reaching the operation rather than only the stage boundary is not yet
+demonstrable, and a completed turn on both paths waits on 6.3.
+
 **Closes.** `status.md` - "Detailed Missing and Partial Implementation Register", Turn lifecycle,
 cancellation, follow-up, and handoff: "Disconnect discards active state," and the signalling half of
 "Safe-boundary cancellation," whose floor closed in 6.3.
@@ -1304,6 +1430,19 @@ delivered brief as the dominant element, and one expandable details area.
 
 **Requires.** 7.1: the stream and brief it renders. 7.2: follow-up and handoff. 7.3: the
 cancellation control.
+
+The screen has landed in part. One same-origin page carries predefined intake, a compact activity
+feed rendered from the streamed events with its content escaped, a brief region, and one expandable
+details area, and it does not reach the old console.
+
+What remains includes the dominant element. The page handles the identity, activity, and closing
+events and holds no branch for the brief, so a rendered brief arrives and is visible only inside the
+details area while the brief region shows a transport message instead; the projection rule this
+slice asserts against the presentation path consequently has nothing to assert against yet. No
+follow-up, handoff, or cancellation control exists. Every retirement is outstanding: the old console
+is still served with its approval controls and its numeric confidence rendering, the hand-rolled
+role model still guards the superseded endpoints, and built-in authentication is absent, which
+leaves the caller-authentication check without a subject.
 
 **Closes.** `status.md` - "Detailed Missing and Partial Implementation Register", Engineer
 Interaction Interface: "One same-origin screen for intake, follow-up, activity, brief, and details";
