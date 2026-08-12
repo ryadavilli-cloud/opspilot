@@ -1,8 +1,9 @@
 """Investigation tools.
 
-Eight read-only capabilities exposed via `ToolService`: six deterministic
-(incident/alert/deployment/logs/metrics/dependencies) over the repository, and two retrieval
-capabilities over the hybrid Retriever.
+Nine read-only capabilities exposed via `ToolService`: six deterministic
+(incident/alert/deployment/logs/metrics/dependencies) over the operational-records container, two
+retrieval capabilities over the hybrid Retriever, and the governed structured-query path over the
+same container under a validated structure.
 
 `CAPABILITY_NAMES` is the single capability inventory. The registry is built against it and the
 read-only check reads from it, so there is one list rather than two that can drift. A mutating
@@ -19,6 +20,7 @@ CAPABILITY_NAMES: tuple[str, ...] = (
     "get_service_dependencies",
     "search_runbooks",
     "search_past_incidents",
+    "structured_query",
 )
 
 # Imported after the inventory it depends on, so the module initializes in one pass.

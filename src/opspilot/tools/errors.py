@@ -20,6 +20,7 @@ from typing import Any
 from pydantic import BaseModel, ValidationError
 
 from opspilot.data.operational_records import SourceUnavailable
+from opspilot.data.structured_query import QueryRejected
 from opspilot.obs.tracing import span
 from opspilot.tools.contracts import (
     MAX_RESULTS,
@@ -96,6 +97,11 @@ def run_tool(
             return _fail(sp, tool_name, "invalid request", started, ExecutionOutcome.REJECTED)
         try:
             records, evidence_refs = logic(request)
+        except QueryRejected as exc:
+            # Refused before execution, so nothing ran: `rejected`, exactly as an unknown
+            # capability is. Reporting it as an empty success would answer a question that was
+            # never asked. The message is this module's own text, never a provider's.
+            return _fail(sp, tool_name, str(exc), started, ExecutionOutcome.REJECTED)
         except SourceUnavailable:
             # The source did not answer. Reported apart from `failed` so the question this
             # capability was asked stays open rather than reading as a defect in the code that

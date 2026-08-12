@@ -102,7 +102,11 @@ def test_dependencies_upstream_filter():
     assert all(e.to_service == "cosmos-db" for e in r.results)
 
 
-def test_service_exposes_all_eight_tools():
+def test_the_reachable_capabilities_are_exactly_these():
+    """A literal list on purpose, and the only one: that the registry matches the inventory is
+    asserted against `CAPABILITY_NAMES` elsewhere, which cannot catch the inventory itself growing.
+    A capability becoming reachable is what this notices, and read-only rests on that set being
+    known rather than merely consistent."""
     assert set(SVC.tool_names) == {
         "get_incident",
         "get_correlated_alerts",
@@ -112,4 +116,5 @@ def test_service_exposes_all_eight_tools():
         "get_service_dependencies",
         "search_runbooks",
         "search_past_incidents",
+        "structured_query",
     }
