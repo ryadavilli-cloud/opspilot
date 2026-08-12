@@ -1,10 +1,16 @@
 """ToolService — the in-process tool boundary the agent binds to.
 
-Wires the read-only tools in-process over a repository (deterministic tools) and a lazily-built
-`Retriever` (the two retrieval tools). `call()` is the allowlisted, dispatch-by-name shape an MCP
-client uses; the MCP server (see `opspilot.mcp`) will front these same methods — transport swap,
-not a rewrite. The retriever is built on first retrieval call and cached; if the retrieval extras
-aren't installed, the search tools return a sanitized error rather than breaking the service.
+Wires the read-only capabilities in-process over the `operational-records` container (the six
+deterministic capabilities) and a lazily-built `Retriever` (the two retrieval capabilities).
+`call()` is the allowlisted, dispatch-by-name shape an MCP client uses; the MCP server (see
+`opspilot.mcp`) fronts these same methods: transport swap, not a rewrite. The retriever is built
+on first retrieval call and cached; if the retrieval extras aren't installed, the search tools
+return a sanitized `unavailable` rather than breaking the service.
+
+Every capability call carries a deadline this service supplies. The deadline is a bound, so it is
+established by deterministic code and is unreachable from a prompt (`code-guidelines.md` §7): a
+request naming its own `deadline_s` is refused at dispatch rather than honored or silently dropped.
+Until the turn controller owns the turn's remaining time, the configured ceiling supplies it.
 """
 
 from __future__ import annotations
@@ -13,7 +19,8 @@ import time
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
-from opspilot.data.repository import Repository, default_repository
+from opspilot import config
+from opspilot.data.operational_records import OperationalRecords, default_operational_records
 from opspilot.tools.alerts import get_correlated_alerts
 from opspilot.tools.contracts import ExecutionOutcome, ToolResult
 from opspilot.tools.dependencies import get_service_dependencies
@@ -27,14 +34,20 @@ from opspilot.tools.search import search_past_incidents, search_runbooks
 if TYPE_CHECKING:
     from opspilot.retrieval.base import SearchRetriever
 
+# The one parameter name a caller may never supply. It is a bound, not an argument.
+_DEADLINE_PARAMETER = "deadline_s"
+
 
 class ToolService:
     def __init__(
         self,
-        repo: Repository | None = None,
+        records: OperationalRecords | None = None,
         retriever_factory: Callable[[], SearchRetriever] | None = None,
+        *,
+        deadline_s: float | None = None,
     ) -> None:
-        self.repo = repo or default_repository()
+        self.records = records if records is not None else default_operational_records()
+        self.deadline_s = deadline_s if deadline_s is not None else config.SOURCE_DEADLINE_SECONDS
         self._retriever_factory = retriever_factory
         self._retriever: SearchRetriever | None = None
         self._retriever_attempted = False
@@ -47,24 +60,24 @@ class ToolService:
             name: getattr(self, name) for name in CAPABILITY_NAMES
         }
 
-    # --- deterministic tools (repository-backed) ----------------------------------------------
+    # --- deterministic capabilities (operational-records container) ---------------------------
     def get_incident(self, **kwargs: Any) -> ToolResult[Any]:
-        return get_incident(self.repo, **kwargs)
+        return get_incident(self.records, deadline_s=self.deadline_s, **kwargs)
 
     def get_correlated_alerts(self, **kwargs: Any) -> ToolResult[Any]:
-        return get_correlated_alerts(self.repo, **kwargs)
+        return get_correlated_alerts(self.records, deadline_s=self.deadline_s, **kwargs)
 
     def get_deployments(self, **kwargs: Any) -> ToolResult[Any]:
-        return get_deployments(self.repo, **kwargs)
+        return get_deployments(self.records, deadline_s=self.deadline_s, **kwargs)
 
     def query_logs(self, **kwargs: Any) -> ToolResult[Any]:
-        return query_logs(self.repo, **kwargs)
+        return query_logs(self.records, deadline_s=self.deadline_s, **kwargs)
 
     def get_metrics(self, **kwargs: Any) -> ToolResult[Any]:
-        return get_metrics(self.repo, **kwargs)
+        return get_metrics(self.records, deadline_s=self.deadline_s, **kwargs)
 
     def get_service_dependencies(self, **kwargs: Any) -> ToolResult[Any]:
-        return get_service_dependencies(self.repo, **kwargs)
+        return get_service_dependencies(self.records, deadline_s=self.deadline_s, **kwargs)
 
     # --- retrieval tools (retriever-backed, lazy) ---------------------------------------------
     def _get_retriever(self) -> SearchRetriever | None:
@@ -106,7 +119,7 @@ class ToolService:
         retriever = self._get_retriever()
         if retriever is None:
             return self._unavailable("search_past_incidents")
-        return search_past_incidents(retriever, self.repo, **kwargs)
+        return search_past_incidents(retriever, self.records, deadline_s=self.deadline_s, **kwargs)
 
     @staticmethod
     def _unavailable(tool_name: str) -> ToolResult[Any]:
@@ -130,6 +143,16 @@ class ToolService:
             return error_result(
                 tool_name or "unknown",
                 "unknown tool",
+                time.perf_counter(),
+                ExecutionOutcome.REJECTED,
+            )
+        if _DEADLINE_PARAMETER in kwargs:
+            # A caller trying to set its own bound is refused rather than ignored. Dropping it
+            # quietly would leave the request looking honored, and this is the parameter a model
+            # would reach for to buy itself more time.
+            return error_result(
+                tool_name,
+                "a request may not set its own deadline",
                 time.perf_counter(),
                 ExecutionOutcome.REJECTED,
             )

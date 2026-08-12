@@ -121,12 +121,12 @@ def _score_one(scenario: dict, state: dict, root_by_incident: dict[str, str]) ->
     }
 
 
-def _mcp_parity_ok() -> bool:
+def _mcp_parity_ok(service: ToolService | None = None) -> bool:
     from mcp.shared.memory import create_connected_server_and_client_session
 
     from opspilot.mcp.server import build_server
 
-    svc = ToolService()
+    svc = service or ToolService()
     server = build_server(svc)
     direct = json.loads(svc.call("get_incident", incident_id="inc-001").model_dump_json())
 
@@ -143,12 +143,17 @@ def _mcp_parity_ok() -> bool:
     )
 
 
-def evaluate(implementation: str = "deterministic", *, model: Any = None) -> dict[str, Any]:
+def evaluate(
+    implementation: str = "deterministic", *, model: Any = None, service: ToolService | None = None
+) -> dict[str, Any]:
     from opspilot.diagnosis.planner import build_planner
     from opspilot.triage import build_triager
 
     app = build_graph()
-    svc = ToolService()  # one shared service, injected into every run
+    # One shared service, injected into every run. `service` lets a caller supply its own source:
+    # scored offline the capabilities read a container seeded with the authored corpus, scored
+    # against the deployment they read the deployed one. Nothing here decides which.
+    svc = service or ToolService()
     # `model` lets the caller inject a chat model for single_agent — a RecordingChatModel to capture
     # a cassette from the live model, or a ReplayChatModel to score deterministically in CI. Triage
     # and diagnosis share the model, so one cassette covers both LLM stages.
@@ -208,7 +213,7 @@ def evaluate(implementation: str = "deterministic", *, model: Any = None) -> dic
         "tool_selection_accuracy": mean("tool_selection"),
         "loop_termination_accuracy": mean("loop_termination"),
         "iteration_limit_compliance": mean("iteration_ok"),
-        "mcp_parity": _mcp_parity_ok(),
+        "mcp_parity": _mcp_parity_ok(svc),
     }
 
 

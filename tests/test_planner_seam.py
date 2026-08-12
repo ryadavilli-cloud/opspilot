@@ -8,6 +8,7 @@ planner, and an unknown implementation must fail loud rather than silently run t
 from __future__ import annotations
 
 import pytest
+from fake_operational_records import corpus_records
 
 from opspilot.diagnosis.contracts import DiagnosisContext
 from opspilot.diagnosis.cycle import plan_investigation
@@ -68,7 +69,9 @@ def test_node_routes_through_injected_planner():
         severity="SEV1",
         category="payment",
     )
-    config = {"configurable": {"tool_service": ToolService(), "planner": SpyPlanner()}}
+    config = {
+        "configurable": {"tool_service": ToolService(corpus_records()), "planner": SpyPlanner()}
+    }
     out = diagnose(state, config)
     assert calls == ["inc-004"]  # the node went through the seam, not a direct plan call
     assert out["hypothesis"] is not None

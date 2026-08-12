@@ -40,6 +40,11 @@ def _env_int(var: str, default: int) -> int:
     return int(value) if value else default
 
 
+def _env_float(var: str, default: float) -> float:
+    value = _env(var)
+    return float(value) if value else default
+
+
 def _env_flag(var: str, default: bool = False) -> bool:
     value = _env(var)
     return value.lower() == "true" if value else default
@@ -50,7 +55,6 @@ def _dir_env(var: str, default: Path) -> Path:
     return Path(value) if value else default
 
 
-CORPUS_DIR = _dir_env("OPSPILOT_CORPUS_DIR", _REPO_ROOT / "data" / "synthetic")
 KB_DIR = _dir_env("OPSPILOT_KB_DIR", _REPO_ROOT / "data" / "kb")
 DISTRACTOR_DIR = _dir_env("OPSPILOT_DISTRACTOR_DIR", _REPO_ROOT / "data" / "distractors")
 
@@ -184,6 +188,12 @@ COSMOS_OPERATIONAL_RECORDS_CONTAINER = _env(
 # embedding path, and changing it means removing and re-adding that path.
 EMBEDDING_DEPLOYMENT = _env("AZURE_OPENAI_EMBEDDING_DEPLOYMENT", "text-embedding-3-small")
 EMBEDDING_DIMENSIONS = _env_int("AZURE_OPENAI_EMBEDDING_DIMENSIONS", 1536)
+
+# The ceiling on a single source call, in seconds. Every capability carries a deadline no greater
+# than its turn's remaining time; until the turn controller owns that remaining time, this ceiling
+# supplies the value. It is read by deterministic code and is unreachable from a prompt: no request
+# may name its own deadline, and dispatch refuses one that tries.
+SOURCE_DEADLINE_SECONDS = _env_float("OPSPILOT_SOURCE_DEADLINE_SECONDS", 10.0)
 
 
 # --------------------------------------------------------------------------------------

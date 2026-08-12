@@ -35,19 +35,28 @@ _ALERT = {
 # request. `authenticate()` only proves identity (matching the real validator post-Stage-8); role
 # authorization is enforced by the endpoints themselves via `auth.require_role`/`require_any_role`.
 _HUMAN = ReviewerPrincipal(
-    subject="oid-human-1", tenant_id="test-tenant", display_name="reviewer@example.com",
-    roles=("Approver", "Submitter", "Reader"), auth_method="entra_jwt",
+    subject="oid-human-1",
+    tenant_id="test-tenant",
+    display_name="reviewer@example.com",
+    roles=("Approver", "Submitter", "Reader"),
+    auth_method="entra_jwt",
 )
 _SERVICE = ReviewerPrincipal(
-    subject="oid-smoke-sp", tenant_id="test-tenant", display_name="opspilot-smoke",
-    roles=("Approver",), auth_method="service_principal",
+    subject="oid-smoke-sp",
+    tenant_id="test-tenant",
+    display_name="opspilot-smoke",
+    roles=("Approver",),
+    auth_method="service_principal",
 )
 # Authenticates fine, but carries none of the three OpsPilot roles — the "signed in to the tenant,
 # not to this app" case the decision-role test already relied on before Stage 8, now shared by all
 # three endpoints' role checks.
 _NO_ROLE = ReviewerPrincipal(
-    subject="oid-guest-1", tenant_id="test-tenant", display_name="guest@example.com",
-    roles=(), auth_method="entra_jwt",
+    subject="oid-guest-1",
+    tenant_id="test-tenant",
+    display_name="guest@example.com",
+    roles=(),
+    auth_method="entra_jwt",
 )
 _PRINCIPALS = {"human-token": _HUMAN, "app-token": _SERVICE, "no-role-token": _NO_ROLE}
 
@@ -71,10 +80,23 @@ class _FakeAuthenticator:
 
 
 def _bm25_service():
+    from fake_operational_records import corpus_records
+
     from opspilot.retrieval.factory import build_retriever
     from opspilot.tools.service import ToolService
 
-    return ToolService(retriever_factory=lambda: build_retriever("bm25", include_distractors=False))
+    return ToolService(
+        corpus_records(),
+        retriever_factory=lambda: build_retriever("bm25", include_distractors=False),
+    )
+
+
+def _records_service():
+    from fake_operational_records import corpus_records
+
+    from opspilot.tools.service import ToolService
+
+    return ToolService(corpus_records())
 
 
 class _BoomService:
@@ -94,6 +116,10 @@ def _isolated_deps():
     repo = InMemoryInvestigationRepository()
     app.dependency_overrides[get_repository] = lambda: repo
     app.dependency_overrides[get_authenticator] = _FakeAuthenticator
+    # A capability service over the authored corpus, container-shaped, so a test that never
+    # reaches a tool still resolves its dependency without a deployed container. Retrieval is left
+    # unbuilt here; the tests that need it install `_bm25_service` over this.
+    app.dependency_overrides[get_service] = _records_service
     yield
     app.dependency_overrides.clear()
 
@@ -128,7 +154,8 @@ def _decision(decision: str, report_hash: str, **overrides) -> dict:
 def _approve(investigation_id: str, report_hash: str, *, headers=None, **overrides) -> None:
     r = client.post(
         f"/investigations/{investigation_id}/decision",
-        json=_decision("approve", report_hash, **overrides), headers=headers or HUMAN_AUTH,
+        json=_decision("approve", report_hash, **overrides),
+        headers=headers or HUMAN_AUTH,
     )
     assert r.status_code == 202, r.text
 
@@ -149,7 +176,11 @@ def test_lifecycle_queued_running_awaiting_approval_then_completed():
     final = client.get(posted["poll_url"], headers=HUMAN_AUTH).json()
     assert final["status"] == "completed"
     assert final["history"] == [
-        "queued", "running", "awaiting_approval", "running", "completed",
+        "queued",
+        "running",
+        "awaiting_approval",
+        "running",
+        "completed",
     ]
     assert final["result"] and final["result"]["report"]["citations"]
     assert final["error"] is None
@@ -264,7 +295,8 @@ def test_investigate_compatibility_endpoint_still_works():
 def test_decision_unknown_investigation_is_404():
     r = client.post(
         "/investigations/does-not-exist/decision",
-        json=_decision("approve", "h"), headers=HUMAN_AUTH,
+        json=_decision("approve", "h"),
+        headers=HUMAN_AUTH,
     )
     assert r.status_code == 404
 
@@ -278,7 +310,8 @@ def test_decision_against_a_resolved_investigation_is_409():
 
     r = client.post(
         f"/investigations/{posted['investigation_id']}/decision",
-        json=_decision("approve", report_hash), headers=HUMAN_AUTH,
+        json=_decision("approve", report_hash),
+        headers=HUMAN_AUTH,
     )
     assert r.status_code == 409
 
@@ -291,7 +324,8 @@ def test_reject_decision_escalates():
 
     r = client.post(
         f"/investigations/{posted['investigation_id']}/decision",
-        json=_decision("reject", report_hash), headers=HUMAN_AUTH,
+        json=_decision("reject", report_hash),
+        headers=HUMAN_AUTH,
     )
     assert r.status_code == 202
 
@@ -339,8 +373,7 @@ def test_edit_decision_re_pauses_with_a_new_hash_then_approves():
 
     r = client.post(
         f"/investigations/{posted['investigation_id']}/decision",
-        json=_decision("edit", first_hash,
-                       edits={"recommended_next_step": "roll back the deploy"}),
+        json=_decision("edit", first_hash, edits={"recommended_next_step": "roll back the deploy"}),
         headers=HUMAN_AUTH,
     )
     assert r.status_code == 202
@@ -408,9 +441,12 @@ def test_the_same_decision_id_with_a_different_body_is_409():
     """Not a silent overwrite: reusing a consumed key for a *different* decision is a conflict."""
     investigation_id, report_hash = _pause_and_hash()
     body = _decision("approve", report_hash)
-    assert client.post(
-        f"/investigations/{investigation_id}/decision", json=body, headers=HUMAN_AUTH
-    ).status_code == 202
+    assert (
+        client.post(
+            f"/investigations/{investigation_id}/decision", json=body, headers=HUMAN_AUTH
+        ).status_code
+        == 202
+    )
 
     conflicting = {**body, "decision": "reject"}
     r = client.post(
@@ -427,13 +463,14 @@ def test_another_reviewer_reusing_a_decision_id_is_a_conflict_not_a_replay():
     surfaces rather than silently replaying their decision as its own."""
     investigation_id, report_hash = _pause_and_hash()
     body = _decision("approve", report_hash)
-    assert client.post(
-        f"/investigations/{investigation_id}/decision", json=body, headers=HUMAN_AUTH
-    ).status_code == 202
-
-    r = client.post(
-        f"/investigations/{investigation_id}/decision", json=body, headers=SERVICE_AUTH
+    assert (
+        client.post(
+            f"/investigations/{investigation_id}/decision", json=body, headers=HUMAN_AUTH
+        ).status_code
+        == 202
     )
+
+    r = client.post(f"/investigations/{investigation_id}/decision", json=body, headers=SERVICE_AUTH)
     assert r.status_code == 409
     assert r.json()["detail"]["error"] == "decision_conflict"
     assert _get(investigation_id)["result"]["approval"]["approver"] == "entra_jwt:oid-human-1"
@@ -443,14 +480,19 @@ def test_a_second_distinct_decision_on_a_consumed_pause_is_409():
     """Two different decision_ids cannot both commit: the first moves the run out of
     `awaiting_approval` in the same atomic write that records it."""
     investigation_id, report_hash = _pause_and_hash()
-    assert client.post(
-        f"/investigations/{investigation_id}/decision",
-        json=_decision("approve", report_hash), headers=HUMAN_AUTH,
-    ).status_code == 202
+    assert (
+        client.post(
+            f"/investigations/{investigation_id}/decision",
+            json=_decision("approve", report_hash),
+            headers=HUMAN_AUTH,
+        ).status_code
+        == 202
+    )
 
     r = client.post(
         f"/investigations/{investigation_id}/decision",
-        json=_decision("reject", report_hash), headers=HUMAN_AUTH,
+        json=_decision("reject", report_hash),
+        headers=HUMAN_AUTH,
     )
     assert r.status_code == 409
     assert _get(investigation_id)["status"] == "completed"
@@ -604,8 +646,11 @@ def test_a_reviewer_role_alone_is_sufficient_to_read():
     # Reading is open to submit OR read OR decide — a reviewer who never submitted still needs to
     # see the report before deciding on it.
     reviewer_only = ReviewerPrincipal(
-        subject="oid-reviewer-2", tenant_id="test-tenant", display_name="reviewer2@example.com",
-        roles=("Approver",), auth_method="entra_jwt",
+        subject="oid-reviewer-2",
+        tenant_id="test-tenant",
+        display_name="reviewer2@example.com",
+        roles=("Approver",),
+        auth_method="entra_jwt",
     )
     _PRINCIPALS["reviewer-only-token"] = reviewer_only
     try:

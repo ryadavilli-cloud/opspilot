@@ -8,17 +8,19 @@ navigational: its results give the caller the affected services and timeframe to
 
 from __future__ import annotations
 
-from opspilot.data.repository import Repository
+from opspilot.data.operational_records import OperationalRecords
 from opspilot.tools.contracts import AlertRecord, GetCorrelatedAlertsRequest, ToolResult, to_utc
 from opspilot.tools.errors import run_tool
 
 
-def get_correlated_alerts(repo: Repository, **kwargs) -> ToolResult[AlertRecord]:
+def get_correlated_alerts(
+    records: OperationalRecords, *, deadline_s: float, **kwargs
+) -> ToolResult[AlertRecord]:
     def logic(req: GetCorrelatedAlertsRequest) -> tuple[list[AlertRecord], list[str]]:
         start = to_utc(req.start_time) if req.start_time else None
         end = to_utc(req.end_time) if req.end_time else None
         recs: list[AlertRecord] = []
-        for raw in repo.alerts_for_incident(req.incident_id):
+        for raw in records.alerts_for(req.incident_id, deadline_s=deadline_s):
             try:
                 rec = AlertRecord(**raw)
             except Exception:  # noqa: BLE001 — skip malformed rows, don't fail the query

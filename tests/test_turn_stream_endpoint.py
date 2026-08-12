@@ -13,14 +13,41 @@ import pytest
 
 pytest.importorskip("httpx")  # FastAPI's TestClient transport
 
+from fake_operational_records import corpus_records  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 
-from opspilot.api import _predefined_turn_stream, app, get_synthesis_model  # noqa: E402
-from opspilot.data.repository import default_repository  # noqa: E402
+from opspilot.api import (  # noqa: E402
+    _predefined_turn_stream,
+    app,
+    get_operational_records,
+    get_service,
+    get_synthesis_model,
+)
+from opspilot.config import SOURCE_DEADLINE_SECONDS  # noqa: E402
 from opspilot.tools.contracts import IncidentRecord  # noqa: E402
 from opspilot.tools.service import ToolService  # noqa: E402
 
 client = TestClient(app)
+
+# The endpoint resolves the selected incident against the container, not a file on disk, so the
+# tests hand it one seeded with the authored corpus. Installed per test rather than once at import:
+# `app` is a process-wide singleton and other modules clear its overrides.
+RECORDS = corpus_records()
+
+
+@pytest.fixture(autouse=True)
+def _injected_dependencies():
+    """One fixture owning every override these tests need, installed per test.
+
+    Two separate autouse fixtures would fight: whichever tears down first calls `clear()` and
+    removes the other's override, so which test fails would depend on fixture ordering rather than
+    on behavior.
+    """
+    app.dependency_overrides[get_operational_records] = lambda: RECORDS
+    app.dependency_overrides[get_service] = lambda: ToolService(RECORDS)
+    app.dependency_overrides[get_synthesis_model] = _NoOpModel
+    yield
+    app.dependency_overrides.clear()
 
 
 class _NoOpModel:
@@ -32,16 +59,6 @@ class _NoOpModel:
         from opspilot.llm.base import ChatResult
 
         return ChatResult(text="{}", model_id="fake")
-
-
-@pytest.fixture(autouse=True)
-def _inject_model():
-    """Per test, not at import: other modules call `dependency_overrides.clear()`, which would wipe
-    a module-level override and leave these tests reaching for a real provider, blocking on a
-    connection that never resolves."""
-    app.dependency_overrides[get_synthesis_model] = _NoOpModel
-    yield
-    app.dependency_overrides.pop(get_synthesis_model, None)
 
 
 class _DisconnectAfter:
@@ -97,13 +114,13 @@ def test_unknown_incident_id_returns_404_before_any_stream_opens():
 # --- in-process cancellation signal ---------------------------------------------------------
 def _run_stream(disconnect_after: int) -> list[dict]:
     async def _go() -> list[dict]:
-        raw = default_repository().incident("inc-001")
+        raw = RECORDS.incident("inc-001", deadline_s=SOURCE_DEADLINE_SECONDS)
         incident = IncidentRecord(**raw)
         disconnect = _DisconnectAfter(stay_connected_for=disconnect_after)
         lines = [
             json.loads(line)
             async for line in _predefined_turn_stream(
-                "inc-001", incident, disconnect, ToolService(), _NoOpModel()
+                "inc-001", incident, disconnect, ToolService(RECORDS), _NoOpModel()
             )
         ]
         return lines

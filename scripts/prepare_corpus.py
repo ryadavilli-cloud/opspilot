@@ -165,7 +165,21 @@ def operational_documents() -> list[dict[str, Any]]:
         out.append({**record, "id": record["deploy_id"], "kind": "deployment"})
 
     for edge in _records("dependencies", "edges"):
-        out.append({**edge, "id": f"{edge['from']}->{edge['to']}", "kind": "dependency"})
+        # A dependency edge names its own relationship kind (`sync-http`, `cache`, `publish`, ...)
+        # and the container's first partition level is also called `kind`. Spreading the edge and
+        # then setting the partition value would overwrite the relationship with the literal
+        # "dependency" and lose it, with nothing failing at write time. This is the only kind whose
+        # own field collides with a partition path, so it is the only one preparation renames; the
+        # adapter that reads these back maps `dependency_kind` onto the record's `kind`.
+        relocated = {key: value for key, value in edge.items() if key != "kind"}
+        out.append(
+            {
+                **relocated,
+                "id": f"{edge['from']}->{edge['to']}",
+                "kind": "dependency",
+                "dependency_kind": edge["kind"],
+            }
+        )
 
     for line in (SYN / "logs.jsonl").read_text(encoding="utf-8").splitlines():
         record = json.loads(line)

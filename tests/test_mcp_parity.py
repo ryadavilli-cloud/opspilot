@@ -12,6 +12,7 @@ import asyncio
 import json
 
 import pytest
+from fake_operational_records import corpus_records
 from mcp.shared.memory import create_connected_server_and_client_session
 
 from opspilot.mcp.server import EXPOSED_TOOLS, build_server
@@ -42,7 +43,7 @@ def _assert_parity(svc: ToolService, server, name: str, arguments: dict) -> None
 
 
 def test_list_tools_exposes_the_registered_set():
-    server = build_server()
+    server = build_server(ToolService(corpus_records()))
 
     async def _go() -> set[str]:
         async with create_connected_server_and_client_session(server) as client:
@@ -53,7 +54,7 @@ def test_list_tools_exposes_the_registered_set():
 
 
 def test_parity_deterministic_tools():
-    svc = ToolService()
+    svc = ToolService(corpus_records())
     server = build_server(svc)
     _assert_parity(svc, server, "get_incident", {"incident_id": "inc-001"})
     _assert_parity(svc, server, "get_incident", {"incident_id": "inc-999"})  # empty result
@@ -71,7 +72,7 @@ def test_parity_deterministic_tools():
 
 
 def test_mcp_rejects_unexposed_tool():
-    server = build_server()
+    server = build_server(ToolService(corpus_records()))
     over_mcp = _via_mcp(server, "get_metrics", {"service": "cosmos-db"})  # real tool, not exposed
     assert over_mcp["outcome"] == "rejected" and over_mcp["error"] == "unknown tool"
     assert over_mcp["completeness"] == "not_applicable"
@@ -80,6 +81,6 @@ def test_mcp_rejects_unexposed_tool():
 def test_parity_retrieval_tool():
     pytest.importorskip("sentence_transformers")
     pytest.importorskip("rank_bm25")
-    svc = ToolService()
+    svc = ToolService(corpus_records())
     server = build_server(svc)
     _assert_parity(svc, server, "search_runbooks", {"query": "payment authorizations timing out"})

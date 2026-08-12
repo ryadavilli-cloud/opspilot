@@ -19,12 +19,15 @@ from opspilot.api import (  # noqa: E402
     InvestigationResponse,
     app,
     get_authenticator,
-    get_corpus_status,
+    get_records_status,
     get_service,
 )
 from opspilot.auth import ReviewerAuthError, ReviewerPrincipal  # noqa: E402
 from opspilot.config import RETRIEVAL_BACKEND  # noqa: E402
-from opspilot.data.repository import CORPUS_FILES, RuntimeAssetStatus  # noqa: E402
+from opspilot.data.operational_records import (  # noqa: E402
+    RECORD_KINDS,
+    PreparationStatus,
+)
 from opspilot.tools.contracts import Completeness, ExecutionOutcome  # noqa: E402
 
 client = TestClient(app)
@@ -105,19 +108,21 @@ class _FakeService:
         return _result(ExecutionOutcome.UNAVAILABLE, Completeness.NOT_APPLICABLE)
 
 
-def _healthy_corpus():
-    return RuntimeAssetStatus(root=api.config.CORPUS_DIR, present=CORPUS_FILES, missing=())
+def _prepared_records():
+    return PreparationStatus(counts=dict.fromkeys(RECORD_KINDS, 1), missing=())
 
 
-def _missing_corpus():
-    return RuntimeAssetStatus(root=api.config.CORPUS_DIR, present=(), missing=CORPUS_FILES)
+def _unprepared_records():
+    # What an unreachable or unseeded container reports: every kind missing, never a partial
+    # picture that could read as ready.
+    return PreparationStatus(counts={}, missing=RECORD_KINDS)
 
 
-def _override(service_factory=None, corpus_factory=None):
+def _override(service_factory=None, records_factory=None):
     if service_factory is not None:
         app.dependency_overrides[get_service] = service_factory
-    if corpus_factory is not None:
-        app.dependency_overrides[get_corpus_status] = corpus_factory
+    if records_factory is not None:
+        app.dependency_overrides[get_records_status] = records_factory
 
 
 @pytest.fixture(autouse=True)
@@ -151,38 +156,94 @@ def test_health_is_a_liveness_alias():
 
 # --- readiness --------------------------------------------------------------------------------
 def test_readiness_all_healthy_is_200():
-    _override(lambda: _FakeService(), _healthy_corpus)
+    _override(lambda: _FakeService(), _prepared_records)
     r = client.get("/health/ready")
     body = r.json()
     assert r.status_code == 200
     assert body["status"] == "ready"
-    assert body["checks"] == {"corpus": "ok", "repository": "ok", "logs": "ok", "retrieval": "ok"}
+    assert body["checks"] == {
+        "operational_records": "ok",
+        "repository": "ok",
+        "logs": "ok",
+        "retrieval": "ok",
+    }
     assert body["errors"] is None
 
 
-def test_readiness_missing_corpus_is_503():
-    _override(lambda: _FakeService(), _missing_corpus)
+def test_readiness_unprepared_records_is_503():
+    _override(lambda: _FakeService(), _unprepared_records)
     r = client.get("/health/ready")
     assert r.status_code == 503
     body = r.json()
-    assert body["status"] == "not_ready" and body["checks"]["corpus"] == "failed"
-    assert {"component": "corpus", "code": "CORPUS_INCOMPLETE"} in body["errors"]
+    assert body["status"] == "not_ready" and body["checks"]["operational_records"] == "failed"
+    assert {
+        "component": "operational_records",
+        "code": "OPERATIONAL_RECORDS_INCOMPLETE",
+    } in body["errors"]
+
+
+def test_readiness_reads_the_container_and_fails_closed_when_it_cannot():
+    """Absent preparation must present as a deployment failure rather than as a turn-time empty
+    answer, so readiness runs the real check against a container that will not answer. Every kind
+    reports missing; nothing here degrades to ready."""
+    from fake_operational_records import corpus_container
+
+    from opspilot.data.operational_records import OperationalRecords
+
+    app.dependency_overrides[api.get_operational_records] = lambda: OperationalRecords(
+        corpus_container(unreachable=True)
+    )
+    _override(lambda: _FakeService())
+    r = client.get("/health/ready")
+    assert r.status_code == 503
+    assert r.json()["checks"]["operational_records"] == "failed"
+
+
+def test_readiness_fails_when_one_record_kind_is_absent():
+    """A container holding only some kinds is not partly ready. The capability whose kind is
+    missing could only ever answer with nothing, which reads downstream as an authoritative
+    absence rather than as an unprepared deployment."""
+    from fake_operational_records import FakeContainer, corpus_documents
+
+    from opspilot.data.operational_records import OperationalRecords
+
+    without_metrics = [doc for doc in corpus_documents() if doc["kind"] != "metric_series"]
+    app.dependency_overrides[api.get_operational_records] = lambda: OperationalRecords(
+        FakeContainer(without_metrics)
+    )
+    _override(lambda: _FakeService())
+    r = client.get("/health/ready")
+    assert r.status_code == 503
+    assert r.json()["checks"]["operational_records"] == "failed"
+
+
+def test_readiness_passes_the_real_check_against_a_prepared_container():
+    from fake_operational_records import corpus_container
+
+    from opspilot.data.operational_records import OperationalRecords
+
+    app.dependency_overrides[api.get_operational_records] = lambda: OperationalRecords(
+        corpus_container()
+    )
+    _override(lambda: _FakeService())
+    r = client.get("/health/ready")
+    assert r.status_code == 200 and r.json()["checks"]["operational_records"] == "ok"
 
 
 def test_readiness_repository_failure_is_503():
-    _override(lambda: _FakeService(incident=False), _healthy_corpus)
+    _override(lambda: _FakeService(incident=False), _prepared_records)
     r = client.get("/health/ready")
     assert r.status_code == 503 and r.json()["checks"]["repository"] == "failed"
 
 
 def test_readiness_log_failure_is_503():
-    _override(lambda: _FakeService(logs=False), _healthy_corpus)
+    _override(lambda: _FakeService(logs=False), _prepared_records)
     r = client.get("/health/ready")
     assert r.status_code == 503 and r.json()["checks"]["logs"] == "failed"
 
 
 def test_readiness_retrieval_unavailable_is_503():
-    _override(lambda: _FakeService(backend="unavailable"), _healthy_corpus)
+    _override(lambda: _FakeService(backend="unavailable"), _prepared_records)
     r = client.get("/health/ready")
     body = r.json()
     assert r.status_code == 503
@@ -198,7 +259,7 @@ def test_readiness_never_leaks_exception_text_or_paths():
         def search_runbooks(self, **_):
             raise FileNotFoundError(secret)
 
-    _override(lambda: _Leaky(), _healthy_corpus)
+    _override(lambda: _Leaky(), _prepared_records)
     r = client.get("/health/ready")
     assert r.status_code == 503
     assert secret not in r.text and "FileNotFoundError" not in r.text
@@ -232,10 +293,15 @@ def test_root_redirects_to_the_console():
 
 # --- investigation ----------------------------------------------------------------------------
 def _bm25_service():
+    from fake_operational_records import corpus_records
+
     from opspilot.retrieval.factory import build_retriever
     from opspilot.tools.service import ToolService
 
-    return ToolService(retriever_factory=lambda: build_retriever("bm25", include_distractors=False))
+    return ToolService(
+        corpus_records(),
+        retriever_factory=lambda: build_retriever("bm25", include_distractors=False),
+    )
 
 
 def test_investigation_smoke_path_over_bm25():

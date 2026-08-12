@@ -2,11 +2,17 @@
 
 Evidence-bearing: each edge yields `deps:<from>-><to>`. Used to reason about blast radius —
 which services a failure can propagate to (downstream) or arrive from (upstream).
+
+An edge names its own relationship kind, and the container's first partition level is also called
+`kind`. Preparation therefore carries the edge's kind as `dependency_kind`, and this is the one
+place that maps it back onto the record. See `scripts/prepare_corpus.py`.
 """
 
 from __future__ import annotations
 
-from opspilot.data.repository import Repository
+from typing import Any
+
+from opspilot.data.operational_records import OperationalRecords
 from opspilot.tools.contracts import DependencyEdge, GetServiceDependenciesRequest, ToolResult
 from opspilot.tools.errors import run_tool
 
@@ -19,12 +25,25 @@ def _matches(edge: DependencyEdge, service: str, direction: str) -> bool:
     return service in (edge.from_service, edge.to_service)
 
 
-def get_service_dependencies(repo: Repository, **kwargs) -> ToolResult[DependencyEdge]:
+def _edge(raw: dict[str, Any]) -> DependencyEdge:
+    return DependencyEdge(
+        **{
+            "from": raw.get("from"),
+            "to": raw.get("to"),
+            "kind": raw.get("dependency_kind"),
+            "critical": raw.get("critical", False),
+        }
+    )
+
+
+def get_service_dependencies(
+    records: OperationalRecords, *, deadline_s: float, **kwargs
+) -> ToolResult[DependencyEdge]:
     def logic(req: GetServiceDependenciesRequest) -> tuple[list[DependencyEdge], list[str]]:
         recs: list[DependencyEdge] = []
-        for raw in repo.edges():
+        for raw in records.edges(deadline_s=deadline_s):
             try:
-                edge = DependencyEdge(**raw)
+                edge = _edge(raw)
             except Exception:  # noqa: BLE001 — skip malformed rows
                 continue
             if req.service and not _matches(edge, req.service, req.direction):

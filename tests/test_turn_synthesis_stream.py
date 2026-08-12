@@ -12,10 +12,12 @@ from __future__ import annotations
 
 import json
 
+from fake_operational_records import corpus_records
 from fastapi.testclient import TestClient
 
-from opspilot.api import app, get_synthesis_model
+from opspilot.api import app, get_operational_records, get_service, get_synthesis_model
 from opspilot.llm.base import ChatResult
+from opspilot.tools.service import ToolService
 from opspilot.turn.synthesis_step import evidence_plan
 
 # inc-005: a Redis eviction storm. Chosen because its authored answer key records that no
@@ -51,10 +53,17 @@ def _run(payload: dict) -> tuple[list[dict], _ScriptedModel]:
     # provider, which blocks on a connection that never resolves rather than failing.
     previous = app.dependency_overrides.get(get_synthesis_model)
     app.dependency_overrides[get_synthesis_model] = lambda: model
+    # Inject the record source too: reaching the deployed container from a deterministic test is
+    # refused outright, which is the guard working rather than a fixture to route around.
+    records = corpus_records()
+    app.dependency_overrides[get_operational_records] = lambda: records
+    app.dependency_overrides[get_service] = lambda: ToolService(records)
     try:
         with TestClient(app) as client:
             return _events(client), model
     finally:
+        app.dependency_overrides.pop(get_operational_records, None)
+        app.dependency_overrides.pop(get_service, None)
         if previous is None:
             app.dependency_overrides.pop(get_synthesis_model, None)
         else:
