@@ -29,6 +29,7 @@ from typing import Any
 
 from opspilot.evidence.operations import OperationRecord, TurnEvidence
 from opspilot.evidence.references import Reference, try_parse
+from opspilot.obs.tracing import span
 from opspilot.tools.contracts import Completeness, ExecutionOutcome, ToolResult
 
 
@@ -166,11 +167,37 @@ def admit(
 
     `question` is what this call was meant to answer. It is required rather than optional because
     a limitation that cannot name its question discloses nothing useful.
+
+    One span is emitted per call, whatever the outcome. An unresolvable citation is diagnosable
+    from what was admitted and which reference it was assigned, without re-running the turn; a
+    result that produced no evidence is as visible here as one that did.
     """
     capability = result.tool_name
     operation_ref = turn.ledger.mint()
     scope = _scope_text(request_scope)
 
+    with span(
+        "evidence.admit",
+        attributes={
+            "capability": capability,
+            "operation_ref": operation_ref,
+            "execution_outcome": result.outcome.value,
+            "completeness": result.completeness.value,
+        },
+    ) as sp:
+        return _admit(result, turn, question, capability, operation_ref, scope, sp)
+
+
+def _admit(
+    result: ToolResult[Any],
+    turn: TurnEvidence,
+    question: str,
+    capability: str,
+    operation_ref: str,
+    scope: str,
+    sp: Any,
+) -> AdmissionResult:
+    """The admission decision itself. Split from `admit` only so the span wraps every exit."""
     if result.outcome is not ExecutionOutcome.SUCCEEDED:
         operation = turn.ledger.record(
             OperationRecord(
@@ -191,6 +218,8 @@ def admit(
             outcome=result.outcome,
         )
         turn.limitations.append(limitation)
+        sp.attributes["admitted"] = False
+        sp.attributes["limitation"] = limitation.question
         return AdmissionResult(operation=operation, limitation=limitation)
 
     evidence_type = CAPABILITY_EVIDENCE_TYPES.get(capability)
@@ -208,6 +237,8 @@ def admit(
                 scope=scope,
             )
         )
+        sp.attributes["admitted"] = False
+        sp.attributes["not_operational_evidence"] = True
         return AdmissionResult(operation=operation)
 
     observations: list[AdmittedObservation] = []
@@ -216,7 +247,7 @@ def admit(
     if result.completeness is Completeness.EMPTY:
         observations.append(
             AdmittedObservation(
-                evidence_ref=f"{operation_ref}:absence",
+                evidence_ref=f"absence:{capability}:{operation_ref}",
                 investigation_id=turn.investigation_id,
                 turn_id=turn.turn_id,
                 operation_ref=operation_ref,
@@ -262,4 +293,15 @@ def admit(
         )
     )
     turn.observations.extend(observations)
+    sp.attributes["admitted"] = bool(observations)
+    sp.attributes["observation_count"] = len(observations)
+    sp.attributes["evidence_refs"] = ",".join(obs.evidence_ref for obs in observations)
+    # An absence carries a real evidence reference of its own, so it goes through the one parser
+    # like any other. The marker stays because it is diagnostically useful, not because it stands
+    # in for the reference.
+    sp.attributes["references_parsed"] = sum(
+        1 for obs in observations if try_parse(obs.evidence_ref) is not None
+    )
+    if result.completeness is Completeness.EMPTY:
+        sp.attributes["authoritative_absence"] = True
     return AdmissionResult(operation=operation, observations=observations)

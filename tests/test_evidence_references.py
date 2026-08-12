@@ -12,6 +12,9 @@ from datetime import UTC, datetime
 import pytest
 from fake_operational_records import corpus_records, log_documents, records_from
 
+from opspilot.data.operational_records import OperationalRecords
+from opspilot.evidence.admission import admit
+from opspilot.evidence.operations import TurnEvidence
 from opspilot.evidence.references import (
     PREFIX_TYPES,
     RETIRED_PREFIXES,
@@ -26,12 +29,14 @@ from opspilot.evidence.references import (
     role_is_admissible,
     try_parse,
 )
+from opspilot.tools.contracts import Completeness, ExecutionOutcome, ToolMetadata, ToolResult
 
 EVIDENCE_REFS = [
     "logs:payment-api:evt-001-01",
     "metrics:checkout-api:http_5xx_rate@2026-05-12T14:30:00Z",
     "deploys:payment-api:dep-20260512-01",
     "deps:checkout-api->payment-api",
+    "absence:get_deployments:op-0007",
 ]
 KNOWLEDGE_REFS = [
     "runbook:payment-timeout",
@@ -47,6 +52,7 @@ def test_every_prefix_has_exactly_one_declared_type():
         "metrics",
         "deploys",
         "deps",
+        "absence",
         "runbook",
         "architecture",
         "postmortem",
@@ -118,6 +124,39 @@ def test_log_and_deploy_references_name_one_service_and_an_identifier():
     assert parse("deploys:payment-api:dep-20260512-01").entities == ("payment-api",)
 
 
+# --- authoritative absence ----------------------------------------------------------------------
+def test_an_absence_reference_names_its_capability_and_producing_operation():
+    parsed = parse("absence:get_deployments:op-0007")
+    assert parsed.reference_type is ReferenceType.EVIDENCE
+    assert parsed.capability == "get_deployments"
+    assert parsed.identifier == "op-0007"
+
+
+def test_an_absence_reference_is_evidence_and_may_occupy_any_citation_role():
+    """It reports what a scope contained, which is a current operational observation. Classing it
+    as knowledge would bar it from the roles an absence is most useful in."""
+    parsed = parse("absence:query_logs:op-0002")
+    assert parsed.is_evidence and not parsed.is_knowledge
+    for role in CitationRole:
+        assert role_is_admissible(parsed.reference_type, role)
+
+
+def test_a_bare_operation_reference_is_still_not_an_evidence_reference():
+    """An operation names an attempt, not an observation. Embedding one inside an absence
+    reference must not make the bare form citable."""
+    for raw in ("op-0001", "op-0007"):
+        with pytest.raises(ReferenceError):
+            parse(raw)
+        assert try_parse(raw) is None
+
+
+def test_an_absence_reference_names_no_entity():
+    """The queried scope is carried by the admitted observation, not smuggled into the reference:
+    a capability name is not a service, and treating it as one would put it into cause analysis."""
+    assert parse("absence:get_deployments:op-0007").entities == ()
+    assert entities_named(["absence:get_deployments:op-0007"]) == set()
+
+
 @pytest.mark.parametrize(
     "raw",
     [
@@ -130,6 +169,11 @@ def test_log_and_deploy_references_name_one_service_and_an_identifier():
         "metrics:checkout-api:http_5xx_rate@not-a-time",
         "metrics:checkout-api:http_5xx_rate@2026-05-12T14:30:00",
         "runbook:a:b",
+        "absence:",
+        "absence:get_deployments",
+        "absence::op-0007",
+        "absence:get_deployments:",
+        "absence:get_deployments:op-0007:extra",
     ],
 )
 def test_malformed_references_raise_rather_than_degrade(raw):
@@ -218,6 +262,41 @@ def test_resolver_reads_the_container_it_was_given():
     resolver = ReferenceResolver(records)
     assert resolver.resolves("logs:svc-a:evt-9")
     assert not resolver.resolves("logs:svc-a:evt-8")
+
+
+def test_an_absence_reference_resolves_to_the_admitted_observation(container):
+    """An absence has no source row by definition, so it resolves against what admission recorded.
+    Resolving it against the container would ask a source to produce the row whose non-existence
+    is the finding."""
+    turn = TurnEvidence(investigation_id="inv-1", turn_id="turn-1")
+    empty = ToolResult(
+        tool_name="get_deployments",
+        outcome=ExecutionOutcome.SUCCEEDED,
+        completeness=Completeness.EMPTY,
+        metadata=ToolMetadata(tool_name="get_deployments", duration_ms=1.0, result_count=0),
+    )
+    outcome = admit(empty, turn=turn, question="did anything change", request_scope={"svc": "a"})
+    observation = outcome.observations[0]
+
+    resolver = ReferenceResolver(OperationalRecords(container), absences=turn.observations)
+    result = resolver.resolve(observation.evidence_ref)
+    assert result.resolved
+    assert result.record is observation
+    assert result.record.is_authoritative_absence
+
+
+def test_an_absence_reference_the_resolver_was_not_given_is_unresolved_not_malformed(container):
+    """Well formed and naming nothing here. Raising instead would report a turn's own absence as a
+    grammar error once the reference travelled outside that turn."""
+    resolver = ReferenceResolver(OperationalRecords(container))
+    result = resolver.resolve("absence:get_deployments:op-0007")
+    assert result.reference.prefix == "absence"
+    assert result.resolved is False
+    assert result.record is None
+
+
+def test_a_malformed_absence_reference_does_not_resolve(container):
+    assert ReferenceResolver(OperationalRecords(container)).resolves("absence:op-0007") is False
 
 
 def test_reference_dataclass_is_frozen():

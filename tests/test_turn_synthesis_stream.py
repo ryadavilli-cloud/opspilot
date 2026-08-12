@@ -169,6 +169,64 @@ def test_an_empty_change_history_is_reported_as_a_finding_not_a_failure():
     assert "empty" in deploys[0]["detail"]
 
 
+# --- telemetry correlation ----------------------------------------------------------------------
+def test_every_span_in_the_turn_carries_both_correlation_identities(span_exporter):
+    """Not trace_id alone. A child carrying only the trace would be attributable only by first
+    finding the root and reading the identity off it, which is reassembly at read time rather than
+    context attached where the work entered the boundary."""
+    events, _ = _run({})
+    identity = events[0]
+
+    assert span_exporter.spans, "the turn emitted no spans at all"
+    for sp in span_exporter.spans:
+        assert sp.attributes.get("turn_id") == identity["turn_id"], sp.name
+        assert sp.attributes.get("investigation_id") == identity["investigation_id"], sp.name
+
+
+def test_the_turn_emits_a_capability_an_admission_and_a_model_span(span_exporter):
+    _run({})
+    names = {sp.name for sp in span_exporter.spans}
+    assert any(name.startswith("tool.") for name in names), names
+    assert "evidence.admit" in names
+    assert "model.rca_synthesis" in names
+
+
+def test_the_admission_span_records_the_reference_it_assigned(span_exporter):
+    """An unresolvable citation must be diagnosable from telemetry without re-running the turn,
+    which takes the assigned reference rather than a count of how many were admitted."""
+    _run({})
+    admitted = [
+        sp
+        for sp in span_exporter.spans
+        if sp.name == "evidence.admit" and sp.attributes.get("admitted")
+    ]
+    assert admitted, "nothing was admitted, so the reference assignment was never recorded"
+    for sp in admitted:
+        assert sp.attributes["evidence_refs"]
+        assert sp.attributes["observation_count"] > 0
+
+
+def test_an_absence_carries_its_assigned_reference_not_only_a_marker(span_exporter):
+    """inc-005 has no deployment in its window. The marker is diagnostically useful, but it must
+    not stand in for the reference: an absence is citable evidence and its span says which
+    reference admission assigned. No bare operation reference appears as one."""
+    _run({})
+    absences = [
+        sp
+        for sp in span_exporter.spans
+        if sp.name == "evidence.admit" and sp.attributes.get("authoritative_absence")
+    ]
+    assert absences, "the empty change history produced no admission span"
+    for sp in absences:
+        assert sp.attributes["admitted"] is True
+        assigned = sp.attributes["evidence_refs"]
+        assert assigned.startswith(f"absence:{sp.attributes['capability']}:")
+        assert assigned.endswith(sp.attributes["operation_ref"])
+        # Parsed rather than reported as an unresolvable citation: it has no source row, but it is
+        # a well-formed evidence reference like any other.
+        assert sp.attributes["references_parsed"] == sp.attributes["observation_count"]
+
+
 # --- the plan itself ---------------------------------------------------------------------------
 def test_the_evidence_plan_is_empty_without_alerts_to_scope_it():
     """Predefined intake carries no affected service, so the alerts are what the rest is scoped to.
