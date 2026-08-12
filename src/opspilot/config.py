@@ -195,6 +195,11 @@ EMBEDDING_DIMENSIONS = _env_int("AZURE_OPENAI_EMBEDDING_DIMENSIONS", 1536)
 # may name its own deadline, and dispatch refuses one that tries.
 SOURCE_DEADLINE_SECONDS = _env_float("OPSPILOT_SOURCE_DEADLINE_SECONDS", 10.0)
 
+# The ceiling a governed structured query's result limit must sit at or below. The limit is always
+# present in the structure; this is the bound the structure may not exceed, held in code because a
+# request may not widen what it is allowed to read.
+STRUCTURED_QUERY_MAX_LIMIT = _env_int("OPSPILOT_STRUCTURED_QUERY_MAX_LIMIT", 200)
+
 
 # --------------------------------------------------------------------------------------
 # Reviewer / caller identity

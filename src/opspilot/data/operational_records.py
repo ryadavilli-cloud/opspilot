@@ -21,6 +21,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from opspilot import config
+from opspilot.data.structured_query import StructuredQuery, translate
 
 # A read that would return more than this is a corpus defect rather than a query to satisfy: the
 # authored corpus is seven incidents. The cap is a literal, never a caller-supplied value.
@@ -159,6 +160,17 @@ class OperationalRecords:
             [{"name": "@kind", "value": _KIND_DEPENDENCY}],
             deadline_s=deadline_s,
         )
+
+    def structured(self, query: StructuredQuery, *, deadline_s: float) -> list[Any]:
+        """Execute a validated query structure.
+
+        Takes the structure rather than text, and translates it here, so no path exists through
+        which a caller could hand this reader a query of its own. `validate` runs before this, at
+        the capability boundary, because a rejection has to become a limitation rather than an
+        exception crossing the source.
+        """
+        text, parameters = translate(query)
+        return self._query(text, parameters, deadline_s=deadline_s)
 
     def kind_counts(self, *, deadline_s: float) -> dict[str, int]:
         """One count per record kind, for the deployment-time preparation check. Absent preparation

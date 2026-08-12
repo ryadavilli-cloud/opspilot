@@ -49,6 +49,38 @@ class ContainerUnreachable(RuntimeError):
     """What a container raises when it cannot answer at all."""
 
 
+class UnrecognizedQuery(AssertionError):
+    """A query shape this fake was not built to answer.
+
+    Raised rather than returning nothing. A fake that answers an unfamiliar query with an empty
+    result does not fail; it removes the assertion, and the test goes on passing for a reason
+    unrelated to the behavior it claims to protect. Failing here says which query arrived.
+    """
+
+
+class CannedContainer:
+    """A container that ignores the query entirely and returns what it was given.
+
+    For asserting the one thing that does not depend on filtering: how a provider outcome becomes
+    the two axes. Rows mean `succeeded`, nothing means `succeeded` with `empty`, and raising means
+    `unavailable`. What the query said is irrelevant to that mapping, so this deliberately does not
+    read it, and cannot be mistaken for evidence that a query filtered correctly.
+    """
+
+    def __init__(self, rows: list[Any] | None = None, *, unreachable: bool = False) -> None:
+        self.rows = rows if rows is not None else []
+        self.unreachable = unreachable
+        self.timeouts: list[float] = []
+        self.queries: list[str] = []
+
+    def query_items(self, query: str, parameters=None, timeout: float | None = None, **_: Any):
+        self.queries.append(query)
+        self.timeouts.append(timeout)  # type: ignore[arg-type]
+        if self.unreachable:
+            raise ContainerUnreachable("the container refused the connection")
+        return list(self.rows)
+
+
 class FakeContainer:
     """Enough of a Cosmos container to answer the authored queries.
 
@@ -61,6 +93,9 @@ class FakeContainer:
         self.unreachable = unreachable
         self.timeouts: list[float] = []
         self.queries: list[str] = []
+        # Every field any document carries, plus the partition key. What is not here is a
+        # parameter this fake cannot interpret, and it says so rather than matching nothing.
+        self._known_fields = {key for document in documents for key in document} | {"kind"}
 
     def query_items(
         self,
@@ -82,15 +117,25 @@ class FakeContainer:
             return [len(matched)]
         return matched
 
-    @staticmethod
-    def _matches(document: dict[str, Any], parameters: list[dict[str, Any]]) -> bool:
+    def _matches(self, document: dict[str, Any], parameters: list[dict[str, Any]]) -> bool:
         for parameter in parameters:
             field = parameter["name"].lstrip("@")
             wanted = parameter["value"]
             if isinstance(wanted, list):
                 # `ARRAY_CONTAINS(@services, c.service)`: the parameter is plural, the field is
                 # not, and this is the only place that convention is interpreted.
-                if document.get(field.removesuffix("s")) not in wanted:
+                field = field.removesuffix("s")
+            if field not in self._known_fields:
+                # A positional parameter, as the structured-query translator emits. This fake
+                # answers the authored queries, whose parameters are named for their field; it
+                # cannot evaluate a translated one and must not pretend the scope was empty.
+                raise UnrecognizedQuery(
+                    f"parameter {parameter['name']!r} names no field this fake can match on. "
+                    "A translated structured query is not answerable here: assert its text and "
+                    "parameters against `translate`, and its outcome mapping with CannedContainer."
+                )
+            if isinstance(wanted, list):
+                if document.get(field) not in wanted:
                     return False
             elif document.get(field) != wanted:
                 return False

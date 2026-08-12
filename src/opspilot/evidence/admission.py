@@ -56,6 +56,10 @@ CAPABILITY_EVIDENCE_TYPES: Mapping[str, EvidenceType | None] = MappingProxyType(
         "query_logs": EvidenceType.LOG_EVENT,
         "get_metrics": EvidenceType.METRIC,
         "get_service_dependencies": EvidenceType.DEPENDENCY_OR_TOPOLOGY,
+        # The structured path observes operational records, which is what its type names. It does
+        # not name the path, because the same record read by a dedicated capability would be the
+        # same observation.
+        "structured_query": EvidenceType.STRUCTURED_OPERATIONAL_RECORD,
         "search_runbooks": None,
         "search_past_incidents": None,
     }

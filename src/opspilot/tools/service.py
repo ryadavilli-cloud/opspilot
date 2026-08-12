@@ -30,6 +30,7 @@ from opspilot.tools.incidents import get_incident
 from opspilot.tools.logs import query_logs
 from opspilot.tools.metrics import get_metrics
 from opspilot.tools.search import search_past_incidents, search_runbooks
+from opspilot.tools.structured_query import ALL_COLLECTIONS, structured_query
 
 if TYPE_CHECKING:
     from opspilot.retrieval.base import SearchRetriever
@@ -45,9 +46,11 @@ class ToolService:
         retriever_factory: Callable[[], SearchRetriever] | None = None,
         *,
         deadline_s: float | None = None,
+        granted_collections: frozenset[str] = ALL_COLLECTIONS,
     ) -> None:
         self.records = records if records is not None else default_operational_records()
         self.deadline_s = deadline_s if deadline_s is not None else config.SOURCE_DEADLINE_SECONDS
+        self.granted_collections = granted_collections
         self._retriever_factory = retriever_factory
         self._retriever: SearchRetriever | None = None
         self._retriever_attempted = False
@@ -78,6 +81,13 @@ class ToolService:
 
     def get_service_dependencies(self, **kwargs: Any) -> ToolResult[Any]:
         return get_service_dependencies(self.records, deadline_s=self.deadline_s, **kwargs)
+
+    def structured_query(self, **kwargs: Any) -> ToolResult[Any]:
+        # The grant is supplied here, alongside the deadline and for the same reason: both bound
+        # what a request may reach, so neither is a value a request carries.
+        return structured_query(
+            self.records, deadline_s=self.deadline_s, granted=self.granted_collections, **kwargs
+        )
 
     # --- retrieval tools (retriever-backed, lazy) ---------------------------------------------
     def _get_retriever(self) -> SearchRetriever | None:
