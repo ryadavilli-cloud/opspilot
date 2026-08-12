@@ -65,7 +65,7 @@ schedules as S-10; that slice's remaining scope is narrowed accordingly.
 
 | Capability | Status | Note |
 | --- | --- | --- |
-| Streaming turn transport, activity projection, one-screen client | Implemented | S-1. No cancellation signal yet (disconnect only); no accepted terminal outcome yet |
+| Streaming turn transport, activity projection, one-screen client | Implemented | S-1. No cancellation signal yet (disconnect only); no accepted terminal outcome yet. The client handles the identity, activity, and close events and has no branch for the brief, so a rendered brief arrives and is visible only in the details area |
 | Predefined intake normalization | Implemented | S-1. Free-text normalization and clarification are S-5 |
 | Evidence reference model, two-axis capability results, EAL admission | Implemented | S-2 |
 | Governed structured query | Implemented | Landed ahead of S-10; see above |
@@ -134,6 +134,13 @@ six-service composition.
   legacy single-agent LLM planner does not request, so it no longer strictly beats the floor. The
   test's subject is old-architecture machinery already named for deletion, so the fix is the
   deletion rather than repairing the planner's tool selection.
+- **One open question is not a decision gate and has no decision record.** If free-text intake
+  clarifies through a short-lived normalization token, that token needs an explicit signing, expiry,
+  and payload contract; a simpler resubmission path is preferred where it meets the requirement.
+  Nothing in the repository takes a position either way, since no clarification path exists yet, so
+  the absence of a token is not evidence the simpler path was chosen. It blocks S-5 and nothing
+  else. Recorded here because the reconciliation inventory that carried it was retired and the
+  question was not answered with it.
 - No contradiction was found between `decisions.md` and the current repository.
 - **One contradiction this cleanup created, not yet resolved:** `horizontal-execution-plan.md` cites
   this document roughly eighty times by heading name (`Deletion and Replacement Register`, `Detailed
