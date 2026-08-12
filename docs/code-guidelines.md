@@ -470,6 +470,9 @@ why:
   were identified before the change, deterministic callers received explicit substitutes, and the
   affected tests pass individually, in a different order, and under the exact CI-lane commands;
 * the design documents are updated where a contract or a decision changed;
+* what the change supersedes has been deleted rather than left coexisting, no speculative
+  abstraction or unjustified production machinery was added, and obsolete tests died with their
+  subjects (§16);
 * no file the change touches carries prohibited plan vocabulary, the change description carries
   none, and any name-level occurrence found has been reported (§12).
 
@@ -675,3 +678,50 @@ drawing any conclusion from an exit code: a green status nobody read is not evid
 
 Repair the isolation defect itself. Pinning an order, widening a timeout, or retrying a test
 records the symptom and keeps the coupling.
+
+## 16 Change Scope, Deletion, and Proportion
+
+The rules above govern what a change must preserve. These govern how much a change may add, and they
+apply to every change regardless of which slice or sequence it belongs to.
+
+**A change carries one primary completion claim.** It establishes one coherent contract or behavior.
+A description that needs "and also" describes two changes. A contract that cannot compile or be
+tested in halves ships whole rather than being split to reduce line count.
+
+**Superseded code is deleted, not retained.** When a change supersedes an implementation, a
+dependency, or a configuration setting, the superseded thing leaves in the same change wherever it
+can. Working correctly, having tests, being production-suitable, or having taken effort to build are
+not reasons to retain something the accepted design no longer needs. Code MUST NOT reach a
+superseded implementation once its replacement is the accepted path.
+
+**Coexistence is temporary and named.** Where a replacement genuinely cannot land alongside the
+deletion, the transitional adapter or duplicate path MUST have a named, recorded point at which it is
+removed. An adapter with no stated end is a permanent second implementation, and §14 already
+prohibits that behind the protocol boundary for the same reason it is prohibited here generally.
+Compatibility layers that no live caller reaches MUST be deleted rather than kept against a
+hypothetical one.
+
+**Obsolete tests die with obsolete behavior.** Tests change with the behavior they protect. A test
+whose subject is deleted is deleted with it, never rewritten to keep asserting superseded semantics,
+and never retained as documentation of how the system used to work. A test suite that still passes
+against removed behavior is asserting something untrue about the system.
+
+**Abstraction is earned, not anticipated.** An abstraction is justified when it removes real
+duplication that exists now or enforces an accepted authority boundary. Speculative extension points
+MUST NOT be added, and code stays explicit until a real second case arrives. Those points include
+registries, plugin seams, provider abstractions for providers the design does not use, configurable
+strategies with one implementation, reserved fields, and stubs for future capabilities.
+
+**Production-grade machinery needs a named justification.** This is a bounded demonstration system.
+Retry policies, caches, timeouts, availability mechanisms, coordination protocols, and durability
+features beyond what an owning design document specifies MUST NOT be added on general engineering
+grounds. The justification is a requirement, a demonstration need, an evaluation need, or a
+troubleshooting need that the change states. Where an accepted approach genuinely will not work, the
+resolution is a recorded revision in `decisions.md` made before the code changes, never a silent
+fallback to the rejected path.
+
+**Evaluation grows with capability, proportionally.** A change that materially alters an AI or
+agentic behavior carries the advisory evaluation coverage for that behavior: what a model is asked,
+how its output is admitted, how evidence is selected, or how an outcome is derived. A change that
+alters no such behavior owes no new evaluation artifact, and one MUST NOT be manufactured to satisfy
+a checklist. Evaluation remains advisory and does not gate the merge (§13).

@@ -54,85 +54,85 @@ that the milestone report can include final hosted verification.
 
 ## Planning posture
 
-- The repository materially conflicts with the target. The plan is deletion-led: the old runtime
-  is cut over and removed as soon as the replacement can execute one real investigation. The plan
-  does not preserve the old architecture as a safety blanket through several capability slices.
+- The plan is deletion-led: the old runtime is cut over and removed as soon as the replacement can
+  execute one real investigation, rather than preserved as a safety blanket through several
+  capability slices. S-0 through S-2 have already landed the replacement's foundation; the old
+  LangGraph/HITL/job-runtime path still coexists temporarily and is owned by the S-4 cutover.
 - Every slice ends with something a reviewer can run, see, or verify that was not available before.
 - Existing code survives only when it directly supports the accepted design and is the simplest
   suitable realization. Production suitability is not a reason to retain it.
 - Azure is reconciled incrementally rather than in one late slice. A-0 aligns the hosted
   environment immediately after cutover, each capability slice adds only the resource it needs and
   adds it additively, and A-1 performs live deletion and complete hosted verification.
-- Evaluation grows with capability. Each slice that adds behavior adds the accepted evaluation
-  increment for that behavior; S-13 completes the judge, baselines, and report rather than building
-  the evaluation system from nothing.
+- Evaluation grows with capability. A slice that materially changes an AI or agentic behavior adds
+  the accepted evaluation increment for it; S-13 completes the judge, baselines, and report rather
+  than building the evaluation system from nothing. Plumbing-only work that introduces no meaningful
+  runtime behavior owes no new evaluation artifact.
 - Telemetry is emitted where behavior is added, not retrofitted. The Application Insights sink can
-  wait for the hosted slice; the emission semantics cannot. A slice that adds runtime behavior and
-  leaves its `Telemetry and activity impact` field thin has deferred its own diagnosability, and
-  A-0 does not exist to catch up on it. The obligations this places on every slice are stated once
-  under "Diagnosability obligations" below.
+  wait for the hosted slice; the emission semantics cannot. A slice that adds meaningful runtime
+  behavior and leaves its telemetry thin has deferred its own diagnosability, and A-0 does not exist
+  to catch up on it. Plumbing-only work owes no new telemetry assertion. The obligations are stated
+  once under "Diagnosability obligations" below.
 - The accepted corpus remains seven authored incidents across five families. Controlled fixture
   variants may fill evaluation classes, but the plan does not silently add authored incidents.
 - Course-material sequencing is an aid, not a straitjacket.
 - A pending decision stays open until a consuming slice has the evidence needed to resolve it. The
-  decision-gates table below is the single list of which remain open and when each resolves.
+  decision-gates table below is the single list of which remain open and when each resolves; D-004
+  is currently the only entry.
 
 ## Standard slice template
 
-Every slice below uses the same fields, in this order. A field that does not apply reads "None"
-rather than being omitted, so that gaps stay visible.
-
 | Field | What it records |
 | --- | --- |
-| Demonstrable outcome | What a reviewer can run, see, or verify that was not available before |
-| Entry criteria | What must already be true and verified before the slice starts |
-| Existing foundation retained | Repository code kept, with its accepted-design justification |
-| Code and data to delete | What leaves the repository in this slice |
-| Code to replace | What is superseded, and by what |
-| New implementation | What is built |
-| Contract introduced or stabilized | Which accepted contract becomes stable here |
-| Telemetry and activity impact | The authoritative instrumentation facts this slice must emit |
-| Deterministic tests | Offline tests that must pass, independent of environment |
-| Evaluation increment | What the accepted evaluation gains here, advisory only |
-| Dataset or fixture work | Corpus, golden, cassette, or fixture changes |
-| Azure impact | Execution posture and any infrastructure change |
-| Decision gates | Pending decisions resolved, or explicitly still deferred |
-| Explicit non-goals | What this slice deliberately does not do |
-| Small PR breakdown | The PR sequence, one primary completion claim each |
-| Completion evidence | The concrete artifact or run that closes the slice |
-| Status updates required after landing | What must change in the status document |
+| Outcome | What a reviewer can run, see, or verify that was not available before |
+| Consumes | What must already be true and verified before the slice starts, and what existing code it retains, with its accepted-design justification |
+| Build / replace / delete | What is built, what is superseded and by what, and what leaves the repository |
+| Contracts affected | Which accepted contract becomes stable here |
+| Tests and evaluation | Deterministic tests that must pass, and what the advisory accepted evaluation gains here |
+| Telemetry/activity, when applicable | The authoritative instrumentation facts this slice must emit |
+| Small PRs | The PR sequence, one primary completion claim each |
+| Done when | The concrete artifact or run that closes the slice |
+
+Azure impact, decision gates, dataset or fixture work, and explicit non-goals are added only to a
+slice where they materially apply; a slice with none of these states nothing rather than writing
+"None" for each. Status updates land in `status.md` at slice completion per the rule stated below;
+they are not itemized per slice here, since `status.md` records current truth by inspection rather
+than by a per-slice checklist derived from this plan.
+
+S-3 below uses this reduced shape. Slices written before this template was adopted keep their fuller
+historical field breakdown, which carries the same information under more granular headings; they
+are not mechanically relabeled here, since doing so would risk rewording settled, precisely-worded
+scope rather than only reformatting it.
 
 ## Diagnosability obligations
 
-This section defines what the template's `Telemetry and activity impact` field must contain. It is
-stated once and is not repeated inside each slice; each slice names only the diagnostic facts its
-own behavior emits.
+This section defines what a slice's telemetry field must contain. It is stated once and is not
+repeated inside each slice; each slice names only the diagnostic facts its own behavior emits.
 
-**The bar.** `requirements.md` NFR-20 requires the deployed application to be diagnosable from its
-logs and telemetry without redeployment. This plan reads that operationally: a coding agent working
-only from Azure and GitHub evidence, with no human first reconstructing what happened, must be able
-to investigate a deployment failure or a runtime failure. Anything a human would have to remember,
-re-run locally, or infer from prose is a missing structured fact.
+**The bar**, read operationally from `requirements.md` NFR-20: runtime behavior emits correlated
+spans and events for turn, stage, agent, model, tool, retrieval, MCP, grounding, commit, and
+terminal outcome, wherever the behavior at that link exists. Important decisions and failures carry
+structured fields, not prose a reader would have to parse; errors are sanitized per
+`code-guidelines.md` §9; no chain-of-thought, prompt, or raw model output is exposed, in telemetry or
+in the activity projection it is derived from. No telemetry store, event bus, metric registry, or
+observability screen is introduced by any slice. The correlation obligation, the emitted set and
+sink, the instrumentation rules, and the activity projection are owned by `system-design.md` §10.3,
+`runtime-and-deployment.md` §14, `code-guidelines.md` §10, and `system-design.md` §10.4
+respectively, and are not restated here.
 
-The design owners are unchanged and are not restated here: the correlation obligation is
-`system-design.md` §10.3, the emitted set and the sink are `runtime-and-deployment.md` §14, the
-instrumentation rules are `code-guidelines.md` §10, and the activity projection is
-`system-design.md` §10.4.
-
-**The reconstruction chain.** For any turn, the trail that must be assemblable from telemetry alone
-is:
+**The reconstruction chain**, so a deployment or runtime failure is diagnosable from telemetry alone
+without a human reconstructing it first:
 
 ```
 revision/startup -> request/turn -> stage/agent -> model call -> capability/tool
                  -> retrieval/MCP where applicable -> grounding -> commit -> terminal outcome
 ```
 
-Every link in that chain is owned by the slice that builds the behavior at that link. A-0 makes the
-chain queryable in a hosted environment; it does not author the links.
+Every link is owned by the slice that builds the behavior at that link. A-0 makes the chain queryable
+in a hosted environment; A-1 verifies it end to end; neither authors a link.
 
-**The common attribute set.** One small set of span and log attributes carries the chain. It is a
-shared vocabulary, not a telemetry domain model, and it grows only when a slice introduces the
-behavior an attribute describes:
+**The common attribute set** carries the chain. It grows only when a slice introduces the behavior an
+attribute describes, and is not a telemetry domain model:
 
 | Attribute | Present on | Owning slice |
 | --- | --- | --- |
@@ -150,49 +150,15 @@ behavior an attribute describes:
 | Backend identity, so a fixture or in-memory run is never mistaken for a live one | Persistence, retrieval, and structured-query spans | S-2 mints it on the commit span, S-7, S-9, and S-10 make it vary |
 | Retrieval leg, fusion, and promotion facts | Retrieval spans | S-9 |
 
-Nothing here is a new persistence concept. There is no telemetry store, event bus, replay store,
-metric registry, or observability screen, and none is added by any slice.
-
-**Diagnostic quality.** Four rules, enforced per slice rather than audited later.
-
-1. **Structured fields, not prose.** A fact a query must filter or group on is an attribute. A log
-   line whose only carrier of the fact is its message text does not satisfy this.
-2. **Stable operation names.** Span and operation names are fixed identifiers that survive
-   refactoring. A name assembled from runtime values is not queryable across turns; the varying part
-   belongs in an attribute.
-3. **Sanitized errors.** An error carries a category and a useful reason. It never carries a secret,
-   a token, a connection string, a prompt, hidden reasoning, a raw evidence or passage body, or a
-   stack trace exposed to a user. `code-guidelines.md` §9 telemetry hygiene governs; this plan adds
-   only that the sanitized remainder must still be enough to act on.
-4. **Failure classes stay distinguishable.** Telemetry must let a reader separate configuration
-   failure, Azure dependency failure, model failure, tool failure, retrieval failure, grounding
-   failure, persistence failure, cancellation, and an ordinary partial or inconclusive outcome. Two
-   of these collapsing into one category is the defect this section exists to prevent, and it is the
-   same failure mode the two-axis capability result already guards against at the source boundary.
-
-**Telemetry describes decisions, never reasoning.** Every fact above is an observable decision,
-input identity, or outcome. Chain-of-thought, prompts, and raw model output are excluded from
-telemetry as they are from the activity projection.
-
-**Deployment diagnostics, and where the boundary sits.** Two evidence surfaces, neither duplicating
-the other:
-
-- **GitHub Actions owns build and deploy evidence:** dependency restore, static checks, tests, image
-  build and push, `az deployment group` output and Bicep errors, revision creation, and the smoke
-  command's own output and exit status.
-- **OpsPilot and Application Insights own application evidence:** startup, configuration validation,
-  readiness, and everything the running application then does.
-
-Together they must let an automated agent trace a failed deployment from the failing workflow step,
-to the deployed revision, to that revision's application startup and readiness result, to a runtime
-request. The join is the revision identity: the workflow records which revision it deployed, and the
-application's startup telemetry records which revision is running. GitHub Actions logs are not
-copied into Application Insights, and application telemetry is not re-emitted into workflow output.
+**Two evidence surfaces stay separate, never duplicated:** GitHub Actions owns build and deploy
+evidence; OpsPilot and Application Insights own application evidence from startup onward. They join
+on the revision identity, so a deployment can be traced from the failing workflow step to that
+revision's startup and runtime behavior without either surface copying the other's output.
 
 **Completion evidence.** A slice with meaningful runtime behavior closes on a telemetry assertion as
-well as a functional one: the deterministic suite asserts that the facts the slice named are
-actually emitted, with the correlation attributes present, through the in-memory exporter fixture
-rather than a live sink. A-0 and A-1 close on a real query against Application Insights.
+well as a functional one: the deterministic suite asserts that the facts the slice named are emitted,
+with correlation attributes present, through the in-memory exporter fixture. A-0 and A-1 close on a
+real query against Application Insights.
 
 ## PR-size guardrails
 
@@ -290,14 +256,14 @@ therefore renders an assessment; it does not conclude an investigation.
 
 ## Decision gates
 
-Pending decisions carry a resolution point, so that "pending" does not become "forgotten".
+D-004 is the only decision `decisions.md` still carries as pending; it is listed here so "pending"
+does not become "forgotten". D-005 and D-006 are both Accepted, with every D-006 selection criterion
+already naming a real incident identifier: no slice below resolves either, and where a slice
+mentions one it is consuming an accepted answer, not making one.
 
 | Decision | Resolve when | Blocks |
 | --- | --- | --- |
 | D-004 MCP library mechanics and transport carriage | Before S-11 implementation | Library usage, session handling, result carriage |
-| D-005 judge rubric version | First S-13 PR | Judge implementation and removal of the standalone judge configuration |
-| D-006 retrieval-influence selection | Within S-9 | Retrieval-influence demonstration |
-| D-006 remaining corpus selections | End of S-12 | S-13 evaluation wiring |
 
 A gate that would force a documented design revision rather than a recorded selection is stopped
 on and revised explicitly, never worked around with a runtime fallback.
@@ -308,15 +274,13 @@ carriage only.
 
 ## Implementation clarifications and their owners
 
-`status.md` section 17 records questions the repository exposed. Each is answered inside a slice
-before code invents an incompatible answer.
+Questions the repository exposed that a slice must answer before code invents an incompatible one.
 
 | Clarification | Owning slice | Default position |
 | --- | --- | --- |
 | Stateless clarification token | S-5 | Prefer simple resubmission of the original input; introduce a signed short-lived token only if resubmission demonstrably fails the requirement |
 | Minimal knowledge metadata contract | S-9, first PR | Identifier, container category, promotion date, and admission provenance only. No authoritative document fixes this today, so S-9 records it before implementing rather than treating it as a precondition |
 | D-004 library evidence | S-11 | In-process hosting is fixed; record the library findings |
-| D-006 corpus evidence | S-9, S-12 | Remaining selections wait for the coverage audit |
 
 ## Execution environment matrix
 
@@ -337,7 +301,7 @@ Azure is reconciled incrementally. The posture per slice is stated rather than l
 | S-7 | Deterministic contract tests over the port; a separate Azure-assisted Cosmos integration lane |
 | S-8 | Local deterministic, with one optional Azure-assisted follow-up verification |
 | S-9 | Azure-assisted local required for embedding and vector queries; deterministic fixtures for CI |
-| S-10 | Local fixture adapter first; Azure-assisted Cosmos integration second |
+| S-10 | Local deterministic. The query engine's own Azure-assisted Cosmos integration already ran; what remains is the authorization wiring, which needs no new infrastructure |
 | S-11 | Local deterministic |
 | S-12 | Local deterministic plus selected Azure-assisted model verification |
 | A-1 | Hosted verification |
@@ -377,6 +341,7 @@ enforced against this table.
 | Deprecated `EvalTargets` numeric thresholds | The old scenario and single-agent gates still consume them; removing the configuration before its consumers would break the S-0 baseline | Pre-existing, frozen and marked deprecated at S-0 | S-4, with the gates that read it |
 | Three incorrect MCP exposures (`get_incident`, `query_logs`, `search_runbooks`) | Parity must survive the S-2 envelope change continuously; narrowing the exposed set is a separate concern | Pre-existing, carried through S-2 | S-11 |
 | Old `safety_validate` wrapper delegating to the four-check gate | The old graph path still calls a safety step after S-3 replaces the policies | S-3 | S-4 |
+| Legacy claim admission and template rendering (`diagnosis/admission.py`, `diagnosis/render.py`) | The old report/claim model still needs them while the graph path runs; the accepted brief projection is `assessment/brief.py` and does not use either | Pre-existing, frozen at S-2 | S-3 for claim admission if the gate makes it redundant; `render.py` when S-4 and S-5 delete its two remaining callers |
 | Interim hosted smoke (start, authentication, one streamed turn) | Keeps CD green and honest between cutover and the eight-check suite. Every capability slice through S-12 must leave it passing | S-4 | A-1 |
 | In-memory Investigation Record backend | Commit-before-terminal must exist before Cosmos work begins | S-2 | Not deleted: S-7 replaces the backend; the port, the in-memory implementation, and their tests remain as the local and CI backend |
 
@@ -405,40 +370,40 @@ slice that first needs it adds it.
 
 ## Path-level detail for S-0 to S-5 and A-0
 
-These slices restructure the repository, so their paths are named now. Paths marked "proposed"
-are the intended destination and are confirmed in the slice's first PR. S-6 onward keeps
-provisional placement until this structure exists.
+These slices restructure the repository, so their paths are named now. A path marked "proposed" is
+not yet created; a path with no such mark is landed and confirmed against the current repository.
+S-6 onward keeps provisional placement until this structure exists.
 
 | Concern | Path | Owner slice | Note |
 | --- | --- | --- | --- |
-| Stream envelope and activity contract | `src/opspilot/stream/contracts.py` (proposed) | S-1 | New module; no existing counterpart |
-| Activity projection from instrumentation facts | `src/opspilot/stream/projection.py` (proposed) | S-1 | Derives from `obs/tracing.py` span facts |
-| Turn identity and live-session presentation state | `src/opspilot/turn/identity.py` (proposed) | S-1 | No turn model exists today (status 10.12) |
-| Normalized incident context and intake classification | `src/opspilot/intake/contracts.py` (proposed) | S-1 | Predefined intake only; S-5 adds free text and clarification |
+| Stream envelope and activity contract | `src/opspilot/stream/contracts.py` | S-1 | Landed |
+| Activity projection from instrumentation facts | `src/opspilot/stream/projection.py` | S-1 | Landed. Derives from `obs/tracing.py` span facts |
+| Turn identity and live-session presentation state | `src/opspilot/turn/identity.py` | S-1 | Landed |
+| Normalized incident context and intake classification | `src/opspilot/intake/contracts.py` | S-1 | Landed for predefined intake only; S-5 adds free text and clarification |
 | Telemetry seam | `src/opspilot/obs/tracing.py` | S-1 | Retained as the one emission seam. Every later slice adds its facts here and asserts them through the in-memory exporter |
 | Application startup hook and exporter wiring | `src/opspilot/api.py` | A-0 | No startup hook exists today. A-0 adds one and calls `configure_exporter()` from it, alongside the startup, configuration-validation, and readiness records that need the same hook. Before A-0 there is no sink to select |
-| Streaming endpoint | `src/opspilot/api.py` | S-1 | Added beside the old routes; old routes removed in S-4 |
-| One-screen client | `src/opspilot/static/investigation.html` (proposed) | S-1 | New file on its own route; single file, no build step. The old console keeps working until S-4 |
+| Streaming endpoint | `src/opspilot/api.py` | S-1 | Landed beside the old routes; old routes removed in S-4 |
+| One-screen client | `src/opspilot/static/investigation.html` | S-1 | Landed. Single file, no build step. The old console keeps working until S-4 |
 | Old approval console deletion | `src/opspilot/static/console.html` | S-4 | Deleted when the new screen becomes the sole client |
-| Evidence reference model, parser, resolver | `src/opspilot/evidence/references.py` (proposed) | S-2 | The single owner; duplicate parsing in `diagnosis/admission.py` and `diagnosis/sufficiency.py` is deleted (status 8.3.4) |
-| Evidence admission (observations) | `src/opspilot/evidence/admission.py` (proposed) | S-2 | Evidence Access Layer owned. Not `diagnosis/admission.py`, which admits model-proposed claims, a different thing (status 6.4, 10.4) |
-| Capability result envelope | `src/opspilot/tools/contracts.py`, `tools/service.py` | S-2 | Two-axis execution-outcome and completeness replaces `ok`/`error` |
-| Capability registry | `src/opspilot/tools/__init__.py` | S-2 | Registry and `READ_ONLY_TOOLS` duplication collapsed to one source |
-| Final assessment contracts | `src/opspilot/assessment/contracts.py` (proposed) | S-2 | New module. `src/opspilot/contracts.py` is frozen as legacy-only and deleted in S-4 |
-| Investigation Record port and in-memory backend | `src/opspilot/record/` (proposed) | S-2, S-3 | Port and commit-ordering rule in S-2; the completed-turn artifact and the first real commit in S-3; Cosmos backend in S-7 |
+| Evidence reference model, parser, resolver | `src/opspilot/evidence/references.py` | S-2 | Landed as the single owner. Duplicate parsing that once lived in `diagnosis/admission.py` and `diagnosis/sufficiency.py` is retired with those modules at S-3/S-5 |
+| Evidence admission (observations) | `src/opspilot/evidence/admission.py` | S-2 | Landed, Evidence Access Layer owned. Not `diagnosis/admission.py`, which admits model-proposed claims, a different thing that S-3 folds into the grounding gate or deletes |
+| Capability result envelope | `src/opspilot/tools/contracts.py`, `tools/service.py` | S-2 | Landed. Two-axis execution-outcome and completeness replaces `ok`/`error` |
+| Capability registry | `src/opspilot/tools/__init__.py` | S-2 | Landed. Registry and `READ_ONLY_TOOLS` duplication collapsed to one source |
+| Final assessment contracts | `src/opspilot/assessment/contracts.py` | S-2 | Landed. `src/opspilot/contracts.py` is frozen as legacy-only and deleted in S-4 |
+| Investigation Record port and in-memory backend | `src/opspilot/record/` | S-2, S-3 | Port and commit-ordering rule landed at S-2, over the in-memory backend; the completed-turn artifact and the first real commit are S-3; the Cosmos backend is S-7 |
 | MCP result serialization | `src/opspilot/mcp/server.py` | S-2, S-11 | S-2 carries the new canonical envelope through unchanged; S-11 changes only the exposed capability set |
-| Evaluation artifact home | `eval/fixtures/`, `eval/reports/`, and a gitignored `eval/runs/` (proposed) | S-2 | Settled before the first golden record exists |
+| Evaluation artifact home | `eval/fixtures/`, `eval/reports/`, and a gitignored `eval/runs/` (proposed) | S-2 | Layout settled by `decisions.md` D-009; the directories are created when a slice first commits an artifact to one, not before |
 | Model-access seam and task labels | `src/opspilot/llm/` | S-2, S-5 | Retained; task-label routing and provider narrowing in S-5 |
 | Provider narrowing | `src/opspilot/llm/client.py`, `config.py` | S-5 | One Azure OpenAI adapter plus the fake and cassette seams; Ollama and generic OpenAI selection removed |
 | Grounding gate | `src/opspilot/grounding/checks.py` (proposed) | S-3 | Absorbs `guardrails/policies.py`; exactly four checks |
 | Claim admission | `src/opspilot/diagnosis/admission.py` | S-3 | Folded into the gate or deleted if the assessment and gate make it redundant |
-| Deterministic brief projection | `src/opspilot/diagnosis/render.py` | S-2, S-3 | Retained as a projection from the assessment |
-| Explicit turn controller | `src/opspilot/turn/controller.py` (proposed) | S-4 | Replaces `graph.py` and `router.py` |
-| Old orchestration deletion | `src/opspilot/graph.py`, `nodes/investigation.py`, `router.py`, `checkpoint.py` | S-4 | Deleted; ingest/gather/synthesize logic harvested first |
+| Deterministic brief projection | `src/opspilot/assessment/brief.py` | S-2 | Landed: projects the admitted assessment by traversal alone. `diagnosis/render.py` is unrelated legacy template rendering for the old report/claim model; it is still called by the graph path and by `llm_planner.py` and is orphaned once S-4 and S-5 delete both callers |
+| Explicit turn controller | `src/opspilot/turn/controller.py` (proposed) | S-4 | Replaces `graph.py` and `router.py`. `src/opspilot/turn/synthesis_step.py` already exists as the gather/admit/synthesize step the streamed path calls directly; the controller is a distinct, not-yet-built piece that will own stage sequencing around it |
+| Old orchestration deletion | `src/opspilot/graph.py`, `nodes/investigation.py`, `router.py`, `checkpoint.py` | S-4 | Deleted; ingest/gather/synthesize logic already harvested into `turn/synthesis_step.py` |
 | Old API deletion | `src/opspilot/api.py` async job routes, `investigations.py`, `cosmos_investigations.py`, `repository.py` | S-4 | Job lifecycle, decision endpoint, outbox, lease and fencing removed |
 | Legacy contract module deletion | `src/opspilot/contracts.py` | S-4 | Deleted with the old runtime; a narrow re-export from `assessment/contracts.py` is permitted if imports are widespread |
 | Authorization reduction | `src/opspilot/auth.py` | S-4, A-0 | Three-role surface deleted in S-4; minimal caller-identity seam replaced by built-in authentication in A-0 |
-| Concurrency reduction | `src/opspilot/api.py`, `config.py` | S-4 | Per-user and role-based admission collapsed to one configured application-level limit (status 8.3.3) |
+| Concurrency reduction | `src/opspilot/api.py`, `config.py` | S-4 | Per-user and role-based admission collapsed to one configured application-level limit |
 | Dead configuration removal | `src/opspilot/config.py` | S-0, S-4, S-5, S-13 | Severity routing, numeric confidence, and dispatch keys in S-0; deprecated `EvalTargets` in S-4 with the gates that read it; six bounds in S-5; standalone judge configuration in S-13 |
 | Dependency removal | `pyproject.toml`, `uv.lock`, `Dockerfile` | S-4, S-9, A-0 | Graph and checkpoint groups in S-4; the local embedding stack in S-9; `pyjwt` in A-0 |
 | Agent modules | `src/opspilot/agents/supervisor.py`, `investigator.py`, `analyst.py` (proposed) | S-5 | Split from the S-4 single-flow controller |
@@ -447,7 +412,7 @@ provisional placement until this structure exists.
 | Test deletion | `tests/test_investigations_api.py`, `test_investigations.py`, `test_report_binding.py`, `test_checkpointer.py`, `test_auth.py`, `test_scenario_gate.py`, `test_single_agent_gate.py` | S-4 | Deleted with their subjects, not rewritten |
 | Test deletion, second wave | `tests/test_triage.py`, `test_triager.py`, `test_composition.py`, `test_sufficiency.py`, `test_planner_seam.py`, `test_diagnose.py`, `test_llm_planner.py` | S-5 | Deleted with the planner and triage subjects |
 | Test replacement | `tests/test_stream_projection.py`, `test_evidence_references.py`, `test_record_commit.py`, `test_grounding_gate.py`, `test_turn_controller.py` (proposed) | S-1, S-2, S-3, S-4 | New deterministic suites |
-| Every other existing test module | `tests/` | Various | Disposition is in the test-disposition appendix at the end of this document; no test module is left unassigned |
+| Every other existing test module | `tests/` | Various | Disposition is stated inside the slice that deletes or supersedes its subject, not tracked separately |
 | Bicep and hosted alignment | `infra/main.bicep`, `scripts/smoke_deployment.py` | S-4, A-0 | Interim smoke in S-4; replicas, authentication, App Insights, lower-cost deployment in A-0 |
 
 ---
@@ -464,7 +429,7 @@ verification evidence, and the history of where reality diverged from the origin
 | --- | --- |
 | S-0 | A clean `main`-based baseline: the authoritative documentation committed, the rejected dispatch skeleton absent, dead severity-tier configuration and corpus-path duplication removed, and a green lint, type, and test baseline to build on. |
 | S-1 | Turn identity; the stream envelope and its ordering, identities first and close marker last; the normalized incident-context contract (`decisions.md` D-007); the `InteractionKind` type, shape only; the activity projection; client-disconnect detection; and the one-screen client at `/investigation`. |
-| S-2 | The evidence reference model with one parser and one resolver, including the `absence:` form that makes an authoritative empty result citable (`decisions.md` D-008); the two-axis capability result vocabulary and the Evidence Access Layer admission that assigns every reference and records a limitation for every operation that did not answer; the assessment, candidate-cause, recommendation, limitation, and brief contracts, with qualitative support labels and no numeric confidence; the task-labelled `rca_synthesis` call and the deterministic brief projection; the Investigation Record port, its commit semantics, and the commit-before-delivery ordering rule; the capability, model, and admission spans of the common attribute set, with `investigation_id` and `turn_id` inherited by every span emitted inside a turn; and the evaluation artifact home (`decisions.md` D-009) with the replay cassette that keeps the synthesis path deterministic in CI. |
+| S-2 | The evidence reference model with one parser and one resolver, including the `absence:` form that makes an authoritative empty result citable (`decisions.md` D-008); the two-axis capability result vocabulary and the Evidence Access Layer admission that assigns every reference and records a limitation for every operation that did not answer; the assessment, candidate-cause, recommendation, limitation, and brief contracts, with qualitative support labels and no numeric confidence; the task-labelled `rca_synthesis` call and the deterministic brief projection; the Investigation Record port, its commit semantics, and the commit-before-delivery ordering rule; the capability, model, and admission spans of the common attribute set, with `investigation_id` and `turn_id` inherited by every span emitted inside a turn; the evaluation artifact layout settled as `decisions.md` D-009, whose directories are created by the first slice that commits an artifact to one; and the replay cassette that keeps the synthesis path deterministic in CI. |
 
 **The one telemetry seam.** `obs/tracing.py` is the single emission seam every later slice attaches
 to, never a second one. It provides OTLP-shaped spans with nesting through context variables, an
@@ -477,81 +442,65 @@ identifiers, since one streaming request owns one turn.
 
 ### S-3 Four grounding checks, correction allowance, outcomes, and the first completed turn
 
-- **Demonstrable outcome:** the first accepted completed turn. Every delivered assessment passes
-  exactly four deterministic checks, is assigned one of complete, partial, or inconclusive, is
-  committed, and only then produces the terminal event. A deliberately malformed synthesis is
-  corrected once and, if still invalid, produces failed execution with no completed artifact, no
-  commit, and no delivered brief.
-- **Terminal ordering realized here in full:** synthesis, four checks, possible single correction,
-  outcome assignment, commit, terminal delivery. No later slice may reorder it.
-- **Entry criteria:** the accepted assessment contract exists, one real structured synthesis
-  completes end to end under replay, and the Investigation Record port's commit semantics and
-  lifecycle delivery-ordering contract test are green.
-- **Existing foundation retained:** S-2 contracts and the Investigation Record port, which gains
-  its first real writer and its first real artifact here; the produced-reference discipline, a real
-  ancestor of reference resolution.
-- **Code and data to delete:** the two-policy guardrail surface once the four checks subsume it,
-  including its tests; `diagnosis/admission.py` claim admission if the accepted assessment and the
-  gate make it redundant, which is the expected outcome (status 8.3.4 assigns citation grounding to
-  one gate).
-- **Code to replace:** `guardrails/policies.py` citation grounding, superseded by the four-check
-  gate; the `safety_validate` naming and any two-policy terminology that could be mistaken for the
-  final gate. The read-only allowlist behavior moves to the capability registry rather than being
-  deleted.
-- **Coexistence mechanism:** the old graph path keeps a thin `safety_validate` wrapper that
-  delegates to the new gate and discards the accepted result shape. It is registered in the
-  coexistence register and deleted in S-4 with the graph.
-- **New implementation:**
-  1. citation and reference resolution with permitted role and type pairing;
-  2. required operational support for grounded elements marked established;
-  3. recommendation-provenance presence;
-  4. disclosure of recorded limitations.
-  Add the one shared correction allowance, deterministic outcome assignment, the completed-turn
-  artifact the port stores, the commit itself, terminal delivery after the commit, and
-  failed-execution behavior outside the three completed outcomes. Do not add semantic entailment,
-  temporal coherence, or any hidden fifth check.
-- **Contract introduced or stabilized:** grounding result, completed-outcome vocabulary, the
-  completed-turn artifact, and terminal ordering.
-  **Who builds on each:** S-4 moves this exact ordering into the permanent explicit turn
-  controller without reopening it; S-5's six bounds include the shared correction allowance this
-  slice defines, and must reuse it rather than create a second correction mechanism; S-6's
-  cancellation and degradation outcomes are additional ways to reach the same three-outcome
-  vocabulary and the same completed-turn artifact, not a parallel one; S-7 persists exactly the
-  artifact shape fixed here; S-8 answers follow-up and handoff only from a completed turn this
-  contract already produced; S-13 aggregates this conformance entry point rather than building a
-  second one.
-- **Telemetry and activity impact:** grounding result per check, naming which check failed rather
-  than reporting a single pass or fail; correction-allowance spend, and whether the correction was
-  the first or a refused second; the outcome assignment and the deterministic reason for it; the
-  commit result; and the terminal shape decision, all as span facts that the projection renders
-  safely. Failed execution emits its own terminal fact with a sanitized failure category, so a
-  turn that delivered nothing is distinguishable in telemetry from one that completed
-  inconclusively, and a persistent grounding failure is distinguishable from a commit failure that
-  followed a passing gate. These are the `grounding` and `commit` links of the reconstruction
-  chain.
-- **Deterministic tests:** each check independently; the fixed four-check set with no fifth;
+- **Outcome:** the first accepted completed turn. Every delivered assessment passes exactly four
+  deterministic checks, is assigned complete, partial, or inconclusive, is committed, and only then
+  produces the terminal event. A deliberately malformed synthesis is corrected once and, if still
+  invalid, produces failed execution with no completed artifact, no commit, and no delivered brief.
+  The full terminal ordering, synthesis then four checks then the possible single correction then
+  outcome assignment then commit then terminal delivery, is realized here in full and no later
+  slice may reorder it.
+- **Consumes:** the accepted assessment contract, one real structured synthesis completing end to
+  end under replay, and the Investigation Record port's commit semantics and lifecycle
+  delivery-ordering contract test, all from S-2. The port gains its first real writer and first
+  real artifact here; the produced-reference discipline is a real ancestor of the reference
+  resolution this slice needs.
+- **Build / replace / delete:** build citation and reference resolution with permitted role and
+  type pairing; required operational support for grounded elements marked established;
+  recommendation-provenance presence; disclosure of recorded limitations; the one shared correction
+  allowance; deterministic outcome assignment; the completed-turn artifact the port stores; the
+  commit itself; terminal delivery after the commit; and failed-execution behavior outside the
+  three completed outcomes. Do not add semantic entailment, temporal coherence, or a fifth check.
+  Replace `guardrails/policies.py` citation grounding with the four-check gate; delete the
+  two-policy surface and its tests once the gate subsumes it, and `diagnosis/admission.py` claim
+  admission if the accepted assessment and the gate make it redundant, which is the expected
+  outcome. The read-only allowlist behavior moves to the capability registry rather than being
+  deleted. The old graph path keeps a thin `safety_validate` wrapper delegating to the new gate
+  until S-4 deletes it with the graph; it is registered in the coexistence register.
+- **Contracts affected:** grounding result, completed-outcome vocabulary, the completed-turn
+  artifact, and terminal ordering become stable here. S-4 moves this exact ordering into the
+  permanent turn controller without reopening it; S-5's six bounds reuse the correction allowance
+  rather than creating a second one; S-6's cancellation and degradation outcomes reach the same
+  three-outcome vocabulary and artifact rather than a parallel one; S-7 persists exactly this
+  artifact shape; S-8 answers follow-up and handoff only from a completed turn this contract
+  produces; S-13 aggregates this conformance entry point rather than building a second one.
+- **Tests and evaluation:** each of the four checks independently, and the fixed set with no fifth;
   single-spend correction allowance; rendering remains a projection; the full terminal ordering
   asserted end to end; persistent failure delivers nothing, commits nothing, and is not one of the
-  three completed outcomes; a commit failure after a passing gate also delivers nothing.
-- **Evaluation increment:** the deterministic conformance aggregation entry point, covering
-  grounding results and completed outcomes over the S-2 golden record, written into the evaluation
-  artifact home settled in S-2. Advisory only.
-- **Dataset or fixture work:** a malformed-synthesis fixture for the correction demonstration.
-- **Azure impact:** Local deterministic. No infrastructure change.
-- **Decision gates:** none.
+  three completed outcomes; a commit failure after a passing gate also delivers nothing; at least
+  one deterministic, replayed end-to-end incident demonstrating the completed path. A
+  malformed-synthesis fixture drives the correction demonstration. Advisory evaluation increment:
+  the deterministic conformance aggregation entry point, covering grounding results and completed
+  outcomes over the S-2 golden record, written into the evaluation artifact home settled in S-2.
+- **Telemetry/activity:** grounding result per check, naming which check failed rather than a bare
+  pass/fail; correction-allowance spend, and whether it was the first or a refused second; outcome
+  assignment and its deterministic reason; the commit result; the terminal shape decision. Failed
+  execution emits its own terminal fact with a sanitized failure category, so a turn that delivered
+  nothing is distinguishable from one that completed inconclusively, and a persistent grounding
+  failure is distinguishable from a commit failure after a passing gate.
 - **Explicit non-goals:** no fifth check, no semantic entailment, no Cosmos persistence, no agent
   split, no cancellation semantics.
-- **Small PR breakdown:** (1) grounding result contracts; (2) the four checks and correction
-  routing, with the old-path wrapper; (3) outcome assignment, the completed-turn artifact, commit,
-  and terminal delivery; (4) failed-execution behavior and conformance aggregation.
-- **Completion evidence:** one incident run end to end producing a committed completed turn
-  delivered after its commit, one visible correction demonstration, one persistent-failure run that
-  delivers and persists nothing, and a conformance aggregation run over the first golden record.
-  The persistent-failure run is diagnosable from its spans alone: which check failed, that the
-  correction allowance was spent, that no commit was attempted, and the sanitized failure category.
-- **Status updates required after landing:** the grounding rows in section 10.6 and the
-  commit-before-terminal row in section 10.11 move to Implemented; the one-check safety gate row in
-  section 8.3.1 moves to Replaced; the guardrails row in section 7 moves to Replaced.
+- **Small PRs:** (1) grounding result contracts; (2) the four checks and correction routing, with
+  the old-path wrapper; (3) outcome assignment, the completed-turn artifact, commit, and terminal
+  delivery; (4) failed-execution behavior and conformance aggregation.
+- **Done when:** exactly four grounding checks exist; one shared correction allowance exists across
+  correctable grounding failures; complete/partial/inconclusive outcomes are assigned correctly;
+  failed execution stays outside the three completed outcomes; a real completed-turn artifact
+  exists; the commit occurs before terminal delivery; a persistent grounding failure commits and
+  delivers nothing; deterministic tests cover the four checks, correction exhaustion, outcome
+  derivation, and commit/delivery ordering; and at least one deterministic, replayed end-to-end
+  incident demonstrates the completed path, diagnosable from its spans alone: which check failed,
+  that the correction allowance was spent, that no commit was attempted, and the sanitized failure
+  category.
 
 ### S-4 Streaming-runtime cutover and obsolete-system deletion
 
@@ -636,8 +585,8 @@ identifiers, since one streaming request owns one turn.
   predict: capture the node wrapper's emitted fact set before it is deleted, then assert that a turn
   run through the controller against the in-memory exporter emits at least that set, with the
   correlation attributes present on every span. The cutover then fails the suite rather than
-  silently going dark. The appendix's dispositions for `test_telemetry.py` and `test_tracing.py` are
-  unchanged; this is a new assertion, not a re-owned module.
+  silently going dark. `test_telemetry.py` and `test_tracing.py` keep their own scope; this is a new
+  assertion, not a re-owned module.
 - **Evaluation increment:** the old numeric ratchets stop gating CI and the accepted spine replaces
   them as the only active evaluation.
 - **Dataset or fixture work:** none.
@@ -655,31 +604,20 @@ identifiers, since one streaming request owns one turn.
   smoke clauses and install the interim smoke.
 - **Completion evidence:** the checkpoint below passes, and the only runnable investigation journey
   is the accepted streaming one.
-- **Status updates required after landing:** the orchestration, transport, auth, console, and
-  checkpointer rows in sections 7 and 8 move to Deleted or Replaced; the dependency rows in section
-  14 move to Removed; the numeric-ratchet row in section 8.3.1 moves to Replaced; record the
-  marker-lane result after the obsolete suites are deleted.
-
 #### Checkpoint after S-4
 
-This is the architectural cutover. Nothing later may depend on the deleted runtime. All greps are
-scoped to runtime paths and use exact symbols.
-
-| Check | Proof |
-| --- | --- |
-| No graph runtime dependency | `uv tree` shows no `langgraph`, `langchain-core`, `langgraph-sdk`, `langsmith`; `uv run python -c "import langgraph"` fails |
-| No checkpointer code or dependency | `git grep -n -e CHECKPOINTER -e Checkpointer -e "langgraph.checkpoint" -e msgpack -- src tests infra` is empty; `uv tree` shows no `langgraph-checkpoint-sqlite`, `sqlite-vec` |
-| No HITL or approval surface | `git grep -n -e hitl_gate -e apply_edit -e CommittedDecision -e "/decision" -- src tests scripts` is empty |
-| No polling job API | `git grep -n -e awaiting_approval -e _dispatch_or_run -e _advance -e DispatchEntry -- src tests scripts` is empty |
-| No obsolete job statuses | `git grep -n -e "\"queued\"" -e "\"escalated\"" -e "\"degraded\"" -- src` is empty |
-| No approval roles | `git grep -n -e ReviewerPrincipal -e Approver -e require_role -e idtyp -- src tests` is empty |
-| Concurrency is one limit | `git grep -n -e per_user -e role_limit -- src` is empty and exactly one configured concurrency setting remains |
-| Legacy contracts and console are gone | `git ls-files src/opspilot/contracts.py src/opspilot/static/console.html` is empty, or `contracts.py` contains only a re-export |
-| Deprecated eval configuration is gone | `git grep -n -e EvalTargets -- src tests` is empty |
-| No graph-dependent evaluation is active | `git ls-files eval tests` shows no `scenario_eval`, `record_single_agent`, `test_scenario_gate`, `test_single_agent_gate`, `wild`, or `harness` outside an archived, CI-excluded path |
-| The accepted spine is the only evaluation | `uv run python -m eval.conformance` runs and reports categorical results with no numeric threshold |
-| Tests for deleted behavior are gone | `git ls-files tests` shows none of the modules named above; `uv run pytest -m "not reranker and not llm"` is green |
-| Stage telemetry survived the cutover | `git grep -n -e traced_node -- src` is empty, and the continuity test asserts the controller emits a root turn span, a span per stage with a stable name, duration, stop reason where a stage ends the turn, and `investigation_id`/`turn_id` on every span |
+This is the architectural cutover; nothing later may depend on the deleted runtime. Required: the
+graph runtime, checkpointer, HITL surface, polling job API, approval roles, legacy contracts module,
+and old console are removed from `src/`; `langgraph`, `langchain-core`, `langgraph-checkpoint-sqlite`
+are removed from `pyproject.toml`/`uv.lock`; concurrency is one configured limit rather than
+per-user/per-role admission; deprecated `EvalTargets` and the graph-dependent evaluation it fed are
+gone or archived outside CI's path; `uv run pytest -m "not reranker and not llm"` is green with none
+of the deleted subjects' test modules present; and the continuity test asserts the turn controller
+emits at least what `traced_node` emitted before deletion (a root turn span, a span per stage with a
+stable name, duration, stop reason where a stage ends the turn, and `investigation_id`/`turn_id` on
+every span). One targeted search proves the most load-bearing rejection actually left the tree:
+`git grep -n -e hitl_gate -e apply_edit -e CommittedDecision -e "/decision" -- src tests scripts` is
+empty.
 
 ### A-0 Minimal hosted alignment
 
@@ -781,10 +719,6 @@ scoped to runtime paths and use exact symbols.
   call, the grounding result, the commit, and the terminal outcome, retrieved by querying on
   `investigation_id` or `turn_id` and not by reading raw message text. The queries actually run are
   recorded, so A-1 verifies rather than rediscovers them.
-- **Status updates required after landing:** section 12 is rewritten from a fresh live inspection
-  rather than from the template; the replica, authentication, and Application Insights rows in
-  section 10.15 move to Implemented; record the `az` queries actually run.
-
 #### Checkpoint after A-0
 
 | Check | Proof |
@@ -831,12 +765,12 @@ scoped to runtime paths and use exact symbols.
   branch, generic OpenAI-compatible provider selection, and the provider-choice configuration for
   providers the accepted design does not use. Delete `LLM_SEED` unless an accepted test or
   deployment need proves its value, in which case record that reason. Remove or replace the live
-  Ollama tests, which are the tests that made the full suite take over nine hours (status 5), and
-  update `test_llm_client.py` and `test_llm_e2e.py` accordingly. The seam stays replaceable in
-  tests; the runtime stops being a multi-provider product.
+  Ollama tests, which are the slowest tests in the full suite by a wide margin, and update
+  `test_llm_client.py` and `test_llm_e2e.py` accordingly. The seam stays replaceable in tests; the
+  runtime stops being a multi-provider product.
 - **Fixed-script capture precedes deletion:** `diagnosis/planner.py` and `diagnosis/cycle.py` are
-  the accepted fixed-script baseline's behavioral source (status 6.11: same tools, predetermined
-  order, currently living as a runtime fallback). Extract the first fixed-script evidence-plan
+  the accepted fixed-script baseline's behavioral source (same tools, predetermined order,
+  currently living as a runtime fallback). Extract the first fixed-script evidence-plan
   fixture from them, commit it, and prove it reproduces the recorded plan before the modules are
   removed. S-13 expands the fixture set and runs the comparison.
 - **Code to replace:** the deterministic and LLM dual implementation, superseded by the three-agent
@@ -858,7 +792,7 @@ scoped to runtime paths and use exact symbols.
 - **Clarification mechanism:** prefer resubmission of the original input with the clarifying answer
   over a signed short-lived normalization token. A token is introduced only if resubmission
   demonstrably fails the requirement, and then only with an explicit signing, expiry, and payload
-  contract (status 17.3).
+  contract.
 - **Bounds:** exactly turn deadline, capability-call cap, model-call cap, per-operation
   transport-retry cap, shared correction allowance, and further-evidence-cycle flag. The retained
   `MAX_TOOL_CALLS` setting is renamed to the capability-call cap and enforced here. The shared
@@ -891,7 +825,7 @@ scoped to runtime paths and use exact symbols.
   a free-text intake fixture and an ambiguous fixture that triggers the single clarification.
 - **Azure impact:** Local deterministic. Routing targets the deployment A-0 already created; no new
   infrastructure.
-- **Decision gates:** the clarification-token clarification (status 17.3) is settled here.
+- **Decision gates:** the stateless clarification token clarification is settled here.
 - **Explicit non-goals:** no further-evidence cycle, which is S-12; no retrieval; no Cosmos
   persistence.
 - **Small PR breakdown:** (1) extract and commit the fixed-script fixture; (2) agent interfaces and
@@ -903,12 +837,6 @@ scoped to runtime paths and use exact symbols.
   free-text submission normalized, and one clarification exchange. The two divergent paths are
   distinguishable from their spans alone, with agent identity, the authorization decisions, and the
   routed deployment per model call visible without reading the feed.
-- **Status updates required after landing:** sections 10.2, 10.3, and 10.5 move to Implemented for
-  the roles and the proposal contract; the intake rows in section 10.1 move to Implemented; the
-  six-boundary row in section 9 may now move to Implemented because the Investigation Record
-  boundary exists; the planner and triage rows in section 7 move to Deleted; the provider rows in
-  section 14 record the narrowed dependency set and the removal of the live-model lane.
-
 ### S-6 Cancellation, degradation, and honest partial or inconclusive results
 
 - **Demonstrable outcome:** early cancellation before evidence completes yields a committed
@@ -991,9 +919,6 @@ scoped to runtime paths and use exact symbols.
   a bare disconnect produce different recorded outcomes. The two are also distinguishable in
   telemetry: cancellation shows receipt, a named safe boundary, and a commit; disconnect shows
   neither a cancellation receipt nor a commit.
-- **Status updates required after landing:** the cancellation rows in section 10.7 move to
-  Implemented; record which cancellation paths have deterministic tests.
-
 ### S-7 Durable completed-turn record and restart-safe reads
 
 - **Demonstrable outcome:** completed turns are persisted in Cosmos and, after a container restart,
@@ -1041,8 +966,8 @@ scoped to runtime paths and use exact symbols.
   named lane that verifies actual partition-key and indexing compatibility, writes and reads a real
   artifact, restarts the application process, and resolves citations against the live account. It
   is environment-dependent, is never a CI gate, and records the command and the resource used. No
-  local Cosmos emulator was available at inspection time (status 16), so this lane runs against a
-  real account or not at all.
+  local Cosmos emulator has been available in this project, so this lane runs against a real
+  account or not at all.
 - **Evaluation increment:** none. Persistence is proven by tests and by the hosted check in A-1.
 - **Dataset or fixture work:** none.
 - **Azure impact:** Azure-assisted local required for the integration tests. This slice is
@@ -1060,10 +985,6 @@ scoped to runtime paths and use exact symbols.
   and the same turn read back with resolving citations. The offline suite also asserts that each
   Cosmos access-failure category above reaches the commit span distinctly, driven from the stub
   rather than by revoking a live role assignment.
-- **Status updates required after landing:** the persistence rows in section 10.11 move to
-  Implemented; section 12 records the container change only if Azure was actually rechecked, and
-  records which compatibility outcome was taken along with any deletion command run.
-
 ### S-8 Retained-state interactions: follow-up, handoff, redirect, and supplied context
 
 - **Demonstrable outcome:** a follow-up question is answered from retained state without new
@@ -1135,9 +1056,6 @@ scoped to runtime paths and use exact symbols.
 - **Completion evidence:** complete a turn, restart, ask a follow-up answered under replay, be
   refused on an out-of-scope follow-up, and request a handoff that makes no model call. The
   follow-up cassette is committed and its manifest validates.
-- **Status updates required after landing:** the follow-up and handoff rows in sections 9 and 10.7
-  move to Implemented.
-
 ### S-9 Retrieval, deterministic reranking, and demonstrated retrieval influence
 
 - **Demonstrable outcome:** categorized knowledge materially influences a live investigation using
@@ -1154,9 +1072,9 @@ scoped to runtime paths and use exact symbols.
 - **First decision, taken inside this slice:** establish and record the minimal knowledge metadata
   contract that retrieval and admission actually require, then begin the vector and retrieval
   implementation. Today `kind` maps cleanly onto the three logical collections but no category or
-  date metadata field exists (status 11), and no authoritative document fixes one. Keep the
-  contract minimal: the identifier, the category the container filters on, the date the promotion
-  rule needs, and the provenance admission records. Anything beyond that waits for a demand.
+  date metadata field exists, and no authoritative document fixes one. Keep the contract minimal:
+  the identifier, the category the container filters on, the date the promotion rule needs, and the
+  provenance admission records. Anything beyond that waits for a demand.
 - **Existing foundation retained:** the BM25 scorer (`rank-bm25`), section-level chunking, the RRF
   implementation, KB identifiers and recurrence signatures, and the S-2 reference parser, which is
   extended rather than duplicated.
@@ -1220,9 +1138,9 @@ scoped to runtime paths and use exact symbols.
 - **Azure impact:** Azure-assisted local required. The embedding deployment and the `knowledge`
   container are added additively; no replica, authentication, or deletion change.
 - **Decision gates:** the minimal knowledge metadata contract is recorded in the first PR, before
-  implementation. The D-006 retrieval-influence selection resolves in this slice. Both are written
-  into the owning document per operating rule 10. Vector viability is already settled and is
-  consumed here, not re-established.
+  implementation, and written into the owning document per operating rule 10. D-006 already names
+  `inc-007` for retrieval influence; this slice demonstrates that selection rather than making it.
+  Vector viability is already settled and is consumed here, not re-established.
 - **Explicit non-goals:** no structured query, no further-evidence cycle, no full corpus repair,
   which is S-12.
 - **Small PR breakdown:** (1) the minimal knowledge metadata contract, recorded and applied to KB
@@ -1232,89 +1150,75 @@ scoped to runtime paths and use exact symbols.
   different investigation action because of retrieved knowledge, with the informing reference
   visible in the feed and the same influence readable from the run's spans, the promotion decision
   included.
-- **Status updates required after landing:** the retrieval rows in section 10.8 move to
-  Implemented; the retrieval dependency rows in section 14 move to Removed; record the D-003
-  outcome and the D-006 retrieval-influence selection.
 
 #### Checkpoint after S-9
 
-The accepted design still performs reranking, deterministically. These checks therefore look for
-the rejected implementation, never for the word `rerank`, which the accepted promotion code, its
-tests, and its comments may legitimately use.
-
-| Check | Proof |
-| --- | --- |
-| No cross-encoder or model reranker | `git grep -n -e CrossEncoder -e RERANK_CANDIDATES -e CrossEncoderReranker -e "mode == \"rerank\"" -- src tests eval` is empty, and `git ls-files src/opspilot/retrieval/reranker.py` is empty |
-| No local embedding stack | `uv tree` shows no `sentence-transformers`, `torch`; `git grep -n -e SentenceTransformer -e VectorIndex -- src` is empty and `git ls-files src/opspilot/retrieval/index.py src/opspilot/retrieval/embeddings.py` is empty |
-| No BGE configuration remains | `git grep -n -e "bge-" -- src eval` is empty, because the accepted stack is an Azure OpenAI embedding deployment, not a BGE model |
-| One embedding owner | `git grep -n -e EMBEDDING_DEPLOYMENT -e EMBEDDING_MODEL -- src eval` returns exactly one configuration owner, naming the Azure deployment |
-| Deterministic identifier promotion is tested | `uv run pytest -k identifier_promotion` passes and fails when promotion is disabled |
-| Passages reach reasoning | A retrieval result asserted in tests carries passage text and provenance, not only `doc_id` and score |
-| Answer leakage is gone from the demonstration set | `uv run pytest -k leakage` passes; `git grep -n -e "RED HERRING" -e "causal:" -e "same failure mode as" -- data` is empty |
+Required: the cross-encoder reranker, the local embedding/vector-index stack, and their dependencies
+(`sentence-transformers`, `torch`) are removed from `src/` and `pyproject.toml`; the accepted stack
+(Azure OpenAI embeddings, one embedding configuration owner) is the only one configured; deterministic
+identifier-promotion and passage-carrying retrieval tests pass; and the demonstration corpus is free
+of answer leakage. One targeted search proves the rejected model reranker actually left the tree,
+looking for the implementation rather than the word `rerank`, which the accepted deterministic
+promotion code may legitimately use: `git grep -n -e CrossEncoder -e RERANK_CANDIDATES -- src tests eval`
+is empty, and `git ls-files src/opspilot/retrieval/reranker.py` is empty.
 
 ### S-10 Governed structured query
 
-- **Demonstrable outcome:** the Investigator executes lookup, filter, and COUNT over one approved
-  operational-records surface with provenance; unsupported or mutating output fails structured
-  decoding or validation before source execution and appears as a limitation.
+**Its construction has already landed, ahead of this slice.** The governed query structure, its
+deterministic validator, its translation to one parameterized read-only Cosmos query, and its
+execution are implemented (`data/structured_query.py`, `tools/structured_query.py`), verified
+against the live `operational-records` container across six cases, and covered by
+`tests/test_structured_query.py`. The approved surface (`incidents`, `deployments`, `alerts`), the
+container and its seed, and the read-only application/setup-identity posture are also already in
+place; see `status.md`. What remains below is not new construction: it is wiring this capability
+into a live authorized turn once S-5's agent proposal/authorization exists, and the
+evaluation-conformance entry once S-3's aggregation exists. Neither dependency is this slice's own
+to build; this slice only consumes each once its owner lands.
+
+- **Demonstrable outcome:** the Investigator proposes, and is authorized to run, lookup, filter, and
+  COUNT over the approved operational-records surface, with provenance; unsupported or mutating
+  output fails structured decoding or validation before source execution and appears as a
+  limitation.
 - **Course concept:** reliable agentic data reasoning through a bounded canonical structure rather
   than arbitrary SQL.
-- **Entry criteria:** S-5 proposal and authorization are stable, since a query is an authorized
-  evidence action; the approved surface is agreed as `incidents.json`, `deployments.json`, and
-  `alerts.json` (status 11); S-9 has settled the setup-identity posture (a separate seeding
-  principal, read-only application access) this slice's own container seeding reuses rather than
-  redeciding.
-- **Existing foundation retained:** the corpus loader in `data/repository.py` as the local fixture
-  source; the capability result envelope and admission from S-2.
+- **Entry criteria:** S-5's proposal and authorization contract is stable, since a query becomes an
+  authorized evidence action only through it; the query engine, the approved surface, the container,
+  and the read-only setup-identity posture are already implemented and verified (above), so this
+  slice starts with nothing left to build in them.
+- **Existing foundation retained:** the capability result envelope and admission from S-2; the
+  already-implemented query contract, validator, and execution from `data/structured_query.py` and
+  `tools/structured_query.py`.
 - **Code and data to delete:** none.
 - **Code to replace:** none.
-- **New implementation:** the approved surface and its schema context; predicates, projection, and
-  COUNT; mandatory scope, result limit, and timeout; deterministic validation before execution;
-  the `operational-records` container and its seed; task-labelled query generation. Grouping,
-  ordering, MIN, MAX, SUM, AVG, joins, writes, and arbitrary SQL have no canonical representation
-  and must remain unrepresentable rather than merely rejected.
-- **Contract introduced or stabilized:** governed-query structure.
-  **Who builds on each:** A-1 verifies the `operational-records` container and its read-only
-  application access, rather than creating either; A-2's governed-structured-query demonstration
-  journey runs against exactly the approved surface and refusal case this slice's completion
-  evidence names.
-- **Telemetry and activity impact:** acceptance or rejection as an explicit fact, with the rejection
-  carrying whether it failed structured decoding or validation and which rule refused it, so a
-  refusal is never indistinguishable from an execution that found nothing; the approved surface, the
-  scope, the limit, and the timeout actually applied; the execution outcome and completeness on the
-  same two axes as every other capability, with row count and provenance; and, on failure, a
-  sanitized category separating a timeout, a limit stop, and a backend access failure. No
-  reconstructed query text is emitted, because none is constructed anywhere.
-- **Deterministic tests:** lookup, filter, and COUNT against fixture truth; rejection before
-  execution; scope, limit, and timeout enforcement; read-only enforcement on this path as on every
-  other.
-- **Evaluation increment:** structured-query conformance added to the aggregation, including one
-  recorded refusal; this result is an S-13 report input, not reimplemented there.
-- **Dataset or fixture work:** fixture truth tables for the approved surface; no corpus change.
-- **Azure impact:** Local fixture adapter first, then Azure-assisted Cosmos integration. The
-  `operational-records` container is added additively and is seeded under the same setup-identity
-  posture S-9 settled: setup principal writes, application identity reads only.
-- **Decision gates:** none.
+- **New implementation:** the Investigator's proposal of a structured-query action as one authorized
+  evidence action, through the S-5 proposal/authorization contract; nothing in the query engine
+  itself changes.
+- **Contract introduced or stabilized:** none new; this slice consumes the already-stable
+  governed-query structure. A-1 verifies the `operational-records` container and its read-only
+  application access, rather than creating either; A-2's demonstration journey runs against exactly
+  the approved surface and refusal case this slice's completion evidence names.
+- **Telemetry and activity impact:** already emitted by the landed capability: acceptance or
+  rejection as an explicit fact, naming whether a rejection failed structured decoding or validation
+  and which rule refused it; the approved surface, scope, limit, and timeout applied; the execution
+  outcome and completeness with row count and provenance; a sanitized failure category on error. This
+  slice adds only the proposal and authorization facts around the call, matching every other
+  Investigator-proposed action.
+- **Deterministic tests:** already exist for lookup, filter, COUNT, rejection, and scope/limit/timeout
+  enforcement (`tests/test_structured_query.py`). This slice adds authorization-path tests: a
+  structured-query proposal refused when authorization fails, and one accepted end to end through
+  the Investigator.
+- **Evaluation increment:** structured-query conformance added to the aggregation once S-3's
+  aggregation entry point exists, including one recorded refusal; an S-13 report input, not
+  reimplemented there.
 - **Explicit non-goals:** no arbitrary SQL, no aggregation beyond COUNT, no write path, no second
-  approved surface.
-- **Small PR breakdown:** (1) query contract and validator; (2) fixture truth and rejection tests;
-  (3) container, seed, execution, admission, and capability wiring.
+  approved surface, no change to the query engine itself.
+- **Small PR breakdown:** (1) the Investigator's structured-query proposal and its authorization
+  tests; (2) the evaluation-conformance entry, once S-3's aggregation exists.
 - **Completion evidence:** one accepted question answered with provenance and one visibly rejected
-  question surfaced as a limitation.
-- **Status updates required after landing:** the rows in section 10.9 move to Implemented; record
-  the approved surface.
+  question surfaced as a limitation, both reached through a live authorized turn rather than a
+  direct capability call.
 
-**Two of this step's stated inputs no longer describe the repository (2026-08-11).** The corpus
-loader named as the retained local fixture source, `data/repository.py`, is deleted; the operational
-capabilities read the `operational-records` container through `data/operational_records.py`, tests
-inject a container implementing `query_items`, and the image no longer ships the operational corpus.
-The container and its seed, named here as new implementation, exist and are read: `incidents`,
-`deployments`, and `alerts` are all present in it as record kinds, so the approved surface this step
-governs is already reachable. What remains for this step is the governed query structure, its
-deterministic validation, and its execution, none of which exists. The read-only application access
-and setup-identity posture it would have established are also already in place. One defect found by
-that work bears on the approved surface: the container partitions on `/kind`, and a record carrying
-a field of that name has it overwritten by the partition value unless preparation relocates it.
+### S-11 MCP parity and the single accepted exposure
 
 - **Demonstrable outcome:** deployment-and-change-history is accessible through direct and MCP
   transports with identical canonical results and provenance; the feed reveals transport without
@@ -1324,7 +1228,7 @@ a field of that name has it overwritten by the partition value unless preparatio
   starts. In-process hosting inside the single application and process is frozen and is not part of
   the inspection; D-004 settles library mechanics, session and transport handling, and result
   carriage only. The existing server already demonstrates in-process execution, same-service
-  delegation, and canonical envelope passthrough (status 6.7, 17.5).
+  delegation, and canonical envelope passthrough.
 - **Existing foundation retained:** parity by delegation to the same `ToolService.call()` and the
   S-2 canonical two-axis result envelope, unchanged here; the same validation and sanitized errors;
   the parity test pattern; the activity and telemetry projection seams from S-1, which the new
@@ -1363,10 +1267,6 @@ a field of that name has it overwritten by the partition value unless preparatio
 - **Completion evidence:** side-by-side direct and MCP invocation of deployment and change history
   produces the same canonical result and provenance, and the two runs are distinguishable only by
   the transport attribute on their spans.
-- **Status updates required after landing:** the rows in section 10.10 move to Implemented; the
-  three-wrong-capabilities row in section 8.3.1 moves to Replaced; section 16 records D-004 as
-  resolved and drops it from the blocked list.
-
 ### S-12 Corpus reconciliation and the further-evidence cycle
 
 - **Demonstrable outcome:** `inc-004` naturally triggers one authorized further-evidence cycle,
@@ -1405,11 +1305,9 @@ a field of that name has it overwritten by the partition value unless preparatio
   test suite, and evaluation artifacts do not become runtime telemetry.
 - **Deterministic tests:** the one-cycle bound; each authorization condition; seven-incident and
   five-family counts; closure; chronology; leakage; and the scenario-versus-variant distinction.
-- **Evaluation increment:** D-006 selections recorded for further evidence, retrieval influence,
-  the change-time scenario subset, the milestone set, and the repeatability subset; the
-  repeatability subset is wired and runnable. Both the D-006 selections and the repeatability
-  subset are direct S-13 inputs: S-13 assembles its report from them rather than re-selecting
-  scenarios or re-deriving the subset.
+- **Evaluation increment:** the repeatability subset D-006 already names (`inc-005`, `inc-004`,
+  `inc-006`) is wired and runnable here. It is a direct S-13 input: S-13 assembles its report from
+  it rather than re-deriving the subset.
 - **Dataset or fixture work:** repair templated noise realism, which is the last outstanding
   corpus defect: 905 identical error strings and no pre-incident baseline history. Mechanism-implied
   telemetry, effect-before-cause orderings, postmortem timelines, stale data documentation, the
@@ -1417,13 +1315,9 @@ a field of that name has it overwritten by the partition value unless preparatio
   corpus and are consumed here rather than performed. Execute any change through the corpus repair
   protocol.
 - **Small PR breakdown:** (1) templated-noise repair and regenerated goldens; (2) the
-  further-evidence mechanism and its authorization tests; (3) D-006 decision update and the
-  repeatability subset.
+  further-evidence mechanism and its authorization tests; (3) the repeatability subset wiring.
 - **Completion evidence:** a live back-edge on inc-004, and the corpus audit passing without
   expanding the authored incident count.
-- **Status updates required after landing:** the further-evidence row in section 9 moves to
-  Implemented; the quality concerns in section 11 are struck item by item with the regeneration
-  commands recorded; section 16 records D-006 as resolved.
 
 ---
 
@@ -1500,9 +1394,6 @@ then immediately require a regeneration against a changed environment.
   failure and shows its stage, operation category, correlation identity, and sanitized reason.
   Someone handed only those two queries and the deployment must be able to repeat the diagnosis
   without further explanation, which is the whole point of the exercise.
-- **Status updates required after landing:** section 12 is rewritten from a fresh live inspection;
-  the remaining rows in section 10.15 move to Implemented; record the `az` queries actually run.
-
 #### Checkpoint after A-1
 
 Live state is proven by query, not by reading Bicep.
@@ -1572,18 +1463,15 @@ Live state is proven by query, not by reading Bicep.
   recorded as a committed run input.
 - **Azure impact:** Local deterministic report generation; deliberate Azure-assisted judge runs. No
   infrastructure change.
-- **Decision gates:** D-005 judge rubric version is recorded in the first PR and written into
-  `decisions.md` per operating rule 10.
 - **Explicit non-goals:** no judge in the live path, no numeric gate thresholds, no merge ratchet,
   no infrastructure change, no revival of the held-out RCAEval probe, which requirements section 12
   defers.
-- **Small PR breakdown:** (1) judge rubric, fixtures, and the D-005 record; (2) baseline
-  comparisons and the repeatability run; (3) report assembly and the two modes; (4) final deletion
-  or archival of the S-4 parked material.
+- **Small PR breakdown:** (1) judge rubric and fixtures, with the first rubric version recorded in
+  `decisions.md` under the already-accepted D-005 policy; (2) baseline comparisons and the
+  repeatability run; (3) report assembly and the two modes; (4) final deletion or archival of the
+  S-4 parked material.
 - **Completion evidence:** a readable milestone report with named outcomes and limitations,
   regenerated deterministically from committed fixtures, covering the final hosted system.
-- **Status updates required after landing:** the rows in section 10.13 move to Implemented; the
-  named overclaims in section 13 are struck as removed; record the report artifact path.
 
 #### Checkpoint after S-13
 
@@ -1628,8 +1516,6 @@ Live state is proven by query, not by reading Bicep.
 - **Small PR breakdown:** (1) UI and demonstration polish; (2) final documentation and repository
   hygiene.
 - **Completion evidence:** the demonstration script succeeds end to end against the hosted app.
-- **Status updates required after landing:** the section 15 hygiene findings are closed; the final
-  assessment in section 18 is rewritten against the reconciled repository.
 
 ---
 
@@ -1646,17 +1532,19 @@ Live state is proven by query, not by reading Bicep.
 - S-6 precedes S-7 so that the set of turns requiring a commit is fixed before the durable backend
   is built. S-7 precedes S-8 so that retained state is durable before follow-up reads it.
 - S-9 must include the minimum retrieval-demonstration repair before claiming `inc-007` influence.
-- S-10 consumes the setup-identity posture S-9 settles (read-only application access, a separate
-  setup principal for seeding) and follows it for that reason; the two are not independently
-  reorderable. S-11 is independent of both S-9 and S-10 and may be reordered inside Horizon 2.
+- S-10's remaining work depends only on S-5's proposal and authorization contract, since its query
+  engine, container, and read-only setup-identity posture have already landed. It is therefore no
+  longer ordered behind S-9 and may run any time after S-5. S-11 is independent of both S-9 and S-10
+  and may be reordered inside Horizon 2.
 - S-12 needs S-9 for the retrieval selection and S-5 for the authorization conditions the
   further-evidence cycle reuses.
-- A-1 requires S-7, S-9, and S-10, because it deletes containers and seeds the ones those slices
-  introduced.
+- A-1 requires S-7 and S-9, because it verifies and reseeds the containers those slices introduce;
+  the `operational-records` container S-10 governs already exists and is verified rather than
+  created.
 - A-1 precedes S-13 even though its identifier sorts later. S-13's report aggregates the final
   hosted smoke and the final live environment, so assembling it before A-1 would produce a report
   that must be regenerated against a changed environment immediately after its contract was
-  stabilized. S-13 also consumes the D-006 selections recorded at the end of S-12.
+  stabilized. S-13 also consumes the repeatability subset wired at the end of S-12.
 - Deletion is distributed and coherent: S-0 debris, dead configuration, and the WIP; S-4 the old
   orchestration, HITL, roles, polling, checkpointing, concurrency wrappers, dependencies, and
   graph-dependent evaluation; S-5 the planner, triage, and sufficiency modules after the
@@ -1684,112 +1572,13 @@ Three slices are larger than the rest and are watched deliberately.
 - **A-1** is now cleanup and verification only. If it still feels broad, the live container
   deletion is the separable half and may become its own approval-gated change.
 
-## Execution readiness criteria
+This plan's own operating rules are the readiness bar: every slice leaves the tree green, produces
+a verifiable outcome, and deletes what it supersedes (operating rules 1-7). The plan has already
+executed successfully through S-2, which is the standing evidence that the structure works; a
+standalone audit checklist proving the plan is executable is redundant with that evidence and is
+not maintained here.
 
-This plan is ready to execute when review confirms:
-
-1. every slice is runnable or independently verifiable;
-2. no completed turn is delivered before the full terminal ordering has run, and S-3 is the first
-   slice that produces one;
-3. the old architecture is cut over and removed by S-4, including the evaluation that asserted it;
-4. no temporary assessment contract is introduced;
-5. exactly seven authored incidents remain;
-6. retrieval influence is demonstrated only after repairing answer leakage and contradictions;
-7. the six bounds use the accepted names, including the per-operation transport-retry cap;
-8. grounding check two retains the exact operational-support meaning;
-9. obsolete approval-role machinery is removed with HITL, and hand-rolled authorization is removed
-   at A-0 rather than deferred to the end;
-10. every slice uses the standard template, with the same fields in the same order and none
-    omitted or renamed;
-11. every slice has entry criteria and completion evidence;
-12. every temporary artifact appears in the coexistence register with a named deletion slice, and
-    every coexistence path is a named module or file rather than a described intent;
-13. every deletion checkpoint names an exact, scoped proving command, and no checkpoint rejects an
-    accepted implementation;
-14. every contract has a stabilization point and is not reshaped afterwards;
-15. every pending decision has a resolution deadline, each status section 17 clarification
-    has an owning slice, and every resolution updates the owning authoritative document or
-    `decisions.md`;
-16. the local, Azure-assisted, and hosted posture is stated for every slice; destructive
-    infrastructure cutovers and hosting or security contract changes are confined to A-0 and A-1,
-    with the single narrowly approved S-7 exception; and the interim smoke stays green through
-    S-12;
-17. no environment-dependent test is labelled deterministic;
-18. the corpus repair workflow is explicit and referenced rather than restated;
-19. S-0 through S-5 and A-0 contain path-level execution detail;
-20. telemetry emission is assigned per slice rather than deferred to the hosted sink, every slice
-    that adds runtime behavior names its own diagnostic facts and closes on a telemetry assertion,
-    and no slice defers application instrumentation to A-0;
-21. the accepted evaluation grows with capability rather than arriving at the end, and its artifact
-    home exists before its first artifact;
-22. every existing test module has exactly one disposition and one owning slice;
-23. no slice depends on a decision that no earlier slice or authoritative document owns;
-24. every slice answers what a reviewer can run, see, or verify;
-25. no slice is merely framework or infrastructure construction;
-26. no slice depends on a mechanism, contract, resource, fixture, or test seam unless the producing
-    slice explicitly owns its implementation and proof;
-27. every link of the reconstruction chain under "Diagnosability obligations" has an owning slice,
-    the failure classes named there are separable in telemetry, A-0 makes the chain queryable and
-    adds the hosting diagnostics no earlier slice could emit, and A-1 proves both a healthy turn and
-    a deliberate failure are diagnosable from correlation identifiers alone.
-
----
-
-## Appendix: test disposition
-
-Every test module at the inspected commit has one disposition and one owning slice, so that no old
-suite silently disappears and none survives to enforce superseded semantics. Keep means the module
-survives essentially as is; Port means it survives with its assertions rewritten against an accepted
-contract; Delete means it dies with its subject.
-
-| Existing test | Disposition | Owning slice | Note |
-| --- | --- | --- | --- |
-| `test_answer_key.py` | Keep | S-12 | Corpus gate; extended by the repairs |
-| `test_api.py` | Port | S-1, S-4 | Health, version, and validation survive; approval cases die in S-4 |
-| `test_auth.py` | Delete | S-4, A-0 | Role suites die in S-4; A-0 adds one caller-identity test with no roles |
-| `test_bm25.py` | Keep | S-9 | The lexical scorer survives the retrieval replacement |
-| `test_cassette.py` | Keep | S-2 | Replay remains a legitimate change-time aid |
-| `test_checkpointer.py` | Delete | S-4 | Dies with the checkpointer |
-| `test_closure.py` | Keep | S-9, S-12 | Extended to knowledge references and repaired corpus |
-| `test_composition.py` | Delete | S-5 | Dies with `composition.py` |
-| `test_conclusion_contracts.py` | Port then Delete | S-2, S-4 | Ported to the accepted assessment shape; the old-vocabulary remainder dies with the legacy contracts module |
-| `test_conclusion_wiring.py` | Delete | S-4 | Wired to the old graph terminal path |
-| `test_cycle_onset_clamp.py` | Delete | S-5 | Deleted once the onset-clamp behavior is captured in the fixed-script fixture, which happens earlier in the same slice |
-| `test_diagnose.py` | Delete | S-5 | Dies with the graph diagnose node and planner |
-| `test_evidence_coverage.py` | Port | S-2 | Retargeted at admitted-evidence coverage |
-| `test_guardrails.py` | Port | S-3, S-4 | Read-only allowlist moves to the registry; approval cases die in S-4 |
-| `test_incidents_alerts.py` | Keep | S-2 | Tool behavior; envelope assertions updated |
-| `test_investigations.py` | Delete | S-4 | Dies with the job repository |
-| `test_investigations_api.py` | Delete | S-4 | Dies with the async job API |
-| `test_kb.py` | Keep | S-9 | Extended with category and date metadata |
-| `test_llm_client.py` | Port | S-5 | Narrowed to the Azure adapter, the fake, and cassettes |
-| `test_llm_e2e.py` | Port | S-5 | Ported to a replay-based end-to-end test; the live Ollama path is removed |
-| `test_llm_planner.py` | Delete | S-5 | Dies with `llm_planner.py` |
-| `test_mcp_parity.py` | Port twice | S-2, S-11 | S-2 updates it to the new canonical envelope; S-11 updates it to the single accepted exposure |
-| `test_observe.py` | Port | S-5 | Summarizers move into the Investigator |
-| `test_planner_seam.py` | Delete | S-5 | Dies with the planner protocol and factory |
-| `test_prompts.py` | Keep | S-2 | Versioned prompt registry survives |
-| `test_report_binding.py` | Delete | S-4 | Dies with the approval-bound report hash |
-| `test_repository_factory.py` | Port | S-7 | Retargeted at the Investigation Record port selecting in-memory versus Cosmos |
-| `test_retrieval.py` | Port | S-9 | Reranker-marked cases deleted; fusion and promotion cases rewritten |
-| `test_retrieval_factory.py` | Port | S-9 | Retargeted at the accepted backend set |
-| `test_runtime_assets.py` | Keep | S-4 | Updated for the new client file and packaged corpus |
-| `test_scaffold.py` | Delete | S-4 | Dies with the stub harness |
-| `test_scenario_gate.py` | Delete | S-4 | Numeric merge ratchet over the graph |
-| `test_schema.py` | Port | S-2 | Model-response schemas change with the accepted contracts |
-| `test_search_tools.py` | Port | S-9 | Extended to passage-bearing hits |
-| `test_single_agent_gate.py` | Delete | S-4 | Numeric merge ratchet over the graph |
-| `test_state.py` | Port concept then Delete | S-2, S-4 | The evidence dedup and merge concept ports into admission; the LangGraph state module dies in S-4 |
-| `test_state_contract.py` | Delete | S-4 | Dies with the LangGraph state contract |
-| `test_sufficiency.py` | Delete | S-5 | Dies with severity-scaled sufficiency |
-| `test_telemetry.py` | Port | S-1 | Extended in every slice that adds an emission fact |
-| `test_tool_chain.py` | Port | S-2 | Retargeted at the two-axis envelope |
-| `test_tools.py` | Port | S-2 | Envelope assertions updated; behavior retained |
-| `test_tools_operational.py` | Port | S-2 | Envelope assertions updated; behavior retained |
-| `test_tracing.py` | Keep | S-1, A-0 | Extended for turn identity and the real exporter |
-| `test_triage.py` | Delete | S-5 | Dies with `triage.py` |
-| `test_triager.py` | Delete | S-5 | Dies with the LLM triager |
-| `tests/conftest.py` | Keep | Across slices | Evolves with the fixtures it serves |
-
-New suites are named in the path-level detail table. Any test module added after this plan was
-written inherits the same rule: it has a disposition or it does not merge.
+Test disposition for a module a slice deletes or supersedes is stated inside that slice's own
+"Code and data to delete" or "Code to replace" field. A global Keep/Port/Delete census of every test
+module in the repository is not maintained: it duplicates what each slice already states about its
+own subject, and a module no slice has touched yet needs no disposition until a slice reaches it.
