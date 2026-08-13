@@ -1,9 +1,9 @@
 """2a consistency gate for the RetailEase answer key.
 
-Scoped to what exists at Phase 2a: the answer key's *internal* coherence and its agreement
-with the committed golden sets. The full cross-corpus closure check (every evidence ref
-resolves to a generated telemetry row; every retrieval id exists as a KB doc) is Phase 2e,
-once 2b/2d exist. Until then this guards the spine: schema, ref grammar, topology references,
+Scoped to the answer key's *internal* coherence and its agreement with the committed golden
+sets. The full cross-corpus closure check (every evidence ref resolves to a generated telemetry
+row; every retrieval id exists as a KB doc) belongs to `test_closure.py`. This guards the spine:
+schema, ref grammar, topology references,
 intent/match invariants, and goldens-in-sync.
 """
 

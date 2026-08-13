@@ -1,7 +1,7 @@
-"""Cassette record/replay (Stage 4a) — the deterministic CI-gate mechanism. No ML stack.
+"""Cassette record/replay: the deterministic CI-gate mechanism. No ML stack.
 
 Wiring the LLM into the loop must be gate-able without a live model: record once, replay in CI.
-The manifest tests (G-54) cover the other half: replay must FAIL when the recorded run and the
+The manifest tests cover the other half: replay must FAIL when the recorded run and the
 current code disagree on a behaviour-affecting setting, rather than serving a stale response under
 a key that no longer describes the request.
 """
@@ -49,7 +49,7 @@ def test_request_key_is_stable_and_sensitive():
 
 
 def test_a_changed_provider_knob_changes_the_key():
-    """The G-54 defect in one line: `#45` moved reasoning_effort low -> medium and every key
+    """The defect in one line: `#45` moved reasoning_effort low -> medium and every key
     stayed identical, so CI kept replaying responses recorded under the old setting."""
     assert request_key(_M, MSGS, 0.0) != request_key(_OTHER, MSGS, 0.0)
 
@@ -76,7 +76,7 @@ def test_replay_unknown_request_fails_loud(tmp_path: Path):
         replay.complete([ChatMessage("user", "an unrecorded question")])
 
 
-# --- replay manifest (G-54) ---------------------------------------------------------------------
+# --- replay manifest --------------------------------------------------------------------------
 def test_the_recorded_cassette_carries_its_manifest(tmp_path: Path):
     cassette = tmp_path / "c.json"
     RecordingChatModel(FakeModel(), cassette).complete(MSGS)

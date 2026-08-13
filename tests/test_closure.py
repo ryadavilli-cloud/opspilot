@@ -11,8 +11,8 @@ NOT import the generators' resolution logic) and adds cross-layer ties no single
   5. alerts reference real entities; each storm's root_cause sits on the scenario's chain
   6. runbook cross-references inside postmortems resolve
 
-If this passes, the Phase 4 retrieval and Phase 5 groundedness evals are scoring against a key that
-holds together.
+If this passes, the retrieval and groundedness evaluations are scoring against a key that holds
+together.
 """
 
 from __future__ import annotations

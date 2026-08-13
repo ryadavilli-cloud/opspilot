@@ -1,8 +1,8 @@
 """Generate RetailEase telemetry from the answer key, calibrated by the RCAEval profile.
 
-This is the deterministic 2b generator. It reads three inputs — the topology and scenario
-answer key (2a) and the empirical signal profile (RCAEval) — and emits the telemetry the
-Phase 3 tools will query:
+This is the deterministic generator. It reads three inputs, the topology and scenario answer key
+and the empirical signal profile (RCAEval), and emits the telemetry the read-only capabilities
+query:
 
     data/synthetic/logs.jsonl          (log rows; query_logs)
     data/synthetic/metrics.json        (metric series; get_metrics)

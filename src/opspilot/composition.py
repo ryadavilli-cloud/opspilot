@@ -84,7 +84,7 @@ def build_diagnosis(implementation: str | None = None) -> DiagnosisComposition:
         from opspilot.triage import build_triager
 
         # provider/model resolved from config (azure in prod); wrapped so every model call emits a
-        # usage span (Stage 5g) — done here, not in build_chat_model, so factory/eval stay untraced.
+        # usage span, emitted here and not in build_chat_model, so factory/eval stay untraced.
         model = TracedChatModel(build_chat_model())
         planner = build_planner("single_agent", model=model)
         triager = build_triager("single_agent", model=model)

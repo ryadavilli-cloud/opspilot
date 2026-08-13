@@ -1,4 +1,4 @@
-"""Tool-result summarizers (Stage 4b) — no ML stack.
+"""Tool-result summarizers: no ML stack.
 
 The summary must surface the values a model needs to reason AND the exact citable ref, while
 collapsing noise (many near-identical log lines) so it does not crowd the prompt.

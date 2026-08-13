@@ -167,7 +167,7 @@ def run_cycle(
         # sufficiency gate) but deliberately not cited — the naive baseline ignores them.
         if q.call.tool == "get_deployments" and result.results:
             onset_dt = _parse(ctx.onset)
-            # G-18: only a deploy at/before onset can have "preceded" it. get_deployments looks up
+            # Only a deploy at/before onset can have "preceded" it. get_deployments looks up
             # to onset+15min, so the post-onset tail is in `results`; taking the plain max could
             # cite a deploy that FOLLOWED onset as causal-by-precedence. Clamp to d.ts <= onset; if
             # nothing precedes onset, cite no deploy — the hypothesis then falls to "no implicated

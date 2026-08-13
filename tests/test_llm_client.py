@@ -1,4 +1,4 @@
-"""LLM client factory (Stage 4a) — no ML stack for the deterministic cases.
+"""LLM client factory: no ML stack for the deterministic cases.
 
 The factory must construct live providers without importing the optional `openai` SDK (lazy on
 first call), serve the replay provider from a cassette, and fail loud on an unknown provider. A

@@ -78,14 +78,14 @@ def _fail(
     return error_result(tool_name, message, started, outcome)
 
 
-def run_tool(
+def run_tool[R: BaseModel, T](
     tool_name: str,
-    request_cls: type[BaseModel],
-    logic: Callable[[Any], tuple[list, list[str]]],
+    request_cls: type[R],
+    logic: Callable[[R], tuple[list[T], list[str]]],
     **kwargs: Any,
-) -> ToolResult[Any]:
+) -> ToolResult[T]:
     started = time.perf_counter()
-    # One tool span at the boundary every tool goes through (Stage 5g / §23), nested under the
+    # One tool span at the boundary every tool goes through (code guidelines §23), nested under the
     # current node span via the trace context. The result's status is reflected onto the span; no
     # exception crosses the boundary, so the span always closes with a real status.
     with span(f"tool.{tool_name}", attributes={"tool_name": tool_name}) as sp:

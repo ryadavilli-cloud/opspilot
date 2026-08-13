@@ -1,4 +1,4 @@
-"""Phase 1 state-contract test — the inter-node contract must hold end to end.
+"""State-contract test: the inter-node contract must hold end to end.
 
 Now an integration test: the graph runs real retrieval + deterministic triage/diagnosis, so it
 needs the retrieval extras and runs against real scenarios. LangGraph's inter-node contract is the

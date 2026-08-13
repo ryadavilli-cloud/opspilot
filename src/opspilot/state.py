@@ -123,7 +123,7 @@ class InvestigationState(BaseModel):
     incident_id: str = ""
     investigation_id: str = ""  # one attempt; minted at ingest (UUID)
     thread_id: str = ""  # derived from investigation_id
-    trace_id: str = ""  # span correlation id (Stage 5g); defaults to investigation_id
+    trace_id: str = ""  # span correlation id; defaults to investigation_id
     workflow_version: str = ""
     idempotency_key: str = ""
 
@@ -146,8 +146,8 @@ class InvestigationState(BaseModel):
     produced_refs: Annotated[list[str], merge_refs] = Field(default_factory=list)
 
     hypothesis: Hypothesis | None = None  # single source of truth (statement/confidence/cites)
-    # Stage 5e structured conclusion — the typed claim the 6b checks validate and the report is
-    # rendered from. None until the synth prompt produces it (3b); the prose hypothesis is the base.
+    # The structured conclusion: the typed claim the deterministic checks validate and the report
+    # is rendered from. None until the synth prompt produces it; the prose hypothesis is the base.
     causal: CausalClaim | None = None
     report_claims: list[ReportClaim] = Field(default_factory=list)
     diagnosis: DiagnosisTrace | None = None  # observations + stop reason (last turn only)
@@ -163,7 +163,7 @@ class InvestigationState(BaseModel):
     # recomputed on synthesis and on every edit, so an approval can be bound to exact report bytes.
     report: IncidentReport | None = None
     report_hash: str = ""
-    # Stamped by `finalize_report` and DERIVED, never minted (G-58): re-executing the terminal leg
+    # Stamped by `finalize_report` and DERIVED, never minted: re-executing the terminal leg
     # after a checkpoint recovery must produce the same value, which is what lets the sink refuse
     # the second write. Empty on every run that never reached finalize (escalated, rejected).
     publication_id: str = ""

@@ -37,7 +37,7 @@ param implementation string = 'single_agent'
 @description('Azure OpenAI account name. Must be globally unique; lowercase alphanumeric + hyphens.')
 param openAiAccountName string = toLower('${namePrefix}oai${uniqueString(resourceGroup().id)}')
 
-@description('Chat model to deploy (Azure OpenAI catalog name). gpt-5-mini is the currently-GA cheap tier; the entire gpt-4o/gpt-4.1 family is Deprecating in eastus2 and blocked for new deployments. Interim demo tier only; production routing is Claude-on-Foundry (config.PROD_MODELS, G-45).')
+@description('Chat model to deploy (Azure OpenAI catalog name). gpt-5-mini is the currently-GA cheap tier; the entire gpt-4o/gpt-4.1 family is Deprecating in eastus2 and blocked for new deployments.')
 param chatModelName string = 'gpt-5-mini'
 
 @description('Chat model version. Verify it is GA in the target region before deploy (az cognitiveservices model list -l <region>).')
@@ -55,7 +55,7 @@ param azureOpenAiApiVersion string = '2025-04-01-preview'
 @description('Create the Cognitive Services OpenAI User role assignment for the app identity. Set false when the deploy principal lacks RBAC-write (Owner / User Access Administrator) and the grant is bootstrapped imperatively — mirrors manageAcrPullRoleAssignment.')
 param manageOpenAiRoleAssignment bool = true
 
-@description('Cosmos DB account name — the durable store behind the LangGraph checkpointer (Stage 5b) and the async investigation repository (Stage 5c), pulled forward from Stage 8. Must be globally unique; lowercase alphanumeric + hyphens.')
+@description('Cosmos DB account name: the durable store behind the LangGraph checkpointer and the async investigation repository. Must be globally unique; lowercase alphanumeric + hyphens.')
 param cosmosAccountName string = toLower('${namePrefix}-cosmos-${uniqueString(resourceGroup().id)}')
 
 @description('Create the Cosmos DB Built-in Data Contributor role assignment for the app identity. This is a Microsoft.DocumentDB data-plane role assignment (plain Contributor on the account is enough to create it), unlike the Microsoft.Authorization assignments above — kept as its own guard for symmetry and in case the deploy principal ever needs it bootstrapped imperatively instead.')
@@ -88,7 +88,7 @@ param embeddingDimensions int = 1536
 @description('Object id of the principal that runs corpus preparation. Corpus preparation writes the RetailEase containers; the application never does, so this grant belongs to a different principal than the app identity. Empty (the default) creates no assignment, which is correct for an environment nobody seeds from.')
 param corpusSetupPrincipalId string = ''
 
-@description('Entra tenant id that issues reviewer tokens for the HITL decision endpoint (G-01). Injected as AZURE_TENANT_ID. Defaults to the deployment tenant; override only for a cross-tenant setup.')
+@description('Entra tenant id that issues reviewer tokens for the HITL decision endpoint. Injected as AZURE_TENANT_ID. Defaults to the deployment tenant; override only for a cross-tenant setup.')
 param entraTenantId string = tenant().tenantId
 
 @description('This API\'s audience — the API app-registration\'s application (client) id GUID, which is the aud claim in the v2.0 tokens Entra issues for it (requestedAccessTokenVersion=2). The decision endpoint rejects any token whose aud does not match, so a token for another app cannot approve here. Empty until the app registration is bootstrapped (see the reviewer-identity ADR); while unset the decision endpoint returns 500 (fail-closed) rather than accepting unvalidated tokens.')
@@ -186,19 +186,19 @@ resource embeddingDeployment 'Microsoft.CognitiveServices/accounts/deployments@2
   }
 }
 
-// Azure Cosmos DB — the durable store behind both the LangGraph checkpointer (Stage 5b) and the
-// async investigation resource repository (Stage 5c). Serverless: pay-per-request, no fixed base
+// Azure Cosmos DB: the durable store behind both the LangGraph checkpointer and the async
+// investigation resource repository. Serverless: pay-per-request, no fixed base
 // cost at this app's traffic (unlike the ACR Basic tier above, this has none while idle). Keyless:
 // disableLocalAuth means the ONLY way in is an Entra token from the app's managed identity via the
 // data-plane role assignment below.
 //
-// The database and containers ARE declared here (Stage 5f, G-02) rather than left to the app. Both
+// The database and containers ARE declared here rather than left to the app. Both
 // clients call create_*_if_not_exists, which reads first and only creates on a 404 — but the app
 // authenticates with the Cosmos Built-in Data Contributor role, and that is a DATA-plane role:
 // it grants item operations, queries, change feed, and readMetadata, NOT container creation, which
 // is a management-plane action. So the app can never create these; it can only find them. Declaring
-// them here is what makes the read path succeed, and it is also the first slice of the G-48
-// container split (each workload its own container + partition key), rather than one opaque store.
+// them here is what makes the read path succeed, and it gives each workload its own container and
+// partition key rather than one opaque store.
 resource cosmos 'Microsoft.DocumentDB/databaseAccounts@2024-08-15' = {
   name: cosmosAccountName
   location: location
@@ -230,8 +230,8 @@ resource cosmosDb 'Microsoft.DocumentDB/databaseAccounts/sqlDatabases@2024-08-15
   }
 }
 
-// One container per workload, each with the partition key its client actually writes (G-48's
-// "several workloads modeled as one store" is why these are separate rather than a single blob):
+// One container per workload, each with the partition key its client actually writes. Several
+// workloads modeled as one store is what these are separate to avoid:
 //
 //  - investigations:       /investigation_id   one logical partition per attempt.
 //
@@ -474,7 +474,7 @@ resource app 'Microsoft.App/containerApps@2024-03-01' = {
               name: 'AZURE_OPENAI_EMBEDDING_DIMENSIONS'
               value: string(embeddingDimensions)
             }
-            // Reviewer identity for the HITL decision endpoint (G-01). The tenant + audience are
+            // Reviewer identity for the HITL decision endpoint. The tenant + audience are
             // what a reviewer token is validated against; the approver role is what it must carry
             // to publish. These are configuration, not secrets — the app holds no client secret,
             // because reviewers authenticate as themselves and the console is a public PKCE client.

@@ -115,7 +115,7 @@ def test_edit_that_preserves_grounding_passes_revalidation():
     assert after_safety_validate(edited.model_copy(update=result)) == "hitl_gate"
 
 
-# --- escalation attribution (G-36) --------------------------------------------------------------
+# --- escalation attribution -------------------------------------------------------------------
 # The blocking node names the cause; `escalate` reports what it was told. The old `escalate`
 # inferred the cause by probing state in a fixed order, so a citation-gate block (which set
 # nothing) surfaced as an exhausted iteration budget: specific, confident, and wrong.

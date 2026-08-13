@@ -123,7 +123,7 @@ def check_version(client: httpx.Client) -> VersionResponse:
 
 def run_investigation(client: httpx.Client, auth: dict[str, str]) -> InvestigationResponse:
     # The ingress gate, checkable on every deploy: an anonymous caller must not be able to spend
-    # model budget on the sync route either (G-03). Mirrors the unauthenticated-decision check.
+    # model budget on the sync route either. Mirrors the unauthenticated-decision check.
     anon = client.post(
         "/investigate", json={"incident_id": SMOKE_INCIDENT_ID, "summary": "anon probe"}
     )
@@ -143,7 +143,7 @@ def run_investigation(client: httpx.Client, auth: dict[str, str]) -> Investigati
         resp.status_code != 403,
         f"/investigate returned 403 for the smoke principal: {resp.text[:300]}. The deploy "
         f"service principal needs the submit app role granted in Entra. It holds only the "
-        f"approver role from the G-01 bootstrap, which predates the submit role.",
+        f"approver role from the original bootstrap, which predates the submit role.",
     )
     _require(
         resp.status_code == 200,
@@ -220,8 +220,8 @@ def run_investigation(client: httpx.Client, auth: dict[str, str]) -> Investigati
 def _reviewer_token(audience: str) -> str:
     """A reviewer bearer token for the decision endpoint, acquired as the deploy service principal
     via the already-authenticated `az` CLI. This is a WORKLOAD identity — the API accepts it but
-    stamps `kind: service_principal`, never `human` (G-01, code guidelines §15). It works only once
-    the app registration exists and this SP has been granted the approver role (see the ADR).
+    stamps `kind: service_principal`, never `human` (code guidelines §15). It works only once the
+    app registration exists and this SP has been granted the approver role.
 
     `--scope <audience>/.default` (not `--resource`) so the token matches what the API validates: a
     v2.0 token whose `aud` is the API's app id. `audience` is that app id."""
@@ -238,7 +238,8 @@ def _reviewer_token(audience: str) -> str:
         raise SmokeTestFailure(
             f"could not acquire a reviewer token for {audience!r}: {detail}"
         ) from exc
-    token = json.loads(out.stdout).get("accessToken")
+    payload: dict[str, str] = json.loads(out.stdout)
+    token = payload.get("accessToken", "")
     _require(bool(token), "az returned no accessToken")
     return token
 
@@ -265,7 +266,7 @@ def _smoke_auth_headers() -> dict[str, str]:
 
 def run_async_investigation(client: httpx.Client, auth: dict[str, str]) -> None:
     """Exercises the async job API end to end — the real hitl_gate pause, the Cosmos-backed
-    InvestigationRepository, and (when configured) the authenticated decision endpoint (G-01).
+    InvestigationRepository, and (when configured) the authenticated decision endpoint.
 
     `force_rerun` is required: this smoke test always posts the same fixed incident, and without
     it a repeat deploy would just observe the previous run's already-completed investigation,
@@ -273,7 +274,7 @@ def run_async_investigation(client: httpx.Client, auth: dict[str, str]) -> None:
 
     Every leg here is authenticated: submit, poll, and decide all require a proven principal since
     the ingress-auth slice. The token is the deploy service principal's, acquired once in `main`;
-    the API stamps it `service_principal`, never `human` (G-01, code guidelines §15)."""
+    the API stamps it `service_principal`, never `human` (code guidelines §15)."""
     anon = client.post(
         "/investigations",
         params={"force_rerun": "true"},

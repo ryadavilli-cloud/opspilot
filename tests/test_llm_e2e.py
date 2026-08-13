@@ -1,4 +1,4 @@
-"""End-to-end: the LLM planner drives the real graph on inc-004 (Stage 4b).
+"""End-to-end: the LLM planner drives the real graph on inc-004.
 
 Live model (Ollama qwen or OpenAI, per env) — CI-excluded (`-m "not llm"`); the deterministic
 scorecard is the CI gate. This asserts the loop *terminates* and that every citation it ships is

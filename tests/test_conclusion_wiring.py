@@ -1,10 +1,10 @@
-"""Stage 5e wiring: admission, rendering, and the typed result union.
+"""Conclusion wiring: admission, rendering, and the typed result union.
 
 Slice 1 froze the conclusion contracts; this covers what happens to them at runtime. The three
-properties under test are the ones the gaps name: a proposed claim is admitted by code rather than
-trusted (G-29), the published prose is rendered from the admitted structure so the two cannot
-disagree (G-50), and a run's outcome carries a variant tag so a consumer can tell a grounded RCA
-from a briefing or an escalation without reading prose (G-49).
+The three properties under test: a proposed claim is admitted by code rather than trusted, the
+published prose is rendered from the admitted structure so the two cannot disagree, and a run's
+outcome carries a variant tag so a consumer can tell a grounded RCA from a briefing or an
+escalation without reading prose.
 """
 
 from __future__ import annotations
@@ -48,7 +48,7 @@ def test_refs_that_name_no_service_contribute_no_entity():
     assert entities_from_refs({"runbook:rb-1", "past_incident:inc-002"}) == set()
 
 
-# --- admission (G-29) ---------------------------------------------------------------------------
+# --- admission --------------------------------------------------------------------------------
 def test_a_grounded_claim_is_admitted_into_the_strict_contract():
     claim = admit_causal_claim(
         _proposed(), produced_refs=_REFS, known_entities=entities_from_refs(_REFS)
@@ -103,7 +103,7 @@ def test_an_unproduced_cause_event_ref_is_dropped_not_carried():
 
 
 def test_ungrounded_report_claims_are_dropped():
-    """G-51: every published claim cites produced evidence, not just the headline root cause."""
+    """Every published claim cites produced evidence, not just the headline root cause."""
     admitted = admit_report_claims(
         [
             ReportClaimResponse(kind="onset", statement="a", support_refs=["metrics:ghost:x@t"]),
@@ -117,7 +117,7 @@ def test_ungrounded_report_claims_are_dropped():
     assert [c.kind for c in admitted] == ["blast_radius"]
 
 
-# --- rendering (G-50) ---------------------------------------------------------------------------
+# --- rendering --------------------------------------------------------------------------------
 def test_the_rendered_statement_can_only_name_the_claimed_entity():
     claim = CausalClaim(
         cause_type="deployment",
@@ -159,7 +159,7 @@ def test_a_report_claim_renders_its_kind_and_its_supporting_refs():
     assert "logs:svc-a:1" in rendered
 
 
-# --- the result union (G-49) --------------------------------------------------------------------
+# --- the result union -------------------------------------------------------------------------
 def _report(**overrides) -> IncidentReport:
     base: dict = dict(
         incident_id="inc-004",

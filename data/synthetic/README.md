@@ -1,6 +1,6 @@
 # RetailEase synthetic telemetry (generated)
 
-These four files are the telemetry the Phase 3 tools query. They are **generated, not
+These four files are the telemetry the read-only capabilities query. They are **generated, not
 hand-written** — `generate.py` projects the answer key (`../answer_key/`) through the empirical
 RCAEval profile (`../profiles/`). Do not edit them by hand; re-run the generator.
 
@@ -10,7 +10,7 @@ answer_key (signal)  ─┐
 rcaeval_profile (noise ratios) ─┘
 ```
 
-| File | Consumed by (Phase 3) | Contents |
+| File | Consumed by | Contents |
 | --- | --- | --- |
 | `logs.jsonl` | `query_logs` | authored incident events + calibrated noise floor + ambient sub-threshold events |
 | `metrics.json` | `get_metrics` | per-entity 5-min series; only referenced `(service, metric)` deviate |
@@ -46,4 +46,4 @@ python data/synthetic/generate_alerts_incidents.py   # alerts + incidents
 `NOISE_LOG_SCALE` in `generate.py` trades corpus size against noise-floor realism (RCAEval's real
 rate is ~335 log lines/min/service; we scale down but preserve the ambient error ratio).
 
-Provenance and the full cross-corpus closure check land at Phase 2e.
+Provenance and the full cross-corpus closure check are asserted by `tests/test_closure.py`.

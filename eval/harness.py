@@ -1,8 +1,8 @@
-"""Evaluation harness scaffold — plumbing before metrics (Phase 0).
+"""Evaluation harness scaffold: plumbing before metrics.
 
-Runs against an (initially empty) dataset and reports zero results. Real evaluators
-(retrieval MRR, routing accuracy, groundedness, ...) are wired in from Phase 3 onward,
-each introduced the moment its capability becomes real.
+Runs against an (initially empty) dataset and reports zero results. Each real evaluator
+(retrieval MRR, routing accuracy, groundedness, ...) is introduced the moment the capability
+it scores becomes real, rather than scaffolded ahead of it.
 """
 
 from __future__ import annotations

@@ -1,11 +1,9 @@
 """Planner seam — the single point where a model plugs into the frozen diagnosis loop.
 
-Stage 4a introduces the seam with the deterministic planner behind it (no behavior change);
-Stage 4b adds the LLM planner. `run_cycle`'s execution transitions, the tool envelope, the
-read-only registry, and the sufficiency gate are all unchanged — only *which diagnostic questions
-to pursue next* moves behind this interface. Hypothesis synthesis stays inside `run_cycle` for now;
-making it model-driven (with the matching `run_cycle` split) lands in 4b, when the LLM updater is
-the real consumer.
+`run_cycle`'s execution transitions, the tool envelope, the read-only registry, and the
+sufficiency gate do not vary with the planner behind this seam. Only *which diagnostic questions to
+pursue next* moves behind the interface, so a model can direct the loop without widening what it
+may reach. Hypothesis synthesis stays inside `run_cycle`.
 
 The deterministic planner is retained as the fallback tier and the eval floor
 (`evaluate(implementation="deterministic")`) that the single-agent implementation must beat.
@@ -61,7 +59,7 @@ class Planner(Protocol):
         (`final`) a model planner synthesizes its grounded conclusion from `observations`; any
         citation must be in `produced_refs`. The deterministic planner returns `base` unchanged.
 
-        Returns a `Conclusion` rather than a bare `Hypothesis` (Stage 5e): the typed `CausalClaim`
+        Returns a `Conclusion` rather than a bare `Hypothesis`: the typed `CausalClaim`
         and the report-level claims are part of what concluding produces, and threading them back
         through a side channel would put the same fact in two places. `known_entities` bounds which
         entity a claim may blame; a planner that proposes no structure returns `causal=None`, which

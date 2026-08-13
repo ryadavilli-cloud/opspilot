@@ -1,8 +1,8 @@
 """2b closure gate: every answer-key evidence ref must resolve to a real generated row.
 
-This is the Phase 2b half of the "no drift" promise. 2a's test guards the answer key's internal
-coherence; this one guards that the generated telemetry actually realizes it — the check that
-matters before any Phase 4 retrieval or Phase 5 groundedness eval scores against this corpus.
+This is the generated half of the "no drift" promise. `test_answer_key.py` guards the answer key's
+internal coherence; this one guards that the generated telemetry actually realizes it, which is the
+check that matters before any retrieval or groundedness evaluation scores against this corpus.
 
 It re-reads the committed telemetry (it does not regenerate), so if `generate.py` was changed
 without re-running it, or a ref points at a row that isn't there, this fails loudly.

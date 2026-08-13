@@ -14,9 +14,9 @@ class EvidenceCitation(BaseModel):
     ref: str
     note: str = ""  # why it supports the hypothesis
     # The role this citation plays in the causal argument. The model PROPOSES a role; code ADMITS it
-    # at Stage 6b (the role-admissibility check — a citation cannot carry a role its evidence type
-    # cannot support). Defaults to the neutral "context" so an unlabelled citation is never silently
-    # treated as causal support.
+    # deterministically: a citation cannot carry a role its evidence type cannot support. Defaults
+    # to the neutral "context" so an unlabelled citation is never silently treated as causal
+    # support.
     role: Literal["cause", "effect", "baseline", "context"] = "context"
 
 
@@ -51,11 +51,11 @@ class Hypothesis(BaseModel):
     citations: list[EvidenceCitation] = Field(default_factory=list)
 
 
-# --- Conclusion contracts (Stage 5e) -----------------------------------------------------------
-# The typed shape the deterministic checks (Stage 6b) validate and the report is RENDERED from. The
-# root cause stops being a prose sentence and becomes a structured proposition, so the prose a human
-# reads cannot disagree with the structure a check validates (G-50), and every published claim — not
-# just the headline root cause — is grounded in produced refs (G-51/G-29).
+# --- Conclusion contracts -----------------------------------------------------------------------
+# The typed shape the deterministic checks validate and the report is RENDERED from. The root cause
+# stops being a prose sentence and becomes a structured proposition, so the prose a human reads
+# cannot disagree with the structure a check validates, and every published claim, not just the
+# headline root cause, is grounded in produced refs.
 
 
 class OnsetWindow(BaseModel):
@@ -67,9 +67,9 @@ class OnsetWindow(BaseModel):
 
 
 class CausalClaim(BaseModel):
-    """The single structured causal proposition. Stage 6b's contradiction / causal-order /
-    entity-support checks compare THESE typed fields (not prose); `cause_entity` is topology-
-    validated there. The support/counter split makes the evidence *for* and the evidence that would
+    """The single structured causal proposition. The contradiction, causal-order, and entity-support
+    checks compare THESE typed fields rather than prose, and `cause_entity` is topology-validated
+    against them. The support/counter split makes the evidence *for* and the evidence that would
     *refute* the claim both first-class, instead of a flat citation list."""
 
     cause_type: Literal[
@@ -101,9 +101,9 @@ class Acknowledgement(BaseModel):
 
 
 class ReportClaim(BaseModel):
-    """A secondary, structured report-level claim, so every published claim is grounded — not just
-    the root cause (G-51). `statement` is RENDERED from the structured fields (template
-    substitution, not generation) at 6b; `support_refs` must resolve against produced refs."""
+    """A secondary, structured report-level claim, so every published claim is grounded rather than
+    only the root cause. `statement` is RENDERED from the structured fields by template
+    substitution, never generated; `support_refs` must resolve against produced refs."""
 
     kind: Literal[
         "onset", "blast_radius", "sequence", "contributing_factor", "ruled_out", "recommendation"

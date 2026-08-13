@@ -1,4 +1,4 @@
-"""Prompt registry + versioning (Stage 4a) — no ML stack."""
+"""Prompt registry + versioning: no ML stack."""
 
 from __future__ import annotations
 

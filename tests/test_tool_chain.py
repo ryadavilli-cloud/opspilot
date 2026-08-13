@@ -1,4 +1,4 @@
-"""Answer-key chain test — the Phase 3 quality proof.
+"""Answer-key chain test: the capability quality proof.
 
 Runs the deterministic investigation path end to end, with NO LLM:
 

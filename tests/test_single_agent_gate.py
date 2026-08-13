@@ -1,4 +1,4 @@
-"""Stage 4b gate: the single_agent (LLM) diagnosis loop beats the deterministic floor.
+"""Gate: the single_agent (LLM) diagnosis loop beats the deterministic floor.
 
 Replays a committed cassette (no live model, no API) so CI can score the LLM loop deterministically.
 Asserts the replay reproduces the committed single_agent baseline AND clears the deterministic floor

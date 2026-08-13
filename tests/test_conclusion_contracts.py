@@ -1,4 +1,4 @@
-"""Conclusion contracts (Stage 5e) — the typed claim shapes the 6b checks validate and the report
+"""Conclusion contracts: the typed claim shapes the deterministic checks validate and the report
 is rendered from. These assert the CONTRACTS only (validation, defaults, discrimination); wiring the
 synthesis path to produce them, and rendering prose from them, land in the following 5e slices.
 """

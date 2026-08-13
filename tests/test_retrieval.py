@@ -85,7 +85,7 @@ def test_rerank_returns_ranked_doc_hits(retriever):
 
 
 def test_hybrid_beats_or_matches_dense_baseline(scores):
-    """The Phase 4 proof point: hybrid is never worse than vector-only, and better on a metric."""
+    """The proof point: hybrid is never worse than vector-only, and better on a metric."""
     d, h = scores["dense"], scores["hybrid"]
     assert h["MRR"] >= d["MRR"] - 1e-9, f"hybrid regressed MRR: {h} vs {d}"
     improved = h["MRR"] > d["MRR"] + 1e-9 or h["P@5"] > d["P@5"] + 1e-9

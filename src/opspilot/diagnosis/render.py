@@ -1,4 +1,4 @@
-"""Rendering: report prose is DERIVED from the typed claim, never authored alongside it (G-50).
+"""Rendering: report prose is DERIVED from the typed claim, never authored alongside it.
 
 `Claim.statement` used to be documented as "human-readable, never parsed", which was a loophole:
 the deterministic checks validated the structure, the human read the prose, and nothing forced
