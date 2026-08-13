@@ -26,7 +26,10 @@ import re
 import sys
 from collections.abc import Iterable, Iterator
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:  # the Cosmos SDK is imported lazily, inside the one function that reads it
+    from azure.cosmos import ContainerProxy
 
 import yaml
 
@@ -143,7 +146,10 @@ def knowledge_documents(
 
 
 def _records(name: str, key: str) -> list[dict[str, Any]]:
-    return json.loads((SYN / f"{name}.json").read_text(encoding="utf-8"))[key]
+    payload: dict[str, list[dict[str, Any]]] = json.loads(
+        (SYN / f"{name}.json").read_text(encoding="utf-8")
+    )
+    return payload[key]
 
 
 def operational_documents() -> list[dict[str, Any]]:
@@ -292,9 +298,11 @@ def verify(expected_knowledge: int, expected_operational: int) -> int:
     knowledge = database.get_container_client(config.COSMOS_KNOWLEDGE_CONTAINER)
     operational = database.get_container_client(config.COSMOS_OPERATIONAL_RECORDS_CONTAINER)
 
-    def count(container, where: str = "") -> int:
+    def count(container: ContainerProxy, where: str = "") -> int:
         query = f"SELECT VALUE COUNT(1) FROM c {where}".strip()
-        return list(container.query_items(query, enable_cross_partition_query=True))[0]
+        # `SELECT VALUE COUNT(1)` yields exactly one integer; `int` states that rather than
+        # letting the container client's untyped row type escape into the return.
+        return int(list(container.query_items(query, enable_cross_partition_query=True))[0])
 
     failures: list[str] = []
 

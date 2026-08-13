@@ -8,13 +8,15 @@ navigational: its results give the caller the affected services and timeframe to
 
 from __future__ import annotations
 
+from typing import Any
+
 from opspilot.data.operational_records import OperationalRecords
 from opspilot.tools.contracts import AlertRecord, GetCorrelatedAlertsRequest, ToolResult, to_utc
 from opspilot.tools.errors import run_tool
 
 
 def get_correlated_alerts(
-    records: OperationalRecords, *, deadline_s: float, **kwargs
+    records: OperationalRecords, *, deadline_s: float, **kwargs: Any
 ) -> ToolResult[AlertRecord]:
     def logic(req: GetCorrelatedAlertsRequest) -> tuple[list[AlertRecord], list[str]]:
         start = to_utc(req.start_time) if req.start_time else None

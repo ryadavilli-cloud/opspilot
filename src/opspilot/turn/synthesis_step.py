@@ -22,7 +22,10 @@ from opspilot.evidence.operations import TurnEvidence
 from opspilot.llm.base import ChatMessage
 from opspilot.llm.prompts import get_prompt
 from opspilot.obs import tracing
-from opspilot.stream.projection import emit
+from opspilot.stream.contracts import ActivityEvent
+from opspilot.stream.projection import ActivityProjector, emit
+from opspilot.tools.contracts import ToolResult
+from opspilot.turn.identity import TurnIdentity
 
 # The window either side of the incident's time anchor that telemetry queries are scoped to.
 EVIDENCE_WINDOW = timedelta(minutes=45)
@@ -123,7 +126,15 @@ def synthesize(model: Any, context: Any, evidence: TurnEvidence, objective: str)
     )
 
 
-def capability_event(turn, projector, capability, result, *, admitted, references=None):
+def capability_event(
+    turn: TurnIdentity,
+    projector: ActivityProjector,
+    capability: str,
+    result: ToolResult[Any],
+    *,
+    admitted: int,
+    references: list[str] | None = None,
+) -> ActivityEvent:
     """One activity entry per capability call, carrying both result axes rather than a verdict.
 
     `succeeded` with `empty` reads here as an authoritative absence, visibly distinct from a source

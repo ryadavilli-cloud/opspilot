@@ -1,4 +1,4 @@
-"""LLM-driven planner (Stage 4b) — the model chooses the next diagnostic tool call.
+"""LLM-driven planner: the model chooses the next diagnostic tool call.
 
 Plugs into the same `Planner` seam as the deterministic floor: `run_cycle`'s execution, the tool
 envelope, the read-only registry, and the sufficiency gate are unchanged. Only *which question to
@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import json
 import re
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from pydantic import ValidationError
 
@@ -49,7 +49,7 @@ _LIST_PARAMS: dict[str, set[str]] = {"get_deployments": {"services"}}
 _MAX_BATCH = 6
 
 
-def extract_json_object(text: str) -> dict:
+def extract_json_object(text: str) -> dict[str, Any]:
     """Pull the decision JSON out of a model response. Tolerates `<think>…</think>` preambles
     (qwen3) and ```json fences; falls back to the outermost brace span. Raises ValueError if none
     parses, so the caller can fail closed."""
@@ -60,22 +60,27 @@ def extract_json_object(text: str) -> dict:
     start, end = cleaned.find("{"), cleaned.rfind("}")
     if start != -1 and end > start:
         try:
-            return json.loads(cleaned[start : end + 1])
+            # The extracted span is brace-delimited, so valid JSON here decodes to an object and
+            # nothing else. Declaring the shape at the decode site keeps the model's payload typed
+            # without asserting anything the extraction does not already guarantee.
+            parsed: dict[str, Any] = json.loads(cleaned[start : end + 1])
         except json.JSONDecodeError:
             pass
+        else:
+            return parsed
     raise ValueError(f"no parseable JSON object in model response: {text[:200]!r}")
 
 
-def _params_key(params: dict) -> str:
+def _params_key(params: dict[str, Any]) -> str:
     """Stable key fragment so a re-entered loop dedups repeat calls (never re-asks)."""
     return json.dumps(params, sort_keys=True, separators=(",", ":"))
 
 
-def _coerce_params(tool: str, params: dict) -> dict:
+def _coerce_params(tool: str, params: dict[str, Any]) -> dict[str, Any]:
     """Coerce known scalar-vs-list param mismatches to the tool's shape. Models return list params
     as a bare scalar or a comma-joined string (e.g. services: "a,b"); normalize both to a list."""
     list_params = _LIST_PARAMS.get(tool, set())
-    out: dict = {}
+    out: dict[str, Any] = {}
     for key, value in params.items():
         if key in list_params and isinstance(value, str):
             value = [part.strip() for part in value.split(",") if part.strip()]
@@ -131,7 +136,7 @@ class LLMPlanner:
         self._prompt = get_prompt(prompt_name)
         self._synth_prompt = get_prompt(synthesis_prompt)
         self.prompt_version = self._prompt.version
-        self.last_decision: dict | None = None
+        self.last_decision: dict[str, Any] | None = None
 
     def plan(
         self,
@@ -243,7 +248,7 @@ class LLMPlanner:
             fallback_onset=ctx.onset,
         )
         # The published sentence is rendered from the admitted structure, never taken from the
-        # model's prose, so the two cannot disagree (G-50). Only when nothing was admitted does the
+        # model's prose, so the two cannot disagree. Only when nothing was admitted does the
         # model's own sentence stand, and then it is carrying no structured claim to contradict.
         statement = (
             render_causal_statement(causal) if causal is not None else response.root_cause.strip()

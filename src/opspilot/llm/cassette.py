@@ -15,6 +15,7 @@ from __future__ import annotations
 import hashlib
 import json
 from pathlib import Path
+from typing import Any
 
 from opspilot.llm.base import ChatMessage, ChatModel, ChatResult
 from opspilot.llm.manifest import behaviour_manifest, manifest_digest, manifest_drift
@@ -45,7 +46,7 @@ def request_key(manifest: dict[str, str], messages: list[ChatMessage], temperatu
     return hashlib.sha256(blob.encode("utf-8")).hexdigest()
 
 
-def _result_to_dict(r: ChatResult) -> dict:
+def _result_to_dict(r: ChatResult) -> dict[str, object]:
     return {
         "text": r.text,
         "model_id": r.model_id,
@@ -55,7 +56,7 @@ def _result_to_dict(r: ChatResult) -> dict:
     }
 
 
-def _result_from_dict(d: dict) -> ChatResult:
+def _result_from_dict(d: dict[str, Any]) -> ChatResult:
     return ChatResult(
         text=d["text"],
         model_id=d.get("model_id", ""),
@@ -118,7 +119,7 @@ class RecordingChatModel:
         self._inner = inner
         self.model_id = inner.model_id
         self._path = Path(cassette_path)
-        self._interactions: list[dict] = []
+        self._interactions: list[dict[str, object]] = []
         # Captured once at construction: the manifest describes the run that produced the
         # responses, so it must not be re-read per call and drift mid-recording.
         self._manifest = behaviour_manifest(model_id=self.model_id)

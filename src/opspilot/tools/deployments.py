@@ -11,13 +11,15 @@ one place the request's validated parameters are interpreted.
 
 from __future__ import annotations
 
+from typing import Any
+
 from opspilot.data.operational_records import OperationalRecords
 from opspilot.tools.contracts import DeploymentRecord, GetDeploymentsRequest, ToolResult, to_utc
 from opspilot.tools.errors import run_tool
 
 
 def get_deployments(
-    records: OperationalRecords, *, deadline_s: float, **kwargs
+    records: OperationalRecords, *, deadline_s: float, **kwargs: Any
 ) -> ToolResult[DeploymentRecord]:
     def logic(req: GetDeploymentsRequest) -> tuple[list[DeploymentRecord], list[str]]:
         start, end = to_utc(req.start_time), to_utc(req.end_time)

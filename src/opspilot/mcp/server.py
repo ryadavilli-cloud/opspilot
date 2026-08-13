@@ -8,7 +8,8 @@ and the allowlist are exactly the in-process ones. Add a tool by adding it to EX
 from __future__ import annotations
 
 import time
-from typing import Any
+from collections.abc import Awaitable, Callable
+from typing import Any, Protocol, cast
 
 from mcp.server import Server
 from mcp.types import TextContent, Tool
@@ -30,12 +31,30 @@ EXPOSED_TOOLS: dict[str, type[BaseModel]] = {
     "search_runbooks": SearchRunbooksRequest,
 }
 
+# The SDK's two handler-registration decorators carry no annotations, so their types are stated
+# here instead. Both register a handler and return the decorated function unchanged, which is what
+# these shapes say; neither wraps or replaces it, so nothing about the handlers below is affected.
+type _ListToolsHandler = Callable[[], Awaitable[list[Tool]]]
+type _CallToolHandler = Callable[[str, dict[str, Any]], Awaitable[list[TextContent]]]
+
+
+class _RegisterListTools(Protocol):
+    def __call__(self) -> Callable[[_ListToolsHandler], _ListToolsHandler]: ...
+
+
+class _RegisterCallTool(Protocol):
+    def __call__(
+        self, *, validate_input: bool = True
+    ) -> Callable[[_CallToolHandler], _CallToolHandler]: ...
+
 
 def build_server(service: ToolService | None = None) -> Server:
     svc = service or ToolService()
     server: Server = Server("opspilot-tools")
+    register_list_tools = cast(_RegisterListTools, server.list_tools)
+    register_call_tool = cast(_RegisterCallTool, server.call_tool)
 
-    @server.list_tools()
+    @register_list_tools()
     async def list_tools() -> list[Tool]:
         return [
             Tool(
@@ -48,7 +67,7 @@ def build_server(service: ToolService | None = None) -> Server:
 
     # validate_input=False: let ToolService.call() do the validation, so it is identical to the
     # in-process path (same Pydantic models, same sanitized error envelope).
-    @server.call_tool(validate_input=False)
+    @register_call_tool(validate_input=False)
     async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
         if name not in EXPOSED_TOOLS:
             result = error_result(

@@ -513,6 +513,12 @@ Each has a specific failure mode, and each has a defined alternative earlier in 
 | Using CI to discover which callers relied on a default that was just changed | A repository search answers it before the change; CI answers it one red build at a time |
 | A deterministic test that depends on another test having run, or on collection order | It passes for a reason unrelated to the behavior it claims to protect |
 | Pinning test order, widening a timeout, or retrying to make an isolation defect pass | The coupling survives, and the next order change reveals it again |
+| Adding a module to the type-checker's strict-override list | The list exempts only code already on its way out, so an addition converts a temporary exemption into a permanent one |
+| Leaving an override entry in place after its module is deleted | The list stops describing the code it exempts, and the exemption outlives the reason for it |
+
+The override list only shrinks. A change that deletes a listed module deletes its entry in the same
+commit.
+
 ## 15. Change Preflight and Test Isolation
 
 **Boundary, dependency, and test-isolation analysis is a pre-implementation obligation.** Do not
