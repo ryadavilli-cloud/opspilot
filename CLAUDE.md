@@ -239,8 +239,6 @@ Do not create broad horizontal PRs such as:
 
 Build only the infrastructure required by the vertical behavior currently being implemented.
 
-
-
 ---
 
 ## When the documents are silent

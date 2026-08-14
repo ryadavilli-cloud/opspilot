@@ -28,10 +28,12 @@ These rules govern every slice. They are stated once here rather than repeated i
    coexistence register below. Coexistence without a named deletion slice is not permitted.
 7. Tests for deleted behavior are deleted, not rewritten to preserve obsolete behavior.
 8. Later slices must build on stabilized contracts rather than repeatedly redesigning them.
-9. No completed turn is delivered before the full accepted terminal ordering has run: synthesis,
-   the four grounding checks, the possible single correction, outcome assignment, commit, then
-   terminal delivery. S-3 is the first slice that produces an accepted completed turn; nothing
-   before it may deliver one. Backends may change; the ordering may not.
+9. No completed turn is delivered before the full accepted terminal ordering has run: synthesis and
+   structural admission, an optional shared correction for a structural failure, the four grounding
+   checks, an optional shared correction and re-check for a grounding failure, outcome assignment,
+   commit, then terminal delivery. The one correction allowance is shared across both points and is
+   spent at most once per turn. S-3 is the first slice that produces an accepted completed turn;
+   nothing before it may deliver one. Backends may change; the ordering may not.
 10. Any slice that resolves a pending decision or an implementation clarification must update the
     owning authoritative document, or `decisions.md`, before its implementation PR is complete.
     `status.md` records that the question was resolved; it is never the design authority for the
@@ -444,11 +446,12 @@ identifiers, since one streaming request owns one turn.
 
 - **Outcome:** the first accepted completed turn. Every delivered assessment passes exactly four
   deterministic checks, is assigned complete, partial, or inconclusive, is committed, and only then
-  produces the terminal event. A deliberately malformed synthesis is corrected once and, if still
-  invalid, produces failed execution with no completed artifact, no commit, and no delivered brief.
-  The full terminal ordering, synthesis then four checks then the possible single correction then
-  outcome assignment then commit then terminal delivery, is realized here in full and no later
-  slice may reorder it.
+  produces the terminal event. A deliberately malformed synthesis spends the turn's one shared
+  correction allowance before the checks run and, if still invalid, produces failed execution with
+  no completed artifact, no commit, and no delivered brief. The full terminal ordering is realized
+  here in full and no later slice may reorder it: synthesis and structural admission, the shared
+  correction allowance if a structural failure spends it, the four checks, the same allowance and a
+  re-check if a grounding failure spends it, outcome assignment, commit, then terminal delivery.
 - **Consumes:** the accepted assessment contract, one real structured synthesis completing end to
   end under replay, and the Investigation Record port's commit semantics and lifecycle
   delivery-ordering contract test, all from S-2. The port gains its first real writer and first
@@ -492,8 +495,9 @@ identifiers, since one streaming request owns one turn.
 - **Small PRs:** (1) grounding result contracts; (2) the four checks and correction routing, with
   the old-path wrapper; (3) outcome assignment, the completed-turn artifact, commit, and terminal
   delivery; (4) failed-execution behavior and conformance aggregation.
-- **Done when:** exactly four grounding checks exist; one shared correction allowance exists across
-  correctable grounding failures; complete/partial/inconclusive outcomes are assigned correctly;
+- **Done when:** exactly four grounding checks exist; one shared correction allowance exists per
+  turn across structural-synthesis correction and grounding correction;
+  complete/partial/inconclusive outcomes are assigned correctly;
   failed execution stays outside the three completed outcomes; a real completed-turn artifact
   exists; the commit occurs before terminal delivery; a persistent grounding failure commits and
   delivers nothing; deterministic tests cover the four checks, correction exhaustion, outcome
