@@ -97,35 +97,15 @@ still a way to obtain behavior the accepted design assigns elsewhere.
 
 ## 5. Data and evidence state
 
-**Authored corpus.** Seven incidents (`inc-001` through `inc-007`) across five families, verified
-against `data/answer_key/scenarios.yaml`. Chronology and answer-leakage repairs have landed, and
-both properties are asserted rather than assumed: a referenced series must move toward its own
-authored direction, and no log message or deployment note may name an incident identifier or
-announce its narrative role (`tests/test_telemetry.py`). Reference closure is asserted across the
-corpus (`tests/test_closure.py`).
-
-**Golden scenario records.** One record per authored incident, authored beside the answer key rather
-than projected from it (`data/answer_key/golden_scenarios.yaml`). Every reference a record requires
-must resolve in the corpus, and evidence the corpus deliberately lacks is held as prose so it cannot
-be read as a reference (`tests/test_golden_scenarios.py`).
-
-**Scenario class coverage.** All five classes are represented. The multi-contributor class is
-carried by an authored incident with two independently evidenced conditions; the benign or
-transient class by a controlled non-incident fixture derived from the ambient events, structurally
-invisible to scenario counting and carrying no golden record
-(`data/answer_key/benign_fixture.yaml`).
-
-**One open corpus quality item.** Generated error telemetry is templated: 915 error rows carry
-only 10 distinct messages, one of them repeated 905 times. There is also no pre-incident baseline
-history. Measured 2026-08-13 against `data/synthetic/logs.jsonl`.
-
-**Cosmos data plane (last live-inspected 2026-08-11; not re-verified since).**
-`retailease/knowledge` holds 196 passages from 28 documents under a 1536-dimension vector policy.
-`retailease/operational-records` holds 14,013 documents across six kinds, hierarchically
-partitioned. Both are read by the accepted capabilities. `opspilot/investigations` is declared and
-empty; nothing writes to it, because the artifact it would hold does not exist. The application
-identity holds contributor rights scoped to `investigations` alone and reader rights across
-`retailease`; corpus preparation writes as a different principal.
+| Subject | What holds | Established by |
+| --- | --- | --- |
+| Authored corpus and repairs | Seven incidents (`inc-001` through `inc-007`) across five families, verified against `data/answer_key/scenarios.yaml`. Chronology and answer-leakage repairs have landed: a referenced series must move toward its own authored direction, and no log message or deployment note may name an incident identifier or announce its narrative role. Reference closure holds across the corpus | `tests/test_telemetry.py`, `tests/test_closure.py` |
+| Golden scenario records | One record per authored incident, authored beside the answer key rather than projected from it (`data/answer_key/golden_scenarios.yaml`). Every reference a record requires resolves in the corpus; evidence the corpus deliberately lacks is held as prose so it cannot be read as a reference. Every record carries all eight required parts, and its classes and outcome shapes come from the accepted vocabularies | `tests/test_golden_scenarios.py` |
+| Scenario class coverage | All five classes are represented: the multi-contributor class by an authored incident whose golden record requires two independently evidenced conditions, the benign or transient class by a controlled non-incident fixture derived from the ambient events, structurally invisible to scenario counting and carrying no golden record (`data/answer_key/benign_fixture.yaml`). The audit that established coverage was performed 2026-08-09 and recorded one row per scenario class. No test asserts full class coverage; the two classes whose representation could be faked are asserted individually | Audit performed 2026-08-09. Multi-contributor: `tests/test_golden_scenarios.py`. Benign distinctness: `tests/test_benign_fixture.py`. Full-coverage assertion: not asserted anywhere |
+| Corpus preparation idempotence | A re-shaping produces identical passage ids and identical extracted identifiers, asserted deterministically. Seeding is by upsert, so a re-run converges rather than failing on the second pass; after a partial run on 2026-08-10, a re-run left both live containers byte-identical to a fresh shaping, verified by read-back. No gate asserts the live half | Shaping: `tests/test_corpus_preparation.py::test_extraction_is_stable_across_runs`. Seeding and read-back: `scripts/prepare_corpus.py` (`seed()`, `--verify-only`) |
+| Corpus writer identity | The application identity holds contributor rights scoped to `investigations` alone and reader rights across `retailease`; corpus preparation writes as a different principal holding contributor on `retailease` only, so the setup identity is the only writer to the knowledge and operational-records containers. Declared in the template rather than granted by hand. No automated check asserts the refusal yet | `infra/main.bicep` data-plane role assignments (`cosmosDataContributor`, `cosmosDataReaderRetailEase`, `cosmosDataContributorCorpusSetup`); live-inspected 2026-08-11 |
+| Open corpus quality item | Generated error telemetry is templated: 915 error rows carry only 10 distinct messages, one of them repeated 905 times, and there is no pre-incident baseline history | Measured 2026-08-13 against `data/synthetic/logs.jsonl` |
+| Cosmos data plane | `retailease/knowledge` holds 196 passages from 28 documents under a 1536-dimension vector policy. `retailease/operational-records` holds 14,013 documents across six kinds, hierarchically partitioned. Both are read by the accepted capabilities. `opspilot/investigations` is declared and empty; nothing writes to it, because the artifact it would hold does not exist | Live-inspected 2026-08-11; not re-verified since |
 
 ---
 
@@ -199,30 +179,3 @@ a superseded module, so both leave with it.
 
 **Untracked local configuration.** `.claude/settings.json` and `.claude/settings.local.json` are
 untracked and unignored, so they appear in every `git status`.
-
----
-
-## 9. Where previously cited content now lives
-
-`horizontal-execution-plan.md` cites this document by heading name so that a citation survives
-renumbering. The rewrite renamed rather than renumbered, so this table exists to make the
-re-pointing mechanical. It is a migration aid and carries no status of its own.
-
-| Previously cited heading | Content now in |
-| --- | --- |
-| Detailed Missing and Partial Implementation Register | 3. Partially implemented and missing capabilities |
-| Deletion and Replacement Register | 4. Temporary legacy and coexisting implementation |
-| Data and Corpus Status | 5. Data and evidence state |
-| Implementation Clarifications Exposed by the Repository | 8. Known gaps and unresolved issues |
-| Detailed State by Design Area | 2. Implemented capabilities, with 3 for what is absent |
-| Test and Evaluation Gap Status | 7. Current verification state |
-| Document Status | 1. Current repository baseline |
-| Azure and Deployment Status | 6. Runtime and deployment state |
-| Documentation and Repository Hygiene | 1. Current repository baseline |
-| Verification and Test Results | 7. Current verification state |
-| Component Reconciliation Matrix | 2. Implemented capabilities, with 4 for what is superseded |
-
-Three of these cited material this document no longer carries. Document Status recorded how an
-inspection was performed, Verification and Test Results recorded per-command detail beyond a lane
-result, and Component Reconciliation Matrix classified every module against the design. Those
-citations need rewording rather than redirection.

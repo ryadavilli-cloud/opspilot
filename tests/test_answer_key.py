@@ -137,8 +137,8 @@ def test_red_herring_is_declared_evidence():
 
 
 def test_inc_006_represents_multiple_independent_contributing_signals():
-    """inc-006 is the corpus's multi-contributor representative (status.md "Data and Corpus
-    Status"). Relabeling a single linear chain as "multi-contributor" without a second
+    """inc-006 is the corpus's multi-contributor representative (status.md "Data and evidence
+    state"). Relabeling a single linear chain as "multi-contributor" without a second
     independently observable signal would not actually close the coverage gap, so this
     checks structure, not prose: contributing metric evidence must span at least two
     distinct entities."""

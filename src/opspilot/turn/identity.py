@@ -1,5 +1,4 @@
-"""Turn and investigation identity: the correlation ids no component owned before this module
-(status.md 10.12).
+"""Turn and investigation identity: the correlation ids no component owned before this module.
 
 `data-and-evidence.md` §3 fixes exactly two identities that matter here: investigation identity
 ("one incident under study") and turn identity ("one bounded cycle within an investigation"). A

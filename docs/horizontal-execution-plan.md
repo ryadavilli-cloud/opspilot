@@ -2,21 +2,23 @@
 
 **In what sequence is the gap between the design and the repository closed?**
 
-This document sequences the work. It converts `status.md` - "Deletion and Replacement Register" and
-`status.md` - "Detailed Missing and Partial Implementation Register" into vertical slices, ordered
+This document sequences the work. It converts `status.md` - "Partially implemented and
+missing capabilities" and `status.md` - "Temporary legacy and coexisting implementation" into
+vertical slices, ordered
 so that each horizontal layer is complete before the next begins, and it states what must be true at
 the end of each slice and each layer.
 
-It does not restate what is missing. `status.md` - "Detailed Missing and Partial Implementation
-Register" is the canonical inventory of absence, and every slice below cites its entries by their
+It does not restate what is missing. `status.md` - "Partially implemented and missing
+capabilities" is the canonical inventory of absence, and every slice below cites its rows by their
 own wording. It does not restate why a choice was made; `decisions.md` owns that. It carries no
 dates, no estimates, and no ordering beyond dependency.
 
 References into `status.md` name headings rather than section numbers, so a citation survives
-renumbering and stays greppable. A register entry is cited by its own wording for the same reason.
+renumbering and stays greppable. A row is cited by its own wording for the same reason.
 
-The gap it closes was measured at the commit `status.md` - "Document Status" names. No verdict is
-re-derived here.
+The gap it closes was measured at a commit an earlier revision of `status.md` named. The current
+document no longer carries that measurement, so the citation this paragraph held stands as a
+divergence: a stated citation without a counterpart. No verdict is re-derived here.
 
 ## How to read a slice
 
@@ -83,27 +85,30 @@ The order matters and is the whole point of doing this first: a file deleted fro
 `main`'s history and can be recovered, while an unmerged branch deleted from the remote does not and
 cannot. Anything worth keeping on a branch is therefore cherry-picked onto `main` before that branch
 is deleted, and nothing is preserved by keeping a branch alive. Then confirm what each stale remote
-branch actually contains, and delete the rest. `status.md` - "Deletion and Replacement Register",
-Delete: "Stray/stale: `out.txt`, `raw.txt`, `infra/.gitkeep`, `data/.gitkeep`,
-`tests/__pycache__/_scratch_proposed...pyc`, stale remote branches" names the debris and the six
-branches; `status.md` - "Documentation and Repository Hygiene" records the same list together with
-the stale `README.md` and `.env.example` and the untracked `docs/` and `.githooks/` that are
-committed here.
+branch actually contains, and delete the rest. An earlier revision of `status.md` named the debris
+(`out.txt`, `raw.txt`, two `.gitkeep` placeholders, a stray compiled test artifact) and the six
+stale branches, together with the stale `README.md` and `.env.example` and the untracked `docs/`
+and `.githooks/` that are committed here.
 
-The unpushed WIP commit `status.md` - "Document Status" records on `stage-5f-durable-dispatch` is
-confirmed as abandoned or cherry-picked, and then dropped. That discharges Delete: "WIP commit
-`0c3c175` (`dispatch.py` 349 ln, `worker.py` 183 ln, lease/epoch machinery, Service Bus config)"
-here rather than in any slice, so no slice below deletes the dispatch or worker modules. It also
-clears the 31 failing tests and the two `mypy` errors `status.md` - "Verification and Test Results"
-attributes to that commit, so every slice starts from a green tree.
+The unpushed WIP commit an earlier revision of `status.md` recorded on
+`stage-5f-durable-dispatch` is confirmed as abandoned or cherry-picked, and then dropped. That
+discharges the WIP-commit deletion (`dispatch.py`, `worker.py`, lease and epoch machinery, Service
+Bus configuration) here rather than in any slice, so no slice below deletes the dispatch or worker
+modules. It also clears the 31 failing tests and the two `mypy` errors that revision attributed to
+the commit, so every slice starts from a green tree.
 
 **Azure orphans.** Resources that no template declares and that are not part of OpsPilot are deleted
-directly with the CLI. Bicep declares desired state; it does not remove what it never owned, so an
-undeclared resource is not removed by any template change in layer 8. `status.md` - "Deletion and
-Replacement Register", Delete: "Live orphan: `rytesting` (Microsoft.CognitiveServices/accounts, kind
-AIServices) + `rytesting/proj-default` in `rg-opspilot`" is the one such resource, and `status.md` -
-"Azure and Deployment Status" records it as the only live resource in `rg-opspilot` outside the
-template. These deletions belong to no slice and are not added to the template.
+directly with the CLI. Bicep declares desired state; it does not remove what it never owned, so an undeclared resource is not removed by any template change in layer 8. The one such resource was
+the live orphan `rytesting` (Microsoft.CognitiveServices/accounts, kind AIServices) with its
+`rytesting/proj-default` project in `rg-opspilot`, which an earlier revision of `status.md`
+recorded as the only live resource there outside the template. These deletions belong to no slice
+and are not added to the template.
+
+**Divergence.** The five citations this section carried named headings of an earlier `status.md`:
+the stray-file and stale-branch debris, the repository-hygiene list, the unpushed WIP commit, the
+failing tests and type errors attributed to it, and the live orphan resource. The current
+`status.md` records none of these, because the preparation they describe is done and the document
+carries no history. Each stated citation has no counterpart.
 
 **Live containers the template will stop declaring.** A template that no longer mentions a container
 does not delete it from the account either. The `checkpoints` and `investigation-index` containers
@@ -140,8 +145,8 @@ Until the corpus is loaded where the design says it lives, carries the provenanc
 admission filters and retrieval filters read, and has a golden record per authored incident, no
 measurement above it means anything and no retrieval or capability slice can be verified.
 
-**Definition of done.** The corpus defects `status.md` - "Data and Corpus Status" records as
-blocking the affected demonstrations are repaired; the seven authored incidents each carry a golden
+**Definition of done.** The corpus defects are repaired, which `status.md` - "Data and evidence
+state" records under "Authored corpus and repairs"; the seven authored incidents each carry a golden
 scenario record of the shape `evaluation.md` §5 fixes; the coverage audit of `evaluation.md` §4 has
 been run and its result recorded, with the scenario selections named only after the repairs land;
 the knowledge and operational-records containers exist, are populated by the setup identity, and
@@ -155,45 +160,40 @@ all five scenario classes are represented in what it contains.
 
 **Requires.** Nothing.
 
-**Closes.** `status.md` - "Detailed Missing and Partial Implementation Register", Corpus
-preparation: "Credible chronology and mechanism-consistent telemetry," "No answer leakage,"
-"Five-class evaluation coverage," and "Controlled variants clearly distinct from authored
-incidents."
+**Closes.** `status.md` - "Data and evidence state": the chronology, answer-leakage, and closure
+facts of "Authored corpus and repairs," and the class representation and controlled non-incident
+fixture of "Scenario class coverage."
 
 **Retires.** Nothing. The evaluation input surface the golden records replace is retired in 1.2 with
 the records that replace it.
 
 **Shape.** Repair, not replacement. The corrections are to generated telemetry and authored notes:
-the contradictory series, the effect-before-cause orderings, and the answer leakage `status.md` -
-"Data and Corpus Status" enumerates. Coverage is closed within the accepted seven-incident scope,
-which that section records as revising one existing authored incident for the multi-contributor
-class and representing the benign or transient class through a controlled non-incident fixture
-derived from the existing ambient events. Nothing here authors an eighth incident and nothing here
+the contradictory series, the effect-before-cause orderings, and the answer leakage whose repair
+`status.md` - "Data and evidence state" records under "Authored corpus and repairs". Coverage is
+closed within the accepted seven-incident scope: "Scenario class coverage" records the
+multi-contributor class carried by an authored incident and the benign or transient class by a
+controlled non-incident fixture derived from the existing ambient events. Nothing here authors an eighth incident and nothing here
 writes a golden record.
 
-**Tests.** Two properties the existing closure gates do not catch belong here, because `status.md` -
-"Data and Corpus Status" records both as currently failing: a repaired series must move in the
-direction its own postmortem narrates, and no tool-visible field may name the answer. The gates that
-already pass must still pass after the repairs, so reference closure is re-run rather than assumed:
-that section records all 42 evidence and 22 retrieval references as resolving today, and a repair
-that breaks one is a regression rather than a new finding.
+**Tests.** Two properties the existing closure gates do not catch belong here, because an earlier revision of `status.md` recorded both as failing, and `status.md` - "Data and
+evidence state" now records both as asserted under "Authored corpus and repairs": a repaired series
+must move in the direction its own postmortem narrates, and no tool-visible field may name the
+answer. The gates that already pass must still pass after the repairs, so reference closure is
+re-run rather than assumed: the same row records closure as holding, and a repair that breaks one
+is a regression rather than a new finding.
 
 **Evaluation.** Nothing is scored here. This slice exists so that what is scored later is scored
 against a corpus that does not contradict itself.
 
-**Done when.** The corpus defects `status.md` - "Data and Corpus Status" records as blocking the
-affected demonstrations are repaired; the multi-contributor and benign or transient classes are
-represented; reference closure still verifies; and the corpus is not expected to change again for
-the rest of the plan.
+**Done when.** The corpus defects are repaired, which `status.md` - "Data and evidence state"
+records under "Authored corpus and repairs"; the multi-contributor and benign or transient classes
+are represented; and reference closure still verifies.
 
-**Complete.** Both properties this slice named as uncaught by the existing closure gates are now
-asserted: a referenced series must move toward its own authored direction, which a metric with no
-authored direction fails outright, and no log message or deployment note may name an incident
-identifier or announce its own narrative role. The eight closure tests were retained rather than
-assumed. The multi-contributor class is represented by an existing authored incident carrying two
-independently evidenced conditions, and the benign or transient class by a controlled non-incident
-fixture derived from the ambient events, which is structurally invisible to scenario counting and
-carries no golden record. No eighth incident was authored.
+**Complete.** `status.md` - "Data and evidence state" carries this slice's subject in two rows.
+"Authored corpus and repairs" records the chronology and answer-leakage repairs landed and
+asserted, with reference closure holding across the corpus. "Scenario class coverage" records the
+multi-contributor and benign or transient classes represented, the second by the controlled
+non-incident fixture this slice's shape names.
 
 ### 1.2 Golden scenario records, the coverage audit, and the D-006 selections
 
@@ -202,23 +202,23 @@ investigation must establish, the corpus has been audited against the five scena
 scenario selections are named against real incident identifiers.
 
 **Requires.** 1.1: the corpus defects repaired and the multi-contributor and benign classes
-represented, since the audit and the selections read the repaired corpus. `status.md` -
-"Implementation Clarifications Exposed by the Repository", "D-006 evidence" holds the selections
-until the required repairs and the coverage audit are done, and the reason is substantive rather
-than procedural: the repairs change what there is to select from. A record authored against an
+represented, since the audit and the selections read the repaired corpus. An earlier revision of `status.md` held the selections open ("D-006 evidence") until the required
+repairs and the coverage audit were done; the current document has no counterpart for that hold,
+and `decisions.md` D-006 is accepted, so the stated citation stands as a divergence whose question
+is closed. The reason the hold existed was substantive rather than procedural: the repairs change
+what there is to select from. A record authored against an
 uncorrected series would state an expectation the repaired corpus no longer supports.
 
-**Closes.** `status.md` - "Detailed Missing and Partial Implementation Register", Evaluation:
-"Golden scenario records of accepted shape."
+**Closes.** `status.md` - "Data and evidence state", "Golden scenario records."
 
-**Retires.** `status.md` - "Deletion and Replacement Register", Delete: "`eval/wild.py`,
-`record_wild.py`, `wild_scorecard.json`, `wild_single_agent.json` cassette (manifest-less,
-unreplayable), `tests/fixtures/wild_ob/`, RCAEval profile dependence," which the same register lists
-again under "No accepted slot or explicitly deferred" as "RCAEval wild generalization probe." The
-probe is the evaluation input surface the golden records replace, and `requirements.md` §12 defers
-the capability it demonstrates. The wild-probe test goes with it. The probe alone is retired: the
-RCAEval profile that row names beside it is a live input to corpus generation and is retained, and
-the profile-calibration pipeline the register carries as its own row is not this slice's subject.
+**Retires.** The wild generalization probe: `eval/wild.py`, `record_wild.py`,
+`wild_scorecard.json`, the manifest-less `wild_single_agent.json` cassette, and
+`tests/fixtures/wild_ob/`. The probe is the evaluation input surface the golden records replace,
+and `requirements.md` §12 defers the capability it demonstrates. The wild-probe test goes with it.
+The probe alone is retired: the RCAEval profile is a live input to corpus generation and is
+retained, and the profile-calibration pipeline is not this slice's subject. The deletion rows this
+retirement cited belonged to an earlier `status.md`; the current document records nothing about the
+probe, so the stated citation has no counterpart, while the retirement itself is performed.
 
 **Shape.** New authored records beside the existing answer key. The answer key and its projection
 are not rewritten; the golden record is the evaluation-facing artifact authored from them.
@@ -228,25 +228,25 @@ extends to the golden records: every evidence reference a golden record requires
 repaired corpus. A golden record naming evidence the corpus cannot produce is a corpus gap, not a
 test failure to tolerate.
 
-**Evaluation.** This is the input every later scenario-outcome measurement reads. The scenario
-selections D-006 leaves pending are recorded here against the candidate mapping `status.md` - "Data
-and Corpus Status" already supplies: the change-time subset, the milestone set, the repeatability
-subset, the further-evidence demonstration, and the retrieval-influence scenario. Naming them is a
-corpus lookup rather than a decision this plan makes.
+**Evaluation.** This is the input every later scenario-outcome measurement reads. The scenario selections D-006 left pending are recorded here against the candidate mapping an
+earlier revision of `status.md` supplied: the change-time subset, the milestone set, the
+repeatability subset, the further-evidence demonstration, and the retrieval-influence scenario.
+Naming them is a corpus lookup rather than a decision this plan makes. That mapping has no
+counterpart in the current `status.md`, and the selections are accepted in `decisions.md` D-006, so
+the stated citation stands as a divergence whose question is closed.
 
 **Done when.** Every authored incident has a golden record of the shape `evaluation.md` §5 fixes;
 the audit table has one row per scenario class, with the multi-contributor and benign classes
 recorded as represented; and the scenario selections D-006 lists are named against real incident
 identifiers.
 
-**Complete.** The golden records are authored beside the answer key rather than projected from it,
-one per authored incident, and the closure discipline extends to them: every reference a record
-requires must resolve in the repaired corpus, and evidence the corpus deliberately does not contain
-is held as prose so it can never be read as a reference. The audit carries one row per scenario
-class and records no corpus gap. D-006 is accepted with a real incident identifier against every
-criterion. The retirement is performed: the wild probe, its recorder, its scorecard, its cassette,
-its fixtures, and its test are gone, while the profile that calibrates corpus generation is
-retained as the live input this slice said it was.
+**Complete.** `status.md` - "Data and evidence state" carries this slice's subject. "Golden
+scenario records" records one record per authored incident, authored beside the answer key, every
+required reference resolving, deliberately absent evidence held as prose, and all eight parts
+present with classes and outcome shapes from the accepted vocabularies. "Scenario class coverage"
+records the audit performed 2026-08-09 with one row per scenario class and both previously missing
+classes represented. The selections are accepted in `decisions.md` D-006, and `status.md` - "Known
+gaps and unresolved issues" records every decision record other than D-004 as accepted.
 
 ### 1.3 Corpus preparation into the RetailEase containers
 
@@ -255,11 +255,10 @@ reads at runtime, by a setup identity separate from the application's.
 
 **Requires.** 1.1: the repaired corpus, which is what is loaded.
 
-**Closes.** `status.md` - "Detailed Missing and Partial Implementation Register", Investigation
-Record and persistence: "One categorized `knowledge` container" and "One `operational-records`
-container"; Retrieval: "Categorized `knowledge` container," "Azure OpenAI embeddings," and
-"Identifier extraction and category metadata at load time"; Corpus preparation: "Categorized
-knowledge metadata and embeddings" and "Operational-records seed process."
+**Closes.** `status.md` - "Implemented capabilities", "Offline corpus preparation", and
+`status.md` - "Data and evidence state", "Cosmos data plane": the populated knowledge and
+operational-records containers, embedding at load time, and the identifier and category metadata
+the loaded passages carry.
 
 **Retires.** Nothing. The corpus is authored, and the RCAEval profile the register carries under "No
 accepted slot or explicitly deferred" as "External ITSM/RCAEval profile-calibration pipeline"
@@ -286,13 +285,19 @@ to either RetailEase container (`runtime-and-deployment.md` §16, check 4).
 deployment is provisioned and used at load time, the setup identity is the only writer, and a re-run
 of the preparation produces the same passages and the same identifiers.
 
-**Complete.** Two divergences. First, the readiness obligation this slice's tests named, that absent
-preparation must present as a deployment-time failure, was not implementable here: nothing read
-either container, so the check would have gated deployment on data no code consumed. It is recorded
-against the two slices that create the first readers, and the operational half has since landed
-while the knowledge half remains with passage retrieval. Second, the setup identity being the only
-writer is established by the data-plane role assignments rather than by anything this slice
-asserts; the check that will assert it is one of the eight the verification suite owns.
+**Complete.** `status.md` - "Implemented capabilities" records "Offline corpus preparation": a
+separate task with its own identity that loads, chunks, embeds, and indexes the authored corpus
+and verifies by reading back what it wrote. `status.md` - "Data and evidence state" carries the
+rest of the definition of done: "Cosmos data plane" records both containers populated; "Corpus
+preparation idempotence" records a re-shaping producing identical passage ids and identifiers and
+a re-run converging by upsert, read back byte-identical; "Corpus writer identity" records the
+setup principal as the only writer, declared in the template. "Runtime and deployment state"
+records the embedding deployment provisioned.
+
+**Divergence.** The readiness obligation this slice's tests named, that absent preparation must
+present as a deployment-time failure, was not implementable here: nothing read either container, so
+the check would have gated deployment on data no code consumed. It is recorded against the two
+slices that create the first readers.
 
 ---
 
@@ -316,13 +321,12 @@ executed and how complete its answer was.
 
 **Requires.** Nothing.
 
-**Closes.** `status.md` - "Detailed Missing and Partial Implementation Register", Evidence Access
-Layer and admission: "Two-axis result vocabulary," which that register records as scaffolded by the
-existing envelope with the binary status to be replaced.
+**Closes.** `status.md` - "Implemented capabilities", "Two-axis capability results."
 
-**Retires.** `status.md` - "Deletion and Replacement Register", "Misaligned implementations":
-"Binary tool-result status," and with it the status-envelope assertions in the tool tests, which
-assert the collapsed vocabulary the design prohibits.
+**Retires.** The binary tool-result status, and with it the status-envelope assertions in the
+tool tests, which asserted the collapsed vocabulary the design prohibits. The retirement is
+evidenced by `status.md` - "Implemented capabilities", "Two-axis capability results": the legal
+pairings are enforced on construction, so the binary form cannot exist to be read.
 
 **Shape.** Rewrite. The envelope in `tools/contracts.py` survives as a shape; its status field and
 every adapter's use of it do not. Each adapter translates its provider outcome into the two axes
@@ -342,22 +346,16 @@ them turns an unreachable source into a clean bill of health.
 **Done when.** No path can produce a result outside the legal pairings, and no code reads a tool
 result as a boolean.
 
-**Already done, so this slice inherits it rather than performing it.** Separate work landed the
-contract on 2026-08-11 and both register rows above have been updated accordingly.
-`tools/contracts.py` carries the five execution outcomes, the four completeness values, and the
-legal-pairing table, enforced when the envelope is constructed rather than checked by a caller, so
-an illegal pairing cannot exist to be read. Every adapter assigns both axes at the single boundary
-in `tools/errors.py`, an unreachable retriever reports `unavailable` rather than a generic error,
-and the protocol boundary carries both axes across unchanged with parity asserted on each. One
-temporary collapse to the old binary remains for the legacy runtime, named in the coexistence
-register and deleted with that runtime. What is genuinely left for this slice is nothing; the
-retirement it names is complete.
+One temporary collapse to the old binary remains for the legacy runtime and is deleted with that
+runtime; no new caller may use it.
 
-**Complete.** The distinction this slice asked to be protected holds structurally rather than by
-convention: the pairing is enforced where the envelope is constructed, so a source that answered
-authoritatively with nothing and a source that did not answer cannot be collapsed into one another
-by any caller. The property that reads a result as a boolean is unreachable except through the one
-named temporary collapse, which carries no new callers and dies with the runtime that reads it.
+**Complete.** `status.md` - "Implemented capabilities" records "Two-axis capability results": the
+legal pairings are enforced where the envelope is constructed, so an illegal pairing cannot exist
+to be read, and a source that answered with nothing stays distinguishable from one that did not
+answer. That row carries this slice's subject.
+
+The second half of this slice's own "Done when," that no code reads a tool result as a boolean, is
+not a fact status records, so it is not derived here.
 
 ### 2.2 Capability adapters over the operational-records container
 
@@ -373,13 +371,14 @@ consumed. This slice creates the first consumer, so the obligation attaches here
 adapters read the container, an empty or missing container must fail at deployment rather than at
 turn time. The data is in place; the failure behavior is what is missing.
 
-**Closes.** No required behavior. `status.md` - "Detailed Missing and Partial Implementation
-Register", Evidence Access Layer and admission records "Closed static capability registry" as
-implemented and reusable and "Read-only operational capabilities" as implemented and well tested.
+**Closes.** No required behavior. `status.md` - "Implemented capabilities", "Read-only
+operational capabilities" records the registry and the operational capabilities as built.
 
-**Retires.** `status.md` - "Deletion and Replacement Register", "Duplicated logic to collapse":
-"Corpus path resolution," whose two owners disappear with the file-backed corpus repository, and
-"Read-only capability inventory," which collapses into the explicit static capability registry.
+**Retires.** Corpus path resolution, whose two owners disappear with the file-backed corpus
+repository, and the read-only capability inventory, which collapses into the explicit static
+capability registry. The deletion rows this retirement cited belonged to an earlier `status.md`
+and already had no counterpart when the work landed, which the divergence below records; the
+current document likewise carries none.
 
 **Shape.** Heavy modification of the existing adapters: same capability surface, different source.
 The registry stays an explicit static mapping with no dynamic registration (`code-guidelines.md`
@@ -398,7 +397,13 @@ refuses a write; a capability constructed to mutate must fail on the role.
 **Done when.** No adapter reads the corpus from the image, no path reaches a source without dispatch
 validation, and every capability carries a bounded timeout.
 
-**Complete (PR #72).** Two divergences the slice text did not anticipate. First, its two named
+**Complete.** `status.md` - "Implemented capabilities" records "Read-only operational
+capabilities": the operational capabilities read the operational-records container through the
+registry with validated parameters and an explicit deadline, a request naming no deadline is
+refused at dispatch, and a container that cannot answer reports unavailability rather than a
+generic error. That row carries this slice's subject.
+
+**Divergences the slice text did not anticipate.** First, its two named
 retirements, "Corpus path resolution" and "Read-only capability inventory," have no counterpart in
 the register: neither row exists in "Duplicated logic to collapse," which holds only citation
 grounding, runtime implementation selection, and embedding and reranker model names. The work both
@@ -423,43 +428,23 @@ assigns its reference, and everything that did not answer becomes a limitation i
 **Requires.** 2.1: both axes, which decide evidence against limitation. 2.2: normalized capability
 results to admit.
 
-**Closes.** `status.md` - "Detailed Missing and Partial Implementation Register", Evidence Access
-Layer and admission: "Deterministic evidence admission," "Stable admitted-evidence and limitation
-structures," and "`succeeded + empty` represented as a positive observation."
+**Closes.** `status.md` - "Implemented capabilities", "Evidence admission", together with the
+authoritative-absence form "Evidence reference model" records as citable.
 
 **Unmapped citation.** The sequence previously closed a separate entry for the evidence ledger, the
-tool-operation history kept apart from cited evidence. The current register has no row of its own
-for it, so this slice treats it as part of "Stable admitted-evidence and limitation structures"
-rather than dropping it. That is a gap between the plan and the register, not a change of scope.
+tool-operation history kept apart from cited evidence. No row of its own carried it at the time, so this slice treated it as part of the admitted-
+evidence structures rather than dropping it. The gap has since closed: `status.md` -
+"Implemented capabilities", "Evidence admission" now records the ledger kept separately.
 
-**Retires.** `status.md` - "Deletion and Replacement Register", "Duplicated logic to collapse":
-"Evidence-reference parsing," whose two parsers become one reference model owned by admission.
+**Retires.** The duplicated evidence-reference parsing, whose two parsers become one reference
+model owned by admission, which `status.md` - "Implemented capabilities" records under "Evidence
+reference model": one parser, one resolver, and one prefix-to-type map.
 
-**Already done, so this slice inherits it rather than performing it.** The two parsers were
-collapsed into one reference model on 2026-08-11 by separate work, and the register row above has
-been retired accordingly. `src/opspilot/evidence/references.py` is that owner: one parser, one
-resolver, and one prefix-to-type map covering the four evidence and three knowledge prefixes.
-`diagnosis/sufficiency.py` and `diagnosis/admission.py` are now callers of it and hold no parsing
-of their own.
+**Complete.** `status.md` - "Implemented capabilities" records "Evidence admission" as the only
+door into the evidence set, assigning the reference and producing a limitation naming the
+unanswered question for everything else, with the operation ledger kept separately. That row carries this slice's subject, ledger included.
 
-Admission itself landed the same day, so all three "Closes" rows above are now recorded as
-implemented. `evidence/admission.py` is the only door into the evidence set: it admits only a
-`succeeded` result, assigns the reference, and produces a limitation naming the unanswered
-question for everything else. An authoritative absence is admitted as a positive observation
-carrying the queried scope, deterministically rather than as generated prose. `evidence/
-operations.py` holds the operation ledger separately from the admitted set, which is the unmapped
-citation this slice recorded as having no register row of its own; that remains true, and the
-ledger exists regardless. Operation references are opaque and turn-scoped, deliberately outside
-the reference grammar so the two identifier spaces cannot be confused.
-
-What is left for this slice is the part its own tests name and this work did not do: proving that
-a `partial` observation stays marked partial everywhere it travels downstream, which cannot be
-shown until something consumes admitted evidence. Admission marks it; nothing yet carries it
-onward.
-
-**Complete (PR #73).** The consumer arrived with synthesis, so the property became showable and is
-now enforced: an element citing a `partial` observation produces a limitation naming what the source
-did not return, and the brief renders it. One divergence. The design requires the acknowledgement
+**Divergence.** The design requires the acknowledgement
 (`data-and-evidence.md` §4 and its invariant 5) but names no carrier for it, and the two candidates
 were not equal: the citation is authored as a reference and a role and nothing else, so the
 limitation is the carrier, which is also the word the design itself uses for what a partial
@@ -495,12 +480,9 @@ other.
 
 **Requires.** 2.1: the result contract. 2.3: admission, through which its results pass.
 
-**Closes.** `status.md` - "Detailed Missing and Partial Implementation Register", Governed
-structured query: "Approved operational-records surface," "Canonical query structure with
-predicates, projection, and COUNT," "Mandatory scope, result limit, and timeout," "Decode or
-validation rejection before execution," "Fixture-truth and rejection tests," and "No grouping,
-ordering, joins, writes, or non-count aggregates in baseline," which that register records as an
-absence the future contract must preserve.
+**Closes.** `status.md` - "Implemented capabilities", "Governed structured query": the approved
+surface, the bounded structure, validation before anything executes, the mandatory limit, and the
+unrepresentability of grouping, ordering, joins, writes, and non-count aggregates.
 
 **Retires.** Nothing. The capability is absent, not misplaced.
 
@@ -525,7 +507,12 @@ and completeness axes as any other.
 **Done when.** No query text is constructed anywhere, an out-of-surface or mutating structure is
 unrepresentable or rejected before execution, and results admit through 2.3.
 
-**Complete (PR #74).** Three divergences.
+**Complete.** `status.md` - "Implemented capabilities" records "Governed structured query": a
+bounded structure over an approved surface, validated before anything executes, translated into one
+parameterized read-only query, and admitted through the same two axes as any other capability, with
+no query text constructed from caller input. That row carries this slice's subject.
+
+**Three divergences.**
 
 First, the approved surface had no counterpart to cite. No accepted document names which
 operational records the path may address, and the one place a selection appeared cited a section
@@ -588,26 +575,27 @@ policy is not fixed at creation, and a path can be removed and re-added at a dif
 Only in-place modification is refused. The account capability is the creation-only part, and the
 partition key is the immutable one.
 
-**Closes.** `status.md` - "Detailed Missing and Partial Implementation Register", Retrieval:
-"Passage-bearing semantic retrieval."
+**Closes.** The passage-bearing half of `status.md` - "Partially implemented and missing
+capabilities", "Accepted retrieval."
 
-**Retires.** `status.md` - "Deletion and Replacement Register", "Misaligned implementations":
-"Retrieval returns pointers without passages" and "Local sentence-transformers embeddings"; and "No
-accepted slot or explicitly deferred": "Local transformer vector-index stack." No retrieval test
-goes with them; the reranker cases are retired in 3.2.
+**Retires.** The pointer-returning retrieval result, the local sentence-transformers embeddings,
+and the local transformer vector-index stack, all of which `status.md` - "Partially implemented
+and missing capabilities" records under "Accepted retrieval" as the superseded stack still
+present. No retrieval test goes with them; the reranker cases are retired in 3.2.
 
-**Shape.** Rewrite of the retrieval subsystem's storage and result shape. What survives is what the
-same register records as implemented and reusable: "Lexical retrieval" and "Reciprocal-rank fusion,"
-together with the section-level chunking and metadata filtering `status.md` - "Detailed State by
-Design Area", "Retrieval" records as aligned with D-003. What changes is where passages live, what a
+**Shape.** Rewrite of the retrieval subsystem's storage and result shape. What survives is what the earlier register recorded as implemented and reusable, lexical
+retrieval and reciprocal-rank fusion, together with the section-level chunking and metadata
+filtering an earlier revision of `status.md` recorded as aligned with D-003; the current document
+carries no per-design-area state, so that citation stands as a divergence. What changes is where passages live, what a
 hit carries, and which embedder produces the query vector. Query-time embedding moves to the Azure
 OpenAI embedding deployment, which is what leaves the local embedder with no consumer.
 
-**Blocked detail.** `status.md` - "Implementation Clarifications Exposed by the Repository", "D-003
-vector viability" records that no Cosmos vector-index configuration exists anywhere. Viability is
-verified before this slice chooses its implementation, and the alternative, an in-process cosine
-scan, requires an explicitly recorded revision to D-003 rather than a runtime fallback. Neither the
-verification result nor the revision is decided here.
+**Blocked detail.** An earlier revision of `status.md` recorded ("D-003 vector viability") that
+no Cosmos vector-index configuration existed anywhere. The current document contradicts that:
+"Data and evidence state", "Cosmos data plane" records the knowledge container live under a
+1536-dimension vector policy, so the viability this slice was to verify is established and the
+in-process cosine scan needs no recorded revision to D-003. The stated citation stands as a
+divergence resolved in this slice's favor.
 
 **Tests.** Collection routing is the property worth asserting deliberately: a request that names no
 collection must route from the question shape, so procedural questions favor runbooks, structural
@@ -632,16 +620,15 @@ against the lexical baseline.
 
 **Requires.** 3.1: passage retrieval. 1.2: the golden records the measurement run scores against.
 
-**Closes.** `status.md` - "Detailed Missing and Partial Implementation Register", Retrieval:
-"Deterministic identifier and metadata promotion" and "Passage-budget truncation after promotion";
-Evaluation: "Lexical-only baseline."
+**Closes.** `status.md` - "Partially implemented and missing capabilities": the deterministic
+promotion and passage-budget truncation of "Accepted retrieval", and the lexical baseline within
+"Categorical evaluation, judge, baselines, report."
 
-**Retires.** `status.md` - "Deletion and Replacement Register", Delete: "Unreachable model reranker:
-`retrieval/reranker.py`, `Retriever.rerank()`, `RERANK_CANDIDATES`, `reranker` test marker,
-`bge-reranker` references," which carries "Deterministic identifier/metadata promotion" as its
-Replacement and so pairs its removal with this slice's build; "Misaligned implementations":
-"CrossEncoder model reranker"; and "Duplicated logic to collapse": "Embedding/reranker model names,"
-whose second definition goes with the reranker.
+**Retires.** The unreachable model reranker (`retrieval/reranker.py`, `Retriever.rerank()`,
+`RERANK_CANDIDATES`, the `reranker` test marker, and the `bge-reranker` references), whose removal
+pairs with this slice's deterministic promotion, together with the CrossEncoder reranker and the
+duplicated embedding and reranker model names. `status.md` - "Partially implemented and missing
+capabilities" records the stack under "Accepted retrieval" as superseded and still present.
 
 **Shape.** Rewrite of the reranking stage. After fusion, passages whose extracted identifiers match
 the query's identifiers, or whose metadata matches a requested entity or window, are stably promoted
@@ -686,16 +673,20 @@ adapter, and routing selects a deployment from a fixed task label.
 
 **Requires.** 1.3: the embedding deployment, whose two chat siblings this slice adds.
 
-**Closes.** `status.md` - "Detailed Missing and Partial Implementation Register", Azure and
-deployment: "Primary, lower-cost, and embedding deployments"; and Telemetry and activity: "Model
-task labels and usage totals," of which this slice closes the task labels and 9.1 closes the totals.
+**Closes.** `status.md` - "Runtime and deployment state": the lower-cost chat deployment it
+records as not existing beside the one chat and one embedding deployment. The task-label and
+usage-total row this slice also cited has no counterpart in the current `status.md`, whose only
+task-label fact is the one labelled call "Implemented capabilities", "Model-proposes, code-admits
+synthesis" records; the remainder of that citation stands as a divergence, with 9.1 owning the
+totals.
 
-**Retires.** `status.md` - "Deletion and Replacement Register", Delete: "Dead config: `PROD_MODELS`,
-`Tier`, `SEVERITY_TIER`, `resolve_tier`, `ENABLE_OPUS_SEV1`, `JUDGE_MODEL` (as-is),
-`MAX_TOOL_CALLS`, `CONFIDENCE_THRESHOLD`, `LANGSMITH_ENABLED`, dispatch knobs," which carries "D-002
-task-label routing" as its Replacement and so pairs its removal with this slice's build. The
-dispatch knobs in that row went with the WIP commit in preparation. The severity-routing case in the
-scaffold test goes with the table it asserts.
+**Retires.** The dead configuration: `PROD_MODELS`, `Tier`, `SEVERITY_TIER`, `resolve_tier`,
+`ENABLE_OPUS_SEV1`, `JUDGE_MODEL` as-is, `MAX_TOOL_CALLS`, `CONFIDENCE_THRESHOLD`,
+`LANGSMITH_ENABLED`, and the dispatch knobs, whose replacement is D-002 task-label routing. The
+dispatch knobs went with the WIP commit in preparation. The severity-routing case in the scaffold
+test goes with the table it asserts. The deletion row this retirement cited belonged to an earlier
+`status.md`; the current document records nothing about the dead configuration, so the stated
+citation has no counterpart.
 
 **Unmapped citation.** The sequence previously retired the multi-provider chat abstraction beyond
 Azure and the sampling-seed determinism machinery. The current register has no row for either: it
@@ -731,9 +722,9 @@ deciding it.
 **Requires.** 4.1: the model-access seam. 2.2, 2.4, and 3.1: the capability set it selects from.
 2.3: the admitted evidence it observes.
 
-**Closes.** `status.md` - "Detailed Missing and Partial Implementation Register", Evidence
-Investigator: "Observation-driven capability selection," "Question/action/reason proposal contract,"
-and "Optional informing-knowledge references."
+**Closes.** `status.md` - "Partially implemented and missing capabilities":
+"Observation-driven evidence selection", and the investigator half of "Supervisor, Evidence
+Investigator, RCA Analyst as distinct roles", proposal contract included.
 
 **Unmapped citation.** The sequence previously closed a working-hypothesis contract. The current
 register has no row for it, so it is carried here as part of the proposal contract rather than
@@ -774,7 +765,9 @@ by horizon with their provenance, and a further-evidence need.
 **Requires.** 2.3: admission-assigned references, which supporting and weakening citations resolve
 to.
 
-The contract itself has landed. It carries the candidate set with its three qualitative labels,
+`status.md` - "Implemented capabilities" records "Assessment contracts" as built, and
+"Partially implemented and missing capabilities" records "Further-evidence cycle" as missing. What
+the first row carries is the candidate set with its three qualitative labels,
 supporting and weakening references per candidate with a knowledge reference refused in either role,
 the established-or-possible markers with an established element requiring current operational
 support and an alternative and a historical comparison unable to be constructed as established,
@@ -787,14 +780,13 @@ half of this slice's closure that names it is untouched. Neither retirement has 
 superseded report object still carries its confidence float and the old console still renders that
 value as a percentage, so the two contracts coexist rather than one replacing the other.
 
-**Closes.** `status.md` - "Detailed Missing and Partial Implementation Register", RCA Analyst and
-assessment: "Candidate cause set," "Qualitative support labels," "Supporting and weakening evidence
-per candidate," "Established and possible grounded elements," "Recommendation horizons and
-provenance categories," "Recorded limitations and further-evidence need," and "Deterministic brief
-projection."
+**Closes.** `status.md` - "Implemented capabilities": "Assessment contracts" and "Deterministic
+brief projection", together with the representation half of what "Partially implemented and
+missing capabilities" still records missing under "Further-evidence cycle."
 
-**Retires.** `status.md` - "Deletion and Replacement Register", Replace: "Result/report contracts";
-and "Misaligned implementations": "Numeric confidence."
+**Retires.** The superseded result and report contracts and their numeric confidence, which
+`status.md` - "Temporary legacy and coexisting implementation" records under "Report and claim
+model" and, for the confidence rendering, "Approval console."
 
 **Shape.** Rewrite, not an adjustment. The current assessment object is one causal claim with report
 claims and a 0-1 confidence float; the design's assessment is a different object
@@ -823,7 +815,10 @@ supported assessment, an explicit insufficiency statement, or one further-eviden
 **Requires.** 4.1: the model-access seam. 4.2: the Evidence Investigator it is split from. 4.3: the
 assessment contract it produces.
 
-The synthesis behavior has landed as a module rather than as a role. One task-labelled call proposes
+`status.md` - "Implemented capabilities" records "Model-proposes, code-admits synthesis" as
+built, and "Partially implemented and missing capabilities" records "Supervisor, Evidence
+Investigator, RCA Analyst as distinct roles" as missing. The synthesis behavior exists as a module
+rather than as a role: one task-labelled call proposes
 an assessment and deterministic code admits it against the admitted evidence set: a reference the
 turn never admitted is dropped, a candidate left with no surviving support is dropped entirely, the
 conclusion disposition follows from the evidence rather than from anything the model asserted about
@@ -834,12 +829,12 @@ structural half of what this slice asserts.
 What remains is the split. The fused planner still gathers and concludes, so the retirement this
 slice owns is outstanding and no code path yet makes it impossible for one role to do both.
 
-**Closes.** `status.md` - "Detailed Missing and Partial Implementation Register", RCA Analyst and
-assessment: "Distinct RCA Analyst as sole synthesis authority"; Evidence Investigator: "A distinct
-investigator role."
+**Closes.** The analyst and investigator halves of `status.md` - "Partially implemented and
+missing capabilities", "Supervisor, Evidence Investigator, RCA Analyst as distinct roles."
 
-**Retires.** `status.md` - "Deletion and Replacement Register", "Misaligned implementations": "One
-planner gathers and concludes," together with the fallback pairing case in the composition test.
+**Retires.** The fused planner that both gathers and concludes, which `status.md` - "Temporary
+legacy and coexisting implementation" records under "Report and claim model", together with the
+fallback pairing case in the composition test.
 
 **Shape.** Rewrite of the synthesis path into a separate role. The model-proposes and code-admits
 split survives, and so does template rendering; the fused module does not. After this slice no code
@@ -870,8 +865,9 @@ schema context, which the deterministic validation of 2.4 then accepts or reject
 **Requires.** 2.4: the deterministic validation that accepts or rejects the structure. 4.1: the
 model-access seam.
 
-**Closes.** `status.md` - "Detailed Missing and Partial Implementation Register", Evidence Access
-Layer and admission: "Governed structured-query capability."
+**Closes.** The model-generation half of the governed structured-query path. `status.md` -
+"Implemented capabilities", "Governed structured query" records the deterministic half built; no
+current row records the generation task.
 
 **Retires.** Nothing.
 
@@ -912,23 +908,23 @@ and the admission path with the direct call.
 **Requires.** 2.2: the capability implementation the boundary shares. 2.3: the admission path it
 shares.
 
-**Closes.** `status.md` - "Detailed Missing and Partial Implementation Register", MCP: "Only
-deployment-and-change-history exposed" and "Transport visible in activity and telemetry."
+**Closes.** `status.md` - "Partially implemented and missing capabilities", "Single accepted
+protocol exposure", transport visibility included.
 
-**Retires.** `status.md` - "Deletion and Replacement Register", "Misaligned implementations": "MCP
-exposes three wrong capabilities," together with the three-tool surface cases in the parity test.
+**Retires.** The three superseded exposures `status.md` - "Partially implemented and missing
+capabilities" names under "Single accepted protocol exposure" (`get_incident`, `query_logs`,
+`search_runbooks`), together with the three-tool surface cases in the parity test.
 
-**Shape.** Heavy modification. What survives is what the same register records against "One real MCP
-boundary," partial and promising, and against "Same implementation and canonical result model as
-direct access," implemented by delegation and tested: one `call` path, one validation, sanitized
+**Shape.** Heavy modification. What survives is the boundary the earlier register recorded as partial and promising, and the
+delegation it recorded as implemented and tested: one `call` path, one validation, sanitized
 errors, and a parity assertion. What changes is which capability is exposed and that only one is.
 
-**Blocked detail.** `status.md` - "Detailed Missing and Partial Implementation Register", MCP:
-"D-004 library questions resolved before implementation cutover" records the decision as still
-pending, and "Implementation Clarifications Exposed by the Repository", "D-004 evidence" records
-that the current SDK usage answers much of it while the explicit library inspection and final record
-remain required. Moving D-004 to accepted is a `decisions.md` change and a precondition of this
-slice; this plan does not decide it.
+**Blocked detail.** `status.md` - "Known gaps and unresolved issues" records D-004 as the one
+open decision, still pending library inspection and blocking this exposure alone. An earlier
+revision also recorded that the current SDK usage answers much of the question while the explicit
+inspection and final record remain required; that evidence note has no current counterpart. Moving
+D-004 to accepted is a `decisions.md` change and a precondition of this slice; this plan does not
+decide it.
 
 **Tests.** Parity is asserted on normalized result, evidence type, provenance, outcome and
 completeness, read-only permission, and admitted evidence semantics, with only the recorded
@@ -951,7 +947,10 @@ completion.
 
 **Requires.** 2.3: admitted evidence and limitations. 4.3: the assessment the artifact carries.
 
-The port has landed ahead of the artifact it stores. It fixes the commit success and failure
+`status.md` - "Implemented capabilities" records "Investigation Record port and commit ordering"
+as built over an in-memory backend, while "Partially implemented and missing capabilities" records
+both "Completed-turn artifact" and "Durable completed-turn persistence" as missing. The port
+therefore stands ahead of the artifact it stores. It fixes the commit success and failure
 contract, carries a sanitized reason so a persistence problem is never indistinguishable from a
 grounding or model one, and is structural over anything carrying an investigation and turn identity,
 so the artifact can gain its fields without reopening it. Its in-memory backend refuses a second
@@ -968,11 +967,10 @@ nothing to assert against because no persisted type carries version information.
 status machine, its leases, its idempotency index, the create-then-poll transport, and the decision
 endpoint are all still present, so the removals this slice owns are outstanding in full.
 
-**Closes.** `status.md` - "Detailed Missing and Partial Implementation Register", Investigation
-Record and persistence: "Completed-turn artifact," "One `investigations` container for that
-artifact," "Restart-safe citation resolution," and "No active-turn checkpoints, replay, index
-container, or worker state," of which this slice removes the index container and the worker state
-while 6.1 removes the checkpoints and replay machinery.
+**Closes.** `status.md` - "Partially implemented and missing capabilities": "Completed-turn
+artifact" and "Durable completed-turn persistence", restart-safe citation resolution included,
+of which this slice removes the index and worker machinery while 6.1 removes the checkpoints and
+replay machinery.
 
 Divergence: the live `investigation-index` container is already gone, removed 2026-08-09 when the
 Cosmos account was deleted and recreated to gain the vector-search capability, which cannot be
@@ -983,27 +981,24 @@ lifecycle around it. Entry into this slice does not need to delete a container o
 deletion, and the "Live containers the template will stop declaring" preparation note above is
 superseded for the same reason.
 
-**Retires.** `status.md` - "Deletion and Replacement Register", Delete: "Async job status vocabulary
-(`queued`/`running`/`awaiting_approval`/`degraded`/`escalated`...) and 202+poll transport," which
-carries "Streaming turn endpoint + live statuses" as its Replacement; "`investigation-index`
-container + versioned idempotency key machinery"; and the endpoint and record members of "HITL
-surface: `hitl_gate`, `apply_edit` nodes, `POST /investigations/{id}/decision`, `CommittedDecision`,
-decision idempotency, console approval UI, `Approver` role usage," whose node members go in 6.1, its
-console member in 7.4, and its `Approver` member with the auth machinery in 7.4. Replace: "`api.py`
-transport + console," of which this slice performs the removal half. "Out-of-scope wrappers around
-otherwise valid concepts": "Job-idempotency index and workflow-version salt," "Multi-replica
-transition machinery," "Publication identity and approval-bound report hash," and the repository
-side of "Lease and fencing protocol for multi-replica workers." The tests that die with these
-subjects are the HITL and decision suite, `test_report_binding.py`, and the investigations and
-investigations-API modules `status.md` - "Test and Evaluation Gap Status" lists.
+**Retires.** What `status.md` - "Temporary legacy and coexisting implementation" records under
+the job API row: the create-then-poll transport and its status vocabulary, the decision endpoint
+and committed decisions, the versioned idempotency machinery, publication identity and the
+approval-bound report hash, and the leases and fencing, of which the `hitl_gate` and `apply_edit`
+node members go in 6.1 and the console and `Approver` members in 7.4 with the console and
+authorization rows. This slice also performs the removal half of the transport-and-console
+replacement whose streaming half is 7.1. The tests that die with these subjects are the HITL and
+decision suite, `test_report_binding.py`, and the investigations and investigations-API modules;
+the test inventory an earlier `status.md` carried for them has no current counterpart.
 
 **Shape.** Rewrite, and the largest slice in the plan. The persistence modules are replaced rather
 than adapted: what persists is one logical artifact carrying identity, objective, terminal outcome,
 stop reason, admitted evidence, retrieved-knowledge references used, assessment and brief where
 produced, limitations, follow-up context, and the trace reference with its version stamp and usage
 totals. The job record, its status machine, its leases, and its idempotency index have no
-counterpart in that artifact and go with it. The ETag and publish-idempotency techniques `status.md`
-- "Component Reconciliation Matrix" records as reusable carry into the completed-turn commit.
+counterpart in that artifact and go with it. The ETag and publish-idempotency techniques an earlier revision of `status.md` recorded as
+reusable carry into the completed-turn commit; the current document holds no per-component
+reconciliation, so that citation stands as a divergence.
 
 The endpoints those stores served are removed here, and their replacement arrives in layer 7. From
 this slice until 7.1 the deployed application serves health and no turn surface. The tree stays
@@ -1060,7 +1055,9 @@ the one authorized further-evidence edge.
 **Requires.** 4.2 and 4.4: the roles it sequences. 4.1: the model-access seam. 2.3: admission.
 5.2: the artifact it delivers to.
 
-Turn identity has landed, and only that. The investigation and turn identities are minted together
+`status.md` - "Implemented capabilities" records "Turn and investigation identity" as built, and
+"Partially implemented and missing capabilities" records "Explicit turn controller" as missing. Only
+identity has landed. The investigation and turn identities are minted together
 and carry the incident under study beside them, which is one input the state machine reads rather
 than any part of the machine itself; because nothing persists yet, an investigation lives only for
 the turn that opens it.
@@ -1073,24 +1070,20 @@ its dependency, and the old intent taxonomy and its known-issue path are all sti
 divergence recorded below discharges the container half of the checkpointer entry; the code half
 stands.
 
-**Closes.** `status.md` - "Detailed Missing and Partial Implementation Register", Supervisor: "Own
-the turn objective," "Separate deterministic control from model judgments," "Authorize continuation
-against computable conditions," and "Enforce the six bound mechanisms"; Evidence Investigator:
-"Supervisor authorization before continuation" and "Parallel independent evidence actions inside one
-authorized cycle"; Turn lifecycle, cancellation, follow-up, and handoff: "Explicit in-process state
-machine" and "One possible further-evidence cycle."
+**Closes.** `status.md` - "Partially implemented and missing capabilities": "Explicit turn
+controller", the Supervisor half of "Supervisor, Evidence Investigator, RCA Analyst as distinct
+roles", and the back-edge "Further-evidence cycle" records as missing.
 
 **Unmapped citation.** The sequence previously closed an entry for the investigation, turn, and
 live-session model itself. The current register names the state machine and the streaming request
 but has no row for the model, so this slice carries it inside "Explicit in-process state machine."
 That is a gap between the plan and the register.
 
-**Retires.** `status.md` - "Deletion and Replacement Register", Replace: "LangGraph orchestration
-(`graph.py` + nodes + routers)"; Delete: "Checkpointer stack: `checkpoint.py`,
-`langgraph-checkpoint-sqlite` dep, `checkpoints` Cosmos container (Bicep + live), msgpack
-allowlist," "`postmortem` node output path," and the `hitl_gate` and `apply_edit` node members of
-"HITL surface: ..."; "Misaligned implementations": "Severity-scaled sufficiency stop rule" and "Old
-intent taxonomy and known-issue fast path." The tests that die with these subjects are
+**Retires.** What `status.md` - "Temporary legacy and coexisting implementation" records under
+"Graph orchestration and its nodes, routers, and checkpointer" with its three dependencies,
+together with the `postmortem` output path, the `hitl_gate` and `apply_edit` node members of the
+approval surface, and the severity-scaled sufficiency stop rule and old intent taxonomy the
+"Report and claim model" row carries. The tests that die with these subjects are
 `test_checkpointer.py`, the sufficiency test, the triage and triager tests, and the escalate and
 sufficiency routing cases of the diagnose test. The intent taxonomy is retired here because the
 routing stage it lived in disappears with the stage sequence, while the required behavior it is
@@ -1141,16 +1134,13 @@ failure spends the turn's one shared correction allowance or ends the attempt.
 **Requires.** 6.1: the stage it runs in. 4.3: the assessment it checks. 2.3: the references it
 resolves. 4.1: the one corrective call.
 
-**Closes.** `status.md` - "Detailed Missing and Partial Implementation Register", Grounding and
-outcomes: "Citation resolution and role/type pairing," "Operational support for established grounded
-elements," "Recommendation-provenance presence," "Limitation disclosure," "One shared correction
-allowance," and "No artifact after persistent grounding failure"; Supervisor: the correction-
-allowance half of "Own the shared correction allowance and terminal shape," whose terminal-shape
-half closes in 6.3.
+**Closes.** `status.md` - "Partially implemented and missing capabilities", "Grounding gate,
+correction allowance, completed outcomes": the four checks, the shared correction allowance, and
+no artifact after persistent failure, whose terminal-shape half closes in 6.3.
 
-**Retires.** `status.md` - "Deletion and Replacement Register", "Misaligned implementations":
-"One-check safety gate routing to escalation"; and "Duplicated logic to collapse": "Citation
-grounding," whose two occurrences become one gate at one stage over one object. The approval-routing
+**Retires.** The one-check gate routing to escalation and the duplicated citation grounding,
+which `status.md` - "Temporary legacy and coexisting implementation" records under "Two-policy
+grounding"; the two occurrences become one gate at one stage over one object. The approval-routing
 cases in the guardrails test go with them.
 
 **Shape.** Rewrite. The single check that exists is a real ancestor of reference resolution, and it
@@ -1184,19 +1174,14 @@ it was inconclusive, and handles cancellation on both of its paths.
 **Requires.** 6.1: the turn state that carries the outcome. 6.2: the gate failure that can end an
 attempt.
 
-**Closes.** `status.md` - "Detailed Missing and Partial Implementation Register", Grounding and
-outcomes: "Exactly complete, partial, inconclusive completed outcomes" and "Failed execution outside
-completed outcomes"; Turn lifecycle, cancellation, follow-up, and handoff: "Safe-boundary
-cancellation," "Early no-evidence cancellation: inconclusive, no assessment, no brief," and "Later
-cancellation with admitted evidence: honest partial or inconclusive result"; Supervisor: the
-terminal-shape half of "Own the shared correction allowance and terminal shape."
+**Closes.** `status.md` - "Partially implemented and missing capabilities": the outcome
+vocabulary of "Grounding gate, correction allowance, completed outcomes", the safe-boundary and
+both cancellation paths of "Explicit cancellation signal", and the terminal shape 6.2 left open.
 
-**Retires.** The escalate cases in the diagnose test. The vocabulary that carried escalation as a
-terminal status is retired by rows other slices own: `status.md` - "Deletion and Replacement
-Register", Delete: "Async job status vocabulary
-(`queued`/`running`/`awaiting_approval`/`degraded`/`escalated`...) and 202+poll transport" in 5.2,
-and Replace: "Result/report contracts" in 4.3, which drops the escalation variant of the result
-union. The `escalate` node itself goes with Replace: "LangGraph orchestration" in 6.1.
+**Retires.** The escalate cases in the diagnose test. The vocabulary that carried escalation as a terminal status is retired by rows other slices own:
+the job API status vocabulary in 5.2 and the result and report contracts in 4.3, both recorded in
+`status.md` - "Temporary legacy and coexisting implementation", which drops the escalation variant
+of the result union. The `escalate` node itself goes with the graph orchestration in 6.1.
 
 **Shape.** Rewrite of the status and outcome vocabulary. The live statuses, the three completed-turn
 outcomes, the stop reasons, and the inconclusive reasons are the tables `workflow-design.md` §9
@@ -1228,7 +1213,10 @@ outcome emitted.
 
 **Requires.** 6.1: the turn it terminates. 6.3: the assembled outcome. 5.2: the store it commits to.
 
-The ordering itself has landed with the port 5.2 built, expressed in one place that commits and
+`status.md` - "Implemented capabilities" records "Investigation Record port and commit ordering",
+whose commit-ordering half is this slice's subject; "Partially implemented and missing capabilities"
+records "Completed-turn artifact" as missing. The ordering is expressed in one place that commits
+and
 delivers only where that commit succeeded. A caller cannot deliver first by accident, and a caller
 that ignores the returned result still cannot have delivered on a failed commit, because delivery is
 unreachable on that path rather than merely discouraged. The failed-execution branch is
@@ -1241,9 +1229,10 @@ onto, the no-evidence cancellation path has no artifact whose omitted assessment
 shown to be representable, and neither the write nor the terminal outcome is emitted, because the
 record modules carry no instrumentation.
 
-**Closes.** `status.md` - "Detailed Missing and Partial Implementation Register", Supervisor:
-"Commit completed turns before successful terminal delivery"; Investigation Record and persistence:
-"Commit before successful terminal delivery."
+**Closes.** The commit-before-delivery obligation on both sides of the seam: the ordering
+`status.md` - "Implemented capabilities" records under "Investigation Record port and commit
+ordering", gaining the runtime caller "Partially implemented and missing capabilities" records as
+missing under "Durable completed-turn persistence."
 
 **Retires.** Nothing; the store it writes to was replaced in 5.2.
 
@@ -1287,7 +1276,10 @@ has succeeded.
 **Requires.** 6.1 through 6.4: a turn that executes, validates, resolves an outcome, and commits
 before delivery.
 
-The transport has landed ahead of the turn it exists to carry. One streaming request creates a turn,
+`status.md` - "Implemented capabilities" records "Streaming turn transport" and "Activity
+projection" as built, while "Partially implemented and missing capabilities" records "Grounding
+gate, correction allowance, completed outcomes" as missing. The transport therefore stands ahead of
+the turn it exists to carry. One streaming request creates a turn,
 emits the identities as its first event, streams activity as it happens, and ends with a closing
 event, served as an ordinary streaming body with no create-then-attach pair, no reconnection, no
 event buffering, and no sequence cursor. The activity projection is built at the same call site that
@@ -1303,16 +1295,16 @@ Both retirements are outstanding: per-user and global concurrency admission and 
 health alias are all still served. The surface sits beside the superseded job API rather than
 replacing it, because the removal half 5.2 owns has not run.
 
-**Closes.** `status.md` - "Detailed Missing and Partial Implementation Register", Turn lifecycle,
-cancellation, follow-up, and handoff: "One live streaming request owns a turn"; Engineer Interaction
-Interface: "Compact safe activity projection"; Telemetry and activity: "Activity projection emitted
-from the same facts."
+**Closes.** `status.md` - "Implemented capabilities": "Streaming turn transport" and "Activity
+projection," which together cover one live streaming request owning a turn, the identities as its
+first event, activity streamed as it happens, a closing event, and the projection built at the same
+call site that opens the telemetry span from the same explicit facts.
 
-**Retires.** `status.md` - "Deletion and Replacement Register", "Out-of-scope wrappers around
-otherwise valid concepts": "Per-user and role-based concurrency admission," of which the design
-keeps only the one small configured concurrency limit that row names; and "No accepted slot or
-explicitly deferred": "Deprecated `/health` alias." This slice also performs the streaming half of
-Replace: "`api.py` transport + console," whose removal half landed in 5.2.
+**Retires.** An earlier revision of `status.md` recorded, under "Deletion and Replacement
+Register," that per-user and role-based concurrency admission and the deprecated `/health` alias
+would retire here; the current document carries no counterpart row for either, and both remain
+reachable in the tree, so neither retirement has been performed here. This slice does perform the
+streaming half of the `api.py` transport-and-console replacement, whose removal half landed in 5.2.
 
 **Shape.** New surface replacing the removed job API. The response is an ordinary streaming HTTP
 body that does not require the browser `EventSource` API, served by the same Container App as the
@@ -1344,12 +1336,11 @@ of five kinds and handled from retained state.
 **Requires.** 7.1: the turn surface a normalized incident opens. 5.2: the retained state a
 follow-up, handoff, and read answer from. 4.1: the lower-cost deployment normalization routes to.
 
-**Closes.** `status.md` - "Detailed Missing and Partial Implementation Register", Engineer
-Interaction Interface: "Predefined and free-text intake normalization," "At most one clarification,"
-"Request-shape classification of follow-up, redirect, supplied context, handoff, and read," and
-"Deterministic handoff rendering"; Supervisor: "Answer follow-ups from retained state with
-deterministic validation"; Turn lifecycle, cancellation, follow-up, and handoff: "Retained-state
-follow-up validation" and "Deterministic handoff with no model call."
+**Closes.** `status.md` - "Partially implemented and missing capabilities": "Free-text
+normalization and clarification," missing entirely because only predefined intake exists today with
+no clarification path of any kind; and "Follow-up, redirect, supplied context, handoff," missing its
+classifier and its retained-state answering, though the five-kind interaction type already exists in
+`intake/contracts.py`.
 
 **Retires.** Nothing here. "Old intent taxonomy and known-issue fast path," which this
 classification replaces, was retired in 6.1 with the routing stage it lived in.
@@ -1361,13 +1352,16 @@ explicit interface action, never by analyzing prose and never by a model call, a
 ordinary follow-up defaults to a question. The handoff summary is a deterministic projection of
 retained state that calls no model.
 
-**Blocked detail.** Two items in `status.md` - "Implementation Clarifications Exposed by the
-Repository" bear directly on this slice. "Normalized incident context fields" records that the
-implementation needs one typed contract for normalized input and that the current `Alert` shape is
-evidence rather than automatic authority. "Stateless clarification token" records that a short-lived
-normalization token needs an explicit signing, expiry, and payload contract, and that a simpler
-resubmission path is preferred where it meets the requirement. Both are decisions for the design
-set, not for this plan.
+**Blocked detail.** `status.md` - "Known gaps and unresolved issues" records the stateless
+clarification token as the one open question with no decision record: a short-lived normalization
+token would need an explicit signing, expiry, and payload contract, and a simpler resubmission path
+is preferred where it meets the requirement. That is still a decision for the design set, not for
+this plan.
+
+An earlier revision of `status.md` also blocked this slice on "Normalized incident context fields,"
+the need for one typed contract for normalized input. The current document contradicts that:
+`decisions.md` D-007 is accepted, and "Implemented capabilities," "Predefined intake normalization"
+records the typed, frozen normalized incident context as built. That half of the block is closed.
 
 **Tests.** Follow-up answer validation is the check that reads exactly like a valid restatement when
 it fails: every cited reference must resolve within retained investigation state, and the answer
@@ -1393,7 +1387,9 @@ boundary.
 **Requires.** 7.1: the streaming request it signals. 6.3: cancellation on both paths producing a
 completed turn.
 
-Client-disconnect detection landed with the streaming request, and it is not what this slice names.
+`status.md` - "Partially implemented and missing capabilities" records "Explicit cancellation
+signal" as partial: disconnect detection exists, the explicit signal does not. The partial half is
+not what this slice names.
 The turn checks whether the client has left before each further unit of work and abandons the turn
 by returning; nothing survives, because nothing on that path persists at all. That is the floor this
 slice signals into.
@@ -1404,9 +1400,10 @@ signal. The difference bounds what can be shown: a departed client is observed b
 work, so cancellation reaching the operation rather than only the stage boundary is not yet
 demonstrable, and a completed turn on both paths waits on 6.3.
 
-**Closes.** `status.md` - "Detailed Missing and Partial Implementation Register", Turn lifecycle,
-cancellation, follow-up, and handoff: "Disconnect discards active state," and the signalling half of
-"Safe-boundary cancellation," whose floor closed in 6.3.
+**Closes.** `status.md` - "Partially implemented and missing capabilities", "Explicit cancellation
+signal": the disconnect-detection half it already records, together with the signalling half this
+slice adds, closing the request surface, the client control, and the map from turn identity to a
+signal that row lists as missing.
 
 **Retires.** Nothing; the cancellation floor it signals was built in 6.3.
 
@@ -1431,7 +1428,8 @@ delivered brief as the dominant element, and one expandable details area.
 **Requires.** 7.1: the stream and brief it renders. 7.2: follow-up and handoff. 7.3: the
 cancellation control.
 
-The screen has landed in part. One same-origin page carries predefined intake, a compact activity
+`status.md` - "Partially implemented and missing capabilities" records "Brief rendering in the
+client" as partial. One same-origin page carries predefined intake, a compact activity
 feed rendered from the streamed events with its content escaped, a brief region, and one expandable
 details area, and it does not reach the old console.
 
@@ -1444,23 +1442,26 @@ is still served with its approval controls and its numeric confidence rendering,
 role model still guards the superseded endpoints, and built-in authentication is absent, which
 leaves the caller-authentication check without a subject.
 
-**Closes.** `status.md` - "Detailed Missing and Partial Implementation Register", Engineer
-Interaction Interface: "One same-origin screen for intake, follow-up, activity, brief, and details";
-Azure and deployment: "Container Apps built-in authentication" and "Static client served by same
-app."
+**Closes.** `status.md` - "Partially implemented and missing capabilities", "Brief rendering in the
+client": the one-screen shell it already records, closed by adding the brief branch the current
+screen lacks. `status.md` - "Runtime and deployment state" records that platform built-in
+authentication is not configured; this slice closes that.
 
-**Retires.** `status.md` - "Deletion and Replacement Register", Replace: "Auth machinery," and the
-console half of Replace: "`api.py` transport + console"; "Misaligned implementations": "Hand-rolled
-three-role authorization"; and the console approval UI and `Approver` role members of Delete: "HITL
-surface: ...," whose other members went in 5.2 and 6.1. The auth-role suites `status.md` - "Test and
-Evaluation Gap Status" lists as dying with their subjects go here.
+**Retires.** `status.md` - "Temporary legacy and coexisting implementation": "Hand-rolled
+three-role authorization," which guards only the superseded endpoints and is superseded by platform
+built-in authentication; and "Approval console," the submit, poll, review, and approve surface with
+its numeric confidence rendering, superseded by the one-screen client. An earlier revision of
+`status.md` also listed the auth-role suites in a test inventory this slice was meant to retire with
+them; the current document carries no such inventory, so that citation has no counterpart, and the
+auth-role suites are retired here regardless.
 
-**Shape.** Rewrite. `status.md` - "Detailed State by Design Area", "The six components" finds
-nothing in the current console survives as the designed interface: its approval controls have no
-counterpart and its poll-a-job transport is replaced by the stream. Caller authentication becomes
-Container Apps built-in authentication with one application registration, which is the whole of the
-posture `runtime-and-deployment.md` §12 keeps; no roles, groups, or authorization policy machinery
-replaces what is removed.
+**Shape.** Rewrite. An earlier revision of `status.md`, in its "Detailed State by Design Area"
+section, found nothing in the current console survives as the designed interface: its approval controls have no
+counterpart and its poll-a-job transport is replaced by the stream. The current document carries no
+per-design-area state, so that citation has no counterpart, though the finding itself is not in
+dispute. Caller authentication becomes Container Apps built-in authentication with one application
+registration, which is the whole of the posture `runtime-and-deployment.md` §12 keeps; no roles,
+groups, or authorization policy machinery replaces what is removed.
 
 **Tests.** Progressive disclosure is presentation and may vary; what may not is the brief's content.
 Holding a section behind disclosure is permitted, and removing, reordering, or rewriting what the
@@ -1495,21 +1496,20 @@ design describes, with nothing left from what the earlier layers removed.
 **Requires.** 1.3, 4.1, and 5.2: the containers and deployments the template declares. Every earlier
 slice, whose removals this slice reconciles the template to.
 
-**Closes.** `status.md` - "Detailed Missing and Partial Implementation Register", Azure and
-deployment: "Target three Cosmos containers," "One Container App, one image, zero-to-one replicas,"
-and "Application Insights," whose exporter wiring follows in 9.1.
+**Closes.** `status.md` - "Runtime and deployment state": the replica range, 0 to 3 in the template
+against an accepted 0 to 1; the missing Application Insights resource, whose exporter wiring follows
+in 9.1; and the container set the template declares.
 
 **Retires.** Nothing on its own. Each earlier slice removed the resources its own behavior owned;
 this slice is where what remains is reconciled to the declared set. The live containers a template
 change cannot remove are deleted by CLI under the preparation section rather than here.
 
-**Shape.** Heavy modification of the template. What survives is what the same register records as
-implemented and reusable, "One OIDC workflow and Bicep," together with the one image, one Container
-App, one Dockerfile, keyless managed identity, and scale to zero that `status.md` - "Azure and
-Deployment Status" confirms live. What changes is the container set, the model deployment set, the
-addition of Application Insights, the replica maximum, which that section records as 3 in both the
-template and the live app against the accepted 0-1, and the removal of parameters that provisioned
-machinery no longer present.
+**Shape.** Heavy modification of the template. What survives is what `status.md` - "Runtime and
+deployment state" confirms live: one OIDC workflow and Bicep template, one image, one Container App,
+one Dockerfile, keyless managed identity, and scale to zero. What changes is the container set, the
+model deployment set, the addition of Application Insights, the replica maximum, which that section
+records as 0 to 3 in the template against the accepted 0 to 1, and the removal of parameters that
+provisioned machinery no longer present.
 
 **Tests.** Configuration validation at startup is the behavior worth asserting rather than assuming:
 the application must refuse to start with an undefined authorization posture or an unapproved
@@ -1531,13 +1531,15 @@ environment does not change stays owned by deterministic tests.
 **Requires.** 8.1: the declared environment. 7.1 and 7.2: the surfaces the checks call. 5.2:
 persistence.
 
-**Closes.** `status.md` - "Detailed Missing and Partial Implementation Register", Azure and
-deployment: "Eight hosted smoke checks."
+**Closes.** An earlier revision of `status.md` recorded "Eight hosted smoke checks" as missing under
+Azure and deployment. The current document carries no counterpart row: `scripts/smoke_deployment.py`
+still asserts the superseded job and approval behavior, so this slice's closure remains outstanding.
 
-**Retires.** This slice performs the replacement half of `status.md` - "Deletion and Replacement
-Register", Replace: "Hosted smoke," whose removal half landed in 5.2 with the endpoints its async
-and decision legs called. That row's own migration note records that the new script runs only after
-the streaming and persistence slices, which is where this slice sits.
+**Retires.** An earlier revision of `status.md`, under "Deletion and Replacement Register,"
+recorded "Hosted smoke" as a replacement pending here, its removal half having landed in 5.2 with the
+endpoints its async and decision legs called. The current document carries no counterpart row, and
+`scripts/smoke_deployment.py` still asserts the superseded behavior, so the replacement itself
+remains this slice's to perform, sitting after the streaming and persistence slices as before.
 
 **Shape.** Rewrite of the smoke script into the eight checks `runtime-and-deployment.md` §16 names.
 Cancellation on both paths, a lost request leaving nothing persisted, structured-query rejection,
@@ -1569,20 +1571,23 @@ and traces reach a real sink.
 **Requires.** 6.1: turn identity. 5.1, 2.3, 6.2, and 5.2: the boundaries that were silent. 8.1:
 Application Insights declared.
 
-**Closes.** `status.md` - "Detailed Missing and Partial Implementation Register", Telemetry and
-activity: "Turn and agent identity," "MCP, evidence-admission, grounding, and persistence spans,"
-"Application Insights sink," and the usage-totals half of "Model task labels and usage totals,"
-whose task labels closed in 4.1.
+**Closes.** `status.md` - "Implemented capabilities", "Telemetry emission seam" records the seam
+this slice extends. `status.md` - "Runtime and deployment state" records the missing Application
+Insights sink this slice adds. An earlier revision of `status.md` also named turn and agent identity,
+the MCP, evidence-admission, grounding, and persistence spans, and usage totals as missing rows; the
+current document carries no counterpart for any of the three, so those closures are recorded here
+without a citation to re-point to.
 
 **Retires.** Nothing.
 
-**Shape.** Extension, not a rewrite. The same register records "Shared span seam" as implemented and
-reusable, and `status.md` - "Detailed State by Design Area", "Telemetry" records it as the most
-reusable subsystem in the repository: one seam emitting once at shared primitives, contextvar-nested
-parents, correlation identifiers, error status reflection, a swappable exporter, and an in-memory
-test fixture. What is added is the turn identity that had no model to carry, the boundaries that had
-no instrumentation, the events for admission and grounding, cost attribution, and the Application
-Insights exporter beside the existing set.
+**Shape.** Extension, not a rewrite. `status.md` - "Implemented capabilities", "Telemetry emission
+seam" records it as built and reusable: one seam emitting once at shared primitives,
+contextvar-nested parents, correlation identifiers, a swappable exporter, and an in-memory test
+fixture. An earlier revision of `status.md`, in its "Detailed State by Design Area" section,
+additionally judged it the most reusable subsystem in the repository; the current document carries no per-design-area
+judgment, so that citation has no counterpart. What is added is the turn identity that had no model
+to carry, the boundaries that had no instrumentation, the events for admission and grounding, cost
+attribution, and the Application Insights exporter beside the existing set.
 
 **Tests.** The in-memory exporter fixture is what keeps these assertions deterministic. The property
 worth asserting is attribution: an operation that cannot be attributed to an investigation and a
@@ -1610,27 +1615,32 @@ against the golden records, runs the offline judge, and produces one report.
 **Requires.** 1.2: the golden records. 5.2: completed turns. 9.1: traces with attribution. 3.2: the
 retrieval measurement it aggregates.
 
-**Closes.** `status.md` - "Detailed Missing and Partial Implementation Register", Evaluation:
-"Categorical scenario scoring," "One judge with versioned rubric," "Deterministic conformance
-aggregation," "Advisory report rather than merge-gating numeric ratchet," and "Retrieval-influence
-and further-evidence demonstrations," which that register holds until the corpus repairs 1.1 closes
-and the D-006 selection 1.2 records.
+**Closes.** `status.md` - "Partially implemented and missing capabilities", "Categorical
+evaluation, judge, baselines, report": golden scenario records and cassette replay already exist as
+inputs, and this slice closes the row's remaining gap, that scoring is still numeric and gate-shaped,
+by adding categorical scoring, the judge, deterministic conformance aggregation, and the advisory
+report.
 
-**Retires.** `status.md` - "Deletion and Replacement Register", Replace: "Evaluation suite";
-"Misaligned implementations": "Numeric evaluation ratchets gate CI"; "No accepted slot or explicitly
-deferred": "Generic evaluator registry scaffold" and "Empty package placeholders"; and "Duplicated
-logic to collapse": "Runtime implementation selection," whose second occurrence goes when the
-evaluation scripts stop re-selecting a planner and triager.
+**Retires.** `status.md` - "Temporary legacy and coexisting implementation": "Numeric evaluation
+thresholds," `EvalTargets` and the scorecard gates it feeds, superseded by categorical scoring; and
+the implementation-selection element of "Report and claim model," the runtime re-selection between a
+planner and a triager, superseded once the evaluation scripts stop performing it. An earlier
+revision of `status.md` also named a generic evaluator registry scaffold and empty package
+placeholders under "No accepted slot or explicitly deferred"; the current document carries no
+counterpart for either, so those two retirements are recorded here without a citation to re-point
+to.
 
 **Shape.** Rewrite. The scoring model changes from numeric scorecards against committed baselines to
 one category per dimension drawn from Meets, Partially meets, Misses, and Not applicable, with a
 short named reason for anything below Meets. The ratchet baselines and the up-front numeric targets
 go with it, and the change-time signal informs a change without gating the merge.
 
-**Blocked detail.** `status.md` - "Implementation Clarifications Exposed by the Repository",
-"Evaluation artifact storage" records that the report, fixtures, and historical runs need a physical
-repository location before this slice, and that it must stay simple rather than becoming another
-telemetry platform. Where a run retains them is a decision for the design set, not for this plan.
+**Blocked detail.** An earlier revision of `status.md`, in its "Implementation Clarifications
+Exposed by the Repository" section, held "Evaluation artifact storage" open, pending a physical
+repository location for
+the report, fixtures, and historical runs. The current document carries no counterpart for that
+hold, and `decisions.md` D-009 is accepted, fixing the location as files under the existing `eval/`
+tree, so the stated citation stands as a divergence whose question is closed.
 
 **Tests.** The judge is the part that must be structurally unable to matter at runtime: it runs
 after deterministic checks, never participates in a live turn, never influences an outcome shape,
@@ -1653,16 +1663,20 @@ its subset, and the repeatability subset has been run a second time.
 
 **Requires.** 9.2: the report both results appear in. 1.2: the subset the comparison runs on.
 
-**Closes.** `status.md` - "Detailed Missing and Partial Implementation Register", Evaluation:
-"Fixed-script evidence-plan baseline" and "Repeatability subset."
+**Closes.** `status.md` - "Partially implemented and missing capabilities", "Categorical
+evaluation, judge, baselines, report": the same row 9.2 closes for scoring and the judge, closed
+further here for its baselines, by adding the fixed-script evidence-plan baseline and the
+repeatability subset.
 
 **Retires.** Nothing.
 
-**Shape.** Heavy modification of what already exists behaviorally. The same register records the
-fixed-script baseline as partial deterministic behavior that is wrongly a runtime fallback; what
-changes is that it stops being a runtime fallback tier and becomes an evaluation baseline, using the
-same capabilities, permissions, bounds, corpus, and assessment and brief contract as OpsPilot, with
-a versioned predetermined evidence plan stored beside its fixture.
+**Shape.** Heavy modification of what already exists behaviorally. An earlier revision of
+`status.md` recorded the fixed-script baseline as partial deterministic behavior that is wrongly a
+runtime fallback; the current document carries no counterpart for that characterization, though the
+fact remains true of the code. What changes is that it stops being a runtime fallback tier and
+becomes an evaluation baseline, using the same capabilities, permissions, bounds, corpus, and
+assessment and brief contract as OpsPilot, with a versioned predetermined evidence plan stored
+beside its fixture.
 
 **Tests.** The baseline must not become a second application. It reuses the same evidence and
 synthesis path, and a divergence in bounds, permissions, or contract makes the comparison
@@ -1681,12 +1695,13 @@ report, and no runtime path selects the fixed script.
 
 ## Retired tests
 
-`status.md` - "Test and Evaluation Gap Status" lists the tests that die with their subjects as one
-group: the HITL and decision suite, `test_report_binding.py`, `test_checkpointer.py`, the auth-role
-suites, the wild-probe tests, and the reranker-marked tests. That grouping is a fan-out by
-construction, because the subjects are superseded in different slices and `code-guidelines.md` §11
-requires a superseded assertion to be retired by the slice that supersedes it. Each named module
-retires in exactly one slice.
+An earlier revision of `status.md`, in its "Test and Evaluation Gap Status" section, listed the
+tests that die with their subjects as one group: the HITL and decision suite, `test_report_binding.py`,
+`test_checkpointer.py`, the auth-role suites, the wild-probe tests, and the reranker-marked tests.
+The current document carries no counterpart list, so that citation has no counterpart; the table
+below is this plan's own fan-out, because the subjects are superseded in different slices and
+`code-guidelines.md` §11 requires a superseded assertion to be retired by the slice that supersedes
+it. Each named module retires in exactly one slice.
 
 | Test module | Retired in |
 | --- | --- |
@@ -1710,10 +1725,14 @@ retires in exactly one slice.
 
 ## What blocks a slice
 
-Six items block a slice from being fully specified. All six are recorded in `status.md` -
-"Implementation Clarifications Exposed by the Repository", and each is cited below by its item name.
-None is decided here: each is settled in its owning slice or by a small decision update before code
-invents an incompatible answer.
+An earlier revision of `status.md`, in its "Implementation Clarifications Exposed by the
+Repository" section, recorded six items blocking a slice from being fully specified; the current
+document carries no counterpart section. Two survive as open: D-004 and the stateless clarification
+token, both now recorded in `status.md` - "Known gaps and unresolved issues". The other four are
+closed:
+`decisions.md` D-006, D-007, D-008, and D-009 are accepted. None is decided here: each open item is
+settled in its owning slice or by a small decision update before code invents an incompatible
+answer.
 
 | Blocks | What is unsettled | Item |
 | --- | --- | --- |
@@ -1726,7 +1745,7 @@ invents an incompatible answer.
 
 The last two are settled inside the slices that carry them rather than by a separate decision. The
 D-006 selections are not a corpus read alone: 1.1 repairs the corpus first, and 1.2 then runs the
-audit and records the selections against the candidate mapping `status.md` - "Data and Corpus
-Status" already supplies. That dependency is why the repairs are a slice of their own and why the
-selections follow them.
+audit and records the selections against the candidate mapping an earlier revision of `status.md`
+supplied; the current document carries no counterpart mapping, so that citation has no counterpart.
+That dependency is why the repairs are a slice of their own and why the selections follow them.
 
