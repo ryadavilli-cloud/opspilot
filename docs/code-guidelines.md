@@ -515,6 +515,7 @@ Each has a specific failure mode, and each has a defined alternative earlier in 
 | Pinning test order, widening a timeout, or retrying to make an isolation defect pass | The coupling survives, and the next order change reveals it again |
 | Adding a module to the type-checker's strict-override list | The list exempts only code already on its way out, so an addition converts a temporary exemption into a permanent one |
 | Leaving an override entry in place after its module is deleted | The list stops describing the code it exempts, and the exemption outlives the reason for it |
+| An em-dash on a line a change adds to a Python file | A hyphen, comma, colon, or shorter sentence says the same thing, and the tree converges away from them as files are edited rather than in one sweep |
 
 The override list only shrinks. A change that deletes a listed module deletes its entry in the same
 commit.

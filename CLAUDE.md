@@ -269,8 +269,17 @@ not find, not only what you did.
 
 `status.md` is the only file that records what is built. If your work changes
 what is true about the repository, that is a `status.md` edit — and only where
-inspection contradicts what is written. A register row never changes because
-reasoning suggests it should.
+inspection contradicts what is written. A row never changes because reasoning
+suggests it should.
+
+Status is anchored to the design, not to a plan. It carries no slice identifiers,
+no stage or layer numbering, no sequence, and no statement of what comes next.
+Work that landed ahead of the sequence describing it is simply built.
+
+Both halves run at every landing, as part of the definition of done: status
+records what was built, and every slice whose subject that landing touched
+re-derives its marker from status. Updating one without the other leaves derived
+data stale and silently wrong, and nothing else in the repository will catch it.
 
 Design documents describe intent. Never add build status, completion markers, or
 "not yet implemented" notes to one.

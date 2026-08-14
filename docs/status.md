@@ -1,158 +1,228 @@
 # OpsPilot - Status
 
-**Purpose:** record current implementation truth against the accepted OpsPilot design: what is
-built, what coexists temporarily, what is verified, and what is next. This document does not
-sequence work or restate design intent; `vertical-execution-plan.md` owns the implementation
-sequence, and `requirements.md`/`architecture.md`/`system-design.md`/`workflow-design.md`/
-`data-and-evidence.md`/`runtime-and-deployment.md`/`evaluation.md` own the accepted design.
+**Purpose:** record what the repository currently is, against the accepted OpsPilot design. What is
+built, what is partial, what still runs only because its replacement has not landed, and what has
+been verified.
 
-Every claim below traces to a command run or a file read in the session that recorded it. A row
-changes only where the repository contradicts what is written here, never because a plan implies
-it should.
+This document is independent of any execution sequence. It carries no slice, stage, or phase
+identifier, no completion ledger, and no notion of what comes next. Capabilities and gaps are named
+in architectural and product terms, because that is what survives a resequencing.
 
-## 1. Current Baseline
+The dependency runs one way. `vertical-execution-plan.md` and `horizontal-execution-plan.md` read
+this document to decide ordering, dependencies, migration mechanics, and how gaps map to work. This
+document does not read them, and nothing here changes because a plan implies it should.
 
-- **Inspected commit:** `main` at `3fd7a1c` ("A question the model may ask, in a shape it cannot
-  widen", #74), 2026-08-12.
-- **CI-equivalent lanes, both green at this commit:**
-  - Core lane (`uv sync --group dev --group data`; `ruff check .`; `mypy`; `pytest -q -m "not llm"`):
-    ruff clean, mypy clean (no errors), **667 passed, 8 skipped, 3 deselected, 1 xfailed** (18.9s).
-  - Full lane (`uv sync --group dev --group data --group eval`;
-    `pytest -q -m "not reranker and not llm"`): **703 passed, 5 deselected, 1 xfailed** (208s).
-  - `ruff format --check` was not run repository-wide; CI itself only checks files a change
-    touches (`.github/workflows/deploy.yml`), so a repo-wide result would not reflect what CI
-    enforces.
-- **S-0, S-1, and S-2 are complete.** S-3 is the next slice.
+`requirements.md`, `architecture.md`, `system-design.md`, `workflow-design.md`,
+`data-and-evidence.md`, `runtime-and-deployment.md`, and `evaluation.md` own the accepted design.
+This document never restates intent; it records what exists against it.
 
-## 2. Completed Slices
+A statement changes only where the repository contradicts it.
 
-Retained only for what remains to consume. Full detail, dependencies, and completion evidence are
-in `vertical-execution-plan.md`.
+---
 
-**S-0, baseline cleanup.** The authoritative `docs/` set is committed. The unpushed durable-dispatch
-WIP is abandoned (never an ancestor of `main`). Dead severity-tier configuration, stray files, and
-corpus-path duplication are removed. `README.md` and `.env.example` describe the running system.
+## 1. Current repository baseline
 
-**S-1, turn identity and streaming transport.** Turn identity (`turn/identity.py`); the stream
-envelope with its fixed ordering (identity first, close marker last,
-`stream/contracts.py`/`stream/projection.py`); the normalized incident-context contract for
-predefined intake (`intake/contracts.py`, `decisions.md` D-007); the `InteractionKind` type (shape
-only, no classifier yet); the activity projection, derived from the same telemetry facts it
-describes; client-disconnect detection on the streaming request; the one-screen client at
-`/investigation` (`static/investigation.html`).
+- **Inspected:** branch `normalize-formatting-and-record-landed-work` at `fdd0c86`, 2026-08-13.
+- **Toolchain:** `uv` for everything. Python 3.12.
+- **Enforced on every change:** formatting, linting, strict type checking, tests, and repository
+  hygiene, through continuous integration and local hooks. `code-guidelines.md` holds the governing
+  rules; the workflow and `pyproject.toml` hold their realization. Coverage is not identical between
+  the two, and continuous integration is the authority.
 
-**S-2, evidence, capability results, assessment, and the record port.** The evidence reference
-model with one parser and resolver, including the `absence:` form for an authoritative empty result
-(`evidence/references.py`, `decisions.md` D-008); the two-axis execution-outcome/completeness
-capability result vocabulary and Evidence Access Layer admission that assigns every reference and
-records a limitation for every operation that did not answer (`tools/contracts.py`,
-`evidence/admission.py`); the assessment, candidate-cause, recommendation, limitation, and brief
-contracts, with qualitative support labels and no numeric confidence anywhere
-(`assessment/contracts.py`); the task-labelled `rca_synthesis` model call and deterministic brief
-projection (`assessment/synthesis.py`, `assessment/brief.py`); the Investigation Record port and its
-commit-ordering contract over an in-memory backend (`record/port.py`, `record/memory.py`); capability,
-model, and admission spans carrying `investigation_id`/`turn_id`; the replay cassette
-(`eval/cassettes/turn_synthesis.json`) that keeps synthesis deterministic in CI.
+---
 
-**Landed ahead of its owning slice:** the governed structured-query path (bounded query structure,
-static three-collection schema map, deterministic validation before execution, translation to one
-parameterized read-only Cosmos query, admission through the same two axes) is implemented
-(`data/structured_query.py`, `tools/structured_query.py`), verified against the live
-`operational-records` container across six cases. This is the capability `vertical-execution-plan.md`
-schedules as S-10; that slice's remaining scope is narrowed accordingly.
+## 2. Implemented capabilities
 
-## 3. Current Capability Status
+Each row below was read in the repository, not inferred from a plan.
 
-| Capability | Status | Note |
+| Capability | Where | What holds |
 | --- | --- | --- |
-| Streaming turn transport, activity projection, one-screen client | Implemented | S-1. No cancellation signal yet (disconnect only); no accepted terminal outcome yet. The client handles the identity, activity, and close events and has no branch for the brief, so a rendered brief arrives and is visible only in the details area |
-| Predefined intake normalization | Implemented | S-1. Free-text normalization and clarification are S-5 |
-| Evidence reference model, two-axis capability results, EAL admission | Implemented | S-2 |
-| Governed structured query | Implemented | Landed ahead of S-10; see above |
-| Assessment contracts, one bounded synthesis call, deterministic brief projection | Implemented | S-2. Renders a brief but does not conclude a turn |
-| Investigation Record port and commit-ordering contract | Implemented, in-memory backend only | S-2. No real commit is exercised yet; the artifact this port stores does not exist until S-3 |
-| Four grounding checks, correction allowance, outcomes, commit, completed-turn artifact | Missing | S-3, next |
-| Explicit turn controller (LangGraph replacement) | Missing | S-4 |
-| Three-agent split (Supervisor / Investigator / Analyst) | Missing | S-5 |
-| Explicit cancellation signal and safe-boundary cancellation | Missing | S-6. Disconnect detection exists (S-1) |
-| Durable Cosmos-backed completed-turn persistence | Missing | S-7. `investigations` container exists and is empty |
-| Follow-up, handoff, redirect, supplied context | Missing | S-8 |
-| Accepted retrieval (embeddings + Cosmos vector + lexical + RRF + deterministic promotion) | Missing | S-9. Old BM25/dense/rerank stack still present, slated for deletion |
-| MCP: single accepted exposure | Missing | S-11. Three old exposures (`get_incident`, `query_logs`, `search_runbooks`) still served |
-| Further-evidence cycle | Missing | S-12 |
-| Categorical evaluation, judge, baselines, report | Missing | S-13. Golden scenario records and cassette replay exist |
-| Hosted alignment (replicas, built-in auth, Application Insights) | Missing | A-0/A-1. Old composition is deployed and green (section 5) |
+| Turn and investigation identity | `turn/identity.py` | Both identities are minted together and carry the incident under study beside them |
+| Streaming turn transport | `POST /turns`, `stream/contracts.py` | One streaming HTTP request owns one turn: the two identities as its first event, activity as it happens, then a closing event. An ordinary streaming body, with no create-then-attach pair, no reconnection, no event buffering, and no sequence cursor |
+| Activity projection | `stream/projection.py` | Built at the same call site that opens the telemetry span, from the same explicit facts, so the two cannot drift. No parameter exists through which raw span attributes could reach a projected event |
+| Predefined intake normalization | `intake/contracts.py`, `decisions.md` D-007 | The typed, frozen normalized incident context, carrying exactly five fields and deliberately excluding the source record's answer-bearing and ticket-workflow fields. Free-text intake does not exist |
+| Evidence reference model | `evidence/references.py`, `decisions.md` D-008 | One parser, one resolver, and one prefix-to-type map over the evidence and knowledge prefixes, including the form that makes an authoritative empty result citable |
+| Two-axis capability results | `tools/contracts.py` | Whether an operation executed and how complete its answer was are separate axes, with the legal pairings enforced where the envelope is constructed, so an illegal pairing cannot exist to be read. A source that answered with nothing stays distinguishable from one that did not answer |
+| Evidence admission | `evidence/admission.py`, `evidence/operations.py` | The only door into the evidence set: it admits a successful result, assigns its reference, and produces a limitation naming the unanswered question for everything else. The operation ledger is kept separately, with turn-scoped opaque references outside the evidence grammar |
+| Read-only operational capabilities | `tools/`, `data/operational_records.py` | Read the operational-records container through the registry with validated parameters and an explicit deadline. A request naming no deadline is refused at dispatch, and a container that cannot answer reports unavailability rather than a generic error |
+| Governed structured query | `data/structured_query.py`, `tools/structured_query.py` | A bounded structure over an approved surface of three collections, validated before anything executes, translated into one parameterized read-only query, and admitted through the same two axes as any other capability. No query text is constructed from caller input; grouping, ordering, joins, writes, and non-count aggregates have no representable form |
+| Assessment contracts | `assessment/contracts.py` | A candidate set with three qualitative support labels, supporting and weakening references per candidate, established-or-possible markers, recommendations carrying one horizon and one provenance category, and recorded limitations. No numeric confidence exists anywhere in the assessment or its projection |
+| Model-proposes, code-admits synthesis | `assessment/synthesis.py`, `llm/prompts/rca_synthesis.v1.md` | One bounded, task-labelled model call proposes an assessment; deterministic code admits it against the admitted evidence set, dropping any reference the turn never admitted and any candidate left without support, and deriving the conclusion disposition from the evidence rather than from the model's assertion about itself |
+| Deterministic brief projection | `assessment/brief.py` | The brief is a traversal of the assessment, introducing nothing it does not hold and dropping nothing it does, including weakening evidence |
+| Investigation Record port and commit ordering | `record/port.py`, `record/memory.py` | The commit success and failure contract, and the rule that a successful result is never delivered before it is persisted, expressed in one place where delivery is unreachable on a failed commit. The backend is in-memory: it refuses a second commit of the same turn and creates the investigation only on the first successful one |
+| Telemetry emission seam | `obs/` | One seam emitting at shared primitives with correlation identifiers, contextvar-nested parents, a swappable exporter, and an in-memory fixture for deterministic assertions. Capability, model, and admission operations emit through it |
+| Offline corpus preparation | `scripts/prepare_corpus.py` | A separate task with its own identity that loads, chunks, embeds, and indexes the authored corpus into the containers the runtime reads, and verifies by reading back what it wrote. It participates in no turn |
+| Deterministic replay | `eval/cassettes/turn_synthesis.json` | A committed cassette keeps synthesis reproducible without a live model, exercised end to end from a recorded incident through to a rendered brief |
 
-## 4. Temporary Legacy Coexistence
+---
 
-Every item below is scheduled for deletion in `vertical-execution-plan.md`'s coexistence register;
-this section only summarizes what still runs and why.
+## 3. Partially implemented and missing capabilities
 
-| Legacy component | Still does | Deleted in |
+| Capability | State | What exists, and what does not |
 | --- | --- | --- |
-| LangGraph orchestration (`graph.py`, `nodes/investigation.py`, `router.py`, `checkpoint.py`) + `langgraph`, `langchain-core`, `langgraph-checkpoint-sqlite` | Old five-stage-plus-HITL pipeline behind `/investigate` and the async job API | S-4 |
-| Async job API (202+poll, decision endpoint, `CommittedDecision`, lease/fencing) | Old turn lifecycle | S-4 |
-| Old approval console (`static/console.html`) | Submit/poll/review/approve UI at `/console` | S-4 |
-| Legacy `contracts.py`, `diagnosis/{admission,cycle,llm_planner,planner,sufficiency,render}.py`, `triage.py`, `composition.py` | Old report/claim model and planner/triager selection | S-4 (contracts, admission if redundant with S-3's gate) / S-5 (planner, triage, sufficiency; `render.py` orphaned once both its callers are gone) |
-| `guardrails/policies.py` two-policy grounding | Citation-in-produced-refs check ahead of the old `hitl_gate` | S-3 introduces the four-check gate; the old wrapper coexists until S-4 |
-| Three-role hand-rolled JWT auth (`auth.py`, `pyjwt`) | Guards the old async endpoints only; the new `/turns` endpoint is unauthenticated | S-4 (roles) / A-0 (built-in auth replaces the seam) |
-| Deprecated `EvalTargets` numeric thresholds | Consumed by `eval/scenario_eval.py` and the old scorecard gates | S-4, with the gates that read it |
+| Explicit turn controller | Missing | No stage sequence exists. The streamed path is a linear generator, not a state machine with transitions. Turn identity exists and is the one input it would consume |
+| Supervisor, Evidence Investigator, RCA Analyst as distinct roles | Missing | Synthesis exists as a module that reaches no capability, which is the structural half. No role separation, no objective ownership, no continuation authorization. The superseded planner still both gathers and concludes |
+| Observation-driven evidence selection | Missing | The evidence path is a fixed deterministic plan bounded by a window and a service count (`turn/synthesis_step.py`). Adaptive source selection does not exist |
+| Grounding gate, correction allowance, completed outcomes | Missing | No four-check gate, no correction allowance, no outcome vocabulary. `guardrails/policies.py` holds an unrelated two-policy citation check belonging to the superseded runtime |
+| Completed-turn artifact | Missing | The record port is structural over anything carrying the two identities, and deliberately does not define the artifact. Nothing carries terminal outcome, stop reason, admitted evidence, assessment, limitations, or a version stamp as one object |
+| Durable completed-turn persistence | Missing | In-memory backend only. No runtime path calls the commit ordering, so the property holds today only where tests drive it |
+| Explicit cancellation signal | Partial | Client-disconnect detection exists and is checked before each further unit of work, abandoning the turn without persisting. No cancellation request surface, no control in the client, and no map from turn identity to a signal |
+| Brief rendering in the client | Partial | The screen carries intake, the activity feed, a brief region, and one expandable details area. It handles the identity, activity, and closing events and has no branch for the brief, so a rendered brief arrives and is visible only in the details area |
+| Free-text normalization and clarification | Missing | Predefined intake only. No clarification path of any kind exists |
+| Follow-up, redirect, supplied context, handoff | Missing | The five-kind interaction type exists as a type (`intake/contracts.py`). No classifier produces it and no retained-state answering exists |
+| Accepted retrieval | Missing | The superseded lexical, dense, and model-reranker stack is still present (`retrieval/`). Retrieval does not read the prepared knowledge container, and a local embedding model is still loaded |
+| Single accepted protocol exposure | Missing | The boundary exposes three superseded capabilities (`get_incident`, `query_logs`, `search_runbooks`, `mcp/server.py`) rather than the one the design names |
+| Further-evidence cycle | Missing | No representation exists anywhere in the source tree, including on the assessment |
+| Categorical evaluation, judge, baselines, report | Missing | Golden scenario records and cassette replay exist as inputs. Scoring is still numeric and gate-shaped |
+| Hosted composition alignment | Missing | See section 6 |
 
-## 5. Current Data and Azure Status
+---
 
-**Corpus:** seven authored incidents (`inc-001` to `inc-007`) across five families, closure-verified,
-chronology and answer-leakage repairs landed 2026-08-08. Golden scenario records exist per
-`data/answer_key/golden_scenarios.yaml`. One open corpus item remains: templated noise realism (905
-near-identical error strings, no pre-incident baseline history), owned by S-12.
+## 4. Temporary legacy and coexisting implementation
 
-**Cosmos (last live-inspected 2026-08-11, read-only; not re-verified this session):**
-`retailease/knowledge` (196 passages from 28 documents, 1536-dim vector policy, populated) and
-`retailease/operational-records` (14,013 documents across six kinds, hierarchically partitioned by
-`/kind` then `/service`) are both live and read by the accepted capabilities. `opspilot/investigations`
-exists and is declared in Bicep but holds nothing; the runtime commits nothing to it, since the
-completed-turn artifact it will store does not exist until S-3. The application identity holds
-data-contributor scoped to `investigations` alone and data-reader scoped to the whole `retailease`
-database; the corpus setup principal holds data-contributor on `retailease` separately.
+Everything below still runs and is superseded rather than retained. Each is reachable, so each is
+still a way to obtain behavior the accepted design assigns elsewhere.
 
-**Hosted deployment (last live-inspected 2026-08-09, not re-verified this session):** green, at the
-old composition: `opspilot-api` Container App, 0-3 replicas (target is 0-1), one `gpt-5-mini` chat
-deployment plus a `text-embedding-3-small` embedding deployment, no Application Insights, hand-rolled
-three-role JWT auth in front of the old endpoints. A-0 and A-1 own bringing this to the accepted
-six-service composition.
+| Component | What it still serves | Superseded by |
+| --- | --- | --- |
+| Graph orchestration and its nodes, routers, and checkpointer (`graph.py`, `nodes/investigation.py`, `router.py`, `checkpoint.py`) and the `langgraph`, `langchain-core`, and `langgraph-checkpoint-sqlite` dependencies | The superseded pipeline behind `/investigate` and the job API | The explicit turn controller |
+| Job API: create-then-poll transport, decision endpoint, committed decisions, leases and fencing (`api.py`, `investigations.py`, `cosmos_investigations.py`) | The superseded turn lifecycle | The streaming request and the completed-turn artifact |
+| Approval console (`static/console.html`) at `/console` | Submit, poll, review, and approve, including a numeric confidence rendering | The one-screen client |
+| Report and claim model (`contracts.py`, `diagnosis/{admission,cycle,llm_planner,planner,sufficiency,render}.py`, `triage.py`, `composition.py`) | The superseded report object, the fused planner that both gathers and concludes, and implementation selection between a planner and a triager | The assessment contracts and the role separation |
+| Two-policy grounding (`guardrails/policies.py`) | A citation check ahead of the superseded approval gate | The four-check grounding gate |
+| Hand-rolled three-role authorization (`auth.py`, `pyjwt`) | Guards the superseded endpoints only. `POST /turns` is unauthenticated | Platform built-in authentication |
+| Numeric evaluation thresholds (`EvalTargets`, `config.py`) | Read by `eval/scenario_eval.py` and the scorecard gates | Categorical scoring |
 
-## 6. Open Decisions and Issues
+---
 
-- **D-004 (MCP library and realization) is the only open decision gate.** Still pending library
-  inspection; blocks S-11 implementation only, nothing else.
-- **D-005 and D-006 are both Accepted**, with every criterion in D-006's selection table naming a
-  real incident identifier. Neither is an open gate. `vertical-execution-plan.md` had retained
-  language treating them as decisions still to be made in S-9, S-12, and S-13; that language has
-  been corrected to consume the accepted answers instead.
-- **One disclosed, out-of-scope regression is carried as an xfail** (the single `xfailed` in both
-  lanes above): `tests/test_single_agent_gate.py::test_single_agent_beats_the_deterministic_floor`.
-  The corpus repair added metric evidence the deterministic fixed plan sweeps incidentally but the
-  legacy single-agent LLM planner does not request, so it no longer strictly beats the floor. The
-  test's subject is old-architecture machinery already named for deletion, so the fix is the
-  deletion rather than repairing the planner's tool selection.
-- **One open question is not a decision gate and has no decision record.** If free-text intake
-  clarifies through a short-lived normalization token, that token needs an explicit signing, expiry,
-  and payload contract; a simpler resubmission path is preferred where it meets the requirement.
-  Nothing in the repository takes a position either way, since no clarification path exists yet, so
-  the absence of a token is not evidence the simpler path was chosen. It blocks S-5 and nothing
-  else. Recorded here because the reconciliation inventory that carried it was retired and the
-  question was not answered with it.
-- No contradiction was found between `decisions.md` and the current repository.
-- **One contradiction this cleanup created, not yet resolved:** `horizontal-execution-plan.md` cites
-  this document roughly eighty times by heading name (`Deletion and Replacement Register`, `Detailed
-  Missing and Partial Implementation Register`, `Data and Corpus Status`, and others). Those headings
-  no longer exist here. The citations are stale until that plan is re-pointed, which is its own task
-  and was not in this pass's scope.
+## 5. Data and evidence state
 
-## 7. Next Slice
+**Authored corpus.** Seven incidents (`inc-001` through `inc-007`) across five families, verified
+against `data/answer_key/scenarios.yaml`. Chronology and answer-leakage repairs have landed, and
+both properties are asserted rather than assumed: a referenced series must move toward its own
+authored direction, and no log message or deployment note may name an incident identifier or
+announce its narrative role (`tests/test_telemetry.py`). Reference closure is asserted across the
+corpus (`tests/test_closure.py`).
 
-**S-3, four grounding checks, one shared correction allowance, completed outcomes, and the first
-completed turn.** Full scope, entry criteria, and completion evidence are in
-`vertical-execution-plan.md`. Nothing before S-3 may deliver a completed turn; the current streamed
-path (`turn/synthesis_step.py`, wired into `api.py`'s `/turns` endpoint) deliberately stops after
-rendering a brief, because the grounding gate, outcome assignment, the completed-turn artifact, and
-commit-before-delivery all belong to S-3.
+**Golden scenario records.** One record per authored incident, authored beside the answer key rather
+than projected from it (`data/answer_key/golden_scenarios.yaml`). Every reference a record requires
+must resolve in the corpus, and evidence the corpus deliberately lacks is held as prose so it cannot
+be read as a reference (`tests/test_golden_scenarios.py`).
+
+**Scenario class coverage.** All five classes are represented. The multi-contributor class is
+carried by an authored incident with two independently evidenced conditions; the benign or
+transient class by a controlled non-incident fixture derived from the ambient events, structurally
+invisible to scenario counting and carrying no golden record
+(`data/answer_key/benign_fixture.yaml`).
+
+**One open corpus quality item.** Generated error telemetry is templated: 915 error rows carry
+only 10 distinct messages, one of them repeated 905 times. There is also no pre-incident baseline
+history. Measured 2026-08-13 against `data/synthetic/logs.jsonl`.
+
+**Cosmos data plane (last live-inspected 2026-08-11; not re-verified since).**
+`retailease/knowledge` holds 196 passages from 28 documents under a 1536-dimension vector policy.
+`retailease/operational-records` holds 14,013 documents across six kinds, hierarchically
+partitioned. Both are read by the accepted capabilities. `opspilot/investigations` is declared and
+empty; nothing writes to it, because the artifact it would hold does not exist. The application
+identity holds contributor rights scoped to `investigations` alone and reader rights across
+`retailease`; corpus preparation writes as a different principal.
+
+---
+
+## 6. Runtime and deployment state
+
+**Last live-inspected 2026-08-09; not re-verified since.** Deployed and green, at the superseded
+composition.
+
+- One Container App and one image, built and deployed by one OIDC workflow from the Bicep template.
+- Replica range is 0 to 3 in the template (`infra/main.bicep`), against an accepted 0 to 1.
+- One chat deployment (`gpt-5-mini`) and one embedding deployment (`text-embedding-3-small`). The
+  accepted composition names a second, lower-cost chat deployment that does not exist.
+- No Application Insights resource.
+- The hand-rolled three-role authorization fronts the superseded endpoints. Platform built-in
+  authentication is not configured.
+- The template declares the knowledge, operational-records, and investigations containers. Nothing
+  declares or recreates the retired checkpoint and index containers.
+
+---
+
+## 7. Current verification state
+
+Both lanes measured at `fdd0c86`, each run after syncing exactly its own dependency groups.
+
+| Lane | Command | Result |
+| --- | --- | --- |
+| Core | `uv sync --group dev --group data`; `ruff check .`; `mypy`; `pytest -q -m "not llm"` | lint clean, strict type check clean, **667 passed, 8 skipped, 3 deselected, 1 xfailed** (17.7s) |
+| Full | `uv sync --group dev --group data --group eval`; `pytest -q -m "not reranker and not llm"` | **703 passed, 5 deselected, 1 xfailed** (269.7s) |
+
+Formatting is clean repository-wide, and is checked repository-wide rather than over the files a
+change touches. The plan-vocabulary check passes over the whole tree outside `docs/`, excluding the
+superseded modules named in its own exempt list. `az bicep build` compiles.
+
+**One disclosed regression carried as an xfail**, the single `xfailed` in both lanes:
+`tests/test_single_agent_gate.py::test_single_agent_beats_the_deterministic_floor`. The corpus
+repair added metric evidence the deterministic fixed plan sweeps incidentally and the superseded
+planner does not request, so it no longer strictly beats that floor. Its subject is superseded
+machinery, so the resolution is deletion rather than repairing the planner's tool selection.
+
+Nothing in the deployed environment was verified in this pass. Sections 5 and 6 carry their own
+inspection dates.
+
+---
+
+## 8. Known gaps and unresolved issues
+
+**One open decision.** `decisions.md` D-004, the protocol library and its realization, is still
+pending library inspection. It blocks the single accepted protocol exposure and nothing else. Every
+other decision record is accepted, and no contradiction was found between `decisions.md` and the
+repository.
+
+**One open question with no decision record.** If free-text intake clarifies through a short-lived
+normalization token, that token needs an explicit signing, expiry, and payload contract; a simpler
+resubmission path is preferred where it meets the requirement. Nothing in the repository takes a
+position, because no clarification path exists, so the absence of a token is not evidence that the
+simpler path was chosen. It blocks free-text intake and nothing else.
+
+**Comments describing something that is no longer true.** Four of these, in three modules, all of
+the same class: a comment that was accurate when written and that nothing re-reads when the thing
+it describes changes.
+
+`turn/identity.py` cites this document by section number, which cannot resolve and is not how this
+document is cited. `tests/test_answer_key.py` cites a heading that no longer exists. The remaining
+in-code references name the document without a heading and still resolve, so they are not defects.
+Neither module carrying a stale citation is superseded, so nothing removes either as a side effect.
+
+`api.py` calls the assessment and brief a stub in two places, which stopped being accurate when real
+synthesis and admission landed. The second is the more misleading, because it justifies why there is
+no operation to interrupt mid-flight, and that claim shaped how cancellation was scoped. Both sit in
+a superseded module, so both leave with it.
+
+**Untracked local configuration.** `.claude/settings.json` and `.claude/settings.local.json` are
+untracked and unignored, so they appear in every `git status`.
+
+---
+
+## 9. Where previously cited content now lives
+
+`horizontal-execution-plan.md` cites this document by heading name so that a citation survives
+renumbering. The rewrite renamed rather than renumbered, so this table exists to make the
+re-pointing mechanical. It is a migration aid and carries no status of its own.
+
+| Previously cited heading | Content now in |
+| --- | --- |
+| Detailed Missing and Partial Implementation Register | 3. Partially implemented and missing capabilities |
+| Deletion and Replacement Register | 4. Temporary legacy and coexisting implementation |
+| Data and Corpus Status | 5. Data and evidence state |
+| Implementation Clarifications Exposed by the Repository | 8. Known gaps and unresolved issues |
+| Detailed State by Design Area | 2. Implemented capabilities, with 3 for what is absent |
+| Test and Evaluation Gap Status | 7. Current verification state |
+| Document Status | 1. Current repository baseline |
+| Azure and Deployment Status | 6. Runtime and deployment state |
+| Documentation and Repository Hygiene | 1. Current repository baseline |
+| Verification and Test Results | 7. Current verification state |
+| Component Reconciliation Matrix | 2. Implemented capabilities, with 4 for what is superseded |
+
+Three of these cited material this document no longer carries. Document Status recorded how an
+inspection was performed, Verification and Test Results recorded per-command detail beyond a lane
+result, and Component Reconciliation Matrix classified every module against the design. Those
+citations need rewording rather than redirection.
