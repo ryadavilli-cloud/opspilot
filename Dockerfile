@@ -13,7 +13,7 @@ ENV UV_COMPILE_BYTECODE=1 \
 # Install dependencies first (cached layer), then the project.
 # `--group llm` adds the OpenAI SDK + azure-identity so the runtime can drive the single_agent path
 # against Azure OpenAI (keyless, via the Container App's managed identity). `--group checkpoint`
-# adds the Cosmos DB backends (LangGraph checkpointer + InvestigationRepository, Stage 5b/5c); both
+# adds the Cosmos DB backends (LangGraph checkpointer + InvestigationRepository); both
 # are live in prod (OPSPILOT_CHECKPOINTER=cosmos, OPSPILOT_INVESTIGATION_REPOSITORY=cosmos), and
 # without this group their lazy imports would ImportError on the first /investigations request. The
 # heavy dense/rerank ML stack (eval group) is still excluded, so the image stays lean and downloads

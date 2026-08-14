@@ -85,10 +85,12 @@ class CosmosInvestigationRepository:
         self._client = CosmosClient(endpoint, credential=DefaultAzureCredential())
         database = self._client.create_database_if_not_exists(database_name)
         self._records = database.create_container_if_not_exists(
-            id=records_container_name, partition_key=PartitionKey(path="/investigation_id"),
+            id=records_container_name,
+            partition_key=PartitionKey(path="/investigation_id"),
         )
         self._index = database.create_container_if_not_exists(
-            id=index_container_name, partition_key=PartitionKey(path="/id"),
+            id=index_container_name,
+            partition_key=PartitionKey(path="/id"),
         )
 
     def _read_record(self, investigation_id: str) -> InvestigationRecord:
@@ -129,9 +131,9 @@ class CosmosInvestigationRepository:
             # Another caller's get_or_create won the race for this key first. Our own record above
             # is now a harmless orphan: created=False tells this caller not to start a background
             # job, and nothing else will ever look it up (no index entry points at it).
-            winner_id = self._index.read_item(
-                item=idempotency_key, partition_key=idempotency_key
-            )["investigation_id"]
+            winner_id = self._index.read_item(item=idempotency_key, partition_key=idempotency_key)[
+                "investigation_id"
+            ]
             return self._read_record(winner_id), False
 
     def get(self, investigation_id: str) -> InvestigationRecord | None:
@@ -151,9 +153,7 @@ class CosmosInvestigationRepository:
     ) -> InvestigationRecord:
         for _ in range(_MAX_TRANSITION_RETRIES):
             try:
-                doc = self._records.read_item(
-                    item=investigation_id, partition_key=investigation_id
-                )
+                doc = self._records.read_item(item=investigation_id, partition_key=investigation_id)
             except exceptions.CosmosResourceNotFoundError as exc:
                 raise InvestigationError(f"unknown investigation {investigation_id!r}") from exc
 
@@ -203,9 +203,7 @@ class CosmosInvestigationRepository:
         """
         for _ in range(_MAX_TRANSITION_RETRIES):
             try:
-                doc = self._records.read_item(
-                    item=investigation_id, partition_key=investigation_id
-                )
+                doc = self._records.read_item(item=investigation_id, partition_key=investigation_id)
             except exceptions.CosmosResourceNotFoundError as exc:
                 raise InvestigationError(f"unknown investigation {investigation_id!r}") from exc
 
@@ -267,9 +265,7 @@ class CosmosInvestigationRepository:
             raise ValueError(f"publish is a terminal write; got status={status!r}")
         for _ in range(_MAX_TRANSITION_RETRIES):
             try:
-                doc = self._records.read_item(
-                    item=investigation_id, partition_key=investigation_id
-                )
+                doc = self._records.read_item(item=investigation_id, partition_key=investigation_id)
             except exceptions.CosmosResourceNotFoundError as exc:
                 raise InvestigationError(f"unknown investigation {investigation_id!r}") from exc
 

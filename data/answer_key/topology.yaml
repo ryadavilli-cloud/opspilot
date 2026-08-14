@@ -46,7 +46,7 @@ externals:
     role: Third-party transactional email/SMS provider.
 
 # Directed dependency edges: <from> depends on / calls <to>. These are exactly what the
-# get_service_dependencies tool (Phase 3) returns, and what `deps:<from>-><to>` evidence
+# get_service_dependencies tool returns, and what `deps:<from>-><to>` evidence
 # refs resolve against. `critical: true` marks an edge on the synchronous checkout path.
 dependencies:
   - { from: checkout-api,        to: payment-api,      kind: sync-http,  critical: true }

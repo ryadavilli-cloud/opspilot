@@ -28,7 +28,9 @@ def test_get_or_create_is_atomic_under_concurrent_callers():
 
     def call(i: int) -> None:
         results[i] = repo.get_or_create(
-            idempotency_key="same-key", investigation_id=f"id-{i}", incident_id="inc-1",
+            idempotency_key="same-key",
+            investigation_id=f"id-{i}",
+            incident_id="inc-1",
         )
 
     threads = [threading.Thread(target=call, args=(i,)) for i in range(n)]
@@ -47,10 +49,14 @@ def test_get_or_create_is_atomic_under_concurrent_callers():
 def test_get_or_create_returns_the_existing_record_without_creating_a_second():
     repo = InMemoryInvestigationRepository()
     first, first_created = repo.get_or_create(
-        idempotency_key="k", investigation_id="id-1", incident_id="inc-1",
+        idempotency_key="k",
+        investigation_id="id-1",
+        incident_id="inc-1",
     )
     second, second_created = repo.get_or_create(
-        idempotency_key="k", investigation_id="id-2", incident_id="inc-1",
+        idempotency_key="k",
+        investigation_id="id-2",
+        incident_id="inc-1",
     )
     assert first_created and not second_created
     assert second.investigation_id == first.investigation_id
@@ -61,7 +67,10 @@ def test_force_rerun_mints_a_new_record_and_supersedes_the_key():
     repo = InMemoryInvestigationRepository()
     first, _ = repo.get_or_create(idempotency_key="k", investigation_id="id-1", incident_id="inc-1")
     rerun, rerun_created = repo.get_or_create(
-        idempotency_key="k", investigation_id="id-2", incident_id="inc-1", force_rerun=True,
+        idempotency_key="k",
+        investigation_id="id-2",
+        incident_id="inc-1",
+        force_rerun=True,
     )
     assert rerun_created
     assert rerun.investigation_id == "id-2" != first.investigation_id
@@ -69,7 +78,9 @@ def test_force_rerun_mints_a_new_record_and_supersedes_the_key():
 
     # A later non-forced call for the same key now returns the rerun, not the original.
     later, later_created = repo.get_or_create(
-        idempotency_key="k", investigation_id="id-3", incident_id="inc-1",
+        idempotency_key="k",
+        investigation_id="id-3",
+        incident_id="inc-1",
     )
     assert not later_created
     assert later.investigation_id == "id-2"
@@ -275,9 +286,7 @@ def test_publish_refuses_a_non_terminal_status():
     investigation_id = _running(repo)
 
     with pytest.raises(ValueError):
-        repo.publish(
-            investigation_id, publication_id="pub-1", status="running", result=_RESULT
-        )
+        repo.publish(investigation_id, publication_id="pub-1", status="running", result=_RESULT)
 
 
 def test_concurrent_publications_of_one_id_commit_exactly_once():

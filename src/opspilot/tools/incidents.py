@@ -6,13 +6,15 @@ Navigational: the entry point of an investigation. A known-error incident links 
 
 from __future__ import annotations
 
+from typing import Any
+
 from opspilot.data.operational_records import OperationalRecords
 from opspilot.tools.contracts import GetIncidentRequest, IncidentRecord, ToolResult
 from opspilot.tools.errors import run_tool
 
 
 def get_incident(
-    records: OperationalRecords, *, deadline_s: float, **kwargs
+    records: OperationalRecords, *, deadline_s: float, **kwargs: Any
 ) -> ToolResult[IncidentRecord]:
     def logic(req: GetIncidentRequest) -> tuple[list[IncidentRecord], list[str]]:
         raw = records.incident(req.incident_id, deadline_s=deadline_s)

@@ -25,8 +25,8 @@ _log = logging.getLogger("opspilot.composition")
 class DiagnosisComposition:
     """The diagnosis pair the composition root injects, plus what it resolved to and why."""
 
-    implementation: str          # effective implementation that actually runs
-    requested: str               # what OPSPILOT_IMPLEMENTATION asked for
+    implementation: str  # effective implementation that actually runs
+    requested: str  # what OPSPILOT_IMPLEMENTATION asked for
     planner: Any
     triager: Any
     provider: str | None = None
@@ -84,7 +84,7 @@ def build_diagnosis(implementation: str | None = None) -> DiagnosisComposition:
         from opspilot.triage import build_triager
 
         # provider/model resolved from config (azure in prod); wrapped so every model call emits a
-        # usage span (Stage 5g) — done here, not in build_chat_model, so factory/eval stay untraced.
+        # usage span, emitted here and not in build_chat_model, so factory/eval stay untraced.
         model = TracedChatModel(build_chat_model())
         planner = build_planner("single_agent", model=model)
         triager = build_triager("single_agent", model=model)

@@ -17,6 +17,7 @@ from itertools import count
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from opspilot.evidence.admission import AdmittedObservation, Limitation
     from opspilot.tools.contracts import Completeness, ExecutionOutcome
 
 _OPERATION_PREFIX = "op-"
@@ -73,8 +74,8 @@ class TurnEvidence:
     investigation_id: str
     turn_id: str
     ledger: OperationLedger = field(default_factory=OperationLedger)
-    observations: list = field(default_factory=list)
-    limitations: list = field(default_factory=list)
+    observations: list[AdmittedObservation] = field(default_factory=list)
+    limitations: list[Limitation] = field(default_factory=list)
 
     @property
     def admitted_refs(self) -> list[str]:

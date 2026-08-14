@@ -1,4 +1,4 @@
-"""Record a single_agent scorecard from a live model into a cassette (Stage 4b).
+"""Record a single_agent scorecard from a live model into a cassette.
 
 Runs the single_agent evaluation against a live LLM (default: gpt-4o-mini via the `openai`
 provider), capturing every model call to a committed cassette so CI can replay the scorecard for

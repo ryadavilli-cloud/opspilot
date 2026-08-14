@@ -349,8 +349,7 @@ citation, brief, and recommendation semantics belong to `data-and-evidence.md`.
 **Owns.** Storage and retrieval of investigation identity and summary; completed turns and their
 outcomes; admitted evidence needed for citation resolution; retrieved-knowledge references needed
 for traceability; structured assessments; delivered briefs; follow-up history; engineer-supplied
-context retained for later turns; retained handoff summaries; references to traces and evaluation
-artifacts.
+context retained for later turns; retained handoff summaries; references to traces.
 
 **Consumes.** Completed artifacts from authorized writers.
 
@@ -363,7 +362,7 @@ Supervisor, to offline evaluation, and to runtime diagnostics.
 
 **Must not.** Route workflow; make any decision; synthesize a cause; validate grounding; answer an
 engineer directly; serve as a mid-turn checkpoint; reconstruct lost in-flight reasoning; restart an
-interrupted turn.
+interrupted turn; hold a reference to an evaluation run or result.
 
 **State responsibility.** All persisted state, and only completed state.
 

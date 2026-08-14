@@ -735,7 +735,7 @@
     }
     if (!currentInvestigationId || !currentReportHash) return;
 
-    // A fresh idempotency key per submit attempt (G-32). The server commits it with the decision,
+    // A fresh idempotency key per submit attempt. The server commits it with the decision,
     // so if this exact request is retried the graph is not resumed a second time.
     const payload = Object.assign(
       {
@@ -760,7 +760,7 @@
         if (res.status === 401 || res.status === 403) {
           throw new Error("Not authorized to decide (HTTP " + res.status + "). Check your reviewer role.");
         }
-        // 409 carries a structured reason (G-32). A stale report is the recoverable one: the run
+        // 409 carries a structured reason. A stale report is the recoverable one: the run
         // is STILL awaiting a decision, just on a newer report, so reload it rather than treating
         // this as a dead end.
         if (res.status === 409) {

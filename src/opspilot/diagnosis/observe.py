@@ -21,7 +21,9 @@ _MAX_ITEMS = 8
 
 def _hm(ts: Any) -> str:
     try:
-        return ts.strftime("%H:%M")
+        # `str` around a value whose type this boundary deliberately does not know: a real datetime
+        # already returns `str` here, so this narrows without converting anything.
+        return str(ts.strftime("%H:%M"))
     except Exception:  # noqa: BLE001
         return str(ts)
 

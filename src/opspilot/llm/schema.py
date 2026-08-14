@@ -29,7 +29,7 @@ class PlannerResponse(BaseModel):
     """A diagnosis-planner turn: a tool-call batch, a single `next_tool`, or a `done` verdict."""
 
     tool_calls: list[ToolCallSpec] = Field(default_factory=list)
-    next_tool: str | None = None            # single-call back-compat
+    next_tool: str | None = None  # single-call back-compat
     params: dict[str, Any] = Field(default_factory=dict)
     why: str = ""
     done: bool = False
@@ -38,7 +38,7 @@ class PlannerResponse(BaseModel):
 
 
 class CausalClaimResponse(BaseModel):
-    """The model's PROPOSED structured causal claim (Stage 5e). Fields are loose (`str`) here —
+    """The model's PROPOSED structured causal claim. Fields are loose (`str`) here and
     code ADMITS them into the strict `CausalClaim` (topology + Literal validation), falling back
     closed if the model proposes something inadmissible. Optional on `SynthesisResponse` so
     cassettes recorded before the synth prompt asked for it still validate and replay unchanged."""
@@ -54,7 +54,7 @@ class CausalClaimResponse(BaseModel):
 
 
 class ReportClaimResponse(BaseModel):
-    """A proposed secondary report-level claim (Stage 5e); admitted into a typed `ReportClaim`."""
+    """A proposed secondary report-level claim; admitted into a typed `ReportClaim`."""
 
     kind: str = ""
     statement: str = ""
@@ -63,7 +63,7 @@ class ReportClaimResponse(BaseModel):
 
 class SynthesisResponse(BaseModel):
     """The model's grounded conclusion. `root_cause`/`citations` are the original prose shape; the
-    optional `causal`/`report_claims` are the Stage 5e structured claim (populated once the synth
+    optional `causal`/`report_claims` are the structured claim (populated once the synth
     prompt asks for them — until then they stay empty and behaviour is unchanged)."""
 
     root_cause: str = ""

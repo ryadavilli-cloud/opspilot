@@ -10,13 +10,13 @@ from pydantic import BaseModel, Field
 class EvidenceCitation(BaseModel):
     """A reference to evidence produced during this run. `ref` uses the frozen grammar."""
 
-    source: str          # logs | metrics | deploys | deps | runbook | past_incident
+    source: str  # logs | metrics | deploys | deps | runbook | past_incident
     ref: str
-    note: str = ""       # why it supports the hypothesis
+    note: str = ""  # why it supports the hypothesis
     # The role this citation plays in the causal argument. The model PROPOSES a role; code ADMITS it
-    # at Stage 6b (the role-admissibility check — a citation cannot carry a role its evidence type
-    # cannot support). Defaults to the neutral "context" so an unlabelled citation is never silently
-    # treated as causal support.
+    # deterministically: a citation cannot carry a role its evidence type cannot support. Defaults
+    # to the neutral "context" so an unlabelled citation is never silently treated as causal
+    # support.
     role: Literal["cause", "effect", "baseline", "context"] = "context"
 
 
@@ -42,7 +42,7 @@ class ToolObservation(BaseModel):
     status: str
     evidence_refs: list[str]
     result_count: int
-    summary: str = ""   # compact `signal [ref]` view of the results, for a model planner
+    summary: str = ""  # compact `signal [ref]` view of the results, for a model planner
 
 
 class Hypothesis(BaseModel):
@@ -51,11 +51,11 @@ class Hypothesis(BaseModel):
     citations: list[EvidenceCitation] = Field(default_factory=list)
 
 
-# --- Conclusion contracts (Stage 5e) -----------------------------------------------------------
-# The typed shape the deterministic checks (Stage 6b) validate and the report is RENDERED from. The
-# root cause stops being a prose sentence and becomes a structured proposition, so the prose a human
-# reads cannot disagree with the structure a check validates (G-50), and every published claim — not
-# just the headline root cause — is grounded in produced refs (G-51/G-29).
+# --- Conclusion contracts -----------------------------------------------------------------------
+# The typed shape the deterministic checks validate and the report is RENDERED from. The root cause
+# stops being a prose sentence and becomes a structured proposition, so the prose a human reads
+# cannot disagree with the structure a check validates, and every published claim, not just the
+# headline root cause, is grounded in produced refs.
 
 
 class OnsetWindow(BaseModel):
@@ -67,17 +67,21 @@ class OnsetWindow(BaseModel):
 
 
 class CausalClaim(BaseModel):
-    """The single structured causal proposition. Stage 6b's contradiction / causal-order /
-    entity-support checks compare THESE typed fields (not prose); `cause_entity` is topology-
-    validated there. The support/counter split makes the evidence *for* and the evidence that would
+    """The single structured causal proposition. The contradiction, causal-order, and entity-support
+    checks compare THESE typed fields rather than prose, and `cause_entity` is topology-validated
+    against them. The support/counter split makes the evidence *for* and the evidence that would
     *refute* the claim both first-class, instead of a flat citation list."""
 
     cause_type: Literal[
-        "deployment", "dependency_failure", "resource_exhaustion",
-        "config_change", "external", "unknown",
+        "deployment",
+        "dependency_failure",
+        "resource_exhaustion",
+        "config_change",
+        "external",
+        "unknown",
     ]
-    cause_entity: str                          # a service / resource / dependency edge
-    cause_event_ref: str = ""                  # ref of the causing event (e.g. a deploy), if any
+    cause_entity: str  # a service / resource / dependency edge
+    cause_event_ref: str = ""  # ref of the causing event (e.g. a deploy), if any
     onset_window: OnsetWindow
     affected_entities: list[str] = Field(default_factory=list)
     support_refs: list[str] = Field(default_factory=list)
@@ -97,9 +101,9 @@ class Acknowledgement(BaseModel):
 
 
 class ReportClaim(BaseModel):
-    """A secondary, structured report-level claim, so every published claim is grounded — not just
-    the root cause (G-51). `statement` is RENDERED from the structured fields (template
-    substitution, not generation) at 6b; `support_refs` must resolve against produced refs."""
+    """A secondary, structured report-level claim, so every published claim is grounded rather than
+    only the root cause. `statement` is RENDERED from the structured fields by template
+    substitution, never generated; `support_refs` must resolve against produced refs."""
 
     kind: Literal[
         "onset", "blast_radius", "sequence", "contributing_factor", "ruled_out", "recommendation"
@@ -132,13 +136,13 @@ class SufficiencyState(BaseModel):
     confidence. Computed each diagnose turn over gathered evidence (see diagnosis.sufficiency).
     """
 
-    evidence_classes: list[str]        # distinct source types gathered
-    required_classes: list[str]        # what this severity requires (for the audit trail)
-    evidence_coverage: float = Field(ge=0.0, le=1.0)   # severity-scaled; 1.0 == requirement met
-    citation_coverage: float = Field(ge=0.0, le=1.0)   # cited refs that were produced
+    evidence_classes: list[str]  # distinct source types gathered
+    required_classes: list[str]  # what this severity requires (for the audit trail)
+    evidence_coverage: float = Field(ge=0.0, le=1.0)  # severity-scaled; 1.0 == requirement met
+    citation_coverage: float = Field(ge=0.0, le=1.0)  # cited refs that were produced
     contradictions_unresolved: int = 0
     unresolved_critical_questions: int = 0
-    plan_can_advance: bool = True      # unanswered questions remain (more loops could add evidence)
+    plan_can_advance: bool = True  # unanswered questions remain (more loops could add evidence)
 
     @property
     def ready(self) -> bool:
@@ -159,5 +163,5 @@ class InvestigationPlan(BaseModel):
 class DiagnosisContext(BaseModel):
     incident_id: str
     affected_services: list[str] = Field(default_factory=list)
-    onset: str = ""       # ISO timestamp
+    onset: str = ""  # ISO timestamp
     category: str = ""

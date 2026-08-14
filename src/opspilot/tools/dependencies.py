@@ -37,7 +37,7 @@ def _edge(raw: dict[str, Any]) -> DependencyEdge:
 
 
 def get_service_dependencies(
-    records: OperationalRecords, *, deadline_s: float, **kwargs
+    records: OperationalRecords, *, deadline_s: float, **kwargs: Any
 ) -> ToolResult[DependencyEdge]:
     def logic(req: GetServiceDependenciesRequest) -> tuple[list[DependencyEdge], list[str]]:
         recs: list[DependencyEdge] = []

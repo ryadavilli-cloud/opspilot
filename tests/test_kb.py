@@ -3,7 +3,7 @@
 This is the doc-integrity proof for the knowledge base — every `expected_retrieval` and every
 historical `expected_match` (postmortem) points at a real file with matching id + source metadata,
 and every historical incident has a postmortem (so Demo 2 / the fast path can match). The full
-cross-corpus closure (evidence↔telemetry↔KB↔postmortems, all together) is Phase 2e.
+cross-corpus closure (evidence↔telemetry↔KB↔postmortems, all together) is `test_closure.py`.
 """
 
 from __future__ import annotations

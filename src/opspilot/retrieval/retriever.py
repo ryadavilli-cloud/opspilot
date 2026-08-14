@@ -40,8 +40,9 @@ class Retriever:
     ) -> None:
         self.embedder = embedder or Embedder()
         self._reranker = reranker  # lazily constructed on first rerank() call
-        self.docs = load_docs(kb_dir or KB_DIR, distractor_dir or DISTRACTOR_DIR,
-                              include_distractors)
+        self.docs = load_docs(
+            kb_dir or KB_DIR, distractor_dir or DISTRACTOR_DIR, include_distractors
+        )
         self.chunks: list[Chunk] = [c for d in self.docs for c in chunk(d)]
         self._doc_kind = {d.doc_id: d.kind for d in self.docs}
 
@@ -63,7 +64,13 @@ class Retriever:
         return aggregate_to_docs(chunk_scores, self._chunk_by_id, self._doc_kind, k)
 
     # --- modes --------------------------------------------------------------------------------
-    def dense(self, query: str, k: int = 5, kinds=None, services=None) -> list[Hit]:
+    def dense(
+        self,
+        query: str,
+        k: int = 5,
+        kinds: tuple[str, ...] | None = None,
+        services: tuple[str, ...] | None = None,
+    ) -> list[Hit]:
         allowed = allowed_chunk_ids(self.chunks, kinds, services)
         qv = self.embedder.encode_query(query)
         hits = self.index.search(qv, k=len(self.chunks), allowed=allowed)
@@ -74,8 +81,10 @@ class Retriever:
     ) -> dict[str, float]:
         """Fused RRF score per chunk id — the shared first stage for hybrid and rerank."""
         qv = self.embedder.encode_query(query)
-        dense_rank = {cid: i for i, (cid, _) in enumerate(
-            self.index.search(qv, k=len(self.chunks), allowed=allowed))}
+        dense_rank = {
+            cid: i
+            for i, (cid, _) in enumerate(self.index.search(qv, k=len(self.chunks), allowed=allowed))
+        }
 
         bm25_scores = self._bm25.get_scores(tokenize(query))
         bm25_rank: dict[str, int] = {}
@@ -98,7 +107,12 @@ class Retriever:
         return fused
 
     def hybrid(
-        self, query: str, k: int = 5, kinds=None, services=None, rrf_k: int = 60
+        self,
+        query: str,
+        k: int = 5,
+        kinds: tuple[str, ...] | None = None,
+        services: tuple[str, ...] | None = None,
+        rrf_k: int = 60,
     ) -> list[Hit]:
         allowed = allowed_chunk_ids(self.chunks, kinds, services)
         fused = self._hybrid_chunk_scores(query, allowed, rrf_k)
@@ -108,8 +122,8 @@ class Retriever:
         self,
         query: str,
         k: int = 5,
-        kinds=None,
-        services=None,
+        kinds: tuple[str, ...] | None = None,
+        services: tuple[str, ...] | None = None,
         rrf_k: int = 60,
         cand_k: int = RERANK_CANDIDATES,
     ) -> list[Hit]:

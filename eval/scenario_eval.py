@@ -79,7 +79,7 @@ def _score_one(scenario: dict, state: dict, root_by_incident: dict[str, str]) ->
     root = chain[0] if chain else None
     implicated = _implicated_entity(state, root_by_incident)
 
-    # Agent-eval axes (Stage 4b): how *well* the loop behaves, not just what it concludes.
+    # Agent-eval axes: how *well* the loop behaves, not just what it concludes.
     # tool-selection precision — of the calls that executed, the fraction that produced evidence the
     # answer key expects (did the agent reach for the right tools rather than wander?).
     ok_obs = [o for o in observations if o.status == "ok"]

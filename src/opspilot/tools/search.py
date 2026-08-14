@@ -8,8 +8,9 @@ envelope; each hit's `doc_id` is the retrieval ref (e.g. `runbook:payment-timeou
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from datetime import datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from opspilot.data.operational_records import OperationalRecords
 from opspilot.tools.contracts import (
@@ -22,7 +23,7 @@ from opspilot.tools.contracts import (
 from opspilot.tools.errors import run_tool
 
 if TYPE_CHECKING:  # avoid importing any retrieval backend at module load
-    from opspilot.retrieval.base import SearchRetriever
+    from opspilot.retrieval.base import Hit, SearchRetriever
 
 RECENCY_BONUS = 0.2  # up to +20% score for the most recent matching incident
 
@@ -33,7 +34,7 @@ def _titles_services(retriever: SearchRetriever) -> tuple[dict[str, str], dict[s
     return titles, services
 
 
-def _to_hits(retriever: SearchRetriever, hits) -> list[DocHit]:
+def _to_hits(retriever: SearchRetriever, hits: Sequence[Hit]) -> list[DocHit]:
     titles, services = _titles_services(retriever)
     return [
         DocHit(
@@ -47,7 +48,7 @@ def _to_hits(retriever: SearchRetriever, hits) -> list[DocHit]:
     ]
 
 
-def search_runbooks(retriever: SearchRetriever, **kwargs) -> ToolResult[DocHit]:
+def search_runbooks(retriever: SearchRetriever, **kwargs: Any) -> ToolResult[DocHit]:
     def logic(req: SearchRunbooksRequest) -> tuple[list[DocHit], list[str]]:
         services = (req.service,) if req.service else None
         hits = retriever.search(
@@ -60,7 +61,7 @@ def search_runbooks(retriever: SearchRetriever, **kwargs) -> ToolResult[DocHit]:
 
 
 def search_past_incidents(
-    retriever: SearchRetriever, records: OperationalRecords, *, deadline_s: float, **kwargs
+    retriever: SearchRetriever, records: OperationalRecords, *, deadline_s: float, **kwargs: Any
 ) -> ToolResult[DocHit]:
     def logic(req: SearchPastIncidentsRequest) -> tuple[list[DocHit], list[str]]:
         services = (req.service,) if req.service else None
@@ -96,7 +97,7 @@ def search_past_incidents(
         valid = [t for t in ts.values() if t is not None]
         lo, hi = (min(valid), max(valid)) if valid else (0.0, 0.0)
 
-        def weighted(h) -> float:
+        def weighted(h: Hit) -> float:
             t = ts[h.doc_id]
             norm = (t - lo) / (hi - lo) if (t is not None and hi > lo) else 0.0
             return h.score * (1 + RECENCY_BONUS * norm)

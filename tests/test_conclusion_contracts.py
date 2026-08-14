@@ -1,4 +1,4 @@
-"""Conclusion contracts (Stage 5e) — the typed claim shapes the 6b checks validate and the report
+"""Conclusion contracts: the typed claim shapes the deterministic checks validate and the report
 is rendered from. These assert the CONTRACTS only (validation, defaults, discrimination); wiring the
 synthesis path to produce them, and rendering prose from them, land in the following 5e slices.
 """
@@ -75,9 +75,7 @@ def test_citation_rejects_unknown_role():
 def test_baseline_role_citation_fixture_exists():
     # The 6b causal-order check's negative case, authored now: a baseline reading is NOT causal
     # support. Enforcement (rejecting it) is 6b; here we pin that the role is expressible.
-    baseline = EvidenceCitation(
-        source="metrics", ref="metrics:baseline-1", role="baseline"
-    )
+    baseline = EvidenceCitation(source="metrics", ref="metrics:baseline-1", role="baseline")
     assert baseline.role == "baseline"
 
 

@@ -1,4 +1,4 @@
-"""Contract tests for the Phase 3 deterministic tools.
+"""Contract tests for the deterministic tools.
 
 Covers the required surface: success, unknown, empty, invalid window, unknown service,
 deterministic ordering, schema validity, malformed-data handling, metadata, refs resolve, and the

@@ -23,8 +23,8 @@ def test_single_agent_missing_azure_endpoint_falls_back_explicitly(monkeypatch):
     monkeypatch.setattr(config, "LLM_PROVIDER", "azure")
     monkeypatch.setattr(config, "AZURE_OPENAI_ENDPOINT", "")
     d = build_diagnosis("single_agent")
-    assert d.implementation == "deterministic"        # fell back to the floor
-    assert d.requested == "single_agent"              # but records what was asked for
+    assert d.implementation == "deterministic"  # fell back to the floor
+    assert d.requested == "single_agent"  # but records what was asked for
     assert d.fallback_reason and "AZURE_OPENAI_ENDPOINT" in d.fallback_reason
     assert d.planner.name == "deterministic" and d.triager.name == "deterministic"
 

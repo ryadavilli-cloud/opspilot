@@ -9,18 +9,26 @@ from __future__ import annotations
 
 import os
 from functools import lru_cache
+from typing import TYPE_CHECKING
 
 import numpy as np
+
+if TYPE_CHECKING:  # the heavy dependency is imported lazily inside the function below
+    from sentence_transformers import SentenceTransformer
 
 DEFAULT_MODEL = os.getenv("OPSPILOT_EMBED_MODEL", "BAAI/bge-small-en-v1.5")
 QUERY_INSTRUCTION = "Represent this sentence for searching relevant passages: "
 
 
 @lru_cache(maxsize=2)
-def _model(name: str):
+def _model(name: str) -> SentenceTransformer:
     from sentence_transformers import SentenceTransformer  # heavy import; keep lazy
 
-    return SentenceTransformer(name)
+    # The package resolves its exports lazily, so the imported name carries no type of its own.
+    # Naming it here is what gives the cached model a type, whether or not the optional dependency
+    # is installed in the environment doing the checking.
+    model: SentenceTransformer = SentenceTransformer(name)
+    return model
 
 
 class Embedder:
@@ -28,11 +36,16 @@ class Embedder:
         self.model_name = model_name
 
     def encode_docs(self, texts: list[str]) -> np.ndarray:
-        return _model(self.model_name).encode(
+        # `convert_to_numpy=True` is what makes the result an array, and the encoder's own signature
+        # cannot express that, so the array type is established here. Already an array on this path,
+        # so `asarray` returns it unchanged rather than converting anything.
+        encoded = _model(self.model_name).encode(
             texts, normalize_embeddings=True, convert_to_numpy=True
         )
+        return np.asarray(encoded)
 
     def encode_query(self, text: str) -> np.ndarray:
-        return _model(self.model_name).encode(
+        encoded = _model(self.model_name).encode(
             [QUERY_INSTRUCTION + text], normalize_embeddings=True, convert_to_numpy=True
-        )[0]
+        )
+        return np.asarray(encoded[0])

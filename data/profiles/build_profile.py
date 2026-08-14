@@ -42,16 +42,16 @@ FAULT_TYPES = {"cpu", "mem", "disk", "delay", "loss"}
 # How each RetailEase incident category maps onto the RCAEval fault type whose signal shape it
 # resembles. This is the per-category calibration the generator consumes.
 CATEGORY_FAULT_BASIS = {
-    "payment": "delay",     # latency/timeout-shaped (inc-001, inc-004)
-    "datastore": "mem",     # resource saturation → throttling (inc-002)
-    "cache": "mem",         # memory pressure / eviction (inc-005)
-    "messaging": "loss",    # dropped/blocked processing (inc-003)
-    "inventory": "cpu",     # compute/deploy regression (inc-006)
+    "payment": "delay",  # latency/timeout-shaped (inc-001, inc-004)
+    "datastore": "mem",  # resource saturation → throttling (inc-002)
+    "cache": "mem",  # memory pressure / eviction (inc-005)
+    "messaging": "loss",  # dropped/blocked processing (inc-003)
+    "inventory": "cpu",  # compute/deploy regression (inc-006)
 }
 
 NODE_PREFIX = re.compile(r"^\d")  # node-exporter columns are IP-prefixed; not app services.
 MIN_WINDOW = 30  # require >=30 samples each side of injection to trust a case.
-Z_THRESH = 4.0   # statistical deviation gate (post mean vs pre distribution).
+Z_THRESH = 4.0  # statistical deviation gate (post mean vs pre distribution).
 REL_THRESH = 0.2  # AND a >=20% relative change, so tiny-but-significant noise isn't "affected".
 
 
@@ -189,8 +189,9 @@ def resolve_categories(
             "blast_radius_fraction": (mf.get("blast_radius_fraction") or {}).get("median"),
             "onset_lag_seconds": (mf.get("onset_lag_seconds") or {}).get("median"),
             "ambient_error_fraction": (lf.get("ambient_error_fraction") or {}).get("median"),
-            "log_lines_per_min_per_service": (
-                lf.get("log_lines_per_min_per_service") or {}).get("median"),
+            "log_lines_per_min_per_service": (lf.get("log_lines_per_min_per_service") or {}).get(
+                "median"
+            ),
         }
     return resolved
 

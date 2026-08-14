@@ -1,4 +1,4 @@
-"""Stage 5g: the emission seam emits OTLP-shaped spans under the parent trace_id, and the node
+"""The emission seam emits OTLP-shaped spans under the parent trace_id, and the node
 wrapper traces every dispatch with no per-node code. A missing/broken trace is a silent failure
 exactly when it is needed, so this is tested, not asserted (code-guidelines §23)."""
 

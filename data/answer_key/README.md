@@ -25,7 +25,7 @@ python data/answer_key/build_goldens.py
 
 Refs are self-describing: the prefix names the source, so a resolver can dispatch on it. The
 evidence half matches the **frozen `Evidence.source` set** in `src/opspilot/state.py`, so the
-Phase 3 tools conform to these refs rather than the reverse.
+read-only capabilities conform to these refs rather than the reverse.
 
 ### Evidence refs — what tools surface (`evidence[].ref`)
 
@@ -41,7 +41,7 @@ Phase 3 tools conform to these refs rather than the reverse.
 
 ### Retrieval ids — KB docs the RAG should return (`expected_retrieval`)
 
-| namespace | grammar | resolves to (Phase 2d) |
+| namespace | grammar | resolves to |
 | --- | --- | --- |
 | `runbook` | `runbook:<doc_id>` | `data/kb/runbooks/<doc_id>.md` |
 | `architecture` | `architecture:<doc_id>` | `data/kb/architecture/<doc_id>.md` |
@@ -76,7 +76,7 @@ class, or if a causal deploy's version is missing from `affected_versions`.
 
 - 7 scenarios: 3 `historical` + 3 `novel` + 1 `recurrence`.
 - `historical` → `expected_intent: known_issue`, `expected_match: postmortem:<own id>` (it seeds
-  that postmortem and the Phase 9.5 fast path should match it).
+  that postmortem, and the known-issue path should match it).
 - `novel` → `expected_intent: novel_investigation`, `expected_match: null`.
 - `recurrence` → `expected_intent: known_issue`, `expected_match: postmortem:<a different,
   historical incident's id>` (never its own; matching itself would be untestable).
@@ -86,9 +86,9 @@ class, or if a causal deploy's version is missing from `affected_versions`.
 
 ## What is *not* checked yet
 
-Full closure — every evidence ref resolving to a generated telemetry row, every retrieval id to a
-real KB doc — is **Phase 2e**, once 2b telemetry and 2d KB exist. Until then the test guards the
-answer key's internal coherence and its sync with the goldens.
+Full closure, every evidence ref resolving to a generated telemetry row and every retrieval id to
+a real KB doc, is asserted by `tests/test_closure.py`. The test here guards the answer key's
+internal coherence and its sync with the goldens.
 
 ## Demo mapping
 

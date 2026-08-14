@@ -40,10 +40,11 @@ class IncidentReport(BaseModel):
     recommended_next_step: str
     citations: list[str]
     # Secondary structured claims (onset / blast radius / ruled out / recommendation ...), each
-    # carrying its own support refs (G-51). They live INSIDE the report rather than beside it so
-    # they are part of the bytes the approval hash binds, and so `safety_validate` checks their
-    # grounding along with the headline citations. Defaulted, so a run that produces none (the
-    # deterministic floor, the known-issue path) builds an unchanged report.
+    # carrying its own support refs, so every published claim is grounded rather than only the
+    # headline root cause. They live INSIDE the report rather than beside it so they are part of
+    # the bytes the approval hash binds, and so `safety_validate` checks their grounding along with
+    # the headline citations. Defaulted, so a run that produces none (the deterministic floor, the
+    # known-issue path) builds an unchanged report.
     report_claims: list[ReportClaim] = Field(default_factory=list)
 
     def content_hash(self) -> str:
@@ -56,12 +57,12 @@ class IncidentReport(BaseModel):
         return hashlib.sha256(self.model_dump_json().encode("utf-8")).hexdigest()
 
 
-# --- InvestigationResult: the discriminated result union (Stage 5e, G-49) ----------------------
+# --- InvestigationResult: the discriminated result union ---------------------------------------
 # A run's outcome is one of four DISTINCT types, tagged by `result_type`. Only a fully grounded RCA
-# carries a CausalClaim; the degraded rungs (partial / knowledge-only) get their own types so the
-# degradation ladder (Stage 10) can never ship a non-RCA answer under the RCA contract. Today's runs
-# produce only `grounded_rca` and `escalation`; the middle two are defined now so nothing has to be
-# retyped when Stage 10 builds the rungs that return them.
+# carries a CausalClaim; the degraded rungs (partial / knowledge-only) get their own types, so a
+# consumer can tell a grounded RCA from a briefing or an escalation without reading prose and no
+# non-RCA answer can ship under the RCA contract. Today's runs produce only `grounded_rca` and
+# `escalation`; the middle two are defined here so returning one needs no retyping.
 
 
 class GroundedRcaReport(BaseModel):
@@ -75,7 +76,7 @@ class GroundedRcaReport(BaseModel):
 
 
 class PartialInvestigationReport(BaseModel):
-    """A degraded rung: evidence was gathered but no grounded root cause was reached (Stage 10)."""
+    """A degraded rung: evidence was gathered but no grounded root cause was reached."""
 
     result_type: Literal["partial"] = "partial"
     incident_id: str
@@ -85,7 +86,7 @@ class PartialInvestigationReport(BaseModel):
 
 
 class KnowledgeBriefing(BaseModel):
-    """A degraded rung: a knowledge / `info_only` answer, explicitly NOT an RCA (Stage 10)."""
+    """A degraded rung: a knowledge / `info_only` answer, explicitly NOT an RCA."""
 
     result_type: Literal["knowledge_briefing"] = "knowledge_briefing"
     incident_id: str
@@ -94,7 +95,7 @@ class KnowledgeBriefing(BaseModel):
 
 
 class EscalationNotice(BaseModel):
-    """The run stopped and handed off to a human, carrying a machine-readable reason (G-36)."""
+    """The run stopped and handed off to a human, carrying a machine-readable reason."""
 
     result_type: Literal["escalation"] = "escalation"
     incident_id: str

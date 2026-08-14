@@ -23,8 +23,9 @@ from opspilot.state import Intent
 if TYPE_CHECKING:
     from opspilot.llm.base import ChatModel
 
+
 class PastCandidate(BaseModel):
-    doc_id: str      # a postmortem ref, e.g. postmortem:inc-003
+    doc_id: str  # a postmortem ref, e.g. postmortem:inc-003
     title: str = ""
 
 
@@ -102,9 +103,9 @@ class LLMTriager:
         from opspilot.llm.base import ChatMessage
         from opspilot.llm.schema import TriageResponse
 
-        rendered = self._prompt.text.replace(
-            "{incident}", _render_context(ctx)
-        ).replace("{candidates}", _render_candidates(ctx))
+        rendered = self._prompt.text.replace("{incident}", _render_context(ctx)).replace(
+            "{candidates}", _render_candidates(ctx)
+        )
         # An unparseable response or an unknown `intent` (not in the closed set) fails closed.
         try:
             raw = extract_json_object(self._model.complete([ChatMessage("user", rendered)]).text)

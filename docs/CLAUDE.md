@@ -9,9 +9,10 @@ generates, infers, verifies, or improves on its own initiative.
 
 **No file in this folder is written during implementation work.**
 
-Two files are the exception, under the bounded conditions below:
+Three files are the exception, under the bounded conditions below, and they
+are not one category:
 
-- `status.md` — what is actually built
+- `status.md` — what the repository currently is, measured against the design
 - `horizontal-execution-plan.md` — the horizontal implementation sequence
 - `vertical-execution-plan.md` — the vertical implementation sequence
 
@@ -29,33 +30,48 @@ should be does not change that.
 
 ---
 
-## The two tracking files
+## The tracking files
+
+Three files track rather than design: `status.md`, and the two execution plans.
+They are not one category. Status is anchored to the design and answers what the
+repository currently is; a plan is anchored to status and answers how to close
+the difference. They are edited for different reasons, on different triggers,
+and the rules below are therefore separate.
 
 ### When
 
-At slice completion, after the local pass has been reviewed — not mid-slice, not
-in anticipation, not because a change seems inevitable.
+At every landing, after the local pass has been reviewed — not mid-slice, not in
+anticipation, not because a change seems inevitable.
 
-One update covers one slice. Do not batch several slices into one edit, and do
-not record a slice as done before its four gates pass.
+Both halves run, as part of the definition of done. Status records what was
+built. Every slice whose subject that landing touched re-derives its marker.
+Updating one without the other leaves derived data stale and silently wrong, and
+nothing else in the repository will catch it.
+
+Do not record a slice as done before its four gates pass.
 
 ### `status.md` — what may change
 
-- Register rows the slice closed, moved from their previous standing to what is
-  now true
-- Rows the slice retired, removed
+Edited when the repository contradicts it, never on the occasion of a slice.
+
+- Rows whose standing the tree has changed, moved to what is now true
+- Rows whose subject no longer exists, removed
 - Test and verification counts, re-measured rather than incremented
-- The document status line: commit, date, gate results
+- The baseline line: commit, date, gate results
 - Rows that inspection contradicts
 
-Bounded by one rule: **a register row changes only where the repository
-contradicts what is written.** Never because reasoning suggests it should, never
-because a design document implies it, never to reconcile status with a plan.
-Every edit traces to something you ran or read in this session.
+Bounded by one rule: **a row changes only where the repository contradicts what
+is written.** Never because reasoning suggests it should, never because a design
+document implies it, never to reconcile status with a plan. Every edit traces to
+something you ran or read in this session.
 
-If a slice landed and no register row describes what it closed, that is a gap
-between the plan and the register. Report it. Do not author a new row to cover
-it.
+Status carries no slice identifiers, no layer or stage numbering, no sequence,
+and no statement of what comes next. Work that landed ahead of the sequence that
+describes it is simply built; status holds no order for it to have arrived out
+of, and records no note that it did.
+
+If something landed and no row describes it, that is a gap. Report it. Do not
+author a new row to cover it.
 
 ### `horizontal-execution-plan.md` and `vertical-execution-plan.md` — what may change
 
@@ -64,7 +80,12 @@ progress log.
 
 Permitted:
 
-- Marking a slice complete
+- Re-deriving a slice's marker from status: complete, partially satisfied with
+  precisely what remains, or not started. A slice whose subject is already built
+  marks itself complete and cites the row that shows it. A slice whose subject is
+  partly built states what exists and narrows itself to the remainder
+- Absorbing an out-of-order landing, which belongs here because sequence is the
+  plan's to own
 - Recording a divergence: where the work required something the slice text did
   not anticipate, or where a slice's stated citation had no counterpart
 
@@ -149,8 +170,9 @@ The prompt asks for review, assessment, or reconciliation.
 - Produce findings. Change no existing document.
 - Ground every claim in a real file and line reference. If supporting text
   cannot be found, say so rather than inferring it.
-- Do not assume an existing design is authoritative merely because it is
-  detailed or appears in an active document. Burden of proof is on retention.
+- The accepted design set is authoritative; nothing else becomes so merely by
+  being detailed or by appearing in an active document. For material outside it,
+  the burden of proof is on retention.
 - Surface open forks explicitly with a recommended default.
 - Report what you did not find, not only what you did.
 
@@ -159,19 +181,57 @@ The prompt asks for review, assessment, or reconciliation.
 Apply strictly, in this order:
 
 1. `requirements.md` — governing product intent, scope, capabilities, journey
-2. The accepted target design — the settled answer for architecture, components,
-   flows, contracts, and technology responsibility
+2. The accepted target design — `architecture.md`, `system-design.md`,
+   `workflow-design.md`, `data-and-evidence.md`, `runtime-and-deployment.md`,
+   `evaluation.md`: the settled answer for architecture, components, flows,
+   contracts, and technology responsibility, and what `status.md` is measured
+   against
 3. Settled decisions confirmed in the prompt
 4. RetailEase corpus and scenario facts
-5. `architecture.md`, `system-design.md`, `workflow-design.md`,
-   `data-and-evidence.md`, `runtime-and-deployment.md`, `evaluation.md`,
-   `code-guidelines.md`, `decisions.md` — candidate material only, subordinate
-   to everything above
+5. `code-guidelines.md` — implementation and merge rules binding code to the
+   accepted design; `decisions.md` — the record of settled choices. Neither is
+   part of the accepted design, and neither overrides anything above
 6. Anything under `docs/archive/`, and any superseded assessment output —
    historical context only
 
 A decision record is not settled merely because it is marked accepted. A document
 is not authoritative merely because it is detailed.
+
+---
+
+## Status, design, and plan
+
+The design set — `requirements.md`, `architecture.md`, `system-design.md`,
+`workflow-design.md`, `data-and-evidence.md`, `runtime-and-deployment.md`,
+`evaluation.md` — states what OpsPilot is meant to be. `status.md` states what the
+repository currently is, measured against that design and against nothing else. An
+execution plan states how to close the difference. Each document answers one
+question and never answers another's.
+
+Status is anchored to the design, not to a plan. A capability is implemented,
+partially implemented, or missing because of what the tree contains, not because a
+slice ran. Status therefore carries no slice identifiers, no layer or stage
+numbering, no sequence, and no statement of what comes next. Work that landed early
+is simply built — status holds no order for it to have arrived out of. A row changes
+only where the repository contradicts what is written, and every claim traces to a
+file read or a command run in the session that recorded it.
+
+The plan depends on status; status never depends on the plan. A slice reads the
+registers and records its own state against them: complete, partially satisfied with
+precisely what remains, or not started. A slice whose subject is already built marks
+itself complete and cites the register row that shows it. A slice whose subject is
+partly built states what exists and narrows itself to the remainder. Out-of-order
+landings are absorbed here, in the plan, because sequence is the plan's to own.
+
+Both halves run at every landing, as part of the definition of done: status records
+what was built, and every slice whose subject that landing touched re-derives its
+marker. Updating one without the other leaves derived data stale and silently wrong,
+and nothing else in the repository will catch it.
+
+This holds only where a slice's completion criteria are stated in terms status can
+answer — capabilities, modules, contracts, observable behavior. A criterion status
+cannot answer cannot be reflected and must be either restated or given a row to rest
+on.
 
 ---
 
@@ -207,7 +267,9 @@ elsewhere; point to it in one line.
   dependencies, what each must include
 - `vertical-execution-plan.md` — the vertical slice wise implementation sequence: slices, their
   dependencies, what each must include
-- `status.md` — what is actually built
+- `status.md` — what the repository currently is, measured against the design:
+  implemented, partially implemented, and missing capabilities, what coexists
+  temporarily, and what has been verified. Sequence belongs to the plans
 
 `status.md`, `horizontal-execution-plan.md` and `vertical-execution-plan.md` are not design documents.
 Never put implementation status, gap identifiers, or build progress in one that

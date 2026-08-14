@@ -238,7 +238,11 @@ def test_a_token_with_no_roles_claim_at_all_gets_403(keypair):
 
 def test_require_role_fails_closed_on_a_blank_required_role():
     principal = ReviewerPrincipal(
-        subject="s", tenant_id="t", display_name="d", roles=("Approver",), auth_method="entra_jwt",
+        subject="s",
+        tenant_id="t",
+        display_name="d",
+        roles=("Approver",),
+        auth_method="entra_jwt",
     )
     with pytest.raises(ReviewerAuthError) as exc:
         require_role(principal, "")
@@ -247,14 +251,22 @@ def test_require_role_fails_closed_on_a_blank_required_role():
 
 def test_require_any_role_passes_when_any_one_role_matches():
     principal = ReviewerPrincipal(
-        subject="s", tenant_id="t", display_name="d", roles=("Reader",), auth_method="entra_jwt",
+        subject="s",
+        tenant_id="t",
+        display_name="d",
+        roles=("Reader",),
+        auth_method="entra_jwt",
     )
     require_any_role(principal, ("Submitter", "Reader", "Approver"))  # does not raise
 
 
 def test_require_any_role_rejects_when_none_match():
     principal = ReviewerPrincipal(
-        subject="s", tenant_id="t", display_name="d", roles=("Guest",), auth_method="entra_jwt",
+        subject="s",
+        tenant_id="t",
+        display_name="d",
+        roles=("Guest",),
+        auth_method="entra_jwt",
     )
     with pytest.raises(ReviewerAuthError) as exc:
         require_any_role(principal, ("Submitter", "Reader", "Approver"))
@@ -319,5 +331,5 @@ def test_there_is_no_backend_that_disables_authentication():
     from opspilot import auth
 
     source = inspect.getsource(auth)
-    for forbidden in ("class InsecureAuth", "class NoopAuth", "auth_method=\"none\""):
+    for forbidden in ("class InsecureAuth", "class NoopAuth", 'auth_method="none"'):
         assert forbidden not in source

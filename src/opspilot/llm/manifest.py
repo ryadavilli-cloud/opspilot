@@ -3,7 +3,7 @@
 The replay key used to be `(model_id, messages, temperature)`. The recorded response is a function
 of far more than that, so a change to anything outside those three shifted real behaviour while the
 key stayed identical: CI then replayed a response the current inputs would never produce and passed
-green on a lie (G-54).
+green on a lie.
 
 This is not hypothetical. `#45` changed `reasoning_effort` from `low` to `medium` precisely because
 the model was not gathering all the evidence at `low`. Every cassette key was unchanged, so the
@@ -24,8 +24,8 @@ What the manifest covers, and what it deliberately does not:
 - **`max_tokens`, stop sequences, and safety settings** are not sent by this codebase yet. They
   join the manifest with the request that starts sending them, not before: a field pinned to a
   constant nobody sets is coverage theatre.
-- **Hosting mode** (Azure OpenAI chat-completions vs the Anthropic Messages API) lands with the
-  provider split (G-45), which is the change that first makes it vary.
+- **Hosting mode** (Azure OpenAI chat-completions vs the Anthropic Messages API) joins the
+  manifest with the change that first makes it vary, for the same reason.
 """
 
 from __future__ import annotations

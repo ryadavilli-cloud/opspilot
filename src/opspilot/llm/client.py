@@ -189,11 +189,12 @@ def build_chat_model(
 
 
 class TracedChatModel:
-    """Wraps any `ChatModel` to emit a model span with normalized usage per call (Stage 5g / §23).
+    """Wraps any `ChatModel` to emit a model span with normalized usage per call (code guidelines
+    §23).
 
     Applied at the composition root, NOT in `build_chat_model`, so the factory and cassette-replay
     paths stay untraced (and the factory's `isinstance` contract is unchanged). Capture only — the
-    budget that reads this usage is [G-08] at Stage 6b."""
+    usage is captured here and read by whatever enforces a budget, which is not this wrapper."""
 
     def __init__(self, inner: ChatModel) -> None:
         self._inner = inner

@@ -773,15 +773,19 @@ publication state, because neither concept exists in this system.
 
 ### Trace and evaluation references
 
-Trace and evaluation artifacts describe the run, not the incident. Their references exist so a
-developer can reconstruct what happened and an evaluator can score it (NFR-14, NFR-22).
+Trace and evaluation artifacts describe the run, not the incident. The completed-turn artifact
+carries a reference to the correlated trace, together with the version stamp of the model and
+prompt configuration used and the usage totals for the turn, so a developer can reconstruct what
+happened (NFR-14, NFR-18, NFR-22).
 
-They may identify the correlated trace, the evaluation run or score artifact, the version stamp of
-the model and prompt configuration used, and the usage totals for the turn (NFR-18).
+Evaluation artifacts are a separate consumer. They read the completed turn and its trace and hold
+their own references back to them by investigation and turn identity, so an evaluator can score the
+run. The completed-turn artifact never holds a reference to an evaluation run or its result, and is
+never rewritten after evaluation to add one.
 
-They can never be cited as proof of the incident's cause. OpsPilot's own telemetry is not evidence
-about RetailEase. Telemetry and evaluation structures themselves belong to
-`runtime-and-deployment.md` and `evaluation.md`.
+Neither the trace reference nor an evaluation artifact's reference can ever be cited as proof of the
+incident's cause. OpsPilot's own telemetry is not evidence about RetailEase. Telemetry and
+evaluation structures themselves belong to `runtime-and-deployment.md` and `evaluation.md`.
 
 ---
 
@@ -817,8 +821,8 @@ cross-cutting ones.
     delivers no brief at all.
 14. A delivered brief is never edited in place; a revised analysis is a later turn.
 15. A handoff summary restates retained state and creates no evidence and no assessment.
-16. Only the completed-turn artifact persists, and trace and evaluation references within it are
-    never incident evidence.
+16. Only the completed-turn artifact persists, and the trace reference within it is never incident
+    evidence; evaluation artifacts reference completed turns, never the reverse.
 
 ---
 

@@ -38,9 +38,7 @@ def build_investigation_repository(backend: str | None = None) -> InvestigationR
 
     if backend == "cosmos":
         if not config.COSMOS_ENDPOINT:
-            raise ValueError(
-                "the 'cosmos' investigation repository requires AZURE_COSMOS_ENDPOINT"
-            )
+            raise ValueError("the 'cosmos' investigation repository requires AZURE_COSMOS_ENDPOINT")
 
         from opspilot.cosmos_investigations import CosmosInvestigationRepository
 

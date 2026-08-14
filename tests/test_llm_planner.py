@@ -1,4 +1,4 @@
-"""LLMPlanner (Stage 4b) — parsing + fail-closed selection are ML-free; one live qwen check.
+"""LLMPlanner: parsing + fail-closed selection are ML-free; one live qwen check.
 
 The read-only registry is the hard boundary: the planner must never surface a mutating or
 hallucinated tool, whatever the model returns.
@@ -138,7 +138,8 @@ def test_conclude_synthesizes_on_final_turn():
     )
     planner = LLMPlanner(model)
     conclusion = planner.conclude(
-        _BASE, ctx=CTX, produced_refs={"metrics:payment-api:p95@t"}, observations=[], final=True)
+        _BASE, ctx=CTX, produced_refs={"metrics:payment-api:p95@t"}, observations=[], final=True
+    )
     assert conclusion.hypothesis is not _BASE
     assert conclusion.hypothesis.statement == "payment-api timeouts"
     # No `causal` block was proposed, so nothing is admitted and the prose stands alone. This is
@@ -146,7 +147,7 @@ def test_conclude_synthesizes_on_final_turn():
     assert conclusion.causal is None
 
 
-# --- structured conclusion (Stage 5e, G-29/G-50) ------------------------------------------------
+# --- structured conclusion --------------------------------------------------------------------
 _CAUSAL = (
     '{"root_cause": "the model prose, which must NOT be published",'
     ' "citations": ["metrics:payment-api:p95@t"],'
@@ -166,7 +167,7 @@ def _conclude_with_causal(known=("payment-api", "checkout-api")):
 
 
 def test_an_admitted_claim_renders_the_statement_and_discards_the_model_prose():
-    """G-50: the published sentence is rendered from the typed fields, so it cannot name an entity
+    """The published sentence is rendered from the typed fields, so it cannot name an entity
     the claim does not. The model's own prose is deliberately not what ships."""
     conclusion = _conclude_with_causal()
     assert conclusion.causal is not None

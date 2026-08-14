@@ -1,8 +1,8 @@
 """Generate RetailEase telemetry from the answer key, calibrated by the RCAEval profile.
 
-This is the deterministic 2b generator. It reads three inputs — the topology and scenario
-answer key (2a) and the empirical signal profile (RCAEval) — and emits the telemetry the
-Phase 3 tools will query:
+This is the deterministic generator. It reads three inputs, the topology and scenario answer key
+and the empirical signal profile (RCAEval), and emits the telemetry the read-only capabilities
+query:
 
     data/synthetic/logs.jsonl          (log rows; query_logs)
     data/synthetic/metrics.json        (metric series; get_metrics)
@@ -41,10 +41,10 @@ REPO_ROOT = SYN_DIR.parents[1]
 ANSWER_KEY = REPO_ROOT / "data" / "answer_key"
 PROFILE_PATH = REPO_ROOT / "data" / "profiles" / "rcaeval_profile.json"
 
-WINDOW_MIN = 30          # telemetry window is occurred_at ± 30 min...
-STEP_MIN = 5             # ...sampled every 5 min (matches topology.metric_sample_interval_minutes).
-NOISE_LOG_SCALE = 0.02   # scale RCAEval's ~335 lines/min/svc down to a tractable demo volume,
-                         # preserving the ambient_error_fraction ratio (documented, not silent).
+WINDOW_MIN = 30  # telemetry window is occurred_at ± 30 min...
+STEP_MIN = 5  # ...sampled every 5 min (matches topology.metric_sample_interval_minutes).
+NOISE_LOG_SCALE = 0.02  # scale RCAEval's ~335 lines/min/svc down to a tractable demo volume,
+# preserving the ambient_error_fraction ratio (documented, not silent).
 
 # ---------------------------------------------------------------------------------------------
 # Metric catalog — the metrics each entity emits. Referenced metrics (named in evidence) MUST be
@@ -52,60 +52,98 @@ NOISE_LOG_SCALE = 0.02   # scale RCAEval's ~335 lines/min/svc down to a tractabl
 # baseline/deviated are steady-state vs during-fault values; direction documents the shift.
 # ---------------------------------------------------------------------------------------------
 METRIC_DEFS: dict[str, dict[str, Any]] = {
-    "http_5xx_rate":         {"unit": "ratio", "baseline": 0.002, "deviated": 0.085},
-    "p95_latency_ms":        {"unit": "ms",    "baseline": 120.0, "deviated": 1800.0},
-    "request_rate":          {"unit": "rps",   "baseline": 55.0,  "deviated": 55.0},  # flat=noise
-    "cpu_pct":               {"unit": "pct",   "baseline": 32.0,  "deviated": 32.0},  # flat=noise
-    "reservation_error_rate":{"unit": "ratio", "baseline": 0.001, "deviated": 0.06},
-    "restart_count":         {"unit": "count", "baseline": 0.0,   "deviated": 6.0},
-    "ru_throttled_rate":     {"unit": "ratio", "baseline": 0.0,   "deviated": 0.22},
-    "used_ru_pct":           {"unit": "pct",   "baseline": 45.0,  "deviated": 98.0},
-    "active_message_count":  {"unit": "count", "baseline": 25.0,  "deviated": 5200.0},
-    "incoming_rate":         {"unit": "rps",   "baseline": 30.0,  "deviated": 30.0},  # flat=noise
-    "used_memory_pct":       {"unit": "pct",   "baseline": 58.0,  "deviated": 97.0},
-    "evicted_keys_rate":     {"unit": "rps",   "baseline": 0.0,   "deviated": 3100.0},
-    "hit_rate":              {"unit": "ratio", "baseline": 0.95,  "deviated": 0.62},
-    "msg_processed_rate":    {"unit": "rps",   "baseline": 28.0,  "deviated": 0.0},
-    "stale_read_rate":       {"unit": "ratio", "baseline": 0.0,   "deviated": 0.55},
+    "http_5xx_rate": {"unit": "ratio", "baseline": 0.002, "deviated": 0.085},
+    "p95_latency_ms": {"unit": "ms", "baseline": 120.0, "deviated": 1800.0},
+    "request_rate": {"unit": "rps", "baseline": 55.0, "deviated": 55.0},  # flat=noise
+    "cpu_pct": {"unit": "pct", "baseline": 32.0, "deviated": 32.0},  # flat=noise
+    "reservation_error_rate": {"unit": "ratio", "baseline": 0.001, "deviated": 0.06},
+    "restart_count": {"unit": "count", "baseline": 0.0, "deviated": 6.0},
+    "ru_throttled_rate": {"unit": "ratio", "baseline": 0.0, "deviated": 0.22},
+    "used_ru_pct": {"unit": "pct", "baseline": 45.0, "deviated": 98.0},
+    "active_message_count": {"unit": "count", "baseline": 25.0, "deviated": 5200.0},
+    "incoming_rate": {"unit": "rps", "baseline": 30.0, "deviated": 30.0},  # flat=noise
+    "used_memory_pct": {"unit": "pct", "baseline": 58.0, "deviated": 97.0},
+    "evicted_keys_rate": {"unit": "rps", "baseline": 0.0, "deviated": 3100.0},
+    "hit_rate": {"unit": "ratio", "baseline": 0.95, "deviated": 0.62},
+    "msg_processed_rate": {"unit": "rps", "baseline": 28.0, "deviated": 0.0},
+    "stale_read_rate": {"unit": "ratio", "baseline": 0.0, "deviated": 0.55},
     "reservation_queue_depth": {"unit": "count", "baseline": 2.0, "deviated": 340.0},
 }
 
 ENTITY_METRICS: dict[str, list[str]] = {
-    "checkout-api":        ["http_5xx_rate", "p95_latency_ms", "request_rate", "cpu_pct"],
-    "payment-api":         ["p95_latency_ms", "http_5xx_rate", "request_rate", "cpu_pct"],
-    "inventory-api":       ["p95_latency_ms", "reservation_error_rate", "request_rate", "cpu_pct",
-                             "reservation_queue_depth"],
-    "catalog-api":         ["p95_latency_ms", "request_rate", "cpu_pct"],
+    "checkout-api": ["http_5xx_rate", "p95_latency_ms", "request_rate", "cpu_pct"],
+    "payment-api": ["p95_latency_ms", "http_5xx_rate", "request_rate", "cpu_pct"],
+    "inventory-api": [
+        "p95_latency_ms",
+        "reservation_error_rate",
+        "request_rate",
+        "cpu_pct",
+        "reservation_queue_depth",
+    ],
+    "catalog-api": ["p95_latency_ms", "request_rate", "cpu_pct"],
     "notification-worker": ["restart_count", "msg_processed_rate", "cpu_pct"],
-    "cosmos-db":           ["ru_throttled_rate", "used_ru_pct"],
-    "service-bus":         ["active_message_count", "incoming_rate"],
-    "redis-cache":         ["used_memory_pct", "evicted_keys_rate", "hit_rate", "stale_read_rate"],
+    "cosmos-db": ["ru_throttled_rate", "used_ru_pct"],
+    "service-bus": ["active_message_count", "incoming_rate"],
+    "redis-cache": ["used_memory_pct", "evicted_keys_rate", "hit_rate", "stale_read_rate"],
 }
 
 # Log messages for each authored event id (evidence `logs:<svc>:<event_id>`).
 LOG_EVENTS: dict[str, dict[str, str]] = {
-    "evt-001-01": {"service": "payment-api", "level": "error",
-                   "message": "Cosmos connection pool exhausted; payment authorization timed out"},
-    "evt-001-02": {"service": "checkout-api", "level": "error",
-                   "message": "503 from payment-api authorize call; returning checkout failure"},
-    "evt-002-01": {"service": "inventory-api", "level": "error",
-                   "message": "429 TooManyRequests from cosmos-db on stock read"},
-    "evt-002-02": {"service": "catalog-api", "level": "error",
-                   "message": "429 TooManyRequests from cosmos-db on catalog read"},
-    "evt-003-01": {"service": "notification-worker", "level": "error",
-                   "message": "Unhandled deserialization exception; restarting (crash loop)"},
-    "evt-004-01": {"service": "checkout-api", "level": "error",
-                   "message": "500 InternalServerError on /checkout"},
-    "evt-004-02": {"service": "payment-api", "level": "error",
-                   "message": "PaymentGatewayTimeout calling external payment-gateway"},
-    "evt-005-01": {"service": "checkout-api", "level": "warn",
-                   "message": "session not found in cache; cold-loading from datastore"},
-    "evt-006-01": {"service": "inventory-api", "level": "error",
-                   "message": "StockReservationConflict; oversell detected on SKU"},
-    "evt-006-02": {"service": "checkout-api", "level": "error",
-                   "message": "reserve failed: inventory conflict"},
-    "evt-007-01": {"service": "notification-worker", "level": "error",
-                   "message": "Unhandled deserialization exception; restarting (crash loop)"},
+    "evt-001-01": {
+        "service": "payment-api",
+        "level": "error",
+        "message": "Cosmos connection pool exhausted; payment authorization timed out",
+    },
+    "evt-001-02": {
+        "service": "checkout-api",
+        "level": "error",
+        "message": "503 from payment-api authorize call; returning checkout failure",
+    },
+    "evt-002-01": {
+        "service": "inventory-api",
+        "level": "error",
+        "message": "429 TooManyRequests from cosmos-db on stock read",
+    },
+    "evt-002-02": {
+        "service": "catalog-api",
+        "level": "error",
+        "message": "429 TooManyRequests from cosmos-db on catalog read",
+    },
+    "evt-003-01": {
+        "service": "notification-worker",
+        "level": "error",
+        "message": "Unhandled deserialization exception; restarting (crash loop)",
+    },
+    "evt-004-01": {
+        "service": "checkout-api",
+        "level": "error",
+        "message": "500 InternalServerError on /checkout",
+    },
+    "evt-004-02": {
+        "service": "payment-api",
+        "level": "error",
+        "message": "PaymentGatewayTimeout calling external payment-gateway",
+    },
+    "evt-005-01": {
+        "service": "checkout-api",
+        "level": "warn",
+        "message": "session not found in cache; cold-loading from datastore",
+    },
+    "evt-006-01": {
+        "service": "inventory-api",
+        "level": "error",
+        "message": "StockReservationConflict; oversell detected on SKU",
+    },
+    "evt-006-02": {
+        "service": "checkout-api",
+        "level": "error",
+        "message": "reserve failed: inventory conflict",
+    },
+    "evt-007-01": {
+        "service": "notification-worker",
+        "level": "error",
+        "message": "Unhandled deserialization exception; restarting (crash loop)",
+    },
 }
 
 # Per-event log offsets are otherwise independent (hashed on event_id alone), so an unlucky
@@ -119,53 +157,106 @@ CAUSE_BEFORE_EFFECT: list[tuple[str, str]] = [
 
 # Deploys named in evidence (`deploys:<svc>:<deploy_id>`). ts is authored relative to the incident.
 DEPLOYS: dict[str, dict[str, str]] = {
-    "dep-20260512-01": {"service": "payment-api", "ts": "2026-05-12T14:00:00Z",
-                        "version": "payment-api@2.4.1",
-                        "note": "reduced Cosmos connection pool 100->10"},
-    "dep-20260528-01": {"service": "catalog-api", "ts": "2026-05-28T09:00:00Z",
-                        "version": "catalog-api@1.9.0",
-                        "note": "catalog bulk-import job rollout"},
-    "dep-20260610-01": {"service": "notification-worker", "ts": "2026-06-10T19:45:00Z",
-                        "version": "notification-worker@3.1.0",
-                        "note": "worker release with poison-message bug"},
-    "dep-20260628-01": {"service": "checkout-api", "ts": "2026-06-28T09:00:00Z",
-                        "version": "checkout-api@5.7.2",
-                        "note": "routine checkout release"},
-    "dep-20260625-01": {"service": "inventory-api", "ts": "2026-06-25T16:00:00Z",
-                        "version": "inventory-api@4.2.0",
-                        "note": "dropped cache invalidation on stock writes"},
+    "dep-20260512-01": {
+        "service": "payment-api",
+        "ts": "2026-05-12T14:00:00Z",
+        "version": "payment-api@2.4.1",
+        "note": "reduced Cosmos connection pool 100->10",
+    },
+    "dep-20260528-01": {
+        "service": "catalog-api",
+        "ts": "2026-05-28T09:00:00Z",
+        "version": "catalog-api@1.9.0",
+        "note": "catalog bulk-import job rollout",
+    },
+    "dep-20260610-01": {
+        "service": "notification-worker",
+        "ts": "2026-06-10T19:45:00Z",
+        "version": "notification-worker@3.1.0",
+        "note": "worker release with poison-message bug",
+    },
+    "dep-20260628-01": {
+        "service": "checkout-api",
+        "ts": "2026-06-28T09:00:00Z",
+        "version": "checkout-api@5.7.2",
+        "note": "routine checkout release",
+    },
+    "dep-20260625-01": {
+        "service": "inventory-api",
+        "ts": "2026-06-25T16:00:00Z",
+        "version": "inventory-api@4.2.0",
+        "note": "dropped cache invalidation on stock writes",
+    },
     # Same version string as dep-20260610-01 by design: a stale pipeline re-deployed the affected
     # revision, so inc-003's affected_versions check holds for the inc-007 recurrence.
-    "dep-20260702-01": {"service": "notification-worker", "ts": "2026-07-02T09:10:00Z",
-                        "version": "notification-worker@3.1.0",
-                        "note": "stale-pipeline re-deploy of the poison-message revision"},
+    "dep-20260702-01": {
+        "service": "notification-worker",
+        "ts": "2026-07-02T09:10:00Z",
+        "version": "notification-worker@3.1.0",
+        "note": "stale-pipeline re-deploy of the poison-message revision",
+    },
 }
 
 # A few routine, unrelated deploys — deploy-feed noise so "recent deploy" is a hypothesis to test.
 ROUTINE_DEPLOYS = [
-    {"deploy_id": "dep-20260601-07", "service": "catalog-api", "ts": "2026-06-01T11:00:00Z",
-     "version": "catalog-api@1.9.3", "note": "routine"},
-    {"deploy_id": "dep-20260615-02", "service": "checkout-api", "ts": "2026-06-15T13:30:00Z",
-     "version": "checkout-api@5.6.0", "note": "routine"},
-    {"deploy_id": "dep-20260620-04", "service": "inventory-api", "ts": "2026-06-20T10:15:00Z",
-     "version": "inventory-api@4.1.2", "note": "routine"},
+    {
+        "deploy_id": "dep-20260601-07",
+        "service": "catalog-api",
+        "ts": "2026-06-01T11:00:00Z",
+        "version": "catalog-api@1.9.3",
+        "note": "routine",
+    },
+    {
+        "deploy_id": "dep-20260615-02",
+        "service": "checkout-api",
+        "ts": "2026-06-15T13:30:00Z",
+        "version": "checkout-api@5.6.0",
+        "note": "routine",
+    },
+    {
+        "deploy_id": "dep-20260620-04",
+        "service": "inventory-api",
+        "ts": "2026-06-20T10:15:00Z",
+        "version": "inventory-api@4.1.2",
+        "note": "routine",
+    },
 ]
 
 # Ambient sub-threshold events — the SAME failure modes at low intensity. They stay below the
 # incident threshold: coherent noise + non-incident negatives (the SEV4/"don't page" floor).
 AMBIENT_EVENTS = [
-    {"id": "amb-01", "service": "catalog-api", "ts": "2026-06-18T03:20:00Z", "level": "warn",
-     "message": "429 TooManyRequests from cosmos-db (single, retried, served from cache)",
-     "metric": ("cosmos-db", "ru_throttled_rate", 0.02)},
-    {"id": "amb-02", "service": "notification-worker", "ts": "2026-06-19T22:05:00Z",
-     "level": "warn", "message": "worker restarted once (transient)",
-     "metric": ("notification-worker", "restart_count", 1.0)},
-    {"id": "amb-03", "service": "redis-cache", "ts": "2026-06-21T07:45:00Z", "level": "info",
-     "message": "brief eviction blip under load (recovered)",
-     "metric": ("redis-cache", "evicted_keys_rate", 90.0)},
-    {"id": "amb-04", "service": "payment-api", "ts": "2026-06-23T15:10:00Z", "level": "warn",
-     "message": "single payment-gateway retry (recovered)",
-     "metric": ("payment-api", "p95_latency_ms", 400.0)},
+    {
+        "id": "amb-01",
+        "service": "catalog-api",
+        "ts": "2026-06-18T03:20:00Z",
+        "level": "warn",
+        "message": "429 TooManyRequests from cosmos-db (single, retried, served from cache)",
+        "metric": ("cosmos-db", "ru_throttled_rate", 0.02),
+    },
+    {
+        "id": "amb-02",
+        "service": "notification-worker",
+        "ts": "2026-06-19T22:05:00Z",
+        "level": "warn",
+        "message": "worker restarted once (transient)",
+        "metric": ("notification-worker", "restart_count", 1.0),
+    },
+    {
+        "id": "amb-03",
+        "service": "redis-cache",
+        "ts": "2026-06-21T07:45:00Z",
+        "level": "info",
+        "message": "brief eviction blip under load (recovered)",
+        "metric": ("redis-cache", "evicted_keys_rate", 90.0),
+    },
+    {
+        "id": "amb-04",
+        "service": "payment-api",
+        "ts": "2026-06-23T15:10:00Z",
+        "level": "warn",
+        "message": "single payment-gateway retry (recovered)",
+        "metric": ("payment-api", "p95_latency_ms", 400.0),
+    },
 ]
 
 
@@ -237,13 +328,29 @@ def build_metrics(scenarios: list[dict]) -> tuple[list[dict], set[str]]:
                 d = METRIC_DEFS[metric]
                 onset = dev_ts.get((entity, metric))
                 samples = [
-                    {"ts": _iso(g), "value": _jitter(
-                        d["deviated"] if (onset and g >= onset - timedelta(minutes=STEP_MIN))
-                        else d["baseline"], s["id"], entity, metric, _iso(g))}
+                    {
+                        "ts": _iso(g),
+                        "value": _jitter(
+                            d["deviated"]
+                            if (onset and g >= onset - timedelta(minutes=STEP_MIN))
+                            else d["baseline"],
+                            s["id"],
+                            entity,
+                            metric,
+                            _iso(g),
+                        ),
+                    }
                     for g in grid
                 ]
-                series.append({"incident_id": s["id"], "service": entity, "metric": metric,
-                               "unit": d["unit"], "samples": samples})
+                series.append(
+                    {
+                        "incident_id": s["id"],
+                        "service": entity,
+                        "metric": metric,
+                        "unit": d["unit"],
+                        "samples": samples,
+                    }
+                )
         # Every referenced metric ref is now realized (its ts lies on the grid and is elevated).
         for svc, metric, ts in ev["metrics"]:
             resolved.add(f"metrics:{svc}:{metric}@{ts}")
@@ -274,9 +381,16 @@ def build_logs(scenarios: list[dict], profile: dict) -> tuple[list[dict], set[st
         for svc, event_id in ev["logs"]:
             spec = LOG_EVENTS[event_id]
             ts = _iso(event_ts[event_id])
-            rows.append({"event_id": event_id, "ts": ts, "service": spec["service"],
-                         "level": spec["level"], "message": spec["message"],
-                         "incident_id": s["id"]})
+            rows.append(
+                {
+                    "event_id": event_id,
+                    "ts": ts,
+                    "service": spec["service"],
+                    "level": spec["level"],
+                    "message": spec["message"],
+                    "incident_id": s["id"],
+                }
+            )
             resolved.add(f"logs:{svc}:{event_id}")
         # 2) calibrated noise floor — scaled volume, real ambient error fraction.
         n_noise = max(1, int(rate * (2 * WINDOW_MIN) * NOISE_LOG_SCALE))
@@ -285,18 +399,33 @@ def build_logs(scenarios: list[dict], profile: dict) -> tuple[list[dict], set[st
                 seed = f"{s['id']}|{svc}|{i}"
                 off = int(_rng(seed, "t") * 2 * WINDOW_MIN * 60)
                 is_err = _rng(seed, "e") < err_frac
-                rows.append({
-                    "event_id": f"noise-{s['id']}-{svc}-{i}",
-                    "ts": _iso(center - timedelta(minutes=WINDOW_MIN) + timedelta(seconds=off)),
-                    "service": svc, "level": "error" if is_err else "info",
-                    "message": ("upstream call failed; retrying" if is_err
-                                else f"GET {svc} 200 {int(20 + _rng(seed,'l')*180)}ms"),
-                    "incident_id": None})
+                rows.append(
+                    {
+                        "event_id": f"noise-{s['id']}-{svc}-{i}",
+                        "ts": _iso(center - timedelta(minutes=WINDOW_MIN) + timedelta(seconds=off)),
+                        "service": svc,
+                        "level": "error" if is_err else "info",
+                        "message": (
+                            "upstream call failed; retrying"
+                            if is_err
+                            else f"GET {svc} 200 {int(20 + _rng(seed, 'l') * 180)}ms"
+                        ),
+                        "incident_id": None,
+                    }
+                )
     # 3) ambient sub-threshold events (non-incident negatives).
     for a in AMBIENT_EVENTS:
-        rows.append({"event_id": a["id"], "ts": a["ts"], "service": a["service"],
-                     "level": a["level"], "message": a["message"],
-                     "incident_id": None, "label": "non_incident"})
+        rows.append(
+            {
+                "event_id": a["id"],
+                "ts": a["ts"],
+                "service": a["service"],
+                "level": a["level"],
+                "message": a["message"],
+                "incident_id": None,
+                "label": "non_incident",
+            }
+        )
     rows.sort(key=lambda r: r["ts"])
     return rows, resolved
 
@@ -346,7 +475,8 @@ def severity_check(scenarios: list[dict]) -> list[str]:
             est = "SEV4"
         if abs(order[est] - order[s["severity"]]) > 1:
             warnings.append(
-                f"{s['id']}: authored {s['severity']} but blast/criticality suggests ~{est}")
+                f"{s['id']}: authored {s['severity']} but blast/criticality suggests ~{est}"
+            )
     return warnings
 
 
@@ -372,7 +502,8 @@ def main() -> None:
 
     _dump(SYN_DIR / "metrics.json", {"series": metrics})
     (SYN_DIR / "logs.jsonl").write_text(
-        "".join(json.dumps(r) + "\n" for r in logs), encoding="utf-8")
+        "".join(json.dumps(r) + "\n" for r in logs), encoding="utf-8"
+    )
     _dump(SYN_DIR / "deployments.json", {"deployments": deploys})
     _dump(SYN_DIR / "dependencies.json", {"edges": deps})
 
@@ -380,8 +511,10 @@ def main() -> None:
     all_resolved = m_res | l_res | dep_res | deps_res
     required = {ref for s in scenarios for ref in s["expected_evidence"]}
     unresolved = required - all_resolved
-    print(f"metrics: {len(metrics)} series | logs: {len(logs)} rows | "
-          f"deploys: {len(deploys)} | edges: {len(deps)}")
+    print(
+        f"metrics: {len(metrics)} series | logs: {len(logs)} rows | "
+        f"deploys: {len(deploys)} | edges: {len(deps)}"
+    )
     print(f"evidence refs required={len(required)} resolved={len(required & all_resolved)}")
     if unresolved:
         print(f"  !! UNRESOLVED: {sorted(unresolved)}")

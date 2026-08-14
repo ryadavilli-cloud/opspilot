@@ -1,4 +1,4 @@
-"""G-18 (Stage 5e): the deploy-regression path never cites a deploy that FOLLOWED onset as causal.
+"""The deploy-regression path never cites a deploy that FOLLOWED onset as causal.
 
 `get_deployments` looks up to onset+15min, so a post-onset deploy is in the results. run_cycle must
 clamp to `d.ts <= onset` before naming the "preceding onset" deploy — otherwise it blames a change

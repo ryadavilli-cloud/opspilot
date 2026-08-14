@@ -1,8 +1,8 @@
-"""Admission: the model PROPOSES a structured claim, code ADMITS it (Stage 5e, G-29).
+"""Admission: the model PROPOSES a structured claim, code ADMITS it.
 
 `SynthesisResponse.causal` arrives as loose strings because a model cannot be trusted to satisfy a
 `Literal` union or to name an entity that exists. Everything here converts that proposal into the
-strict `CausalClaim` the report is rendered from and the 6b detectors interrogate, or refuses it.
+strict `CausalClaim` the report is rendered from and the detectors interrogate, or refuses it.
 
 The refusal path is the point. A deterministic check over a model-controlled input is
 deterministic in form only, so a claim that cannot be grounded in this run's evidence must not
@@ -12,8 +12,8 @@ hypothesis rather than publishing a typed structure nothing verified.
 Scope note: entity resolution is against the entities THIS RUN actually touched: the services
 named in tool-produced evidence refs, plus the triaged affected services. That is a real
 grounding check (those refs came from real tool calls) but it is not yet topology-version
-validation: `valid_from`/`valid_to` edges and `topology_version` need the typed-evidence work
-(G-42) before a claim can be checked against the topology as it stood at onset.
+validation: `valid_from`/`valid_to` edges and `topology_version` are needed before a claim can be
+checked against the topology as it stood at onset.
 """
 
 from __future__ import annotations
@@ -92,7 +92,7 @@ def admit_report_claims(
     *,
     produced_refs: set[str],
 ) -> list[ReportClaim]:
-    """Admit the secondary report-level claims (G-51), dropping any that cannot be grounded.
+    """Admit the secondary report-level claims, dropping any that cannot be grounded.
 
     Every published claim must cite produced evidence, not just the headline root cause, so a
     claim whose refs were never produced is dropped rather than published uncited. `recommendation`

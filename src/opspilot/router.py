@@ -14,10 +14,10 @@ from opspilot.state import Intent, InvestigationState
 
 def route_by_intent(state: InvestigationState) -> str:
     if state.intent == Intent.INFO_ONLY.value:
-        return "synthesize_report"          # informational reply (exempt from the citation gate)
+        return "synthesize_report"  # informational reply (exempt from the citation gate)
     if state.intent == Intent.KNOWN_ISSUE.value and state.matched_incident:
-        return "known_issue_fast_path"      # short-circuit to the stored resolution
-    return "retrieve"                        # novel → full investigation
+        return "known_issue_fast_path"  # short-circuit to the stored resolution
+    return "retrieve"  # novel → full investigation
 
 
 def diagnose_continue(state: InvestigationState) -> str:

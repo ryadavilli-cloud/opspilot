@@ -1,9 +1,9 @@
 """2a consistency gate for the RetailEase answer key.
 
-Scoped to what exists at Phase 2a: the answer key's *internal* coherence and its agreement
-with the committed golden sets. The full cross-corpus closure check (every evidence ref
-resolves to a generated telemetry row; every retrieval id exists as a KB doc) is Phase 2e,
-once 2b/2d exist. Until then this guards the spine: schema, ref grammar, topology references,
+Scoped to the answer key's *internal* coherence and its agreement with the committed golden
+sets. The full cross-corpus closure check (every evidence ref resolves to a generated telemetry
+row; every retrieval id exists as a KB doc) belongs to `test_closure.py`. This guards the spine:
+schema, ref grammar, topology references,
 intent/match invariants, and goldens-in-sync.
 """
 
@@ -60,9 +60,20 @@ def test_scenario_count_and_split():
 
 def test_scenarios_have_required_fields_and_controlled_vocab():
     required = {
-        "id", "title", "type", "severity", "category", "occurred_at", "alert",
-        "expected_intent", "expected_match", "trigger", "root_cause",
-        "impacted_chain", "expected_evidence", "expected_retrieval",
+        "id",
+        "title",
+        "type",
+        "severity",
+        "category",
+        "occurred_at",
+        "alert",
+        "expected_intent",
+        "expected_match",
+        "trigger",
+        "root_cause",
+        "impacted_chain",
+        "expected_evidence",
+        "expected_retrieval",
     }
     seen_ids = set()
     for s in SCENARIOS:
@@ -126,8 +137,8 @@ def test_red_herring_is_declared_evidence():
 
 
 def test_inc_006_represents_multiple_independent_contributing_signals():
-    """inc-006 is the corpus's multi-contributor representative (status.md "Data and Corpus
-    Status"). Relabeling a single linear chain as "multi-contributor" without a second
+    """inc-006 is the corpus's multi-contributor representative (status.md "Data and evidence
+    state"). Relabeling a single linear chain as "multi-contributor" without a second
     independently observable signal would not actually close the coverage gap, so this
     checks structure, not prose: contributing metric evidence must span at least two
     distinct entities."""
@@ -136,7 +147,8 @@ def test_inc_006_represents_multiple_independent_contributing_signals():
         ref.split(":", 2)[1] for ref in inc6["expected_evidence"] if ref.startswith("metrics:")
     }
     assert len(metric_entities) >= 2, (
-        "inc-006 must evidence contributing signals on at least two distinct entities")
+        "inc-006 must evidence contributing signals on at least two distinct entities"
+    )
 
 
 def test_retrieval_ids_follow_namespaces():

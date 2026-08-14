@@ -239,8 +239,6 @@ Do not create broad horizontal PRs such as:
 
 Build only the infrastructure required by the vertical behavior currently being implemented.
 
-
-
 ---
 
 ## When the documents are silent
@@ -269,8 +267,17 @@ not find, not only what you did.
 
 `status.md` is the only file that records what is built. If your work changes
 what is true about the repository, that is a `status.md` edit — and only where
-inspection contradicts what is written. A register row never changes because
-reasoning suggests it should.
+inspection contradicts what is written. A row never changes because reasoning
+suggests it should.
+
+Status is anchored to the design, not to a plan. It carries no slice identifiers,
+no stage or layer numbering, no sequence, and no statement of what comes next.
+Work that landed ahead of the sequence describing it is simply built.
+
+Both halves run at every landing, as part of the definition of done: status
+records what was built, and every slice whose subject that landing touched
+re-derives its marker from status. Updating one without the other leaves derived
+data stale and silently wrong, and nothing else in the repository will catch it.
 
 Design documents describe intent. Never add build status, completion markers, or
 "not yet implemented" notes to one.
@@ -291,10 +298,41 @@ markers, not TODOs. Do not implement one.
 
 ---
 
+## Code guidelines
+
+`docs/code-guidelines.md` is binding on every change to code, tests,
+configuration, and infrastructure. **It does not load with this file.** Read it
+before starting implementation work, not after the code is written.
+
+Sixteen sections. The merge gates are §13 Merge Standards, which carries the
+definition of done, §14 Prohibited Patterns, and §16 Change Scope, Deletion, and
+Proportion. A change is checked against those three before it is presented as
+done.
+
+Do not cite a section number from memory. The numbering has changed before, and
+a confident wrong citation is worse than looking it up.
+
+Two rules are enforced mechanically, by CI and by `.githooks/pre-commit`, so a
+violation fails before the push rather than after it:
+
+- **§12, no execution-plan vocabulary outside `docs/`.** Stage, phase, layer,
+  gap, slice, and PR-sequence identifiers, and references to a plan document or
+  one of its sections, appear nowhere in code, tests, configuration,
+  infrastructure, prompts, log strings, or names, and in no commit or
+  pull-request title or body. Say what the code does and which contract it
+  satisfies; delete the comment where nothing remains once the identifier is
+  gone. Requirement, NFR, and `D-nnn` identifiers stay: they resolve.
+- **Lint and formatting, repo-wide** rather than scoped to touched files.
+
+A fresh clone does not have the hook enabled: `git config core.hooksPath
+.githooks`.
+
+---
+
 ## Toolchain
 
 - `uv` for everything: `uv sync --group dev --group data`, `uv run pytest -q`,
-  `uv run mypy src`, `uv run ruff check .`. Never `pip`, never bare `python -m`.
+  `uv run mypy`, `uv run ruff check .`. Never `pip`, never bare `python -m`.
 - All four pass before a slice is presented as done.
 - For a quick behavioral check, prefer an inline `python -c` under `uv run` over
   a throwaway test file.

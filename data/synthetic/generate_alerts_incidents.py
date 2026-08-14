@@ -49,11 +49,15 @@ PROFILE_PATH = REPO_ROOT / "data" / "profiles" / "itsm_profile.json"
 # Severity → ITSM/alert fields. Our 6 scenarios are the interesting tail of the priority pyramid
 # (94% of real incidents are Moderate); the calibrated distribution governs the ambient population.
 SEV_PRIORITY = {
-    "SEV1": "1 - Critical", "SEV2": "2 - High", "SEV3": "3 - Moderate", "SEV4": "4 - Low"}
+    "SEV1": "1 - Critical",
+    "SEV2": "2 - High",
+    "SEV3": "3 - Moderate",
+    "SEV4": "4 - Low",
+}
 SEV_IMPACT = {"SEV1": "1 - High", "SEV2": "2 - Medium", "SEV3": "2 - Medium", "SEV4": "3 - Low"}
 SEV_URGENCY = {"SEV1": "1 - High", "SEV2": "1 - High", "SEV3": "2 - Medium", "SEV4": "3 - Low"}
 SEV_ALERT = {"SEV1": "critical", "SEV2": "high", "SEV3": "medium", "SEV4": "low"}
-SEV_MTTR_H = {"SEV1": 2, "SEV2": 6, "SEV3": 18, "SEV4": 48}   # higher sev → faster MTTR
+SEV_MTTR_H = {"SEV1": 2, "SEV2": 6, "SEV3": 18, "SEV4": 48}  # higher sev → faster MTTR
 SEV_MADE_SLA = {"SEV1": False, "SEV2": False, "SEV3": True, "SEV4": True}
 SEV_REASSIGN = {"SEV1": 3, "SEV2": 2, "SEV3": 1, "SEV4": 0}
 ALERT_SEV_DOWN = {"critical": "high", "high": "medium", "medium": "low", "low": "low"}
@@ -109,32 +113,36 @@ def build_alerts(scenarios: list[dict], services: set[str]) -> list[dict]:
             # Root fires first; downstream symptoms stagger over the next few minutes.
             fired = onset + timedelta(seconds=0 if svc == root_cause else 30 + i * 40)
             signal = _signal_for(s, svc)
-            alerts.append({
-                "alert_id": f"alrt-{s['id']}-{svc}",
-                "incident_id": s["id"],
-                "service": svc,
-                "severity": sev,
-                "role": role,
-                "is_trigger": is_trigger,
-                "signal": signal,
-                "title": f"{svc}: {signal}",
-                "fired_at": _iso(fired),
-                "dedup_key": f"{svc}:{signal.split()[0]}",
-            })
+            alerts.append(
+                {
+                    "alert_id": f"alrt-{s['id']}-{svc}",
+                    "incident_id": s["id"],
+                    "service": svc,
+                    "severity": sev,
+                    "role": role,
+                    "is_trigger": is_trigger,
+                    "signal": signal,
+                    "title": f"{svc}: {signal}",
+                    "fired_at": _iso(fired),
+                    "dedup_key": f"{svc}:{signal.split()[0]}",
+                }
+            )
     # Noise alerts — the same sub-threshold events, firing but rolling up to NO incident.
     for a in AMBIENT_EVENTS:
-        alerts.append({
-            "alert_id": f"alrt-noise-{a['id']}",
-            "incident_id": None,
-            "service": a["service"],
-            "severity": "low",
-            "role": "noise",
-            "is_trigger": False,
-            "signal": a["message"],
-            "title": f"{a['service']}: transient blip",
-            "fired_at": a["ts"],
-            "dedup_key": f"{a['service']}:transient",
-        })
+        alerts.append(
+            {
+                "alert_id": f"alrt-noise-{a['id']}",
+                "incident_id": None,
+                "service": a["service"],
+                "severity": "low",
+                "role": "noise",
+                "is_trigger": False,
+                "signal": a["message"],
+                "title": f"{a['service']}: transient blip",
+                "fired_at": a["ts"],
+                "dedup_key": f"{a['service']}:transient",
+            }
+        )
     alerts.sort(key=lambda r: r["fired_at"])
     return alerts
 
@@ -163,12 +171,14 @@ def build_incidents(scenarios: list[dict]) -> list[dict]:
         if rec["reassignment_count"] < 0:
             rec["reassignment_count"] = 0
         if historical:
-            rec.update({
-                "resolved_at": _iso(opened + timedelta(hours=SEV_MTTR_H[sev])),
-                "close_code": "Solved (Permanently)",
-                "root_cause": " ".join(s["root_cause"].split()),
-                "resolution": s.get("resolution", ""),
-            })
+            rec.update(
+                {
+                    "resolved_at": _iso(opened + timedelta(hours=SEV_MTTR_H[sev])),
+                    "close_code": "Solved (Permanently)",
+                    "root_cause": " ".join(s["root_cause"].split()),
+                    "resolution": s.get("resolution", ""),
+                }
+            )
         incidents.append(rec)
     return incidents
 
@@ -189,9 +199,11 @@ def main() -> None:
 
     storms = len({a["incident_id"] for a in alerts if a["incident_id"]})
     noise = sum(1 for a in alerts if a["incident_id"] is None)
-    print(f"incidents: {len(incidents)} | alerts: {len(alerts)} "
-          f"({storms} storms + {noise} noise) | avg fan-in "
-          f"{(len(alerts) - noise) / max(storms, 1):.1f}")
+    print(
+        f"incidents: {len(incidents)} | alerts: {len(alerts)} "
+        f"({storms} storms + {noise} noise) | avg fan-in "
+        f"{(len(alerts) - noise) / max(storms, 1):.1f}"
+    )
 
 
 if __name__ == "__main__":

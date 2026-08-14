@@ -37,7 +37,8 @@ def _approval_graph():
     g.add_node("escalate", escalate)
     g.add_edge(START, "hitl_gate")
     g.add_conditional_edges(
-        "hitl_gate", after_approval,
+        "hitl_gate",
+        after_approval,
         {"finalize_report": "finalize_report", "apply_edit": "escalate", "escalate": "escalate"},
     )
     g.add_edge("finalize_report", END)
@@ -53,8 +54,11 @@ def _state_with_evidence() -> InvestigationState:
     )
     ev = EvidenceItem.make("deploys", "deploys:checkout-api:d1", "deploy d1 at 10:02")
     return InvestigationState(
-        incident_id="inc-006", severity="SEV2", category="deployment",
-        hypothesis=hyp, evidence_by_id={ev.content_hash: ev},
+        incident_id="inc-006",
+        severity="SEV2",
+        category="deployment",
+        hypothesis=hyp,
+        evidence_by_id={ev.content_hash: ev},
     )
 
 
@@ -105,8 +109,14 @@ def test_approved_bytes_equal_published_bytes():
     assert pending[0].value["report_hash"] == report_hash  # the interrupt carries the exact hash
 
     result = graph.invoke(
-        Command(resume={"decision": "approve", "approver": "human", "edits": None,
-                        "submitted_report_hash": report_hash}),
+        Command(
+            resume={
+                "decision": "approve",
+                "approver": "human",
+                "edits": None,
+                "submitted_report_hash": report_hash,
+            }
+        ),
         config=config,
     )
     approved_hash = result["approval"]["approved_report_hash"]
@@ -122,8 +132,9 @@ def test_finalize_report_rejects_an_unbound_approval():
     loud rather than trusting an invariant it cannot itself verify came from the router."""
     state = _state_with_evidence()
     state = state.model_copy(update=synthesize_report(state))
-    state = state.model_copy(update={"approval": {"decision": "approve",
-                                                    "approved_report_hash": "not-the-real-hash"}})
+    state = state.model_copy(
+        update={"approval": {"decision": "approve", "approved_report_hash": "not-the-real-hash"}}
+    )
     with pytest.raises(RuntimeError, match="finalize_report invariant violated"):
         finalize_report(state)
 
@@ -136,19 +147,23 @@ def test_publication_id_is_derived_so_a_re_execution_repeats_it():
     publication, not a replay of the first)."""
     state = _state_with_evidence()
     state = state.model_copy(update=synthesize_report(state))
-    state = state.model_copy(update={
-        "investigation_id": "inv-1",
-        "approval": {"decision": "approve", "approved_report_hash": state.report_hash},
-    })
+    state = state.model_copy(
+        update={
+            "investigation_id": "inv-1",
+            "approval": {"decision": "approve", "approved_report_hash": state.report_hash},
+        }
+    )
 
     first = finalize_report(state)["publication_id"]
     assert finalize_report(state)["publication_id"] == first  # re-execution derives the same id
     assert first  # and it is actually stamped, not an empty default
 
-    edited = state.model_copy(update={
-        "report_hash": "a-different-report",
-        "approval": {"decision": "approve", "approved_report_hash": "a-different-report"},
-    })
+    edited = state.model_copy(
+        update={
+            "report_hash": "a-different-report",
+            "approval": {"decision": "approve", "approved_report_hash": "a-different-report"},
+        }
+    )
     assert finalize_report(edited)["publication_id"] != first
 
     other_run = state.model_copy(update={"investigation_id": "inv-2"})
@@ -166,8 +181,14 @@ def test_stale_approval_is_rejected_and_escalates():
     graph.invoke(state.model_dump(), config=config)
 
     result = graph.invoke(
-        Command(resume={"decision": "approve", "approver": "human", "edits": None,
-                        "submitted_report_hash": "not-the-real-hash"}),
+        Command(
+            resume={
+                "decision": "approve",
+                "approver": "human",
+                "edits": None,
+                "submitted_report_hash": "not-the-real-hash",
+            }
+        ),
         config=config,
     )
     assert result["approval"]["decision"] == "stale_rejected"
@@ -185,8 +206,14 @@ def test_reject_escalates_with_the_rejecting_approver_named():
     graph.invoke(state.model_dump(), config=config)
 
     result = graph.invoke(
-        Command(resume={"decision": "reject", "approver": "reviewer-1", "edits": None,
-                        "submitted_report_hash": report_hash}),
+        Command(
+            resume={
+                "decision": "reject",
+                "approver": "reviewer-1",
+                "edits": None,
+                "submitted_report_hash": report_hash,
+            }
+        ),
         config=config,
     )
     assert result["error"] == "human_rejected by reviewer-1"

@@ -38,7 +38,9 @@ def evaluate(
         precisions.append(len(found) / k)
         recalls.append(len(found) / len(relevant) if relevant else 0.0)
     return {
-        "mode": mode, "k": k, "n": len(golden),
+        "mode": mode,
+        "k": k,
+        "n": len(golden),
         "MRR": round(mean(ranks), 4),
         f"P@{k}": round(mean(precisions), 4),
         f"Recall@{k}": round(mean(recalls), 4),
@@ -49,8 +51,7 @@ def score_all(
     retriever, golden: list[dict], k: int = 5, progress: bool = False
 ) -> dict[str, dict[str, Any]]:
     """Score every mode; the shared retriever indexes the corpus once."""
-    return {mode: evaluate(retriever, golden, mode=mode, k=k, progress=progress)
-            for mode in MODES}
+    return {mode: evaluate(retriever, golden, mode=mode, k=k, progress=progress) for mode in MODES}
 
 
 def main(write: bool = True) -> None:
@@ -65,8 +66,11 @@ def main(write: bool = True) -> None:
     results = score_all(retriever, golden, k=5, progress=True)
     for mode in MODES:
         r = results[mode]
-        print(f"  {r['mode']:7s}  MRR={r['MRR']:.4f}  "
-              f"P@5={r['P@5']:.4f}  Recall@5={r['Recall@5']:.4f}", flush=True)
+        print(
+            f"  {r['mode']:7s}  MRR={r['MRR']:.4f}  "
+            f"P@5={r['P@5']:.4f}  Recall@5={r['Recall@5']:.4f}",
+            flush=True,
+        )
 
     best = max(results.values(), key=lambda r: r["MRR"])
 

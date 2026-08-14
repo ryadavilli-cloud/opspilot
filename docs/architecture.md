@@ -149,10 +149,11 @@ limitations, and the recommendations that make up the brief's analytical content
 
 **Investigation Record** is passive persistence for the investigation's durable artifacts: the
 investigation identity, its completed turns, the admitted evidence needed to keep citations
-resolvable, delivered briefs, follow-up history, and references to persisted traces and evaluation
-artifacts. It holds completed work only. The Record holds no decision authority and is not a
-workflow checkpoint store. When a turn's work becomes durable, and how it is stored, belong to
-`system-design.md` and `runtime-and-deployment.md`.
+resolvable, delivered briefs, follow-up history, and references to persisted traces. It holds
+completed work only. Evaluation artifacts reference the Record's completed turns from outside it,
+never the reverse. The Record holds no decision authority and is not a workflow checkpoint store.
+When a turn's work becomes durable, and how it is stored, belong to `system-design.md` and
+`runtime-and-deployment.md`.
 
 An **investigation** is the durable identity for one incident under study. A **turn** is one bounded
 adaptive gathering-and-synthesis cycle that ordinarily produces one brief, except the no-evidence

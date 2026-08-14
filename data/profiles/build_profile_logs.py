@@ -33,8 +33,12 @@ def _summ(values: list[float]) -> dict[str, float] | None:
     if not vals:
         return None
     q = statistics.quantiles(vals, n=4) if len(vals) > 1 else [vals[0], vals[0], vals[0]]
-    return {"median": round(statistics.median(vals), 4), "p25": round(q[0], 4),
-            "p75": round(q[2], 4), "n": len(vals)}
+    return {
+        "median": round(statistics.median(vals), 4),
+        "p25": round(q[0], 4),
+        "p75": round(q[2], 4),
+        "n": len(vals),
+    }
 
 
 def _analyze_log_case(case_dir: Path) -> dict[str, float] | None:
@@ -77,11 +81,15 @@ def profile_logs(cache: Path, systems: dict[str, str], fault_types: set[str]) ->
                     for k, v in res.items():
                         by_fault[fault][k].append(v)
 
-    out: dict[str, Any] = {"by_fault_type": {}, "note": (
-        "logs.csv has empty level/error; error inferred from message text. Resource faults show "
-        "metric (not log) signal, so no per-fault error lift is harvested. These ratios calibrate "
-        "the synthetic NOISE FLOOR only; incident error-logs are authored from the answer key."
-    )}
+    out: dict[str, Any] = {
+        "by_fault_type": {},
+        "note": (
+            "logs.csv has empty level/error; error inferred from message text. Resource faults "
+            "show metric (not log) signal, so no per-fault error lift is harvested. These ratios "
+            "calibrate the synthetic NOISE FLOOR only; incident error-logs are authored from the "
+            "answer key."
+        ),
+    }
     for fault, fields in by_fault.items():
         summ = {k: _summ(v) for k, v in fields.items()}
         if any(summ.values()):
