@@ -1062,6 +1062,29 @@ empty.
   follow-up cassette is committed and its manifest validates.
 ### S-9 Retrieval, deterministic reranking, and demonstrated retrieval influence
 
+**Its retrieval half has already landed, ahead of this slice.** The categorized `knowledge`
+container and its seed script, the knowledge metadata contract this slice's first decision was to
+establish (identifier, category, date, provenance, and extracted identifiers), and the corpus setup
+identity with read-only application access are all in place and live-verified; see `status.md`.
+Retrieval itself now reads that container: Azure OpenAI query embeddings, the Cosmos vector query,
+in-process lexical scoring, and reciprocal-rank fusion, returning passage-bearing results in place
+of the pointer-only hit shape. The local dense stack this slice names for deletion
+(`retrieval/embeddings.py`'s sentence-transformers embedder, `retrieval/index.py`, and the
+retrieval factory and adapter mapping) is gone, and no local embedding model loads on any path.
+
+What remains is this slice's other half, and it is the larger one. The deterministic identifier and
+metadata promotion stage, and passage-budget truncation as the only truncation, are not
+implemented, so the promotion decision this slice's telemetry and deterministic tests are built
+around has nothing to record yet. Knowledge admission and informing references on proposals do not
+exist: retrieval results are deliberately not admitted as operational evidence today
+(`evidence/admission.py` maps both retrieval capabilities to no evidence type), and no proposal
+carries an informing reference. None of the per-stage retrieval telemetry is emitted, and neither
+the lexical-only baseline nor the retrieval-influence measurement has been recorded. The model
+reranker also survives its own deletion entry: `retrieval/reranker.py`, `CrossEncoder`,
+`RERANKER_MODEL`, `RERANK_CANDIDATES`, the `reranker` pytest marker, and `sentence-transformers`
+are all still present, now with no caller, so the checkpoint's two searches below do not yet come
+back empty.
+
 - **Demonstrable outcome:** categorized knowledge materially influences a live investigation using
   semantic retrieval, lexical retrieval, reciprocal-rank fusion, deterministic identifier and
   metadata promotion, then passage-budget truncation. The feed shows used knowledge and the next
