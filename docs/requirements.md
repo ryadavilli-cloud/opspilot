@@ -128,33 +128,23 @@ synthesis cycle within that investigation, producing one **investigation brief**
 is the ephemeral conversational surface over an investigation; it is not a separately persisted
 entity.
 
-**FR-1** The primary entry path is selection of a predefined RetailEase incident. **FR-2** A
-secondary free-text path normalizes a symptom description into the same structured incident form.
-**FR-3** All intake paths must converge before investigation begins. **FR-4** A genuinely
-underdetermined free-text input may trigger at most one clarifying question before normalization;
-there is no further clarification mechanism for later messages.
+**FR-1** An investigation opens from selection of a predefined RetailEase incident. **FR-3** The
+selected incident resolves into the structured incident form before investigation begins.
 
 **FR-5** The authoritative flow is:
 
-1. The engineer selects an incident or describes a symptom.
-2. Free text, when used, is normalized into the same structured incident form as selection.
-3. Investigation begins immediately; structured intake requires no blocking confirmation.
-4. The interface streams investigation activity, tool use, and evidence arrival while a turn runs.
-5. The turn runs adaptively within its configured bounds, or the engineer stops it.
-6. One coherent investigation brief is produced for that turn, unless the turn was cancelled
-   before any evidence was gathered; that turn completes as inconclusive without a brief.
-7. The engineer asks about reasoning, evidence, alternatives, or unknowns.
-8. The engineer may redirect the next turn toward a named candidate cause, or supply additional
-   evidence or context for it.
-9. A revised brief is produced when the added evidence or new direction changes the analysis.
-10. The engineer may request a concise handoff or status summary.
+1. The engineer selects an incident.
+2. Investigation begins immediately; structured intake requires no blocking confirmation.
+3. The interface streams investigation activity, tool use, and evidence arrival while a turn runs.
+4. The turn runs adaptively within its configured bounds.
+5. One coherent investigation brief is produced for that turn.
+6. The engineer asks about reasoning, evidence, alternatives, or unknowns.
+7. The engineer may request a concise handoff or status summary.
 
 **FR-6** A follow-up question or a handoff-summary request must be answered from retained
-investigation state without opening a new evidence-gathering turn. **FR-7** A redirect or supplied
-evidence seeds a new bounded turn.
+investigation state without opening a new evidence-gathering turn.
 
-**FR-8** New evidence does not alter a turn already executing. Between-turn updates demonstrate
-adaptive behavior without requiring mid-flight cancellation and state merging.
+**FR-8** New evidence does not alter a turn already executing.
 
 Every completed turn has exactly one outcome: **complete**, **partial**, or **inconclusive**.
 
@@ -195,7 +185,7 @@ The brief must provide:
 **Leading**, **Plausible**, or **Weakly supported**. **FR-25** A supported causal conclusion may be
 stated only when the evidence supports one.
 
-**FR-26** Historical frequency must be shown separately from current support and must never be
+**FR-26** Historical comparison must be shown separately from current support and must never be
 converted into a probability for the current incident. OpsPilot does not produce calibrated
 root-cause probabilities.
 
@@ -206,8 +196,7 @@ The brief must be able to summarize relevant previous occurrences:
 - **FR-27** what caused them, what mitigation or follow-up action was recorded, whether a longer-term
   fix, change, ticket, or remediation item exists, whether the current evidence differs materially
   from the historical pattern, and whether a plausible current cause has no prior occurrence in the
-  available history;
-- **FR-28** how often each known failure mode appeared, with actual counts where useful.
+  available history.
 
 **FR-33** History must inform the current investigation without overruling current evidence.
 
@@ -248,13 +237,9 @@ what is missing or contradictory, and does not present a best guess as an establ
 OpsPilot must:
 
 - **FR-42** establish one incident as the active investigation;
-- **FR-43** accept predefined selection or normalized natural-language input;
-- **FR-44** retain findings, tool results, questions, and engineer corrections across the turns of
-  one investigation;
-- **FR-45** keep unrelated investigations isolated from one another;
-- **FR-46** allow the engineer to stop a turn and receive the result available at that point;
-- **FR-47** allow the engineer to redirect the next turn toward a named candidate cause;
-- **FR-48** update the analysis when new evidence materially changes it.
+- **FR-43** accept selection of a predefined incident;
+- **FR-44** retain findings, tool results, and questions across the turns of one investigation;
+- **FR-45** keep unrelated investigations isolated from one another.
 
 ### 6.2 Adaptive and Bounded Investigation
 
@@ -295,10 +280,7 @@ They must never be fabricated into observations.
 
 OpsPilot must:
 
-- **FR-70** produce the investigation brief defined in section 5 for every completed turn, with
-  one exception: a turn cancelled before any evidence was gathered completes as inconclusive with
-  no assessment and no brief, and its retained result states the cancellation and the
-  insufficiency of evidence plainly;
+- **FR-70** produce the investigation brief defined in section 5 for every completed turn;
 - **FR-71** answer follow-up questions from retained investigation state rather than starting over;
 - **FR-72** allow "no immediate action required" or "safe to defer pending follow-up" when supported;
 - **FR-73** expose the supporting sources and tool outcomes behind its conclusions;
@@ -382,8 +364,9 @@ Required:
 
 ### 7.6 Model routing
 
-**FR-105** One deliberate model-routing decision is required, such as using a lower-cost path for a
-simple or low-severity task, with the routing signal visible.
+**FR-105** One deliberate model-routing decision is required, using a lower-cost path for a bounded
+simple task that neither interprets evidence nor produces an assessment, with the routing signal
+visible.
 
 ### 7.7 Observable investigation surface
 
@@ -393,15 +376,15 @@ that hides the workflow is insufficient.
 
 While a turn runs and afterwards, the engineer must be able to see:
 
-- **FR-108** incident selection and free-text intake;
+- **FR-108** incident selection;
 - **FR-109** live investigation activity;
 - **FR-110** the announced next investigation action and the evidence checks already completed;
 - **FR-111** specialist-responsibility activity;
 - **FR-112** tools invoked and their outcomes;
 - **FR-113** retrieved documents and structured query results;
 - **FR-114** evidence connected to the conclusions it supports;
-- **FR-115** qualitative candidate labels and changes in candidate ordering after follow-up evidence;
-- **FR-116** missing sources, retries, failures, cancellation, and bounded-stop conditions;
+- **FR-115** qualitative candidate labels and their ordering;
+- **FR-116** missing sources, retries, failures, and bounded-stop conditions;
 - **FR-117** handoff-summary generation.
 
 During a live turn this activity is streamed as it happens. After the turn completes, the retained

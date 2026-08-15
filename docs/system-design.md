@@ -14,7 +14,7 @@ technology responsibility map.
 document realizes them; it does not reinterpret either.
 
 Detail belongs to its owner. Stages, routing rules, adaptive-cycle behavior, continuation logic,
-stop and cancellation points, retries, timeouts, and terminal transitions belong to
+stop points, retries, timeouts, and terminal transitions belong to
 `workflow-design.md`. Information categories, tool-result vocabulary, evidence and operation
 identities, citation rules, candidate and assessment fields, the brief contract, and handoff
 semantics belong to `data-and-evidence.md`. Processes, network topology, concrete Azure resources,
@@ -99,7 +99,7 @@ These constraints bind every decision below.
 
 | Component | Kind | Owns in one line | May call |
 | --- | --- | --- | --- |
-| Engineer Interaction Interface | Non-agent boundary | Engineer interaction, intake normalization, follow-up classification, presentation | Supervisor, model seam (intake normalization only) |
+| Engineer Interaction Interface | Non-agent boundary | Engineer interaction, incident selection, follow-up classification, presentation | Supervisor |
 | Supervisor | Agent | Turn objective, orchestration, bounds, continuation, grounding gate, terminal shape | Evidence Investigator, RCA Analyst, Investigation Record, Engineer Interaction Interface, model seam |
 | Evidence Investigator | Agent | Investigative questions, adaptive source selection, working hypotheses | Evidence Access Layer, model seam |
 | Evidence Access Layer | Deterministic boundary | Governed read-only access mechanics, normalization, evidence admission | RetailEase sources |
@@ -113,42 +113,35 @@ These constraints bind every decision below.
 ### 4.1 Engineer Interaction Interface
 
 **Purpose.** The engineer-facing boundary. It is not an agent and holds no investigative authority.
-It reaches a model for one narrow purpose, free-text intake normalization, and for nothing else;
-every other decision it makes is deterministic code.
+It reaches no model; every decision it makes is deterministic code.
 
-**Owns.** Predefined-incident intake; free-text intake normalization; the at-most-one initial
-clarification; classification of later engineer input; presentation of live activity, briefs, and
-handoff summaries; submission of redirects, supplied evidence, and stop requests.
+**Owns.** Predefined-incident intake; classification of later engineer input; presentation of live
+activity, briefs, and handoff summaries.
 
 **Consumes.** Engineer input; the current investigation summary and retained completed-turn state;
 activity events; delivered briefs; handoff summaries.
 
-**Produces.** Normalized incident context; classified follow-up; turn-start request; stop request;
-presentation views.
+**Produces.** Normalized incident context; classified follow-up; turn-start request; presentation
+views.
 
-**May call.** The Supervisor; and the shared model-access seam (§10.1) for free-text intake
-normalization only. It reaches no other component, and no other model use is permitted to it.
+**May call.** The Supervisor. It reaches no other component, and no model use is permitted to it.
 
-**May decide.** How to classify one engineer message into a supported interaction kind; whether a
-single clarification is needed during initial free-text intake.
+**May decide.** How to classify one engineer message into a supported interaction kind.
 
-**What stays deterministic.** The model proposes a normalized incident context and nothing more.
-Admission of that proposal is deterministic code: the proposal is validated against the normalized
-incident context contract and rejected if it does not conform, exactly as any other model output is
-(NFR-10). Classification of later engineer input is established by the request shape or explicit
-interface action the engineer used, never by analyzing prose and never by a model call; an
-ambiguous ordinary follow-up defaults to a question. The at-most-one-clarification limit is
-enforced in code that the model cannot reach or extend (FR-4).
+**What stays deterministic.** The normalized incident context is resolved from the selected
+incident by deterministic code. Classification of later engineer input is established by the request
+shape or explicit interface action the engineer used, never by analyzing prose and never by a model
+call; an ambiguous ordinary follow-up defaults to a question.
 
 **Must not.** Gather evidence; call operational tools; form a candidate cause; decide investigation
 readiness; synthesize the brief; admit evidence; own persisted investigation state.
 
 **State responsibility.** None persisted. It holds only presentation state for the live session.
 
-**Requirements.** FR-1 to FR-4, FR-6, FR-7, FR-43, FR-46, FR-47, FR-106 to FR-119, NFR-53.
+**Requirements.** FR-1, FR-3, FR-6, FR-43, FR-106 to FR-119, NFR-53.
 
-Later engineer input is classified into exactly five interaction kinds: question, redirect, supplied
-evidence, stop, and handoff-summary request. Detailed classification and routing behavior belongs to
+Later engineer input is classified into exactly two interaction kinds: question and
+handoff-summary request. Detailed classification and routing behavior belongs to
 `workflow-design.md`.
 
 The engineer-facing surface is one screen: intake and follow-up control, a compact live activity
@@ -188,7 +181,7 @@ a completed turn.
 **State responsibility.** Owns ephemeral turn working state during a turn; authorizes the
 completed-turn write at its end.
 
-**Requirements.** FR-5, FR-6, FR-42, FR-44, FR-48 to FR-56, FR-71, FR-74, FR-77, FR-80, FR-85,
+**Requirements.** FR-5, FR-6, FR-42, FR-44, FR-49 to FR-56, FR-71, FR-74, FR-77, FR-80, FR-85,
 FR-88, NFR-2 to NFR-5, NFR-10.
 
 #### The grounding gate
@@ -324,7 +317,7 @@ evidence is insufficient to support a cause.
 
 **Must not.** Call the Evidence Access Layer or any tool; admit evidence; alter execution bounds;
 deliver directly to the engineer; bypass the grounding gate; present several authoritative causal
-conclusions; convert historical frequency into a current-cause probability.
+conclusions; convert historical comparison into a current-cause probability.
 
 **State responsibility.** Ephemeral draft assessment during synthesis; the accepted assessment
 becomes part of the completed-turn artifact written by the Supervisor.
@@ -348,8 +341,8 @@ citation, brief, and recommendation semantics belong to `data-and-evidence.md`.
 
 **Owns.** Storage and retrieval of investigation identity and summary; completed turns and their
 outcomes; admitted evidence needed for citation resolution; retrieved-knowledge references needed
-for traceability; structured assessments; delivered briefs; follow-up history; engineer-supplied
-context retained for later turns; retained handoff summaries; references to traces.
+for traceability; structured assessments; delivered briefs; follow-up history; retained handoff
+summaries; references to traces.
 
 **Consumes.** Completed artifacts from authorized writers.
 
@@ -392,8 +385,7 @@ across which conversational context is reconstructed.
 
 **Turn.** One bounded evidence-gathering and synthesis cycle belonging to exactly one investigation.
 It has its own objective and its own ephemeral working state, ends as complete, partial, or
-inconclusive (FR-55), and ordinarily produces one assessment and one investigation brief, except the
-no-evidence cancellation case in `workflow-design.md` §5, which produces neither. It becomes durable
+inconclusive (FR-55), and produces one assessment and one investigation brief. It becomes durable
 only as a completed-turn artifact. A delivered brief is never edited in place; a later change in
 analysis appears as a later completed turn.
 
@@ -412,9 +404,8 @@ it.
 ### Completed investigation state
 
 Completed-turn identity and objective; terminal outcome; admitted evidence and required source
-references; the final assessment and the delivered brief where produced; limitations; follow-up
-entries; and the correlated trace reference. A turn cancelled before any evidence was admitted
-carries neither; that exception belongs to `workflow-design.md`.
+references; the final assessment and the delivered brief; limitations; follow-up entries; and the
+correlated trace reference.
 
 This state persists. The Investigation Record is not an event store or a workflow engine.
 
@@ -431,7 +422,7 @@ defined in `data-and-evidence.md`.
 
 | Interface group | Between | Carries | Authority restriction |
 | --- | --- | --- | --- |
-| Incident and follow-up input | Engineer Interaction Interface to Supervisor | A normalized incident, or a follow-up classified as question, redirect, supplied evidence, stop, or handoff-summary request | Engineer text travels as untrusted data; classification carries no investigative decision |
+| Incident and follow-up input | Engineer Interaction Interface to Supervisor | A normalized incident, or a follow-up classified as question or handoff-summary request | Engineer text travels as untrusted data; classification carries no investigative decision |
 | Turn assignment and bounds | Supervisor to Evidence Investigator | The turn objective, incident context, prior evidence and knowledge references, unresolved questions, permitted capabilities, remaining budget | Set by the Supervisor alone; must not request a causal conclusion, and no agent may alter its budget |
 | Evidence request | Evidence Investigator to Evidence Access Layer | A capability to invoke with validated parameters, scope, and governing deadline, whether operational, retrieval, structured-query, or protocol-borne | Read-only capabilities only; only the Evidence Investigator may originate one |
 | Normalized operation result | Evidence Access Layer to Evidence Investigator | One canonical result for every capability: the observation with its provenance, or the reason none was produced. Retrieval carries the matched passage itself | Never a fabricated substitute after failure; provider syntax and errors never escape the boundary |
@@ -440,10 +431,7 @@ defined in `data-and-evidence.md`.
 | Assessment or further-evidence need | RCA Analyst to Supervisor | One structured assessment, or one named question whose answer could materially change it | Exactly one authoritative assessment per turn; a further-evidence need is advisory and grants no new budget |
 | Grounding result | Supervisor internal | Pass, or fail with the failed check identified and a correction requested where the turn's allowance remains | Deterministic, not overridable, and never selects the turn's outcome shape |
 | Delivered output and activity | Supervisor to Engineer Interaction Interface | The delivered brief or handoff summary, and the activity events streamed while a turn runs | The brief is delivered only after the gate admits it; activity is observational and carries no decision |
-| Completed-turn read and write | Supervisor and Investigation Record | Read: retained investigation summary, completed turns, briefs, evidence references, follow-up history. Write: the completed turn with its outcome, admitted evidence, assessment and brief where produced, limitations, follow-up context, and its trace reference | The Supervisor is the only writer; nothing is written mid-turn, the write precedes terminal delivery, and the Record answers no one directly |
-
-A turn cancelled before any evidence was admitted writes neither; that exception belongs to
-`workflow-design.md`.
+| Completed-turn read and write | Supervisor and Investigation Record | Read: retained investigation summary, completed turns, briefs, evidence references, follow-up history. Write: the completed turn with its outcome, admitted evidence, assessment and brief, limitations, follow-up context, and its trace reference | The Supervisor is the only writer; nothing is written mid-turn, the write precedes terminal delivery, and the Record answers no one directly |
 
 ---
 
@@ -455,13 +443,9 @@ mechanism, and authentication protocol belong to `runtime-and-deployment.md`.
 | Operation | Effect |
 | --- | --- |
 | Start from predefined intake | Creates the investigation and begins its first bounded turn immediately |
-| Start from free text | Normalizes the description into the same structured form, with at most one clarification, then begins the first turn |
 | Observe live turn activity | Streams investigation progress, tool and retrieval activity, evidence arrival, and bounded-stop conditions while a turn runs |
 | Retrieve the investigation | Returns the investigation summary and its completed turns and briefs from retained state |
 | Submit a follow-up question | Answered from retained state; opens no evidence-gathering turn |
-| Redirect toward a named candidate | Seeds the objective of the next bounded turn |
-| Submit additional context or evidence | Retained as untrusted context for the next turn; never alters a running turn |
-| Stop the current turn | Ends the running turn at its next safe boundary; the turn completes, and which outcome it carries depends on whether any evidence was admitted (`workflow-design.md`) |
 | Request a handoff or status summary | Derived from retained state; opens no evidence-gathering turn |
 
 ---
@@ -639,14 +623,11 @@ Only completed artifacts persist, and the Supervisor is their single writer:
 | Investigation identity and summary | Supervisor | With the first completed-turn commit |
 | Completed turn, its identity, objective, and terminal outcome | Supervisor | At turn completion |
 | Admitted evidence and required source references for that turn | Supervisor | At turn completion |
-| Structured assessment for the turn, where produced | Supervisor | At turn completion |
-| Delivered investigation brief and its limitations, where produced | Supervisor | At turn completion, after the gate passes |
-| Follow-up history and engineer-supplied context | Supervisor | As follow-ups arrive |
+| Structured assessment for the turn | Supervisor | At turn completion |
+| Delivered investigation brief and its limitations | Supervisor | At turn completion, after the gate passes |
+| Follow-up history | Supervisor | As follow-ups arrive |
 | Retained handoff summaries | Supervisor | When produced |
 | Trace reference | Supervisor | At turn completion |
-
-A turn cancelled before any evidence was admitted produces neither of the two rows marked "where
-produced"; that exception belongs to `workflow-design.md`.
 
 No other component writes. The Engineer Interaction Interface, the Evidence Investigator, the RCA
 Analyst, and the Evidence Access Layer never write to the Record.
@@ -681,9 +662,8 @@ Both are seams reached through by components. Neither is a component.
 
 ### 10.1 Model-access seam
 
-All three agents reach models through one shared adapter, as does the Engineer Interaction Interface
-for free-text intake normalization alone (§4.1). It carries role, investigation, turn, and task
-context on every request, returns model output as structured proposed data, and records model
+All three agents reach models through one shared adapter. It carries role, investigation, turn, and
+task context on every request, returns model output as structured proposed data, and records model
 identity, latency, token usage, and approximate cost (NFR-18).
 
 Deterministic code admits or rejects that proposed output. Models own no permissions, no bounds, no
@@ -699,10 +679,11 @@ The posture is one primary model deployment handling substantive evidence interp
 synthesis, and one lower-cost deployment handling a clearly bounded simple task. The routing
 decision and the selected model are visible in diagnostics.
 
-That bounded simple task is free-text intake normalization, which is the one model use the Engineer
-Interaction Interface holds (§4.1). Anything that interprets evidence or produces an assessment
-stays on the primary deployment, as does the Supervisor's follow-up answer task (§4.2).
-Classification of later engineer input is deterministic and is not routed to a model at all.
+That bounded simple task is the Supervisor's objective interpretation, which reads the selected
+incident and states what the turn is trying to establish (§4.2). Anything that interprets evidence
+or produces an assessment stays on the primary deployment, as does the Supervisor's follow-up answer
+task (§4.2). Classification of later engineer input is deterministic and is not routed to a model at
+all.
 
 Which deployment serves which task is settled in `decisions.md`. No severity tiers, policy engine,
 fallback chain, or multi-provider abstraction is introduced.
@@ -783,8 +764,8 @@ application replicas run is a runtime realization and creates no additional boun
 
 | Design element | Principal requirements realized |
 | --- | --- |
-| Engineer Interaction Interface | FR-1 to FR-4, FR-6, FR-7, FR-43, FR-46, FR-47, FR-106 to FR-119, NFR-53 |
-| Supervisor | FR-5, FR-42, FR-44, FR-48 to FR-56, FR-71, FR-74, FR-77, FR-80, FR-85, FR-88 |
+| Engineer Interaction Interface | FR-1, FR-3, FR-6, FR-43, FR-106 to FR-119, NFR-53 |
+| Supervisor | FR-5, FR-42, FR-44, FR-49 to FR-56, FR-71, FR-74, FR-77, FR-80, FR-85, FR-88 |
 | Grounding gate | FR-23, FR-38, FR-62, NFR-2 to NFR-5, NFR-10 |
 | Evidence Investigator | FR-49 to FR-52, FR-57, FR-61, FR-78, FR-84, FR-86, FR-87, FR-94 |
 | Evidence Access Layer | FR-57, FR-75, FR-103, NFR-1, NFR-7, NFR-8 |
@@ -798,6 +779,6 @@ application replicas run is a runtime realization and creates no additional boun
 | Completed-artifact persistence | NFR-22, NFR-55, NFR-57, NFR-58 |
 | Model-access seam and routing | FR-76, FR-105, NFR-10, NFR-18 |
 | Telemetry seam | FR-109 to FR-117, NFR-14, NFR-18, NFR-20 |
-| External interaction concepts | FR-1 to FR-7, FR-46, FR-47, FR-71, FR-73, FR-74, NFR-53 |
+| External interaction concepts | FR-1, FR-3, FR-5, FR-6, FR-71, FR-73, FR-74, NFR-53 |
 | Read-only boundary across every path | FR-75, FR-102, NFR-1 |
 | Bounded execution | FR-53 to FR-56, NFR-10 |

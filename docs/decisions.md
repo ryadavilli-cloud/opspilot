@@ -70,8 +70,7 @@ Responsibility Map"; FR-84, FR-85.
 
 | Task | Deployment |
 | --- | --- |
-| Free-text intake normalization | Lower-cost |
-| Supervisor objective interpretation | Primary |
+| Supervisor objective interpretation | Lower-cost |
 | Evidence-source selection | Primary |
 | Structured-query generation | Primary |
 | RCA synthesis | Primary |
@@ -85,25 +84,27 @@ telemetry.
 
 Follow-up interaction classification is deterministic, established from the supported request shape,
 and defaults to a question where ambiguous. It is not a model-routed task. Reranking is
-deterministic and is not a model task (D-003). The pre-turn normalization routing signal is visible
-in the intake response's technical detail and in telemetry; no separate event system carries it.
+deterministic and is not a model task (D-003). The objective-interpretation routing signal is
+visible in the turn's activity detail and in telemetry; no separate event system carries it.
 
-**Why.** Free-text normalization is short, bounded, and cheap to get slightly wrong: a poor
-normalization costs the engineer one restatement. Everything that interprets evidence or produces an
-assessment stays on the primary deployment, because a weak result there corrupts the brief;
-follow-up answering restates retained evidence-bearing content, so it stays there for the same
-reason. One task on the cheaper model is enough to demonstrate a deliberate routing decision without
-spreading model variability into the investigative path.
+**Why.** Objective interpretation reads the selected incident's structured fields and states what
+the turn is trying to establish. It touches no evidence, produces no assessment, and is bounded by
+the incident it reads, so a weak result costs one restatement rather than a corrupted brief.
+Everything that interprets evidence or produces an assessment stays on the primary deployment,
+because a weak result there does corrupt the brief; follow-up answering restates retained
+evidence-bearing content, so it stays there for the same reason. One task on the cheaper model is
+enough to demonstrate a deliberate routing decision without spreading model variability into the
+investigative path.
 
 **Accepted trade-off.** Two deployments must be provisioned and configured to demonstrate one
-routing decision. A misclassified free-text intake costs a restatement.
+routing decision. A weak objective interpretation costs a restatement.
 
 **Rejected.** Severity tiers, policy engines, fallback chains, and dynamic cost optimization, none of
 which the demonstration needs. Also rejected: routing any evidence-touching task, including retrieval
 reranking, to the lower-cost deployment. D-003 keeps reranking deterministic so this boundary holds.
 
 **Applies to.** `runtime-and-deployment.md` — "Model Connectivity"; `system-design.md` — "Shared
-Model and Telemetry Seams"; `workflow-design.md` — "Follow-up"; FR-105, NFR-18.
+Model and Telemetry Seams"; `workflow-design.md`: "Intake and Objective"; FR-105, NFR-18.
 
 ### D-003 - Retrieval realization
 
@@ -267,16 +268,15 @@ scenario to spread risk would make both demonstrations less convincing.
 
 **Status:** Accepted
 
-**Decision.** One typed, frozen contract, shared by both intake paths, carrying exactly five
-fields:
+**Decision.** One typed, frozen contract, the shape an investigation opens from, carrying exactly
+four fields:
 
 | Field | Type | Meaning |
 | --- | --- | --- |
-| `incident_id` | `str \| None` | The selected predefined RetailEase incident's id; `None` for free-text intake |
+| `incident_id` | `str` | The selected predefined RetailEase incident's id |
 | `scope` | `str \| None` | The affected service or component, only when the intake source explicitly names one; `None` otherwise |
-| `symptom` | `str` | The reported problem description: the incident's `short_description` for predefined intake, the engineer's literal input for free text |
-| `time_anchor` | `datetime` | The operational anchor for initial evidence-window selection: the incident's `opened_at` for predefined intake, or the normalization/turn-start time for free text when no better incident time is known. Not asserted as the actual incident onset. |
-| `supplied_context` | `str \| None` | Additional evidence or context the engineer supplies, seeding a new turn (FR-7); unpopulated by S-1's predefined-only intake |
+| `symptom` | `str` | The reported problem description: the incident's `short_description` |
+| `time_anchor` | `datetime` | The operational anchor for initial evidence-window selection: the incident's `opened_at`. Not asserted as the actual incident onset. |
 
 No other field exists. In particular the contract carries no severity, priority, impact, urgency,
 SLA, ownership, environment, ticket workflow state, or session/live-status field, and no evidence
@@ -293,21 +293,19 @@ risks both semantic confusion and the corpus's own category-as-hint answer leaka
 `scope` is `None` for every predefined-intake turn until a source that actually names an affected
 service or component exists.
 
-**Why.** FR-1 through FR-3 require only that both intake paths converge on "the same structured
-incident form" before investigation begins; nothing in FR-1 through FR-5, FR-7, or
-`system-design.md`'s normalized-context boundary language calls for more than an anchor
-identifier, an explicitly-known scope, the symptom itself, an operational time anchor for
-retrieval and telemetry windowing, and optional supplied context. The raw predefined-incident
-record (`IncidentRecord`, `tools/contracts.py`) carries `root_cause` and `resolution`, the
-answer-key content the investigation exists to discover, so the contract deliberately excludes
-them rather than deriving from the raw record directly; an investigation must reach its own
-conclusion, never receive it as intake. It also excludes the record's ticket-workflow fields
-(`priority`, `impact`, `urgency`, `made_sla`, `reassignment_count`, `state`, `number`,
+**Why.** FR-1 and FR-3 require only that the selected incident resolve into the structured incident
+form before investigation begins; nothing in FR-1, FR-3, FR-5, or `system-design.md`'s
+normalized-context boundary language calls for more than an anchor identifier, an explicitly-known
+scope, the symptom itself, and an operational time anchor for retrieval and telemetry windowing. The
+raw predefined-incident record (`IncidentRecord`, `tools/contracts.py`) carries `root_cause` and
+`resolution`, the answer-key content the investigation exists to discover, so the contract
+deliberately excludes them rather than deriving from the raw record directly; an investigation must
+reach its own conclusion, never receive it as intake. It also excludes the record's ticket-workflow
+fields (`priority`, `impact`, `urgency`, `made_sla`, `reassignment_count`, `state`, `number`,
 `is_known_error`, `close_code`, `resolved_at`), none of which an accepted requirement reads at the
-intake boundary. `time_anchor` is named and worded to keep a request-time fact from being read as
-an incident-time fact: `opened_at` describes the incident, a free-text normalization timestamp
-describes only the request, and collapsing both into one `observed_at`-style name would make the
-free-text value look like evidence about when the incident occurred.
+intake boundary. `time_anchor` is named and worded to keep it from being read as an asserted onset:
+`opened_at` describes when the incident was raised, which an `observed_at`-style name would blur
+into a claim about when the underlying fault began.
 
 **Accepted trade-off.** Predefined intake discards most of the raw `IncidentRecord`'s operational
 metadata even where a future feature might want it. Re-adding any of it is a revision to this
@@ -325,7 +323,7 @@ evidence references as two structurally separate inputs (see above) and evidence
 through deterministic admission, never through intake.
 
 **Applies to.** `system-design.md`: "Investigation, Turn, and Live-Session Model";
-`data-and-evidence.md`: "Identity and Reference Model"; FR-1, FR-2, FR-3, FR-5, FR-7.
+`data-and-evidence.md`: "Identity and Reference Model"; FR-1, FR-3, FR-5.
 
 ### D-008 - Evidence and knowledge reference encoding
 

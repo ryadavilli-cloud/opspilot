@@ -16,7 +16,7 @@ that downstream documents must preserve.
 
 It does not own behavior, structure, or realization. Component responsibilities, conceptual
 interfaces, and which boundary produces or consumes each artifact belong to `system-design.md`.
-Stages, routing, loops, bounds, cancellation, correction behavior, stop reasons, outcome
+Stages, routing, loops, bounds, correction behavior, stop reasons, outcome
 transitions, and when persistence occurs belong to `workflow-design.md`. Physical persistence,
 storage products, serialization, trace backends, telemetry schemas, retention, and raw-result
 storage belong to `runtime-and-deployment.md`. Ground truth, scenario schemas, scoring, metric
@@ -35,7 +35,7 @@ and the category determines what it may be used for.
 | Category | Origin | May it directly support an incident-specific claim? |
 | --- | --- | --- |
 | Incident input | The engineer, at intake | No. Untrusted content that frames the question |
-| Engineer-supplied context | The engineer, between turns | No. Untrusted context that may guide a later turn |
+| Engineer follow-up text | The engineer, after a turn completes | No. Untrusted input that never becomes evidence |
 | Tool operation | An attempt against an approved capability | No. It records what was tried, not what is true |
 | Tool observation | A source result, before admission | Not yet. It is a candidate for admission |
 | Admitted operational evidence | Deterministic admission into the turn | Yes. This is the only current operational proof |
@@ -274,22 +274,14 @@ pointer into a stored copy of the response.
 
 ---
 
-## 8. Engineer-Supplied Context
+## 8. Engineer Input and the Evidence Boundary
 
-An engineer may supply material between turns (FR-7). It is untrusted input, and supplying it never
-makes it evidence. Calling something evidence does not admit it.
+Engineer text reaches the system as a follow-up question. It is untrusted input, and stating
+something never makes it evidence. Calling something evidence does not admit it (NFR-9).
 
-Two cases exist.
-
-**Context only.** A statement, suspicion, pasted excerpt, or asserted cause is retained as
-engineer-supplied context. It may shape the objective of a later turn and may direct what the
-investigation checks, and it cannot support a grounded element on its own. It is retained with the
-investigation so a later turn can weigh it.
-
-**A resolvable reference.** Where the engineer points at an existing RetailEase item that an
-approved capability can retrieve, the investigation may retrieve it. What enters the evidence set is
-the retrieved observation, admitted through the ordinary path in §6, not the engineer's description
-of it.
+A question may name an incident detail, assert a cause, or quote an excerpt. None of that enters the
+evidence set: an answer is drawn from what the investigation already admitted, and a statement in a
+question cannot support a grounded element.
 
 There is no manual-evidence approval path and no way to inject an observation the Evidence Access
 Layer did not produce.
@@ -327,9 +319,9 @@ A past incident that resembles this one is a lead to verify against current sign
 answer to adopt. A conclusion therefore requires current operational evidence in addition to
 whatever knowledge informed it.
 
-Historical frequency is reported as what it is: how often a failure mode appeared before (FR-28). It
-is presented separately from current support and is never converted into a probability that a
-candidate is correct for this incident (FR-26).
+Historical comparison is reported as what it is: how a prior occurrence resembles or differs from
+this incident (FR-27). It is presented separately from current support and is never converted into a
+probability that a candidate is correct for this incident (FR-26).
 
 Two terms are used strictly throughout this document set. **Operational evidence** means observations
 of the current incident admitted to the evidence set. **Retrieved knowledge** means runbooks,
@@ -658,9 +650,8 @@ progressive disclosure (FR-11, FR-12). Its logical sections are:
 
 These are sections of one brief, not eight separately persisted objects.
 
-Where a brief is delivered, one exists per turn, and it is never edited in place; a later change in
-analysis appears as the brief of a later turn. Not every completed turn delivers one: the Inconclusive
-shape below has an exception where none is produced.
+One brief exists per turn, and it is never edited in place; a later change in analysis appears as
+the brief of a later turn.
 
 ### Complete
 
@@ -669,8 +660,8 @@ limitations the turn recorded, and passes the four grounding checks (FR-39).
 
 ### Partial
 
-A partial brief reports what was established before the turn stopped, whether through cancellation,
-a bound, a degraded source, or an application interruption. It states plainly that it is incomplete
+A partial brief reports what was established before the turn stopped, whether through a bound, a
+degraded source, or an application interruption. It states plainly that it is incomplete
 and names what was not reached, and it never claims more completeness than the turn achieved
 (FR-40).
 
@@ -680,17 +671,12 @@ An inconclusive brief states that current evidence cannot support a cause and na
 or contradictory. It may keep the ordered candidates visible as unresolved possibilities, and it
 never presents a best guess as established (FR-41).
 
-Inconclusive does not always mean a delivered brief. A turn cancelled before any evidence was admitted
-also completes as inconclusive, but with no assessment to render and none delivered; that cancellation
-case belongs to `workflow-design.md`.
-
 Which shape a brief takes follows from the turn state and the assessment. The four grounding checks
 verify that the brief represents that shape correctly; they do not choose it.
 
-Complete, partial, and an ordinary inconclusive turn all describe delivered briefs that passed those
-checks; the no-evidence inconclusive exception above delivers none. A brief that still fails the
-checks after its one permitted correction is not a partial or inconclusive brief; it is not delivered
-at all, and the attempt leaves no completed turn behind.
+Complete, partial, and inconclusive all describe delivered briefs that passed those checks. A brief
+that still fails the checks after its one permitted correction is not a partial or inconclusive
+brief; it is not delivered at all, and the attempt leaves no completed turn behind.
 
 ---
 
@@ -740,16 +726,13 @@ It carries:
 - the final structured assessment;
 - the delivered investigation brief;
 - the material limitations;
-- the follow-up or engineer-supplied context relevant to that turn;
+- the follow-up context relevant to that turn;
 - a reference to the correlated trace, together with a minimal version stamp (model deployment
   identifiers and prompt or contract versions) and the total token and approximate cost summary
   needed to compare runs later.
 
 The stamp and totals are a summary, never a second telemetry schema; call-level configuration,
 latency, and usage detail live only in the trace.
-
-A turn cancelled before any evidence was admitted has neither of the two fields above: no assessment
-was produced, and no brief was delivered, so that turn's artifact omits both and carries the rest.
 
 When the Supervisor commits this artifact relative to delivery belongs to `workflow-design.md`.
 
@@ -796,10 +779,10 @@ cross-cutting ones.
 
 1. Model output is proposed data until deterministic code admits it, and never becomes evidence by
    being structured, plausible, or repeated.
-2. Engineer-supplied material is untrusted context and cannot enter the evidence set except as an
-   observation the Evidence Access Layer retrieved and admission accepted.
+2. Engineer text is untrusted input and cannot enter the evidence set at all; only an observation
+   the Evidence Access Layer retrieved and admission accepted becomes evidence.
 3. Retrieved knowledge informs interpretation and never independently establishes the current cause.
-4. Historical frequency is reported as frequency and never converted into a current-cause
+4. Historical comparison is reported as comparison and never converted into a current-cause
    probability.
 5. Evidence is typed by what it means; the access path is provenance, never a type.
 6. Every approved capability shares one result model, one admission path, and one evidence
@@ -816,9 +799,8 @@ cross-cutting ones.
     present where provenance is runbook guidance or a prior-incident action.
 12. The brief renders the assessment: it introduces nothing the assessment does not contain, and
     omits, reorders, or alters nothing it does.
-13. Complete, partial, and inconclusive are the only brief shapes; the shape follows from the turn
-    state rather than from a grounding check, and the no-evidence inconclusive exception (§15)
-    delivers no brief at all.
+13. Complete, partial, and inconclusive are the only brief shapes, and the shape follows from the
+    turn state rather than from a grounding check.
 14. A delivered brief is never edited in place; a revised analysis is a later turn.
 15. A handoff summary restates retained state and creates no evidence and no assessment.
 16. Only the completed-turn artifact persists, and the trace reference within it is never incident
@@ -836,7 +818,7 @@ cross-cutting ones.
 | Tool-operation history and limitations | FR-68, FR-69, NFR-8, NFR-37 to NFR-42 |
 | Evidence admission | FR-57, FR-100, FR-103, NFR-1, NFR-7 |
 | Admitted evidence set | FR-63, NFR-2, NFR-3, NFR-6, NFR-12, NFR-55, NFR-57, NFR-58 |
-| Engineer-supplied context | FR-7, NFR-9 |
+| Engineer input and the evidence boundary | NFR-9 |
 | Retrieved knowledge | FR-66, FR-67, FR-89 to FR-94, NFR-31 to NFR-34 |
 | Temporal semantics | FR-13 |
 | Evidence types | FR-57, FR-100, FR-113 |

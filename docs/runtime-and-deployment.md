@@ -57,8 +57,8 @@ One live streaming HTTP request owns one turn from start to finish. The same req
 4. executes gathering and synthesis;
 5. runs the grounding gate;
 6. persists the completed-turn artifact;
-7. emits the terminal outcome once that commit succeeds — with a brief except on the no-evidence
-   cancellation path in `workflow-design.md` §5 — or a controlled execution failure;
+7. emits the terminal outcome with its brief once that commit succeeds, or a controlled execution
+   failure;
 8. ends.
 
 Steps 6 and 7 are ordered deliberately. A successful terminal outcome is never emitted before
@@ -82,25 +82,10 @@ Only two shapes exist: a streaming request that owns a turn, and an ordinary req
 
 | Interaction | Transport |
 | --- | --- |
-| Normalize free text, including the optional single clarification | Ordinary request, before any turn exists |
 | Start a turn from a predefined incident | Streaming request |
-| Start a turn from normalized free text | Streaming request |
-| Redirect toward a named candidate | New streaming turn request |
-| Supply additional evidence or context | New streaming turn request |
 | Follow-up question | Ordinary request, answered from retained state |
 | Handoff or status summary | Ordinary request, answered from retained state |
 | Retrieve an investigation | Ordinary request returning retained state and completed turns |
-| Cancel the active turn | Small ordinary request that signals the in-memory cancellation token |
-
-**Initial clarification happens before a turn exists.** Free-text intake first calls the ordinary
-normalization request. If the description is sufficiently determined, it returns the normalized
-incident and the client then opens the streaming turn. If it is not, it returns exactly one
-clarification question; the engineer submits the answer together with the original input or a
-short-lived normalization token, normalization completes, and the client opens the streaming turn.
-
-Because clarification precedes the turn (`workflow-design.md`), the runtime holds nothing for it:
-there are no clarification sessions, no server-side conversational state, no durable intake
-workflow, and no clarification store.
 
 Reading an investigation returns retained state and completed turns only. It cannot attach to a turn
 in flight.
@@ -110,22 +95,18 @@ replay, sequence cursor, or task lookup, because none is needed once a turn is o
 If the connection is lost before completion, the active turn may be lost, no incomplete turn record
 remains, and the engineer starts the turn again.
 
-**Cancellation** may use one small in-memory map from active turn identity to a cancellation signal.
-It exists only while the streaming request is active, is not durable, is not a job registry, is not
-used for recovery or reattachment, and disappears on restart. A cancellation request signals the
-active request, which stops at the next safe boundary, completes the turn as `workflow-design.md`
-directs, streams the result, persists the completed turn, and closes. Which outcome that turn
-carries depends on whether any evidence had been admitted, and belongs to `workflow-design.md`.
+**A turn ends with its request.** A turn runs to completion, exhausts a bound, or ends because the
+request carrying it disconnected. No active-turn registry, cancellation endpoint, or cancellation
+signal map exists, because nothing outside the request needs to reach the turn it owns.
 
 ### 3. Live and Persisted State
 
 | State | Where it lives | Lifetime |
 | --- | --- | --- |
 | Active turn working state, admitted evidence before commit, draft assessment | Process memory | The streaming request |
-| Cancellation signal map | Process memory | The streaming request |
 | Completed turns, briefs, evidence, assessments, follow-up history, trace references | Cosmos DB | Retained |
 
-Nothing in the first two rows is checkpointed, replicated, or recovered. There is no active-turn
+Nothing in the first row is checkpointed, replicated, or recovered. There is no active-turn
 store, no pending-turn record, no checkpoint store, no replay log, and no background reconciler
 (NFR-57).
 
@@ -133,7 +114,7 @@ The Supervisor commits the completed-turn artifact at turn completion and is its
 the retained row holds is what survives (NFR-22, NFR-55). What an incomplete turn leaves behind
 belongs to `workflow-design.md`.
 
-### 4. Concurrency, Deadlines, and Cancellation
+### 4. Concurrency and Deadlines
 
 Independent evidence actions within a turn may be issued together. They share the turn's remaining
 wall-clock deadline rather than each carrying an independent one, so no operation can outlive the
@@ -386,9 +367,9 @@ production release process.
 ### 16. Verification Suite
 
 Eight environment-dependent checks prove a deployment. Behavior the environment does not change is
-owned by deterministic tests in `code-guidelines.md` ("Testing Expectations"), including
-cancellation on both paths, a lost request leaving nothing persisted, structured-query rejection,
-and MCP parity; evaluation aggregates those results. Investigation quality belongs to
+owned by deterministic tests in `code-guidelines.md` ("Testing Expectations"), including a lost
+request leaving nothing persisted, structured-query rejection, and MCP parity; evaluation aggregates
+those results. Investigation quality belongs to
 `evaluation.md`.
 
 | Check | Confirms |

@@ -17,14 +17,13 @@ Transport, hosting, and persistence realization belong to `runtime-and-deploymen
 ## 2. Turn Model and Session Behavior
 
 An **investigation** is one incident under study. A **turn** is one bounded adaptive cycle within it
-that ordinarily produces one investigation brief (FR-70), except the no-evidence cancellation case in
-§5, which produces none. A **live session** is the ephemeral conversational surface over an
-investigation and has no durable identity of its own.
+that produces one investigation brief (FR-70). A **live session** is the ephemeral conversational
+surface over an investigation and has no durable identity of its own.
 
 One live streaming request owns one turn. That request creates the turn, streams its activity,
-executes it, and ends by delivering a completed turn — carrying a brief except on the no-evidence
-cancellation path in §5 — or a failed execution. There is no job dispatch, no background continuation
-after the request returns, and no way to reattach to a turn already running.
+executes it, and ends by delivering a completed turn carrying a brief, or a failed execution. There
+is no job dispatch, no background continuation after the request returns, and no way to reattach to
+a turn already running.
 
 Losing the request or the process may lose the active turn. Nothing incomplete is persisted, and the
 engineer runs the turn again (NFR-57). Everything already completed remains readable (NFR-58).
@@ -85,23 +84,17 @@ retained state (§8).
 This stage runs once when an investigation is opened, and again in reduced form whenever a follow-up
 seeds a new turn.
 
-The engineer either selects a predefined incident or describes a symptom in free text (FR-1, FR-2).
-Free text is normalized into the same structured incident form that selection produces, and a
-genuinely underdetermined description may draw at most one clarifying question (FR-4).
-
-Normalization and any clarification complete **before the turn begins**. A predefined incident
-starts a turn directly; free text is normalized first, and where clarification is needed the
-question is answered and normalization finishes before anything is created. No investigation
-identity, turn identity, or durable state exists during clarification. Both paths converge before
-investigation begins (FR-3, FR-43). Engineer text is carried as untrusted data throughout (NFR-9).
+The engineer selects a predefined incident (FR-1, FR-43). The selection resolves into the structured
+incident form before the turn begins (FR-3), and engineer text is carried as untrusted data
+throughout (NFR-9).
 
 Investigation begins immediately; structured intake requires no blocking confirmation. One incident
 is the active investigation (FR-42).
 
 The Supervisor then sets the turn objective: what this turn is trying to establish, and the budget
-it may spend. For a first turn the objective follows from the incident. For a later turn it follows
-from the redirect or supplied evidence that seeded it (FR-47, FR-48). The objective and its budget
-are set by the Supervisor alone, and no agent may widen them (FR-56).
+it may spend. The objective follows from the incident, interpreted through the lower-cost deployment
+as the one deliberately routed task (FR-105, `decisions.md` D-002). The objective and its budget are
+set by the Supervisor alone, and no agent may widen them (FR-56).
 
 ---
 
@@ -145,13 +138,13 @@ Any failure means no further gathering. The Supervisor does not re-derive the ju
 proposal; it accepts or refuses the proposal as offered (NFR-10).
 
 Gathering ends when the evidence is ready to interpret, when no useful permitted action remains,
-when a bound is reached, when a required source is unavailable, or when the engineer cancels. The
-reason is recorded by the stage that detects it, at the moment it is detected (§9).
+when a bound is reached, or when a required source is unavailable. The reason is recorded by the
+stage that detects it, at the moment it is detected (§9).
 
 Readiness to interpret is not a claim about the answer. A turn may end gathering cleanly and still
 conclude that the evidence is insufficient.
 
-### Bounds and cancellation
+### Bounds and turn ending
 
 Execution limits on steps, tool calls, retries, elapsed time, context, and model use are
 deterministic and configurable (FR-53), and they exist to make runaway execution impossible rather
@@ -171,20 +164,9 @@ failed grounding check (§7). A turn that spends it on a structural failure has 
 grounding failure, and the reverse. A failure arriving with the allowance already spent is not
 corrected again; the turn degrades under §10.
 
-The engineer may stop a turn at any point and receives the result available then (FR-46).
-Cancellation signals the active request, and the turn ends gathering at its next safe boundary. What
-follows depends on whether there is anything to synthesize.
-
-Where at least one piece of evidence has been admitted, synthesis runs over whatever evidence
+A turn ends when gathering reaches its natural end, when a bound is exhausted, or when the request
+carrying it disconnects. Where a bound ends gathering early, synthesis runs over whatever evidence
 exists, grounding still applies unchanged, and the brief is delivered marked partial (FR-40).
-
-Where no evidence has been admitted, there is nothing to synthesize and no brief is produced. The
-turn completes as inconclusive and states that it was stopped before any evidence was gathered. It
-carries no candidate cause and no recommendations, because a brief assembled from nothing would
-assert what no evidence supports (NFR-2).
-
-Both paths produce a completed turn carrying one of the three outcomes. Cancellation is not a
-failure and does not discard the turn.
 
 If the live request itself disappears before completion, the execution may be cancelled and
 discarded. No completed turn is required when there is no connection through which a trustworthy
@@ -301,18 +283,16 @@ an analysis of its own.
 
 ## 8. Delivery, Persistence, and Follow-Up
 
-Persistence precedes delivery. Once the grounding gate passes, or on the no-evidence cancellation
-path in §5, the Supervisor commits one completed-turn artifact, and only after that commit succeeds
-is the terminal outcome emitted, with a brief except on that path (FR-9, FR-70). A successful result
-is never announced before it has been persisted. Where the commit fails, no successful outcome is
-emitted, no completed turn exists, and the attempt is a failed execution.
+Persistence precedes delivery. Once the grounding gate passes, the Supervisor commits one
+completed-turn artifact, and only after that commit succeeds is the terminal outcome emitted with
+its brief (FR-9, FR-70). A successful result is never announced before it has been persisted. Where
+the commit fails, no successful outcome is emitted, no completed turn exists, and the attempt is a
+failed execution.
 
 The artifact carries the turn identity and objective, terminal outcome, stop reason, admitted
-evidence and required source references, the assessment and the delivered brief where the turn
-produced them, limitations, relevant follow-up context, and the correlated trace reference (NFR-55).
-A turn cancelled before any evidence was admitted carries neither (§5). The Supervisor is the only
-writer,
-and nothing is written mid-turn. Starting a turn persists nothing: the investigation record is
+evidence and required source references, the assessment and the delivered brief, limitations,
+relevant follow-up context, and the correlated trace reference (NFR-55). The Supervisor is the only
+writer, and nothing is written mid-turn. Starting a turn persists nothing: the investigation record is
 created by the first successful completed-turn commit, so a first execution that fails leaves no
 investigation shell behind and no orphan records exist.
 
@@ -333,13 +313,13 @@ active phase or responsible role changes; when the Evidence Investigator propose
 capability, retrieval, structured-query, or MCP operation completes; when a material limitation is
 recorded; when continuation or the further-evidence cycle is authorized or declined; when the
 correction allowance is spent; when grounding completes; when persistence and terminal completion
-succeed; and when cancellation or a failed execution ends the attempt. Repeated or low-level
+succeed; and when a failed execution ends the attempt. Repeated or low-level
 operations may be grouped for the feed. Event fields and their relation to telemetry belong to
 `system-design.md` ("Activity projection").
 
 ### Follow-up
 
-After delivery, an engineer message is handled as exactly one of five kinds. Where the kind is
+After delivery, an engineer message is handled as exactly one of two kinds. Where the kind is
 ambiguous it is treated as a question, the cheapest interpretation, leaving the engineer free to
 restate it.
 
@@ -347,9 +327,8 @@ restate it.
 | --- | --- |
 | Question | Answered from retained completed-turn state; opens no turn (FR-6, FR-71) |
 | Handoff-summary request | Derived from retained state; opens no turn (FR-10, FR-74) |
-| Redirect | Seeds the objective of a new bounded turn toward the named candidate (FR-7, FR-47) |
-| Supplied evidence | Retained as untrusted context for the next turn (FR-7, FR-48) |
-| Stop | Signals the active request to cancel (§5) |
+
+Neither kind opens a turn, so a later message never starts new evidence gathering.
 
 A question is answered by the Supervisor from retained state through the primary model deployment.
 The answer may cite only retained evidence and knowledge references, and it introduces no new
@@ -363,9 +342,7 @@ says so and, where appropriate, recommends a new investigative turn.
 A handoff summary is a deterministic projection of retained structured state; it calls no model and
 creates no new synthesis (`data-and-evidence.md`, "Handoff Summary").
 
-Nothing reaches into a turn already executing (FR-8). A redirect or supplied evidence takes effect
-in the next turn, which ordinarily produces its own brief, except the no-evidence cancellation case
-in §5, which produces none. A delivered brief is never edited in place.
+Nothing reaches into a turn already executing (FR-8). A delivered brief is never edited in place.
 
 ---
 
@@ -390,11 +367,10 @@ produced no trustworthy artifact at all.
 
 - **Complete.** Gathering ended on its own terms and synthesis produced a supported assessment
   covering the objective (FR-39).
-- **Partial.** The turn stopped early through cancellation, a bound, or a degraded source, having
-  admitted at least some evidence, and reports plainly what was not reached (FR-40).
-- **Inconclusive.** The evidence does not support a cause, either because the turn ran to its
-  natural end without establishing one or because it was stopped before any evidence was admitted;
-  the turn names what is missing or contradictory (FR-41).
+- **Partial.** The turn stopped early through a bound or a degraded source, having admitted at least
+  some evidence, and reports plainly what was not reached (FR-40).
+- **Inconclusive.** The evidence does not support a cause; the turn names what is missing or
+  contradictory (FR-41).
 
 An inconclusive turn may still state that no immediate action is required, or that action may safely
 be deferred, where the evidence supports that (FR-72).
@@ -407,7 +383,6 @@ be deferred, where the evidence supports that (FR-72).
 | `no_useful_action` | No permitted action was likely to improve the result |
 | `bound_reached` | A configured execution bound was exhausted |
 | `required_source_unavailable` | A source the objective depended on could not be queried |
-| `cancelled_by_engineer` | The engineer stopped the turn |
 
 `analysis_ready` is not a claim about the answer; a turn may stop for it and still be inconclusive.
 Which bound was consumed is visible in telemetry rather than split into separate reasons.
@@ -419,7 +394,6 @@ Which bound was consumed is visible in telemetry rather than split into separate
 | `insufficient_evidence` | Current evidence does not support a causal conclusion |
 | `material_conflict` | Material observations remain contradictory |
 | `required_evidence_unavailable` | Missing required evidence prevents a supported conclusion |
-| `cancelled_before_evidence` | The engineer stopped the turn before any evidence was admitted |
 
 Reasons are recorded by the stage that detects the condition, at the moment it is detected. A later
 stage never infers one.
@@ -459,8 +433,8 @@ A persistence failure is never reported as a successfully completed turn.
 
 ### Degradation is visible
 
-Missing sources, retries, failures, cancellation, and bounded stops are surfaced to the engineer
-rather than absorbed (FR-116).
+Missing sources, retries, failures, and bounded stops are surfaced to the engineer rather than
+absorbed (FR-116).
 
 ### Observability
 
