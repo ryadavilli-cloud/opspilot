@@ -710,8 +710,8 @@ slice will re-record again.
 
 ### 4.1 The model-access seam and task-label routing
 
-**Makes true.** All three agent roles and the interaction interface reach models through one
-adapter, and routing selects a deployment from a fixed task label.
+**Makes true.** All three agent roles reach models through one adapter, and routing selects a
+deployment from a fixed task label.
 
 **Requires.** 1.3: the embedding deployment, whose two chat siblings this slice adds.
 
@@ -1134,8 +1134,8 @@ approval surface, and the severity-scaled sufficiency stop rule and old intent t
 `test_checkpointer.py`, the sufficiency test, the triage and triager tests, and the escalate and
 sufficiency routing cases of the diagnose test. The intent taxonomy is retired here because the
 routing stage it lived in disappears with the stage sequence, while the required behavior it is
-measured against, "Request-shape classification of follow-up, redirect, supplied context, handoff,
-and read," is a transport behavior and lands in 7.2, so that pairing spans two slices.
+measured against, request-shape classification of a follow-up question, a handoff-summary request,
+and a read, is a transport behavior and lands in 7.2, so that pairing spans two slices.
 
 Divergence: the `checkpoints` Cosmos container, both its Bicep declaration and the live container,
 is already gone as of 2026-08-09, removed when the account was deleted and recreated to gain the
@@ -1217,15 +1217,15 @@ persistent failure produces a failed execution rather than a delivered brief.
 
 ### 6.3 Outcomes, stop reasons, and degradation
 
-**Makes true.** The turn state chooses one of three outcomes, records why gathering stopped and why
-it was inconclusive, and handles cancellation on both of its paths.
+**Makes true.** The turn state chooses one of three outcomes and records why gathering stopped and
+why it was inconclusive.
 
 **Requires.** 6.1: the turn state that carries the outcome. 6.2: the gate failure that can end an
 attempt.
 
 **Closes.** `status.md` - "Partially implemented and missing capabilities": the outcome
-vocabulary of "Grounding gate, correction allowance, completed outcomes", the safe-boundary and
-both cancellation paths of "Explicit cancellation signal", and the terminal shape 6.2 left open.
+vocabulary of "Grounding gate, correction allowance, completed outcomes", and the terminal shape
+6.2 left open.
 
 **Retires.** The escalate cases in the diagnose test. The vocabulary that carried escalation as a terminal status is retired by rows other slices own:
 the job API status vocabulary in 5.2 and the result and report contracts in 4.3, both recorded in
@@ -1237,23 +1237,19 @@ outcomes, the stop reasons, and the inconclusive reasons are the tables `workflo
 fixes; the current completed, degraded, and escalated set is replaced, and a failed execution is not
 a fourth outcome.
 
-**Tests.** Cancellation is the pair that ends in a tidy-looking outcome either way. With evidence
-admitted, synthesis, the gate, delivery, and persistence must all still run and the brief is marked
-partial. With no evidence admitted, synthesis must not run at all, no brief is produced, no
-candidate cause or recommendation is asserted, and the turn still completes and still persists.
-Separately, a reason must be recorded by the stage that detected it, never inferred later by another
-stage.
+**Tests.** A bound-exhausted turn is the one that ends in a tidy-looking outcome either way: with
+evidence admitted, synthesis, the gate, delivery, and persistence must all still run and the brief
+is marked partial rather than presented as complete. Separately, a reason must be recorded by the
+stage that detected it, never inferred later by another stage.
 
-**Evaluation.** Three of the four controlled degradation cases become runnable: source failure
-against a material and a nonmaterial source, cancellation after evidence, and cancellation before
-evidence (`evaluation.md` §13).
+**Evaluation.** The source-failure degradation cases become runnable, against a material and a
+nonmaterial source (`evaluation.md` §13).
 
 **Observability.** The terminal outcome or execution failure is emitted with its reason, and
 degradation stays visible rather than absorbed.
 
-**Done when.** No terminal status exists outside the design's set, a nonmaterial source failure can
-leave a turn complete with its limitation disclosed, and both cancellation paths produce a completed
-turn.
+**Done when.** No terminal status exists outside the design's set, and a nonmaterial source failure
+can leave a turn complete with its limitation disclosed.
 
 ### 6.4 Commit before delivery
 
@@ -1274,9 +1270,8 @@ representable there, and the first successful commit is what creates the investi
 What remains is a caller and what it would commit. No runtime path invokes the ordering, since
 neither the assembled turn state nor the artifact type exists, so the property holds today only
 where tests drive it directly. The persistence-failure branch has no terminal outcome to resolve
-onto, the no-evidence cancellation path has no artifact whose omitted assessment and brief could be
-shown to be representable, and neither the write nor the terminal outcome is emitted, because the
-record modules carry no instrumentation.
+onto, and neither the write nor the terminal outcome is emitted, because the record modules carry no
+instrumentation.
 
 **Closes.** The commit-before-delivery obligation on both sides of the seam: the ordering
 `status.md` - "Implemented capabilities" records under "Investigation Record port and commit
@@ -1290,8 +1285,7 @@ assembled by 6.3 into the artifact type from 5.2.
 
 **Tests.** The persistence-failure branch is the one that looks identical to success from outside: a
 failed commit must emit a failed execution, leave no completed turn, and never report the turn as
-completed. The no-evidence cancellation path commits an artifact carrying neither assessment nor
-brief, and that omission must be representable rather than a validation error.
+completed.
 
 **Evaluation.** Commit-before-terminal ordering and its persistence-failure branches become
 deterministic results the evaluation layer aggregates (`evaluation.md` §13).
@@ -1312,9 +1306,9 @@ verify and measure. Nothing here adds investigative behavior, and no decision be
 may be taken in it.
 
 **Definition of done.** Two request shapes exist and no others: a streaming request that owns a
-turn, and ordinary requests that do not. Activity is visible while a turn runs, cancellation reaches
-the active request, follow-ups and handoff summaries are answered from retained state, and one
-screen presents intake, activity, the brief, and one expandable details area.
+turn, and ordinary requests that do not. Activity is visible while a turn runs, follow-ups and
+handoff summaries are answered from retained state, and one screen presents intake, activity, the
+brief, and one expandable details area.
 
 ### 7.1 The streaming turn request and activity projection
 
@@ -1376,106 +1370,53 @@ turn exists (`runtime-and-deployment.md` §16, check 5).
 **Done when.** One request owns one turn from creation to terminal outcome, no work continues after
 it returns, and no path can reattach to a running turn.
 
-### 7.2 Ordinary requests: normalization, follow-up, handoff, and read
+### 7.2 Ordinary requests: follow-up, handoff, and read
 
-**Makes true.** Free text is normalized into the same structured form selection produces, with at
-most one clarification, before any turn exists; and a later engineer message is classified into one
-of five kinds and handled from retained state.
+**Makes true.** A later engineer message is classified into one of two kinds and handled from
+retained state.
 
-**Requires.** 7.1: the turn surface a normalized incident opens. 5.2: the retained state a
-follow-up, handoff, and read answer from. 4.1: the lower-cost deployment normalization routes to.
+**Requires.** 7.1: the turn surface a selected incident opens. 5.2: the retained state a follow-up,
+handoff, and read answer from.
 
-**Closes.** `status.md` - "Partially implemented and missing capabilities": "Free-text
-normalization and clarification," missing entirely because only predefined intake exists today with
-no clarification path of any kind; and "Follow-up, redirect, supplied context, handoff," missing its
-classifier and its retained-state answering, though the five-kind interaction type already exists in
-`intake/contracts.py`.
+**Closes.** `status.md` - "Partially implemented and missing capabilities": "Follow-up, redirect,
+supplied context, handoff," missing its classifier and its retained-state answering, though an
+interaction-kind type already exists in `intake/contracts.py`. That row names a five-kind
+vocabulary the design no longer carries; what this slice closes is the question and
+handoff-summary half of it, and the row's remaining kinds have no subject.
 
 **Retires.** Nothing here. "Old intent taxonomy and known-issue fast path," which this
 classification replaces, was retired in 6.1 with the routing stage it lived in.
 
-**Shape.** New. Normalization is the one model task the interaction interface holds, on the
-lower-cost deployment (D-002), and its proposal is admitted by deterministic code against the
-normalized incident context contract. Classification is established from the request shape or the
-explicit interface action, never by analyzing prose and never by a model call, and an ambiguous
-ordinary follow-up defaults to a question. The handoff summary is a deterministic projection of
-retained state that calls no model.
+**Shape.** New. The interaction interface holds no model task at all: classification is established
+from the request shape or the explicit interface action, never by analyzing prose and never by a
+model call, and an ambiguous ordinary follow-up defaults to a question. The handoff summary is a
+deterministic projection of retained state that calls no model.
 
-**Blocked detail.** `status.md` - "Known gaps and unresolved issues" records the stateless
-clarification token as the one open question with no decision record: a short-lived normalization
-token would need an explicit signing, expiry, and payload contract, and a simpler resubmission path
-is preferred where it meets the requirement. That is still a decision for the design set, not for
-this plan.
-
-An earlier revision of `status.md` also blocked this slice on "Normalized incident context fields,"
-the need for one typed contract for normalized input. The current document contradicts that:
+An earlier revision of `status.md` blocked this slice on "Normalized incident context fields," the
+need for one typed contract for normalized input. The current document contradicts that:
 `decisions.md` D-007 is accepted, and "Implemented capabilities," "Predefined intake normalization"
-records the typed, frozen normalized incident context as built. That half of the block is closed.
+records the typed, frozen normalized incident context as built. That block is closed.
 
 **Tests.** Follow-up answer validation is the check that reads exactly like a valid restatement when
 it fails: every cited reference must resolve within retained investigation state, and the answer
 must introduce no new evidence, no new candidate cause, no new conclusion, and no recommendation
 presented as coming from retrieved guidance. It is not a grounding check, and the four-check gate
-must stay exclusive to completed-turn delivery. The at-most-one-clarification limit must be enforced
-in code the model cannot reach.
+must stay exclusive to completed-turn delivery.
 
 **Evaluation.** The change-time cadence becomes runnable from the engineer-facing entry point rather
 than from a harness.
 
 **Observability.** The interaction interface emits intake and the classification outcome.
 
-**Done when.** No turn identity or durable state exists during clarification, a second clarification
-is impossible, and a follow-up question, a handoff summary, and an investigation read all answer
-from retained state without opening a turn.
-
-### 7.3 Cancellation
-
-**Makes true.** A small ordinary request signals the active turn, which stops at its next safe
-boundary.
-
-**Requires.** 7.1: the streaming request it signals. 6.3: cancellation on both paths producing a
-completed turn.
-
-`status.md` - "Partially implemented and missing capabilities" records "Explicit cancellation
-signal" as partial: disconnect detection exists, the explicit signal does not. The partial half is
-not what this slice names.
-The turn checks whether the client has left before each further unit of work and abandons the turn
-by returning; nothing survives, because nothing on that path persists at all. That is the floor this
-slice signals into.
-
-The explicit cancellation signal remains, entirely. No request surface exists that would carry one,
-the screen offers no control that would send one, and there is no map from active turn identity to a
-signal. The difference bounds what can be shown: a departed client is observed between units of
-work, so cancellation reaching the operation rather than only the stage boundary is not yet
-demonstrable, and a completed turn on both paths waits on 6.3.
-
-**Closes.** `status.md` - "Partially implemented and missing capabilities", "Explicit cancellation
-signal": the disconnect-detection half it already records, together with the signalling half this
-slice adds, closing the request surface, the client control, and the map from turn identity to a
-signal that row lists as missing.
-
-**Retires.** Nothing; the cancellation floor it signals was built in 6.3.
-
-**Shape.** New, and deliberately minimal: one in-memory map from active turn identity to a
-cancellation signal, alive only while the streaming request is, not durable, not a job registry, and
-not used for recovery or reattachment.
-
-**Tests.** The property worth asserting is that cancellation reaches the operation, not only the
-stage boundary, and that a lost connection with the execution abandoned persists nothing.
-
-**Deployment verification.** Both cancellation paths are environment-independent and stay owned by
-deterministic tests rather than by the deployed suite (`runtime-and-deployment.md` §16).
-
-**Done when.** Cancelling produces a completed turn on both paths, and the signal map disappears on
-restart without leaving anything behind.
+**Done when.** A follow-up question, a handoff summary, and an investigation read all answer from
+retained state without opening a turn, and no other interaction kind is representable.
 
 ### 7.4 The engineer-facing surface
 
 **Makes true.** One screen carries intake and follow-up control, a compact live activity feed, the
 delivered brief as the dominant element, and one expandable details area.
 
-**Requires.** 7.1: the stream and brief it renders. 7.2: follow-up and handoff. 7.3: the
-cancellation control.
+**Requires.** 7.1: the stream and brief it renders. 7.2: follow-up and handoff.
 
 `status.md` - "Partially implemented and missing capabilities" records "Brief rendering in the
 client" as partial. One same-origin page carries predefined intake, a compact activity
@@ -1486,7 +1427,7 @@ What remains includes the dominant element. The page handles the identity, activ
 events and holds no branch for the brief, so a rendered brief arrives and is visible only inside the
 details area while the brief region shows a transport message instead; the projection rule this
 slice asserts against the presentation path consequently has nothing to assert against yet. No
-follow-up, handoff, or cancellation control exists. Every retirement is outstanding: the old console
+follow-up or handoff control exists. Every retirement is outstanding: the old console
 is still served with its approval controls and its numeric confidence rendering, the hand-rolled
 role model still guards the superseded endpoints, and built-in authentication is absent, which
 leaves the caller-authentication check without a subject.
@@ -1591,8 +1532,8 @@ endpoints its async and decision legs called. The current document carries no co
 remains this slice's to perform, sitting after the streaming and persistence slices as before.
 
 **Shape.** Rewrite of the smoke script into the eight checks `runtime-and-deployment.md` §16 names.
-Cancellation on both paths, a lost request leaving nothing persisted, structured-query rejection,
-and protocol parity stay with the deterministic tests and are deliberately not repeated here.
+A lost request leaving nothing persisted, structured-query rejection, and protocol parity stay with
+the deterministic tests and are deliberately not repeated here.
 
 **Evaluation.** The deployed verification results become one of the three sources an evaluation run
 aggregates (`evaluation.md` §3).
@@ -1776,19 +1717,16 @@ it. Each named module retires in exactly one slice.
 
 An earlier revision of `status.md`, in its "Implementation Clarifications Exposed by the
 Repository" section, recorded six items blocking a slice from being fully specified; the current
-document carries no counterpart section. Two survive as open: D-004 and the stateless clarification
-token, both now recorded in `status.md` - "Known gaps and unresolved issues". The other four are
-closed:
-`decisions.md` D-006, D-007, D-008, and D-009 are accepted. None is decided here: each open item is
-settled in its owning slice or by a small decision update before code invents an incompatible
-answer.
+document carries no counterpart section. One survives as open: D-004, recorded in `status.md` -
+"Known gaps and unresolved issues". The others are closed: `decisions.md` D-006, D-007, D-008, and
+D-009 are accepted. None is decided here: each open item is settled in its owning slice or by a
+small decision update before code invents an incompatible answer.
 
 | Blocks | What is unsettled | Item |
 | --- | --- | --- |
 | 2.3 | One owner for reference prefixes, keys, and parsing; the existing frozen grammar is a candidate to evaluate rather than copy | "Evidence and knowledge reference encoding" |
 | 5.1 | The explicit library inspection and the final decision record, which repository evidence answers much of but does not close | "D-004 evidence" |
 | 7.2 | One typed contract for normalized input; the current `Alert` shape is evidence, not automatic authority | "Normalized incident context fields" |
-| 7.2 | The signing, expiry, and payload rules for a short-lived normalization token, where a simpler resubmission path does not meet the requirement | "Stateless clarification token" |
 | 9.2 | A physical repository location for the report, fixtures, and historical runs, which must stay simple | "Evaluation artifact storage" |
 | 1.2 | The scenario selections, which wait on the required corpus repairs and the coverage audit | "D-006 evidence" |
 
