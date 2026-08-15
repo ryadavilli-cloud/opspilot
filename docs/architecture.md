@@ -29,8 +29,8 @@ this section is where requirements meet structure, and the rest of this document
 
 - **The product is a brief, not a report.** Each bounded investigation turn produces one concise,
   evidence-supported brief that an engineer can act on immediately (FR-9, FR-11).
-- **Interaction is multi-turn.** The shape must let an engineer question, redirect, and supply
-  evidence between turns without reopening a turn that has already completed (FR-6, FR-7, FR-8).
+- **Interaction continues after delivery.** The shape must let an engineer question a completed
+  turn's result from retained state without reopening the turn that produced it (FR-6, FR-8).
 - **Specialization must be purposeful and visible.** Orchestration, evidence gathering, and
   synthesis are genuinely different responsibilities and are separated so each can be traced and
   evaluated on its own (FR-77 to FR-79, FR-80).
@@ -86,8 +86,8 @@ participates in a live turn.
 ```text
                                     Engineer
                                        │
-             questions, redirects,     │     brief, handoff summary
-             supplied evidence         ▼
+             questions                 │     brief, handoff summary
+                                       ▼
                        ┌──────────────────────────────┐
                        │ Engineer Interaction Interface │
                        └──────────────┬───────────────┘
@@ -156,8 +156,7 @@ When a turn's work becomes durable, and how it is stored, belong to `system-desi
 `runtime-and-deployment.md`.
 
 An **investigation** is the durable identity for one incident under study. A **turn** is one bounded
-adaptive gathering-and-synthesis cycle that ordinarily produces one brief, except the no-evidence
-cancellation case in `workflow-design.md` §5, which produces none. A **live session** is the ephemeral
+adaptive gathering-and-synthesis cycle that produces one brief. A **live session** is the ephemeral
 conversational surface over an investigation and is not separately persisted. The persisted
 relationship is one investigation to its completed turns. A restart may lose the in-flight state of
 the current turn; everything already completed remains available.
@@ -244,12 +243,9 @@ attempt that cannot produce, validate, persist, and deliver a trustworthy brief 
 execution, which creates no completed turn and is not another turn outcome. There is no approval,
 editing, publication, or finalization stage between synthesis and delivery.
 
-Afterwards the engineer may question the result, redirect the investigation toward a named
-candidate, or supply additional evidence. A question or a handoff-summary request is answered from
-what the Investigation Record already holds. A redirect or supplied evidence seeds a new bounded
-turn, which ordinarily produces its own brief, except the no-evidence cancellation case in
-`workflow-design.md` §5, which produces none; nothing reaches back into a turn that is already
-running.
+Afterwards the engineer may question the result. A question or a handoff-summary request is answered
+from what the Investigation Record already holds, and nothing reaches back into a turn that is
+already running.
 Detailed routing, bounds, and degradation behavior belong to `workflow-design.md`.
 
 ---

@@ -176,7 +176,7 @@ evaluation:
 A model proposing any of the above is making a request, evaluated by the code that owns it (NFR-10).
 
 **Untrusted content is data, never instruction.** Retrieved passages, source results, incident text,
-and engineer-supplied context are untrusted (`architecture.md` §5, `data-and-evidence.md` §2, §8).
+and engineer follow-up text are untrusted (`architecture.md` §5, `data-and-evidence.md` §2, §8).
 The separation MUST be structural: untrusted content enters a prompt as clearly delimited data, and
 the authority to act on it lives in code the content cannot reach. A prompt instruction to ignore
 malicious text MAY be added, but it is not a control and MUST NOT be the only defense.
@@ -339,7 +339,7 @@ is a live one rather than a formality.
 caller-supplied field as establishing who the caller is, and MUST NOT accept an unauthenticated
 request by omission.
 
-**Untrusted content.** Incident text, engineer-supplied context, retrieved passages, and source
+**Untrusted content.** Incident text, engineer follow-up text, retrieved passages, and source
 output are data and never instructions (§5). The authority to act on them lives in code the content
 cannot reach.
 

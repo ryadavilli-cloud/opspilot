@@ -193,13 +193,14 @@ class GateRouting(StrEnum):
 
     PASSED = "passed"
     CORRECT = "correct"
-    DEGRADE = "degrade"
+    FAILED_EXECUTION = "failed_execution"
 
 
 def route_grounding_result(result: GroundingResult, allowance: CorrectionAllowance) -> GateRouting:
     """A pass always proceeds; the gate validates the outcome shape, it does not choose one. A
     failure spends the allowance if it is still unspent and asks for one correction; a failure
-    arriving with the allowance already spent degrades directly (`workflow-design.md` §7)."""
+    arriving with the allowance already spent makes the attempt a failed execution, which delivers
+    no brief, creates no completed turn, and persists nothing (`workflow-design.md` §7)."""
     if result.passed:
         return GateRouting.PASSED
-    return GateRouting.CORRECT if allowance.spend() else GateRouting.DEGRADE
+    return GateRouting.CORRECT if allowance.spend() else GateRouting.FAILED_EXECUTION

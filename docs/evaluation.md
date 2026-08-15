@@ -15,8 +15,8 @@ setting targets later.
 
 It does not own what the system must do or mean. Required behavior and scenario classes belong to
 `requirements.md`. Evidence meaning, citation roles, assessment and brief semantics, and tool-result
-vocabulary belong to `data-and-evidence.md`. Outcome assignment, cancellation, bounds, and
-failed-execution behavior belong to `workflow-design.md`. Deployed smoke verification and telemetry
+vocabulary belong to `data-and-evidence.md`. Outcome assignment, bounds, and failed-execution
+behavior belong to `workflow-design.md`. Deployed smoke verification and telemetry
 realization belong to `runtime-and-deployment.md`. Settled choices such as the judge deployment and
 the exact retrieval method belong to `decisions.md`.
 
@@ -43,9 +43,7 @@ gate.
 incident and objective, admitted evidence, retrieved knowledge, assessment and delivered brief where
 produced, limitations, stop reason, outcome, trace, and usage. Isolated model messages are not the
 product and are not scored as though they were. Subsystem checks may still exercise retrieval,
-structured query, tools, and the protocol boundary directly where a requirement demands it. A turn
-cancelled before any evidence was admitted carries neither an assessment nor a brief; that exception
-belongs to `workflow-design.md`.
+structured query, tools, and the protocol boundary directly where a requirement demands it.
 
 **A failed execution is not a completed turn.** It is recorded as such and is never scored as though
 it had produced an investigation result. What a failed execution is belongs to
@@ -77,9 +75,6 @@ runtime component, no service, no queue, and no database of its own.
 | Golden scenario | What a correct investigation of one authored incident must establish | Authored alongside the corpus (§5) |
 | Evaluation run | One execution of a defined scenario set against one configuration, with its metadata and per-scenario artifacts | Produced by the evaluation suite (§15) |
 | Evaluation report | The compact human-readable result of one run | Produced by the evaluation suite (§18) |
-
-A turn cancelled before any evidence was admitted produces neither an assessment nor a brief; that
-exception belongs to `workflow-design.md`.
 
 **Evaluation artifacts reference completed turns, never the reverse.** Evaluation runs offline, after
 the turns it examines already exist, so an evaluation artifact records its own run identity together
@@ -439,28 +434,24 @@ Recommendation prose is not scored stylistically.
 
 ---
 
-## 13. Degradation, Cancellation, and Failed Execution
+## 13. Degradation and Failed Execution
 
 These are demonstrated using existing scenarios with controlled source overrides, not by authoring
 new incidents. Fault injection happens at the capability adapter boundary; there is no chaos-testing
 platform.
 
-Four controlled cases suffice. Each exercises a path the others do not:
+Two controlled cases suffice. Each exercises a path the other does not:
 
 | Case | What it must show |
 | --- | --- |
 | Source failure, run against a material and a nonmaterial source | The failure is visible and no observation is fabricated; a nonmaterial failure leaves the turn complete with the limitation disclosed, and a material one yields partial or inconclusive with the missing evidence named rather than a guess (NFR-38) |
-| Engineer cancellation after evidence was admitted | A partial brief is returned where synthesis, delivery, and persistence remain possible (FR-46, FR-40) |
-| Engineer cancellation before any evidence was admitted | The turn completes inconclusive with no brief synthesized, and no candidate cause or recommendation is asserted (FR-46, FR-41) |
 | Bounded termination | The turn stops within bounds and reports its stop reason honestly (FR-53, FR-88, NFR-39) |
 
 The two source-failure branches are one case because they exercise one path: a limitation is
-recorded, nothing is fabricated, and the outcome follows materiality. The two cancellation branches
-are two cases because they do not: one runs synthesis, the gate, and delivery, and the other skips
-synthesis entirely. Both cancellation paths, the property that a lost or abandoned attempt persists
-nothing, and commit-before-terminal ordering with its persistence-failure branches are owned as
-deterministic tests (`code-guidelines.md`); this suite aggregates those results and adds only the
-controlled source-override runs.
+recorded, nothing is fabricated, and the outcome follows materiality. The property that a lost or
+abandoned attempt persists nothing, and commit-before-terminal ordering with its persistence-failure
+branches, are owned as deterministic tests (`code-guidelines.md`); this suite aggregates those
+results and adds only the controlled source-override runs.
 
 Separately, a failed execution must not be scored as a completed turn (`workflow-design.md`). Where
 a trustworthy brief remains possible the turn completes with an outcome matching what its evidence

@@ -1127,7 +1127,8 @@ but has no row for the model, so this slice carries it inside "Explicit in-proce
 That is a gap between the plan and the register.
 
 **Retires.** What `status.md` - "Temporary legacy and coexisting implementation" records under
-"Graph orchestration and its nodes, routers, and checkpointer" with its three dependencies,
+"Superseded graph implementation, its nodes, routers, and checkpointer" with its checkpointer
+dependency,
 together with the `postmortem` output path, the `hitl_gate` and `apply_edit` node members of the
 approval surface, and the severity-scaled sufficiency stop rule and old intent taxonomy the
 "Report and claim model" row carries. The tests that die with these subjects are
@@ -1155,6 +1156,12 @@ survives from that implementation is the dependency the new graph compiles again
 Continuation conditions and bound enforcement remain application code covered directly by tests,
 which is the trade-off D-001 accepts.
 
+The objective stage carries the one deliberately routed model task (FR-105). Interpreting the
+selected incident into what the turn is trying to establish reads the incident's structured fields,
+touches no evidence, and produces no assessment, so it is the one task carrying the task label that
+selects the cheaper of the two deployments 4.1 provisions. Selection is by that label alone: no
+severity input, no confidence input, and no fallback chain.
+
 **Tests.** The bound properties are the ones a passing happy path hides. Every loop must be bounded
 by two independent conditions, so a construct whose continuation depends only on model output must
 be impossible to write; the Supervisor must authorize against computable conditions alone, without
@@ -1167,13 +1174,14 @@ further-evidence demonstration the coverage audit selected becomes runnable (`ev
 §4).
 
 **Observability.** The Supervisor emits turn start and objective, each assignment, every
-continuation decision with its reason, budget consumption, and the stop reason. Component dispatch
-is one of the four instrumented boundaries and carries the investigation and turn identity into
-everything below it.
+continuation decision with its reason, budget consumption, and the stop reason. The objective call
+emits its task label and the deployment that label selected, which is where the routing decision
+becomes visible rather than inferred (FR-105). Component dispatch is one of the four instrumented
+boundaries and carries the investigation and turn identity into everything below it.
 
 **Done when.** A turn runs its five stages in process against an authored incident, no agent can
-widen its own budget, at most one further-evidence cycle can occur, and no checkpoint, resume, or
-approval path exists anywhere.
+widen its own budget, at most one further-evidence cycle can occur, the objective call records the
+task label and deployment it used, and no checkpoint, resume, or approval path exists anywhere.
 
 ### 6.2 The grounding gate and the correction allowance
 
@@ -1187,10 +1195,9 @@ resolves. 4.1: the one corrective call.
 correction allowance, completed outcomes": the four checks, the shared correction allowance, and
 no artifact after persistent failure, whose terminal-shape half closes in 6.3.
 
-**Retires.** The one-check gate routing to escalation and the duplicated citation grounding,
-which `status.md` - "Temporary legacy and coexisting implementation" records under "Two-policy
-grounding"; the two occurrences become one gate at one stage over one object. The approval-routing
-cases in the guardrails test go with them.
+**Retires.** The one-check gate routing to escalation, whose citation half now delegates to the
+gate's own reference-resolution primitive, so what remains to retire is the escalation routing
+around it and the approval-routing cases in the guardrails test.
 
 **Shape.** Rewrite. The single check that exists is a real ancestor of reference resolution, and it
 survives as that check's substance; the gate around it is new, and its routing to a terminal status
@@ -1378,14 +1385,16 @@ retained state.
 **Requires.** 7.1: the turn surface a selected incident opens. 5.2: the retained state a follow-up,
 handoff, and read answer from.
 
-**Closes.** `status.md` - "Partially implemented and missing capabilities": "Follow-up, redirect,
-supplied context, handoff," missing its classifier and its retained-state answering, though an
-interaction-kind type already exists in `intake/contracts.py`. That row names a five-kind
-vocabulary the design no longer carries; what this slice closes is the question and
-handoff-summary half of it, and the row's remaining kinds have no subject.
+**Closes.** `status.md` - "Partially implemented and missing capabilities": "Follow-up and
+handoff," missing its classifier and its retained-state answering, though an interaction-kind type
+already exists in `intake/contracts.py`.
 
-**Retires.** Nothing here. "Old intent taxonomy and known-issue fast path," which this
-classification replaces, was retired in 6.1 with the routing stage it lived in.
+**Retires.** The interaction-kind members beyond the two the classifier produces, which
+`status.md` - "Partially implemented and missing capabilities" records under "Follow-up and
+handoff" as carried by the type in `intake/contracts.py`. The type narrows to what the classifier
+can produce in the same change, so no member survives without a path that reaches it. The old intent
+taxonomy and its known-issue fast path, which this classification replaces, were retired in 6.1 with
+the routing stage they lived in.
 
 **Shape.** New. The interaction interface holds no model task at all: classification is established
 from the request shape or the explicit interface action, never by analyzing prose and never by a

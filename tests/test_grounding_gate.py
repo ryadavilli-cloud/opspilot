@@ -395,9 +395,11 @@ def test_a_failure_with_an_unspent_allowance_routes_to_correct_and_spends_it():
     assert allowance.spent is True
 
 
-def test_a_failure_with_an_already_spent_allowance_routes_to_degrade():
+def test_a_failure_with_an_already_spent_allowance_is_a_failed_execution():
     allowance = CorrectionAllowance()
     allowance.spend()  # spent on an earlier structural failure, in the real turn ordering
     failing = _failing(_ALL_PASSING, CheckName.REFERENCE_RESOLUTION, "unresolved")
 
-    assert route_grounding_result(GroundingResult(checks=failing), allowance) is GateRouting.DEGRADE
+    assert route_grounding_result(GroundingResult(checks=failing), allowance) is (
+        GateRouting.FAILED_EXECUTION
+    )
