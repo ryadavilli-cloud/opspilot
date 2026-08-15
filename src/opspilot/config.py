@@ -58,9 +58,11 @@ def _dir_env(var: str, default: Path) -> Path:
 KB_DIR = _dir_env("OPSPILOT_KB_DIR", _REPO_ROOT / "data" / "kb")
 DISTRACTOR_DIR = _dir_env("OPSPILOT_DISTRACTOR_DIR", _REPO_ROOT / "data" / "distractors")
 
-# Retrieval backend: `hybrid` (dense + BM25, local/eval) or `bm25` (lexical-only, the runtime
-# image default — no embedding model download). Selected by env; validated by the factory.
-RETRIEVAL_BACKEND = _env("OPSPILOT_RETRIEVAL_BACKEND", "hybrid")
+# The one retrieval realization (D-003): Cosmos vector search + in-process lexical scoring, fused by
+# reciprocal rank fusion. Not env-selectable, since there is no alternative backend to choose
+# between: kept as a named constant only because `ToolService.retrieval_backend` reports it for
+# readiness diagnostics.
+RETRIEVAL_BACKEND = "cosmos"
 
 
 # --------------------------------------------------------------------------------------
@@ -129,9 +131,8 @@ IMPLEMENTATION = _env("OPSPILOT_IMPLEMENTATION", "deterministic")
 
 
 # --------------------------------------------------------------------------------------
-# Retrieval / embedding models
+# Reranking (unreachable: no caller builds `retrieval.reranker.Reranker`, see D-003)
 # --------------------------------------------------------------------------------------
-EMBEDDING_MODEL = "BAAI/bge-m3"  # dense + sparse in one model
 RERANKER_MODEL = "BAAI/bge-reranker-v2-m3"
 
 # Depth of the first-stage (hybrid) candidate set handed to the cross-encoder reranker.

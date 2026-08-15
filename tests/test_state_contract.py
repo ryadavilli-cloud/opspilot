@@ -1,32 +1,23 @@
 """State-contract test: the inter-node contract must hold end to end.
 
-Now an integration test: the graph runs real retrieval + deterministic triage/diagnosis, so it
-needs the retrieval extras and runs against real scenarios. LangGraph's inter-node contract is the
-silent-failure point, so we validate the full flow produces a report satisfying the Pydantic
-contract on both the novel (diagnose) and known-issue (fast-path) routes.
+An integration test: the graph runs real retrieval (over a fake Cosmos container, so no live Azure
+dependency) plus deterministic triage/diagnosis, against real scenarios. LangGraph's inter-node
+contract is the silent-failure point, so we validate the full flow produces a report satisfying the
+Pydantic contract on both the novel (diagnose) and known-issue (fast-path) routes.
 """
 
-import sys
-from pathlib import Path
+from fake_knowledge import knowledge_retriever
+from fake_operational_records import corpus_records
 
-import pytest
-
-pytest.importorskip("sentence_transformers")
-pytest.importorskip("rank_bm25")
-
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-
-from fake_operational_records import corpus_records  # noqa: E402
-
-from opspilot.contracts import IncidentReport  # noqa: E402
-from opspilot.graph import _initial_state, build_graph, invoke_auto_approving  # noqa: E402
-from opspilot.tools.service import ToolService  # noqa: E402
+from opspilot.contracts import IncidentReport
+from opspilot.graph import _initial_state, build_graph, invoke_auto_approving
+from opspilot.tools.service import ToolService
 
 
 def _run(alert: dict) -> dict:
     config = {
         "configurable": {
-            "tool_service": ToolService(corpus_records()),
+            "tool_service": ToolService(corpus_records(), retriever_factory=knowledge_retriever),
             "thread_id": f"state-contract-{alert['incident_id']}",
         }
     }

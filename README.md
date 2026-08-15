@@ -10,7 +10,7 @@ remaining work.
 The code in this repository currently implements an earlier architecture: a LangGraph
 pipeline with a human-in-the-loop approval gate, per-step durable checkpointing, and an
 asynchronous submit/poll job API. It runs end to end (deterministic and LLM-driven
-diagnosis paths, hybrid retrieval, an operator console) and is deployed on Azure, but does
+diagnosis paths, an operator console) and is deployed on Azure, but does
 not yet match the accepted design. See `docs/status.md` for the full reconciliation.
 
 ## Quickstart (local)
@@ -19,9 +19,6 @@ not yet match the accepted design. See `docs/status.md` for the full reconciliat
 uv sync --group dev --group data                  # runtime + dev deps
 uv run pytest -m "not reranker and not llm" -q     # CI-gated test lane
 uv run uvicorn opspilot.api:app --reload           # serve the API (GET /health/live, /health/ready)
-
-uv sync --group eval                               # add the retrieval eval ML stack (sentence-transformers)
-uv run python eval/retrieval_eval.py               # score dense / hybrid / rerank + write the scorecard
 ```
 
 ## Layout

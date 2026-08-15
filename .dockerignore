@@ -1,5 +1,5 @@
-# Keep the build context lean — the image needs pyproject/uv.lock/README, src/, and only the
-# operational runtime data (data/synthetic + data/kb). Everything else is excluded.
+# Keep the build context lean — the image needs only pyproject/uv.lock/README and src/. No corpus
+# data ships in the image: the KB and the operational corpus are both read from Cosmos at runtime.
 .git
 .gitignore
 .venv
@@ -24,15 +24,9 @@ eval
 out.txt
 raw.txt
 
-# Data: only data/synthetic (json corpus) and data/kb (markdown) are packaged by the Dockerfile.
-# Exclude the answer key, distractors, calibration profiles/caches, provenance, and generators —
-# none belong in a deterministic runtime image.
-data/answer_key
-data/distractors
-data/profiles
-data/.rcaeval_cache
-data/provenance.md
-data/synthetic/*.py
+# Data: nothing under data/ is packaged by the Dockerfile. Corpus preparation (scripts/prepare_corpus.py)
+# reads it from a full repository checkout, a separate execution context from the runtime image.
+data
 
 # Secrets / local env
 .env

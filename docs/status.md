@@ -22,7 +22,7 @@ A statement changes only where the repository contradicts it.
 
 ## 1. Current repository baseline
 
-- **Inspected:** branch `normalize-formatting-and-record-landed-work` at `fdd0c86`, 2026-08-13.
+- **Inspected:** branch `worktree-opspilot-session` at `e5f3a93`, 2026-08-15.
 - **Toolchain:** `uv` for everything. Python 3.12.
 - **Enforced on every change:** formatting, linting, strict type checking, tests, and repository
   hygiene, through continuous integration and local hooks. `code-guidelines.md` holds the governing
@@ -70,7 +70,7 @@ Each row below was read in the repository, not inferred from a plan.
 | Brief rendering in the client | Partial | The screen carries intake, the activity feed, a brief region, and one expandable details area. It handles the identity, activity, and closing events and has no branch for the brief, so a rendered brief arrives and is visible only in the details area |
 | Free-text normalization and clarification | Missing | Predefined intake only. No clarification path of any kind exists |
 | Follow-up, redirect, supplied context, handoff | Missing | The five-kind interaction type exists as a type (`intake/contracts.py`). No classifier produces it and no retained-state answering exists |
-| Accepted retrieval | Missing | The superseded lexical, dense, and model-reranker stack is still present (`retrieval/`). Retrieval does not read the prepared knowledge container, and a local embedding model is still loaded |
+| Accepted retrieval | Partial | The superseded lexical, dense, and model-reranker stack is gone (`retrieval/index.py`, `adapters.py`, `factory.py`, `bm25.py`); no local embedding model is loaded anywhere. Retrieval reads the prepared `knowledge` container: dense search via Cosmos `VectorDistance()` over an Azure OpenAI query embedding, an in-process BM25-style lexical scorer over the same category-filtered candidates, and reciprocal rank fusion, over section-level passages carrying the matched text itself rather than a pointer. A request may name its collection or leave it unnamed, in which case routing selects one from the question's shape. Deterministic identifier and time-window promotion after fusion (D-003's reranking step) does not exist yet; the passage budget is not yet the only truncation |
 | Single accepted protocol exposure | Missing | The boundary exposes three superseded capabilities (`get_incident`, `query_logs`, `search_runbooks`, `mcp/server.py`) rather than the one the design names |
 | Further-evidence cycle | Missing | No representation exists anywhere in the source tree, including on the assessment |
 | Categorical evaluation, judge, baselines, report | Missing | Golden scenario records and cassette replay exist as inputs. Scoring is still numeric and gate-shaped |
@@ -128,22 +128,30 @@ composition.
 
 ## 7. Current verification state
 
-Both lanes measured at `fdd0c86`, each run after syncing exactly its own dependency groups.
+Both lanes measured at `e5f3a93`, each run after syncing exactly its own dependency groups.
+No test now depends on the `eval` group: retrieval no longer loads a local embedding or reranker
+model on any path, so Core and Full run the identical, unskipped test set.
 
 | Lane | Command | Result |
 | --- | --- | --- |
-| Core | `uv sync --group dev --group data`; `ruff check .`; `mypy`; `pytest -q -m "not llm"` | lint clean, strict type check clean, **667 passed, 8 skipped, 3 deselected, 1 xfailed** (17.7s) |
-| Full | `uv sync --group dev --group data --group eval`; `pytest -q -m "not reranker and not llm"` | **703 passed, 5 deselected, 1 xfailed** (269.7s) |
+| Core | `uv sync --group dev --group data`; `ruff check .`; `mypy`; `pytest -q -m "not llm"` | lint clean, strict type check clean, **696 passed, 3 deselected, 2 xfailed** (32.3s) |
+| Full | `uv sync --group dev --group data --group eval`; `pytest -q -m "not reranker and not llm"` | **696 passed, 3 deselected, 2 xfailed** (34.2s) |
 
 Formatting is clean repository-wide, and is checked repository-wide rather than over the files a
 change touches. The plan-vocabulary check passes over the whole tree outside `docs/`, excluding the
-superseded modules named in its own exempt list. `az bicep build` compiles.
+superseded modules named in its own exempt list. `az bicep build` was not re-run this pass; no
+`infra/` file changed.
 
-**One disclosed regression carried as an xfail**, the single `xfailed` in both lanes:
-`tests/test_single_agent_gate.py::test_single_agent_beats_the_deterministic_floor`. The corpus
+**Two disclosed regressions carried as xfails**, both in both lanes.
+`tests/test_single_agent_gate.py::test_single_agent_beats_the_deterministic_floor`: the corpus
 repair added metric evidence the deterministic fixed plan sweeps incidentally and the superseded
 planner does not request, so it no longer strictly beats that floor. Its subject is superseded
 machinery, so the resolution is deletion rather than repairing the planner's tool selection.
+`tests/test_single_agent_gate.py::test_single_agent_replay_reproduces_committed_baseline`: the
+retrieval rewrite changed what `search_past_incidents` returns, which the triager's prompt embeds
+verbatim (`triage.py::_render_candidates`), so the recorded cassette's request hashes no longer
+match and replay cannot reach the committed `single_agent` baseline without a live re-recording.
+Its subject is the same superseded planner; re-recording is deferred rather than performed here.
 
 Nothing in the deployed environment was verified in this pass. Sections 5 and 6 carry their own
 inspection dates.
