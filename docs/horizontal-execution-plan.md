@@ -740,7 +740,9 @@ capability. What is added is the working hypothesis as a typed contract that can
 as an admitted observation or as a candidate (`code-guidelines.md` §4), and the proposal shape of
 `workflow-design.md` §5: the unresolved material question, the permitted action, why the answer
 could change the analysis, and the informing knowledge reference where retrieval genuinely
-influenced it.
+influenced it. The role is an ordinary function over turn state, with no orchestration awareness of
+its own: it does not sequence itself, schedule the next stage, or call the RCA Analyst directly,
+which D-001 leaves to the turn controller.
 
 **Tests.** Two trajectory assertions belong here rather than in the evaluation layer, because they
 are properties of this role. Different incidents must take demonstrably different evidence paths,
@@ -839,7 +841,9 @@ fallback pairing case in the composition test.
 **Shape.** Rewrite of the synthesis path into a separate role. The model-proposes and code-admits
 split survives, and so does template rendering; the fused module does not. After this slice no code
 path lets one role both gather and conclude, and the implementation-selection fallback that paired a
-planner with a triager has nothing left to select between.
+planner with a triager has nothing left to select between. Like the Evidence Investigator, the role
+is an ordinary function over turn state: it does not sequence itself, schedule the next stage, or
+call the Evidence Investigator directly, which D-001 leaves to the turn controller.
 
 **Tests.** The assertion that carries the design's weight is that the model proposes and code
 authorizes: a synthesis result must be parsed and structurally admitted before anything reads it,
@@ -1065,8 +1069,9 @@ the turn that opens it.
 Everything else this slice names remains. There is no stage sequence, no Supervisor owning the
 objective or authorizing continuation against computable conditions, no back-edge, and no
 enforcement of the six bound mechanisms as a set rather than as scattered local limits. Every
-retirement is outstanding: the graph build with its nodes and routers, the checkpointer stack and
-its dependency, and the old intent taxonomy and its known-issue path are all still present. The
+retirement is outstanding: the superseded graph implementation with its nodes and routers, the
+checkpointer stack and its dependency, and the old intent taxonomy and its known-issue path are all
+still present. The
 divergence recorded below discharges the container half of the checkpointer entry; the code half
 stands.
 
@@ -1100,11 +1105,13 @@ the code and the dependency: `checkpoint.py`, the `langgraph-checkpoint-sqlite` 
 msgpack allowlist, and `test_checkpointer.py`. The "(Bicep + live)" half of that register entry is
 discharged.
 
-**Shape.** Rewrite. D-001 settles that the turn is an explicit state machine in ordinary application
-code with no orchestration framework, graph runtime, or checkpointing feature, so the graph build,
-its conditional edges, its node bodies, and the checkpointer they were wired to are replaced rather
-than migrated. Stage transitions, continuation conditions, and bound enforcement become hand-written
-code covered directly by tests, which is the trade-off D-001 accepts.
+**Shape.** Rewrite. D-001 settles that the turn is an explicit five-stage state machine expressed as
+a compiled graph over typed turn state, running in one process. The checkpointer stack and its
+dependency retire; the graph build does not. The superseded graph implementation and its nodes are
+still replaced rather than migrated, so its conditional edges and node bodies are rewritten, but what
+survives from that implementation is the dependency the new graph compiles against, not the code.
+Continuation conditions and bound enforcement remain application code covered directly by tests,
+which is the trade-off D-001 accepts.
 
 **Tests.** The bound properties are the ones a passing happy path hides. Every loop must be bounded
 by two independent conditions, so a construct whose continuation depends only on model output must

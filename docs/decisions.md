@@ -42,21 +42,22 @@ belongs to `status.md`; implementation sequence belongs to `execution-plan.md`.
 
 **Status:** Accepted
 
-**Decision.** The turn executes as an explicit in-process state machine written in ordinary
-application code. No orchestration framework, graph runtime, durable-execution library, or workflow
-engine is adopted, and no checkpointing or replay feature is used.
+**Decision.** The turn executes as an explicit five-stage state machine with one bounded back-edge,
+expressed as a compiled graph over typed turn state, running entirely in one process. The graph
+compiles without a checkpointer. Stage roles are ordinary functions over turn state; no agent
+abstraction, chain composition, or tool-binding layer from the runtime is adopted. Durable
+execution, checkpointing, replay, and pause or resume stay outside the design.
 
-**Why.** The accepted flow is five stages with one bounded back-edge, all inside one process, with
-budgets that ordinary code already enforces. A framework would add a dependency and a second
-execution model without enforcing anything the code cannot, and the durable-execution features that
-justify such libraries are precisely the ones the design has removed.
+**Why.** Five stages and one conditional edge is the shape a graph expresses directly, so the
+sequence is declared rather than assembled. Node-level streaming and a rendered view of the flow
+come from the runtime instead of being built. Turn state stays typed and owned by application code.
 
-**Accepted trade-off.** Stage transitions, continuation conditions, and bound enforcement are
-hand-written and must be covered directly by tests rather than inherited from a library. There is no
-framework-provided visualization or replay of a past run; reconstruction comes from telemetry.
+**Accepted trade-off.** Continuation conditions and bound enforcement remain application code and
+need direct test coverage; the runtime enforces neither. A dependency and its state model sit in the
+turn's execution path.
 
-**Rejected.** A graph orchestration framework, on the grounds that adopting one to demonstrate
-framework usage would import durable-execution machinery the design forbids.
+**Rejected.** Durable execution, checkpointing, replay, pause or resume. Framework-supplied agent
+abstractions and chain composition.
 
 **Applies to.** `workflow-design.md` — "Investigation Stages"; `system-design.md` — "Technology
 Responsibility Map"; FR-84, FR-85.
