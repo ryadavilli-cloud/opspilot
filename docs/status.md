@@ -22,7 +22,7 @@ A statement changes only where the repository contradicts it.
 
 ## 1. Current repository baseline
 
-- **Inspected:** branch `worktree-opspilot-session` at `e5f3a93`, 2026-08-15.
+- **Inspected:** branch `main` at `f47c5f5`, 2026-08-15.
 - **Toolchain:** `uv` for everything. Python 3.12.
 - **Enforced on every change:** formatting, linting, strict type checking, tests, and repository
   hygiene, through continuous integration and local hooks. `code-guidelines.md` holds the governing
@@ -70,7 +70,7 @@ Each row below was read in the repository, not inferred from a plan.
 | Brief rendering in the client | Partial | The screen carries intake, the activity feed, a brief region, and one expandable details area. It handles the identity, activity, and closing events and has no branch for the brief, so a rendered brief arrives and is visible only in the details area |
 | Free-text normalization and clarification | Missing | Predefined intake only. No clarification path of any kind exists |
 | Follow-up, redirect, supplied context, handoff | Missing | The five-kind interaction type exists as a type (`intake/contracts.py`). No classifier produces it and no retained-state answering exists |
-| Accepted retrieval | Partial | The superseded lexical, dense, and model-reranker stack is gone (`retrieval/index.py`, `adapters.py`, `factory.py`, `bm25.py`); no local embedding model is loaded anywhere. Retrieval reads the prepared `knowledge` container: dense search via Cosmos `VectorDistance()` over an Azure OpenAI query embedding, an in-process BM25-style lexical scorer over the same category-filtered candidates, and reciprocal rank fusion, over section-level passages carrying the matched text itself rather than a pointer. A request may name its collection or leave it unnamed, in which case routing selects one from the question's shape. Deterministic identifier and time-window promotion after fusion (D-003's reranking step) does not exist yet; the passage budget is not yet the only truncation |
+| Accepted retrieval | Partial | The superseded local dense stack is gone (`retrieval/index.py`, `adapters.py`, `factory.py`, `bm25.py`); no local embedding model is loaded on any path. Retrieval reads the prepared `knowledge` container: dense search via Cosmos `VectorDistance()` over an Azure OpenAI query embedding, an in-process BM25-style lexical scorer over the same category-filtered candidates, and reciprocal rank fusion, over section-level passages carrying the matched text itself rather than a pointer. A request may name its collection or leave it unnamed, in which case routing selects one from the question's shape. Deterministic identifier and time-window promotion after fusion (D-003's reranking step) does not exist yet; the passage budget is not yet the only truncation. The model reranker is still in the tree and still configured (`retrieval/reranker.py`, `CrossEncoder`, `RERANKER_MODEL`, `RERANK_CANDIDATES`, the `reranker` pytest marker, and `sentence-transformers` in the `eval` dependency group), now with no caller anywhere in `src/`, `tests/`, or `eval/` |
 | Single accepted protocol exposure | Missing | The boundary exposes three superseded capabilities (`get_incident`, `query_logs`, `search_runbooks`, `mcp/server.py`) rather than the one the design names |
 | Further-evidence cycle | Missing | No representation exists anywhere in the source tree, including on the assessment |
 | Categorical evaluation, judge, baselines, report | Missing | Golden scenario records and cassette replay exist as inputs. Scoring is still numeric and gate-shaped |
@@ -128,14 +128,14 @@ composition.
 
 ## 7. Current verification state
 
-Both lanes measured at `e5f3a93`, each run after syncing exactly its own dependency groups.
+Both lanes measured at `f47c5f5`, each run after syncing exactly its own dependency groups.
 No test now depends on the `eval` group: retrieval no longer loads a local embedding or reranker
 model on any path, so Core and Full run the identical, unskipped test set.
 
 | Lane | Command | Result |
 | --- | --- | --- |
-| Core | `uv sync --group dev --group data`; `ruff check .`; `mypy`; `pytest -q -m "not llm"` | lint clean, strict type check clean, **696 passed, 3 deselected, 2 xfailed** (32.3s) |
-| Full | `uv sync --group dev --group data --group eval`; `pytest -q -m "not reranker and not llm"` | **696 passed, 3 deselected, 2 xfailed** (34.2s) |
+| Core | `uv sync --group dev --group data`; `ruff check .`; `mypy`; `pytest -q -m "not llm"` | lint clean, strict type check clean, **705 passed, 3 deselected, 2 xfailed** (17.1s) |
+| Full | `uv sync --group dev --group data --group eval`; `pytest -q -m "not reranker and not llm"` | **705 passed, 3 deselected, 2 xfailed** (16.9s) |
 
 Formatting is clean repository-wide, and is checked repository-wide rather than over the files a
 change touches. The plan-vocabulary check passes over the whole tree outside `docs/`, excluding the
