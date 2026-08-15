@@ -613,6 +613,48 @@ outcome, and the completeness.
 **Done when.** No retrieval result reaches reasoning as an identifier, no local embedding model is
 loaded at runtime, and retrieval reads the container 1.3 populated.
 
+**Complete.** `status.md` - "Partially implemented and missing capabilities" records "Accepted
+retrieval" as Partial: the superseded lexical, dense, and model-reranker stack is gone, no local
+embedding model is loaded anywhere, and retrieval reads the `knowledge` container populated by
+1.3 through dense Cosmos vector search over an Azure OpenAI query embedding, an in-process
+BM25-style lexical scorer over the same category-filtered candidates, and reciprocal rank fusion,
+returning the matched passage text itself rather than a pointer. Collection routing from question
+shape is a real, tested capability of the retriever. That row carries this slice's subject; the
+deterministic reranking (identifier and time-window promotion) this slice explicitly does not own
+is 3.2's, which is why the row stays Partial rather than moving to "Implemented capabilities."
+
+**Four divergences.**
+
+First, collection routing is tested directly against the retriever (`route_category`, and
+`search()` called with no `collection`) rather than through either existing tool, because both
+`search_runbooks` and `search_past_incidents` already name their collections explicitly and are
+each reached from roughly a dozen call sites this slice does not own (the superseded planner,
+`nodes/investigation.py`, `mcp/server.py`, and their tests). Consolidating the two tools into one
+collection-optional capability was considered and rejected: nothing in the accepted design names
+the tool surface's shape, only that a retrieval capability exists (`requirements.md` FR-89) and
+that collection routing exists as a property of retrieval (`system-design.md` §8.3), and
+restructuring the tool surface would have touched every one of those call sites for a change this
+slice's own text scopes to storage and result shape.
+
+Second, results are passage-level rather than aggregated to one hit per document the way the
+superseded retriever's dense/hybrid modes did. This follows from "at most 5 passages supplied for
+reasoning" (D-003) and from the matched-passage requirement itself, but the slice text did not name
+it as a shape change.
+
+Third, the recency-weighted ranking `search_past_incidents` applied to postmortems (boosting more
+recent incidents, `RECENCY_BONUS`) is retired rather than carried forward. It was not part of the
+accepted design; D-003's still-outstanding time-window promotion (3.2) is the reranking behavior
+that reads the requested window, and retaining a second, ungoverned recency heuristic alongside it
+would duplicate that concern outside its owning slice.
+
+Fourth, the Observability obligation this slice's own text states, "the collection, the outcome,
+and the completeness," is satisfied only in part. The outcome and completeness cross the
+capability boundary as they do for every tool (`tools/errors.py::run_tool`); collection is
+observable only structurally, through which of the two tools was called, because retrieval is not
+yet reached from any live turn path (`admit()` and `search_runbooks`/`search_past_incidents` are
+each called only from tests and the superseded graph), so there is no live call site to carry a
+collection attribute explicitly yet. Recorded rather than silently left short.
+
 ### 3.2 Deterministic reranking and retrieval measurement
 
 **Makes true.** Reranking performs real reordering deterministically, and retrieval measurement runs
