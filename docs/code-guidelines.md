@@ -466,6 +466,9 @@ why:
   or an artifact (§9);
 * new operations emit through the telemetry seam with correlation context (§10);
 * deterministic tests cover the behavior added, including how it refuses or degrades (§11);
+* the repository gate passes at repository scope, covering the formatting check, lint, type check,
+  and the deterministic test lane, with no rule, check, or test disabled, excluded, or suppressed to
+  achieve it;
 * the preflight in §15 was carried out where it applies: consumers of any changed shared default
   were identified before the change, deterministic callers received explicit substitutes, and the
   affected tests pass individually, in a different order, and under the exact CI-lane commands;
@@ -515,10 +518,16 @@ Each has a specific failure mode, and each has a defined alternative earlier in 
 | Pinning test order, widening a timeout, or retrying to make an isolation defect pass | The coupling survives, and the next order change reveals it again |
 | Adding a module to the type-checker's strict-override list | The list exempts only code already on its way out, so an addition converts a temporary exemption into a permanent one |
 | Leaving an override entry in place after its module is deleted | The list stops describing the code it exempts, and the exemption outlives the reason for it |
+| Silencing a type error with a broad cast, an escape-hatch annotation, an ignore comment, or a weakened annotation, rather than correcting the implementation or the contract it violates | The typed boundary stops being checkable while continuing to look checked |
+| Weakening, excluding, or suppressing lint, type-check, or test configuration so that new code passes | The gate stops holding for every future change, and the change that removed it is the one that passes |
 | An em-dash on a line a change adds to a Python file | A hyphen, comma, colon, or shorter sentence says the same thing, and the tree converges away from them as files are edited rather than in one sweep |
 
 The override list only shrinks. A change that deletes a listed module deletes its entry in the same
 commit.
+
+A change to lint, type-check, or test configuration requires an independent
+technical justification stated in the change. New code failing an existing rule
+is never that justification.
 
 ## 15. Change Preflight and Test Isolation
 
