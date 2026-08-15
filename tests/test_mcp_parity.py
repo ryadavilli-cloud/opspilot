@@ -11,7 +11,7 @@ from __future__ import annotations
 import asyncio
 import json
 
-import pytest
+from fake_knowledge import knowledge_retriever
 from fake_operational_records import corpus_records
 from mcp.shared.memory import create_connected_server_and_client_session
 
@@ -79,8 +79,6 @@ def test_mcp_rejects_unexposed_tool():
 
 
 def test_parity_retrieval_tool():
-    pytest.importorskip("sentence_transformers")
-    pytest.importorskip("rank_bm25")
-    svc = ToolService(corpus_records())
+    svc = ToolService(corpus_records(), retriever_factory=knowledge_retriever)
     server = build_server(svc)
     _assert_parity(svc, server, "search_runbooks", {"query": "payment authorizations timing out"})

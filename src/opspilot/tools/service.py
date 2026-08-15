@@ -1,11 +1,12 @@
 """ToolService — the in-process tool boundary the agent binds to.
 
 Wires the read-only capabilities in-process over the `operational-records` container (the six
-deterministic capabilities) and a lazily-built `Retriever` (the two retrieval capabilities).
-`call()` is the allowlisted, dispatch-by-name shape an MCP client uses; the MCP server (see
-`opspilot.mcp`) fronts these same methods: transport swap, not a rewrite. The retriever is built
-on first retrieval call and cached; if the retrieval extras aren't installed, the search tools
-return a sanitized `unavailable` rather than breaking the service.
+deterministic capabilities) and a lazily-built `Retriever` over the `knowledge` container (the two
+retrieval capabilities). `call()` is the allowlisted, dispatch-by-name shape an MCP client uses; the
+MCP server (see `opspilot.mcp`) fronts these same methods: transport swap, not a rewrite. The
+retriever is built on first retrieval call and cached; if it cannot be reached (Cosmos or the
+embedding deployment unavailable), the search tools return a sanitized `unavailable` rather than
+breaking the service.
 
 Every capability call carries a deadline this service supplies. The deadline is a bound, so it is
 established by deterministic code and is unreachable from a prompt (`code-guidelines.md` §7): a
@@ -33,7 +34,7 @@ from opspilot.tools.search import search_past_incidents, search_runbooks
 from opspilot.tools.structured_query import ALL_COLLECTIONS, structured_query
 
 if TYPE_CHECKING:
-    from opspilot.retrieval.base import SearchRetriever
+    from opspilot.retrieval.retriever import Retriever
 
 # The one parameter name a caller may never supply. It is a bound, not an argument.
 _DEADLINE_PARAMETER = "deadline_s"
@@ -43,7 +44,7 @@ class ToolService:
     def __init__(
         self,
         records: OperationalRecords | None = None,
-        retriever_factory: Callable[[], SearchRetriever] | None = None,
+        retriever_factory: Callable[[], Retriever] | None = None,
         *,
         deadline_s: float | None = None,
         granted_collections: frozenset[str] = ALL_COLLECTIONS,
@@ -52,7 +53,7 @@ class ToolService:
         self.deadline_s = deadline_s if deadline_s is not None else config.SOURCE_DEADLINE_SECONDS
         self.granted_collections = granted_collections
         self._retriever_factory = retriever_factory
-        self._retriever: SearchRetriever | None = None
+        self._retriever: Retriever | None = None
         self._retriever_attempted = False
         self._retriever_error: str | None = None
         # Built against the one capability inventory, so the registry cannot drift from it. A
@@ -90,16 +91,16 @@ class ToolService:
         )
 
     # --- retrieval tools (retriever-backed, lazy) ---------------------------------------------
-    def _get_retriever(self) -> SearchRetriever | None:
+    def _get_retriever(self) -> Retriever | None:
         if self._retriever is None and not self._retriever_attempted:
             self._retriever_attempted = True
             try:
                 if self._retriever_factory is not None:
                     self._retriever = self._retriever_factory()
                 else:
-                    from opspilot.retrieval.factory import build_retriever
+                    from opspilot.retrieval.retriever import default_retriever
 
-                    self._retriever = build_retriever(include_distractors=False)
+                    self._retriever = default_retriever()
             except Exception as exc:  # noqa: BLE001 — degrade, but retain the sanitized reason
                 first_line = (str(exc).splitlines() or [""])[0][:200]
                 self._retriever_error = f"{type(exc).__name__}: {first_line}"
@@ -107,10 +108,10 @@ class ToolService:
 
     @property
     def retrieval_backend(self) -> str:
-        """The active retrieval backend for readiness diagnostics: bm25 | hybrid | rerank, or
-        `unavailable` if construction failed (see `retrieval_error` for the reason)."""
+        """`config.RETRIEVAL_BACKEND` when the retriever is reachable, `unavailable` if
+        construction failed (see `retrieval_error` for the reason), for readiness diagnostics."""
         retriever = self._get_retriever()
-        return getattr(retriever, "backend_name", "unavailable") if retriever else "unavailable"
+        return config.RETRIEVAL_BACKEND if retriever is not None else "unavailable"
 
     @property
     def retrieval_error(self) -> str | None:
@@ -123,13 +124,13 @@ class ToolService:
         retriever = self._get_retriever()
         if retriever is None:
             return self._unavailable("search_runbooks")
-        return search_runbooks(retriever, **kwargs)
+        return search_runbooks(retriever, deadline_s=self.deadline_s, **kwargs)
 
     def search_past_incidents(self, **kwargs: Any) -> ToolResult[Any]:
         retriever = self._get_retriever()
         if retriever is None:
             return self._unavailable("search_past_incidents")
-        return search_past_incidents(retriever, self.records, deadline_s=self.deadline_s, **kwargs)
+        return search_past_incidents(retriever, deadline_s=self.deadline_s, **kwargs)
 
     @staticmethod
     def _unavailable(tool_name: str) -> ToolResult[Any]:

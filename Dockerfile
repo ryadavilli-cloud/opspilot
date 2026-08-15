@@ -24,17 +24,10 @@ RUN uv sync --no-install-project --no-dev --group llm --group checkpoint
 COPY src/ ./src/
 RUN uv sync --no-dev --group llm --group checkpoint
 
-# Package only the runtime data still read from the image: the KB. The operational corpus is not
-# here, and its absence is the guarantee rather than a convention — every operational capability
-# reads the `operational-records` container, so an image that shipped the files could not fall back
-# to them. Not the answer key, distractors, calibration datasets, eval baselines, generators, or
-# docs either (see .dockerignore).
-COPY data/kb/ ./data/kb/
-
-# Point the runtime at the packaged data explicitly (never inferred from the source-tree layout),
-# and select the lexical BM25 backend so the image needs no embedding model.
-ENV OPSPILOT_KB_DIR=/app/data/kb \
-    OPSPILOT_RETRIEVAL_BACKEND=bm25
+# No corpus data ships in the image. The KB and the operational corpus are both read from Cosmos
+# (the `knowledge` and `operational-records` containers) rather than from files, so an image that
+# shipped either could not fall back to it. Not the answer key, distractors, calibration datasets,
+# eval baselines, generators, or docs either (see .dockerignore).
 
 EXPOSE 8000
 # --frozen --no-dev --group llm --group checkpoint: run against the locked runtime environment

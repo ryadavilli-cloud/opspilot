@@ -1,51 +1,78 @@
-"""Embedding model wrapper.
+"""Query-time embedding through the Azure OpenAI embedding deployment (D-003).
 
-Config-driven: dev defaults to the small, CPU-fast `bge-small-en-v1.5`; set OPSPILOT_EMBED_MODEL
-to swap in BGE-M3 (or any sentence-transformers model). The bge family wants a query instruction
-for short-query → passage retrieval, applied to queries only.
+Corpus preparation embeds every passage at load time through this same deployment
+(`scripts/prepare_corpus.py::embed_all`); this module embeds the query at read time, so the two
+vectors are comparable. Keyless via managed identity, like every other Azure client here. No local
+embedding model is loaded anywhere in the runtime image.
 """
 
 from __future__ import annotations
 
-import os
-from functools import lru_cache
-from typing import TYPE_CHECKING
+from typing import Any, Protocol
 
-import numpy as np
-
-if TYPE_CHECKING:  # the heavy dependency is imported lazily inside the function below
-    from sentence_transformers import SentenceTransformer
-
-DEFAULT_MODEL = os.getenv("OPSPILOT_EMBED_MODEL", "BAAI/bge-small-en-v1.5")
-QUERY_INSTRUCTION = "Represent this sentence for searching relevant passages: "
+from opspilot.data.operational_records import SourceUnavailable
 
 
-@lru_cache(maxsize=2)
-def _model(name: str) -> SentenceTransformer:
-    from sentence_transformers import SentenceTransformer  # heavy import; keep lazy
-
-    # The package resolves its exports lazily, so the imported name carries no type of its own.
-    # Naming it here is what gives the cached model a type, whether or not the optional dependency
-    # is installed in the environment doing the checking.
-    model: SentenceTransformer = SentenceTransformer(name)
-    return model
+class QueryEmbedder(Protocol):
+    def embed(self, text: str, *, deadline_s: float) -> list[float]: ...
 
 
-class Embedder:
-    def __init__(self, model_name: str = DEFAULT_MODEL) -> None:
-        self.model_name = model_name
+class AzureQueryEmbedder:
+    """Embeds a query string through an Azure OpenAI embedding deployment.
 
-    def encode_docs(self, texts: list[str]) -> np.ndarray:
-        # `convert_to_numpy=True` is what makes the result an array, and the encoder's own signature
-        # cannot express that, so the array type is established here. Already an array on this path,
-        # so `asarray` returns it unchanged rather than converting anything.
-        encoded = _model(self.model_name).encode(
-            texts, normalize_embeddings=True, convert_to_numpy=True
+    The client is built lazily on first use, so importing this module, and constructing a
+    `Retriever` with an injected embedder, never requires the optional `openai`/`azure-identity`
+    packages or a credential.
+    """
+
+    def __init__(self, deployment: str, dimensions: int, endpoint: str, api_version: str) -> None:
+        self._deployment = deployment
+        self._dimensions = dimensions
+        self._endpoint = endpoint
+        self._api_version = api_version
+        self._client: Any = None
+
+    def _client_(self) -> Any:
+        if self._client is None:
+            from azure.identity import DefaultAzureCredential, get_bearer_token_provider
+            from openai import AzureOpenAI
+
+            token_provider = get_bearer_token_provider(
+                DefaultAzureCredential(), "https://cognitiveservices.azure.com/.default"
+            )
+            self._client = AzureOpenAI(
+                azure_endpoint=self._endpoint,
+                api_version=self._api_version,
+                azure_ad_token_provider=token_provider,
+            )
+        return self._client
+
+    def embed(self, text: str, *, deadline_s: float) -> list[float]:
+        try:
+            response = self._client_().embeddings.create(
+                model=self._deployment, input=[text], timeout=deadline_s
+            )
+        except Exception as exc:  # noqa: BLE001 - the deployment did not answer
+            raise SourceUnavailable(type(exc).__name__) from exc
+        vector = list(response.data[0].embedding)
+        if len(vector) != self._dimensions:
+            raise SourceUnavailable("EmbeddingDimensionMismatch")
+        return vector
+
+
+_default: AzureQueryEmbedder | None = None
+
+
+def default_query_embedder() -> AzureQueryEmbedder:
+    """The process-wide query embedder (lazy, built once), over the deployed embedding model."""
+    global _default
+    if _default is None:
+        from opspilot import config
+
+        _default = AzureQueryEmbedder(
+            config.EMBEDDING_DEPLOYMENT,
+            config.EMBEDDING_DIMENSIONS,
+            config.AZURE_OPENAI_ENDPOINT,
+            config.AZURE_OPENAI_API_VERSION,
         )
-        return np.asarray(encoded)
-
-    def encode_query(self, text: str) -> np.ndarray:
-        encoded = _model(self.model_name).encode(
-            [QUERY_INSTRUCTION + text], normalize_embeddings=True, convert_to_numpy=True
-        )
-        return np.asarray(encoded[0])
+    return _default

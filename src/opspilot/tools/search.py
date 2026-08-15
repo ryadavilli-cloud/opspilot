@@ -1,109 +1,68 @@
-"""Retrieval tools — search_runbooks / search_past_incidents over the real Retriever.
+"""Retrieval tools: search_runbooks / search_past_incidents over the Cosmos-backed `Retriever`.
 
-These graduate the Phase-1 stubs onto hybrid retrieval. They return the uniform ToolResult
-envelope; each hit's `doc_id` is the retrieval ref (e.g. `runbook:payment-timeout`,
-`postmortem:inc-001`) and doubles as the evidence citation, which always resolves to a KB doc
-(the tool retriever indexes the real KB only — no distractors). No LLM here.
+Return the uniform `ToolResult` envelope; each hit's `doc_id` is the knowledge reference (e.g.
+`runbook:payment-timeout`, `postmortem:inc-001`) and doubles as the citation, and `text` carries the
+matched passage itself rather than a pointer to it (`data-and-evidence.md` §9). No LLM here.
 """
 
 from __future__ import annotations
 
-from collections.abc import Sequence
-from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
-from opspilot.data.operational_records import OperationalRecords
+from opspilot.retrieval.retriever import ARCHITECTURE, POSTMORTEM, RUNBOOK
 from opspilot.tools.contracts import (
     DocHit,
     SearchPastIncidentsRequest,
     SearchRunbooksRequest,
     ToolResult,
-    to_utc,
 )
 from opspilot.tools.errors import run_tool
 
-if TYPE_CHECKING:  # avoid importing any retrieval backend at module load
-    from opspilot.retrieval.base import Hit, SearchRetriever
-
-RECENCY_BONUS = 0.2  # up to +20% score for the most recent matching incident
+if TYPE_CHECKING:  # avoid importing the retriever at module load
+    from opspilot.retrieval.retriever import Passage, Retriever
 
 
-def _titles_services(retriever: SearchRetriever) -> tuple[dict[str, str], dict[str, list[str]]]:
-    titles = {d.doc_id: d.title for d in retriever.docs}
-    services = {d.doc_id: list(d.services) for d in retriever.docs}
-    return titles, services
-
-
-def _to_hits(retriever: SearchRetriever, hits: Sequence[Hit]) -> list[DocHit]:
-    titles, services = _titles_services(retriever)
+def _to_hits(passages: list[Passage]) -> list[DocHit]:
     return [
         DocHit(
-            doc_id=h.doc_id,
-            kind=h.kind,
-            title=titles.get(h.doc_id, ""),
-            services=services.get(h.doc_id, []),
-            score=round(h.score, 6),
+            doc_id=p.reference,
+            kind=p.category,
+            title=p.title,
+            text=p.text,
+            services=list(p.services),
+            score=round(p.score, 6),
         )
-        for h in hits
+        for p in passages
     ]
 
 
-def search_runbooks(retriever: SearchRetriever, **kwargs: Any) -> ToolResult[DocHit]:
+def search_runbooks(
+    retriever: Retriever, *, deadline_s: float, **kwargs: Any
+) -> ToolResult[DocHit]:
     def logic(req: SearchRunbooksRequest) -> tuple[list[DocHit], list[str]]:
         services = (req.service,) if req.service else None
-        hits = retriever.search(
-            req.query, k=req.k, kinds=("runbook", "architecture"), services=services
+        passages = retriever.search(
+            req.query,
+            k=req.k,
+            collection=(RUNBOOK, ARCHITECTURE),
+            services=services,
+            deadline_s=deadline_s,
         )
-        recs = _to_hits(retriever, hits)
+        recs = _to_hits(passages)
         return recs, [h.doc_id for h in recs]
 
     return run_tool("search_runbooks", SearchRunbooksRequest, logic, **kwargs)
 
 
 def search_past_incidents(
-    retriever: SearchRetriever, records: OperationalRecords, *, deadline_s: float, **kwargs: Any
+    retriever: Retriever, *, deadline_s: float, **kwargs: Any
 ) -> ToolResult[DocHit]:
     def logic(req: SearchPastIncidentsRequest) -> tuple[list[DocHit], list[str]]:
         services = (req.service,) if req.service else None
-        # Over-fetch, then recency-weight the postmortems by their incident's onset.
-        hits = retriever.search(
-            req.query, k=max(req.k * 2, req.k), kinds=("postmortem",), services=services
+        passages = retriever.search(
+            req.query, k=req.k, collection=POSTMORTEM, services=services, deadline_s=deadline_s
         )
-
-        def incident_id(doc_id: str) -> str:
-            return doc_id.split(":", 1)[1] if ":" in doc_id else doc_id
-
-        # One read for every candidate rather than one per candidate: the reads are issued together
-        # and share the deadline they were given, which a fan-out of single lookups would exceed in
-        # aggregate while each stayed inside it.
-        opened = {
-            rec["incident_id"]: rec.get("opened_at")
-            for rec in records.incidents(
-                [incident_id(h.doc_id) for h in hits], deadline_s=deadline_s
-            )
-            if "incident_id" in rec
-        }
-
-        def onset(doc_id: str) -> float | None:
-            raw = opened.get(incident_id(doc_id))
-            if not raw:
-                return None
-            try:
-                return to_utc(datetime.strptime(raw, "%Y-%m-%dT%H:%M:%SZ")).timestamp()
-            except ValueError:
-                return None
-
-        ts = {h.doc_id: onset(h.doc_id) for h in hits}
-        valid = [t for t in ts.values() if t is not None]
-        lo, hi = (min(valid), max(valid)) if valid else (0.0, 0.0)
-
-        def weighted(h: Hit) -> float:
-            t = ts[h.doc_id]
-            norm = (t - lo) / (hi - lo) if (t is not None and hi > lo) else 0.0
-            return h.score * (1 + RECENCY_BONUS * norm)
-
-        ranked = sorted(hits, key=weighted, reverse=True)[: req.k]
-        recs = _to_hits(retriever, ranked)
+        recs = _to_hits(passages)
         return recs, [h.doc_id for h in recs]
 
     return run_tool("search_past_incidents", SearchPastIncidentsRequest, logic, **kwargs)

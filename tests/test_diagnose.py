@@ -1,35 +1,36 @@
 """Step 3 gate: one deterministic diagnostic cycle produces a grounded hypothesis.
 
-Skipped without the retrieval extras (triage, which seeds the cycle's context, uses retrieval).
-Covers: a hypothesis from real tool observations, every citation backed by a run observation, the
-hard iteration limit, and determinism.
+Retrieval runs over a fake Cosmos container (triage, which seeds the cycle's context, uses
+retrieval), so this needs no live Azure dependency. Covers: a hypothesis from real tool
+observations, every citation backed by a run observation, the hard iteration limit, and
+determinism.
 """
 
 from __future__ import annotations
 
-import pytest
+from fake_knowledge import knowledge_retriever
+from fake_operational_records import corpus_records
 
-pytest.importorskip("sentence_transformers")
-pytest.importorskip("rank_bm25")
-
-from fake_operational_records import corpus_records  # noqa: E402
-
-from opspilot.diagnosis.contracts import (  # noqa: E402
+from opspilot.diagnosis.contracts import (
     DiagnosisContext,
     DiagnosticQuestion,
     InvestigationPlan,
     ToolCallRequest,
 )
-from opspilot.diagnosis.cycle import plan_investigation, run_cycle  # noqa: E402
-from opspilot.nodes.investigation import diagnose, ingest, triage_router  # noqa: E402
-from opspilot.state import InvestigationState  # noqa: E402
-from opspilot.tools.service import ToolService  # noqa: E402
+from opspilot.diagnosis.cycle import plan_investigation, run_cycle
+from opspilot.nodes.investigation import diagnose, ingest, triage_router
+from opspilot.state import InvestigationState
+from opspilot.tools.service import ToolService
+
+
+def _service() -> ToolService:
+    return ToolService(corpus_records(), retriever_factory=knowledge_retriever)
 
 
 def _front(inc_id: str, summary: str) -> InvestigationState:
     # One service for the whole investigation, injected through every node that resolves one.
     # A node called without it falls back to the deployed default, which reaches Cosmos.
-    config = {"configurable": {"tool_service": ToolService(corpus_records())}}
+    config = {"configurable": {"tool_service": _service()}}
     state = InvestigationState(alert={"incident_id": inc_id, "summary": summary})
     state = state.model_copy(update=ingest(state))
     state = state.model_copy(update=triage_router(state, config))
@@ -67,7 +68,7 @@ def test_loop_obeys_hard_iteration_limit():
         ],
     )
     ctx = DiagnosisContext(incident_id="inc-006", onset="2026-06-25T16:20:00+00:00")
-    _, observations, stop, _ = run_cycle(ToolService(corpus_records()), ctx, plan)
+    _, observations, stop, _ = run_cycle(_service(), ctx, plan)
     assert len(observations) == 2 and stop.reason == "iteration_limit"
 
 
@@ -85,7 +86,7 @@ def test_plan_advancement_does_not_reask_answered_questions():
         incident_id="inc-006", affected_services=["checkout-api"], onset="2026-06-25T16:20:00+00:00"
     )
     plan = plan_investigation(ctx)
-    svc = ToolService(corpus_records())
+    svc = _service()
     _, obs1, _, answered1 = run_cycle(svc, ctx, plan)
     assert obs1 and answered1 == {q.key for q in plan.questions}  # first pass answers everything
     _, obs2, _, answered2 = run_cycle(svc, ctx, plan, answered=answered1)

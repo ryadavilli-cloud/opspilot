@@ -1,7 +1,8 @@
 """Step 5 gate: the connected slice scored against a versioned baseline (CI fails on regression).
 
 Runs all six scenarios end to end and asserts no material regression vs eval/baselines/
-slice_baseline.json. Skipped without the retrieval extras.
+slice_baseline.json. Retrieval runs over a fake Cosmos container, so this needs no live Azure
+dependency.
 """
 
 from __future__ import annotations
@@ -11,9 +12,6 @@ import json
 from pathlib import Path
 
 import pytest
-
-pytest.importorskip("sentence_transformers")
-pytest.importorskip("rank_bm25")
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 BASELINE = json.loads((REPO_ROOT / "eval/baselines/slice_baseline.json").read_text())
@@ -27,11 +25,14 @@ _spec.loader.exec_module(scenario_eval)
 
 @pytest.fixture(scope="module")
 def scorecard() -> dict:
+    from fake_knowledge import knowledge_retriever
     from fake_operational_records import corpus_records
 
     from opspilot.tools.service import ToolService
 
-    return scenario_eval.evaluate(service=ToolService(corpus_records()))
+    return scenario_eval.evaluate(
+        service=ToolService(corpus_records(), retriever_factory=knowledge_retriever)
+    )
 
 
 def test_all_scenarios_run_through_the_slice(scorecard):
@@ -58,6 +59,7 @@ def test_no_material_regression_vs_baseline(scorecard):
 
 
 def _run_scenario(inc_id: str) -> dict:
+    from fake_knowledge import knowledge_retriever
     from fake_operational_records import corpus_records
 
     from opspilot.graph import _initial_state, build_graph, invoke_auto_approving
@@ -70,7 +72,9 @@ def _run_scenario(inc_id: str) -> dict:
         _initial_state({"incident_id": inc_id, "summary": by_id[inc_id]["alert"]["summary"]}),
         config={
             "configurable": {
-                "tool_service": ToolService(corpus_records()),
+                "tool_service": ToolService(
+                    corpus_records(), retriever_factory=knowledge_retriever
+                ),
                 "thread_id": f"gate-{inc_id}",
             }
         },

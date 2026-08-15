@@ -3,7 +3,7 @@
 The advertised contract: `POST /investigations` → 202 + a polling URL, work runs in the background,
 `GET /investigations/{id}` polls to a terminal state. With the TestClient a BackgroundTask runs to
 completion before the POST call returns, so the POST observes the `queued` 202 snapshot while a
-follow-up GET observes the terminal state. ML-free: the graph runs over an injected bm25
+follow-up GET observes the terminal state. Deterministic: the graph runs over an injected fake
 ToolService; a failure is forced with a service that raises.
 """
 
@@ -79,16 +79,13 @@ class _FakeAuthenticator:
         return _PRINCIPALS[token]
 
 
-def _bm25_service():
+def _fake_retrieval_service():
+    from fake_knowledge import knowledge_retriever
     from fake_operational_records import corpus_records
 
-    from opspilot.retrieval.factory import build_retriever
     from opspilot.tools.service import ToolService
 
-    return ToolService(
-        corpus_records(),
-        retriever_factory=lambda: build_retriever("bm25", include_distractors=False),
-    )
+    return ToolService(corpus_records(), retriever_factory=knowledge_retriever)
 
 
 def _records_service():
@@ -118,7 +115,7 @@ def _isolated_deps():
     app.dependency_overrides[get_authenticator] = _FakeAuthenticator
     # A capability service over the authored corpus, container-shaped, so a test that never
     # reaches a tool still resolves its dependency without a deployed container. Retrieval is left
-    # unbuilt here; the tests that need it install `_bm25_service` over this.
+    # unbuilt here; the tests that need it install `_fake_retrieval_service` over this.
     app.dependency_overrides[get_service] = _records_service
     yield
     app.dependency_overrides.clear()
@@ -129,7 +126,7 @@ def _use_service(factory) -> None:
 
 
 def test_post_returns_202_with_id_status_and_poll_url():
-    _use_service(_bm25_service)
+    _use_service(_fake_retrieval_service)
     r = client.post("/investigations", json=_ALERT, headers=HUMAN_AUTH)
     assert r.status_code == 202
     body = r.json()
@@ -161,7 +158,7 @@ def _approve(investigation_id: str, report_hash: str, *, headers=None, **overrid
 
 
 def test_lifecycle_queued_running_awaiting_approval_then_completed():
-    _use_service(_bm25_service)
+    _use_service(_fake_retrieval_service)
     posted = client.post("/investigations", json=_ALERT, headers=HUMAN_AUTH).json()
     r = client.get(posted["poll_url"], headers=HUMAN_AUTH)
     assert r.status_code == 200
@@ -190,7 +187,7 @@ def test_lifecycle_queued_running_awaiting_approval_then_completed():
 def test_an_approved_run_is_recorded_through_the_publication_sink():
     """G-58 end to end: a real approve carries a derived publication_id onto the record, so the
     "has this already published?" question has a durable answer after a process restart."""
-    _use_service(_bm25_service)
+    _use_service(_fake_retrieval_service)
     posted = client.post("/investigations", json=_ALERT, headers=HUMAN_AUTH).json()
     pending = client.get(posted["poll_url"], headers=HUMAN_AUTH).json()
     _approve(posted["investigation_id"], pending["pending_decision"]["report_hash"])
@@ -215,7 +212,7 @@ def test_a_re_executed_terminal_leg_publishes_once():
         "safety": {"passed": True, "violations": []},
         "publication_id": "derived-pub-1",
     }
-    deps = {"repo": repo, "svc": _bm25_service(), "diagnosis": get_diagnosis()}
+    deps = {"repo": repo, "svc": _fake_retrieval_service(), "diagnosis": get_diagnosis()}
 
     _advance("inv-1", lambda: terminal, **deps)
     first = repo.get("inv-1")
@@ -239,7 +236,7 @@ def test_failure_is_recorded_not_raised():
 
 
 def test_idempotent_repeat_returns_the_same_investigation():
-    _use_service(_bm25_service)
+    _use_service(_fake_retrieval_service)
     first = client.post("/investigations", json=_ALERT, headers=HUMAN_AUTH).json()
     second = client.post("/investigations", json=_ALERT, headers=HUMAN_AUTH).json()
     assert first["investigation_id"] == second["investigation_id"]  # no duplicate run
@@ -250,7 +247,7 @@ def test_idempotent_repeat_returns_the_same_investigation():
 
 
 def test_force_rerun_mints_a_new_investigation_and_becomes_the_new_default():
-    _use_service(_bm25_service)
+    _use_service(_fake_retrieval_service)
     first = client.post("/investigations", json=_ALERT, headers=HUMAN_AUTH).json()
 
     rerun = client.post("/investigations?force_rerun=true", json=_ALERT, headers=HUMAN_AUTH).json()
@@ -265,7 +262,7 @@ def test_force_rerun_mints_a_new_investigation_and_becomes_the_new_default():
 
 
 def test_a_workflow_version_bump_mints_a_new_investigation(monkeypatch):
-    _use_service(_bm25_service)
+    _use_service(_fake_retrieval_service)
     first = client.post("/investigations", json=_ALERT, headers=HUMAN_AUTH).json()
 
     monkeypatch.setattr("opspilot.api.WORKFLOW_VERSION", "999.0")
@@ -285,7 +282,7 @@ def test_investigate_compatibility_endpoint_still_works():
     It now also requires the submit role (G-03). Proving submit authority is deliberately NOT
     reviewer authority: the approval stays labelled `deterministic_auto_approval`, so
     authenticating the caller cannot quietly promote an auto-approval into human review."""
-    _use_service(_bm25_service)
+    _use_service(_fake_retrieval_service)
     r = client.post("/investigate", json=_ALERT, headers=HUMAN_AUTH)
     assert r.status_code == 200 and r.json()["status"] == "completed"
     assert r.json()["approval"]["kind"] == "deterministic_auto_approval"
@@ -302,7 +299,7 @@ def test_decision_unknown_investigation_is_404():
 
 
 def test_decision_against_a_resolved_investigation_is_409():
-    _use_service(_bm25_service)
+    _use_service(_fake_retrieval_service)
     posted = client.post("/investigations", json=_ALERT, headers=HUMAN_AUTH).json()
     pending = client.get(posted["poll_url"], headers=HUMAN_AUTH).json()
     report_hash = pending["pending_decision"]["report_hash"]
@@ -317,7 +314,7 @@ def test_decision_against_a_resolved_investigation_is_409():
 
 
 def test_reject_decision_escalates():
-    _use_service(_bm25_service)
+    _use_service(_fake_retrieval_service)
     posted = client.post("/investigations", json=_ALERT, headers=HUMAN_AUTH).json()
     pending = client.get(posted["poll_url"], headers=HUMAN_AUTH).json()
     report_hash = pending["pending_decision"]["report_hash"]
@@ -340,7 +337,7 @@ def test_a_stale_hash_is_409_and_the_run_stays_reviewable():
     the reviewer can re-read the current report and decide again. Escalation is reserved for
     repeated policy failures; burning a human's paused investigation over a lost race is not
     that."""
-    _use_service(_bm25_service)
+    _use_service(_fake_retrieval_service)
     posted = client.post("/investigations", json=_ALERT, headers=HUMAN_AUTH).json()
     pending = client.get(posted["poll_url"], headers=HUMAN_AUTH).json()
     real_hash = pending["pending_decision"]["report_hash"]
@@ -366,7 +363,7 @@ def test_a_stale_hash_is_409_and_the_run_stays_reviewable():
 
 
 def test_edit_decision_re_pauses_with_a_new_hash_then_approves():
-    _use_service(_bm25_service)
+    _use_service(_fake_retrieval_service)
     posted = client.post("/investigations", json=_ALERT, headers=HUMAN_AUTH).json()
     pending = client.get(posted["poll_url"], headers=HUMAN_AUTH).json()
     first_hash = pending["pending_decision"]["report_hash"]
@@ -393,7 +390,7 @@ def test_edit_decision_re_pauses_with_a_new_hash_then_approves():
 # A reviewer double-clicking, or a client retrying a POST that timed out after the server had
 # already committed, must not resume the graph twice. The key is client-minted and REQUIRED.
 def _pause_and_hash() -> tuple[str, str]:
-    _use_service(_bm25_service)
+    _use_service(_fake_retrieval_service)
     posted = client.post("/investigations", json=_ALERT, headers=HUMAN_AUTH).json()
     pending = client.get(posted["poll_url"], headers=HUMAN_AUTH).json()
     return posted["investigation_id"], pending["pending_decision"]["report_hash"]
@@ -525,7 +522,7 @@ def test_each_pause_of_an_edited_run_is_decided_under_its_own_key():
 # --- reviewer identity (G-01) --------------------------------------------------------------------
 def _pause_one() -> tuple[str, str]:
     """Drive an investigation to its pause and return (investigation_id, report_hash)."""
-    _use_service(_bm25_service)
+    _use_service(_fake_retrieval_service)
     posted = client.post("/investigations", json=_ALERT, headers=HUMAN_AUTH).json()
     pending = client.get(posted["poll_url"], headers=HUMAN_AUTH).json()
     return posted["investigation_id"], pending["pending_decision"]["report_hash"]
@@ -667,7 +664,7 @@ def test_a_reviewer_role_alone_is_sufficient_to_read():
 def test_authorized_submit_and_read_completes_the_existing_flow():
     """The demo path: a properly-authorized caller is unaffected by this slice — submit, poll, and
     decide all still work end to end."""
-    _use_service(_bm25_service)
+    _use_service(_fake_retrieval_service)
     posted = client.post("/investigations", json=_ALERT, headers=HUMAN_AUTH)
     assert posted.status_code == 202
 
@@ -682,7 +679,7 @@ def test_authorized_submit_and_read_completes_the_existing_flow():
 # --- basic concurrency limits (Stage 8, pulled forward: G-57) -----------------------------------
 def test_global_concurrency_limit_returns_429(monkeypatch):
     monkeypatch.setattr("opspilot.config.MAX_CONCURRENT_INVESTIGATIONS_GLOBAL", 1)
-    _use_service(_bm25_service)
+    _use_service(_fake_retrieval_service)
     first = client.post("/investigations", json=_ALERT, headers=HUMAN_AUTH)
     assert first.status_code == 202  # pauses at awaiting_approval -> still occupies the one slot
 
@@ -693,7 +690,7 @@ def test_global_concurrency_limit_returns_429(monkeypatch):
 
 def test_per_user_concurrency_limit_returns_429(monkeypatch):
     monkeypatch.setattr("opspilot.config.MAX_CONCURRENT_INVESTIGATIONS_PER_USER", 1)
-    _use_service(_bm25_service)
+    _use_service(_fake_retrieval_service)
     first = client.post("/investigations", json=_ALERT, headers=HUMAN_AUTH)
     assert first.status_code == 202
 
@@ -706,7 +703,7 @@ def test_concurrency_limit_does_not_block_an_idempotent_repeat(monkeypatch):
     # A repeat of the SAME alert never starts a new background job, so it must not be counted
     # against — or rejected by — the concurrency check.
     monkeypatch.setattr("opspilot.config.MAX_CONCURRENT_INVESTIGATIONS_PER_USER", 1)
-    _use_service(_bm25_service)
+    _use_service(_fake_retrieval_service)
     first = client.post("/investigations", json=_ALERT, headers=HUMAN_AUTH)
     assert first.status_code == 202
     repeat = client.post("/investigations", json=_ALERT, headers=HUMAN_AUTH)
