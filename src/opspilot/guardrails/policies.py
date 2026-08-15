@@ -1,9 +1,9 @@
 """Executable guardrails — promoted into code now, not deferred to a later "security phase".
 
-Two policies enforced on the connected slice:
-  * no unsupported hypothesis — a hypothesis must cite at least one evidence reference that was
-    actually produced by a tool during this run (nothing invented).
-  * read-only tool policy — the diagnostic loop may call only registered read-only tools.
+One policy remains here: the read-only tool boundary. Citation grounding, the second policy this
+module used to hold, is superseded by the four-check grounding gate (`grounding/checks.py`); the
+old graph path's `safety_validate` now delegates to that gate's reference-resolution primitive
+directly rather than through a policy defined here.
 """
 
 from __future__ import annotations
@@ -16,16 +16,3 @@ def is_read_only(tool: str) -> bool:
     cannot be called, so a mutating one is unreachable by construction rather than by a second
     list somebody has to remember to update."""
     return tool in CAPABILITY_NAMES
-
-
-def unsupported_citations(citations: list[str], produced_refs: set[str]) -> list[str]:
-    """Citations that were NOT produced by a tool this run."""
-    return [c for c in citations if c not in produced_refs]
-
-
-def hypothesis_supported(citations: list[str], produced_refs: set[str]) -> tuple[bool, list[str]]:
-    """Supported only if it cites >=1 ref and every citation was produced this run."""
-    if not citations:
-        return False, ["hypothesis has no supporting citations"]
-    violations = unsupported_citations(citations, produced_refs)
-    return (not violations), violations
