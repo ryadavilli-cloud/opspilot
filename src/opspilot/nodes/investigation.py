@@ -326,8 +326,10 @@ def synthesize_report(state: InvestigationState) -> dict[str, Any]:
 
 def safety_validate(state: InvestigationState) -> dict[str, Any]:
     """Output guardrail: no unsupported hypothesis. Every report citation must be an evidence
-    reference produced by a tool during this run (exempt only the info_only reply)."""
-    from opspilot.guardrails.policies import hypothesis_supported
+    reference produced by a tool during this run (exempt only the info_only reply). Delegates to
+    the four-check grounding gate's reference-resolution primitive rather than a policy of its
+    own."""
+    from opspilot.grounding.checks import unresolved_references
 
     if state.intent == Intent.INFO_ONLY.value:  # ungrounded informational reply — exempt
         return {"safety": {"passed": True, "violations": [], "exempt": "info_only"}}
@@ -342,7 +344,12 @@ def safety_validate(state: InvestigationState) -> dict[str, Any]:
     # Validate against the tool-produced ref trail, NOT evidence_refs() (which is derived from the
     # cited refs themselves — that would let a fabricated citation certify itself).
     produced = set(state.produced_refs)
-    passed, violations = hypothesis_supported(citations, produced)
+    violations = (
+        ["hypothesis has no supporting citations"]
+        if not citations
+        else unresolved_references(citations, produced)
+    )
+    passed = not violations
     if passed:
         return {"safety": {"passed": True, "violations": violations}}
     # Stamp the guardrail as the cause at the moment it blocks (G-36). Without this the run

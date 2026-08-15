@@ -100,7 +100,9 @@ configurable, run a model call inside the gate, or let a model influence a check
 check spends the turn's one shared correction allowance (§7), and there is no other path; a brief
 that still fails, or that fails with the allowance already spent, MUST NOT be delivered, downgraded,
 repaired, or persisted: the attempt becomes a failed execution and creates no completed turn. The
-gate MUST NOT choose the turn's outcome shape, which belongs to the Supervisor.
+gate MUST NOT choose the turn's outcome shape, which belongs to the Supervisor. No separate
+validator or repair role stands beside it: the checks are the whole of the gate, and nothing else
+inspects or corrects a brief on its behalf.
 
 **Coordination stays mediated.** Assignments, results, continuation decisions, and synthesis requests
 pass through the Supervisor (`architecture.md` §5). Code MUST NOT create a side channel, a shared
@@ -146,6 +148,10 @@ MUST NOT be representable as an admitted observation or as a candidate.
 mutable structure may be shared across investigations running concurrently (NFR-12,
 `runtime-and-deployment.md` §1). Isolation MUST be structural, not a convention about keys.
 
+**A new domain type earns its place.** It MUST enforce a real invariant, a boundary, a safety
+property, or a persistence requirement, or serve multiple meaningful consumers. Mirroring a nuance
+already stated in prose is not a reason to add one (§14).
+
 ## 5. Model-Output Admission and Deterministic Control
 
 Model output is proposed data until deterministic code admits it (`architecture.md` §5). Before it
@@ -170,7 +176,7 @@ evaluation:
 A model proposing any of the above is making a request, evaluated by the code that owns it (NFR-10).
 
 **Untrusted content is data, never instruction.** Retrieved passages, source results, incident text,
-and engineer-supplied context are untrusted (`architecture.md` §5, `data-and-evidence.md` §2, §8).
+and engineer follow-up text are untrusted (`architecture.md` §5, `data-and-evidence.md` §2, §8).
 The separation MUST be structural: untrusted content enters a prompt as clearly delimited data, and
 the authority to act on it lives in code the content cannot reach. A prompt instruction to ignore
 malicious text MAY be added, but it is not a control and MUST NOT be the only defense.
@@ -226,6 +232,16 @@ same capability implementation, carry the same validation, permission, normaliza
 and admission, and differ only in recorded transport (`system-design.md` §8.3). A capability
 reachable through that boundary but not directly, or reachable there with wider permission, is a
 defect. Code MUST NOT introduce an MCP-specific evidence concept or result model.
+
+**The structured-query surface is a ceiling.** The predicate, projection, count, and limit surface
+`system-design.md` §8.2 defines is the maximum. Joins, grouping, ordering, subqueries, general
+expression trees, schema discovery, and a query-planning layer MUST NOT be added. Widening the
+surface requires a demonstrated scenario that cannot be served within it.
+
+**The retrieval realization is a ceiling.** Dense plus lexical retrieval with one fusion method and
+deterministic identifier promotion is the maximum. A second retrieval pipeline, a retrieval agent,
+dynamic search-strategy selection, a backend abstraction hierarchy, and model-based reranking as a
+required stage MUST NOT be added.
 
 ## 7. Bounds, Budgets, and Loops
 
@@ -323,7 +339,7 @@ is a live one rather than a formality.
 caller-supplied field as establishing who the caller is, and MUST NOT accept an unauthenticated
 request by omission.
 
-**Untrusted content.** Incident text, engineer-supplied context, retrieved passages, and source
+**Untrusted content.** Incident text, engineer follow-up text, retrieved passages, and source
 output are data and never instructions (§5). The authority to act on them lives in code the content
 cannot reach.
 
@@ -408,6 +424,11 @@ suite excludes, and evaluation aggregates both result sets.
 
 Every feature ships with tests for how it refuses or degrades, not only for how it succeeds. A
 change that adds a path which can fail MUST cover the failing path.
+
+**A new deterministic test earns its place.** It protects a requirement, a safety or grounding
+boundary, a behavior that can silently regress, or a defect that occurred. The negative form is the
+checkable one: a test whose only failure mode is a validator not rejecting malformed input does not
+qualify, unless that validator is the enforcement point for a safety or grounding boundary.
 
 Test frameworks, file layout, naming, and any coverage figure are not design concerns and are not
 prescribed here. Corpus, metrics, baselines, and scoring belong to `evaluation.md`.
@@ -499,6 +520,7 @@ Each has a specific failure mode, and each has a defined alternative earlier in 
 | Adding, removing, or reconfiguring a grounding check | The gate stops being the fixed set the design relies on |
 | Reporting a parse or contract failure as a grounding-check failure | Two different failures become indistinguishable |
 | Untyped maps or free-form documents for turn state or the completed artifact | Boundaries stop being checkable |
+| A domain type, enum, protocol, or validator with one consumer that enforces no boundary, safety, or persistence invariant | The model grows a name for every nuance in the prose, and the type surface stops distinguishing what is enforced from what is merely described |
 | Parsing decision-driving state out of prose | State becomes a matter of interpretation |
 | Any path to a source that bypasses registry validation | The read-only guarantee becomes conventional |
 | Collapsing tool-result axes into success or failure | An unreachable source reads as a clean bill of health |

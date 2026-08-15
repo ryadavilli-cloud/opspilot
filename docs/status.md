@@ -22,7 +22,8 @@ A statement changes only where the repository contradicts it.
 
 ## 1. Current repository baseline
 
-- **Inspected:** branch `main` at `f47c5f5`, 2026-08-15.
+- **Inspected:** branch `add-grounding-checks-and-correction-routing` at `9535b57` plus its
+  uncommitted working tree, 2026-08-15.
 - **Toolchain:** `uv` for everything. Python 3.12.
 - **Enforced on every change:** formatting, linting, strict type checking, tests, and repository
   hygiene, through continuous integration and local hooks. `code-guidelines.md` holds the governing
@@ -40,7 +41,8 @@ Each row below was read in the repository, not inferred from a plan.
 | Turn and investigation identity | `turn/identity.py` | Both identities are minted together and carry the incident under study beside them |
 | Streaming turn transport | `POST /turns`, `stream/contracts.py` | One streaming HTTP request owns one turn: the two identities as its first event, activity as it happens, then a closing event. An ordinary streaming body, with no create-then-attach pair, no reconnection, no event buffering, and no sequence cursor |
 | Activity projection | `stream/projection.py` | Built at the same call site that opens the telemetry span, from the same explicit facts, so the two cannot drift. No parameter exists through which raw span attributes could reach a projected event |
-| Predefined intake normalization | `intake/contracts.py`, `decisions.md` D-007 | The typed, frozen normalized incident context, carrying exactly five fields and deliberately excluding the source record's answer-bearing and ticket-workflow fields. Free-text intake does not exist |
+| Turn ending on a departed client | `api.py` | Client-disconnect detection is checked before each further unit of work, abandoning the turn without persisting. Nothing outside the request reaches the turn it owns |
+| Predefined intake normalization | `intake/contracts.py`, `decisions.md` D-007 | The typed, frozen normalized incident context, deliberately excluding the source record's answer-bearing and ticket-workflow fields. It carries one field beside the four D-007 names, and its incident identifier is optional where D-007 requires one |
 | Evidence reference model | `evidence/references.py`, `decisions.md` D-008 | One parser, one resolver, and one prefix-to-type map over the evidence and knowledge prefixes, including the form that makes an authoritative empty result citable |
 | Two-axis capability results | `tools/contracts.py` | Whether an operation executed and how complete its answer was are separate axes, with the legal pairings enforced where the envelope is constructed, so an illegal pairing cannot exist to be read. A source that answered with nothing stays distinguishable from one that did not answer |
 | Evidence admission | `evidence/admission.py`, `evidence/operations.py` | The only door into the evidence set: it admits a successful result, assigns its reference, and produces a limitation naming the unanswered question for everything else. The operation ledger is kept separately, with turn-scoped opaque references outside the evidence grammar |
@@ -63,13 +65,11 @@ Each row below was read in the repository, not inferred from a plan.
 | Explicit turn controller | Missing | No stage sequence exists. The streamed path is a linear generator, not a state machine with transitions. Turn identity exists and is the one input it would consume |
 | Supervisor, Evidence Investigator, RCA Analyst as distinct roles | Missing | Synthesis exists as a module that reaches no capability, which is the structural half. No role separation, no objective ownership, no continuation authorization. The superseded planner still both gathers and concludes |
 | Observation-driven evidence selection | Missing | The evidence path is a fixed deterministic plan bounded by a window and a service count (`turn/synthesis_step.py`). Adaptive source selection does not exist |
-| Grounding gate, correction allowance, completed outcomes | Missing | No four-check gate, no correction allowance, no outcome vocabulary. `guardrails/policies.py` holds an unrelated two-policy citation check belonging to the superseded runtime |
+| Grounding gate, correction allowance, completed outcomes | Partial | The four checks exist and run as pure functions over an assessment, the admitted reference set, and the turn's recorded limitations (`grounding/checks.py`), with a result type that cannot represent a missing, duplicated, or substituted check (`grounding/contracts.py`). One shared correction allowance and its routing exist beside them: a failure with the allowance unspent asks for one correction, and a failure arriving with it spent is a failed execution. Nothing calls any of it from the streamed turn, which still renders a brief with no gate between synthesis and delivery. No outcome vocabulary, no outcome assignment, and no correction re-check exist. The superseded runtime's citation check now delegates to the gate's reference-resolution primitive rather than holding its own |
 | Completed-turn artifact | Missing | The record port is structural over anything carrying the two identities, and deliberately does not define the artifact. Nothing carries terminal outcome, stop reason, admitted evidence, assessment, limitations, or a version stamp as one object |
 | Durable completed-turn persistence | Missing | In-memory backend only. No runtime path calls the commit ordering, so the property holds today only where tests drive it |
-| Explicit cancellation signal | Partial | Client-disconnect detection exists and is checked before each further unit of work, abandoning the turn without persisting. No cancellation request surface, no control in the client, and no map from turn identity to a signal |
 | Brief rendering in the client | Partial | The screen carries intake, the activity feed, a brief region, and one expandable details area. It handles the identity, activity, and closing events and has no branch for the brief, so a rendered brief arrives and is visible only in the details area |
-| Free-text normalization and clarification | Missing | Predefined intake only. No clarification path of any kind exists |
-| Follow-up, redirect, supplied context, handoff | Missing | The five-kind interaction type exists as a type (`intake/contracts.py`). No classifier produces it and no retained-state answering exists |
+| Follow-up and handoff | Missing | The interaction-kind type exists as a type (`intake/contracts.py`), carrying kinds the design does not name beside the two it does. No classifier produces it and no retained-state answering exists |
 | Accepted retrieval | Partial | The superseded local dense stack is gone (`retrieval/index.py`, `adapters.py`, `factory.py`, `bm25.py`); no local embedding model is loaded on any path. Retrieval reads the prepared `knowledge` container: dense search via Cosmos `VectorDistance()` over an Azure OpenAI query embedding, an in-process BM25-style lexical scorer over the same category-filtered candidates, and reciprocal rank fusion, over section-level passages carrying the matched text itself rather than a pointer. A request may name its collection or leave it unnamed, in which case routing selects one from the question's shape. Deterministic identifier and time-window promotion after fusion (D-003's reranking step) does not exist yet; the passage budget is not yet the only truncation. The model reranker is still in the tree and still configured (`retrieval/reranker.py`, `CrossEncoder`, `RERANKER_MODEL`, `RERANK_CANDIDATES`, the `reranker` pytest marker, and `sentence-transformers` in the `eval` dependency group), now with no caller anywhere in `src/`, `tests/`, or `eval/` |
 | Single accepted protocol exposure | Missing | The boundary exposes three superseded capabilities (`get_incident`, `query_logs`, `search_runbooks`, `mcp/server.py`) rather than the one the design names |
 | Further-evidence cycle | Missing | No representation exists anywhere in the source tree, including on the assessment |
@@ -85,11 +85,11 @@ still a way to obtain behavior the accepted design assigns elsewhere.
 
 | Component | What it still serves | Superseded by |
 | --- | --- | --- |
-| Graph orchestration and its nodes, routers, and checkpointer (`graph.py`, `nodes/investigation.py`, `router.py`, `checkpoint.py`) and the `langgraph`, `langchain-core`, and `langgraph-checkpoint-sqlite` dependencies | The superseded pipeline behind `/investigate` and the job API | The explicit turn controller |
+| Superseded graph implementation, its nodes, routers, and checkpointer (`graph.py`, `nodes/investigation.py`, `router.py`, `checkpoint.py`) and the `langgraph-checkpoint-sqlite` dependency | The superseded pipeline behind `/investigate` and the job API | A compiled turn graph over typed turn state, compiled without a checkpointer |
 | Job API: create-then-poll transport, decision endpoint, committed decisions, leases and fencing (`api.py`, `investigations.py`, `cosmos_investigations.py`) | The superseded turn lifecycle | The streaming request and the completed-turn artifact |
 | Approval console (`static/console.html`) at `/console` | Submit, poll, review, and approve, including a numeric confidence rendering | The one-screen client |
 | Report and claim model (`contracts.py`, `diagnosis/{admission,cycle,llm_planner,planner,sufficiency,render}.py`, `triage.py`, `composition.py`) | The superseded report object, the fused planner that both gathers and concludes, and implementation selection between a planner and a triager | The assessment contracts and the role separation |
-| Two-policy grounding (`guardrails/policies.py`) | A citation check ahead of the superseded approval gate | The four-check grounding gate |
+| Read-only tool policy (`guardrails/policies.py`) | The registered-capability check the superseded diagnostic loop calls | The capability registry, which is already the reachability boundary |
 | Hand-rolled three-role authorization (`auth.py`, `pyjwt`) | Guards the superseded endpoints only. `POST /turns` is unauthenticated | Platform built-in authentication |
 | Numeric evaluation thresholds (`EvalTargets`, `config.py`) | Read by `eval/scenario_eval.py` and the scorecard gates | Categorical scoring |
 
@@ -128,14 +128,14 @@ composition.
 
 ## 7. Current verification state
 
-Both lanes measured at `f47c5f5`, each run after syncing exactly its own dependency groups.
+Both lanes measured on this branch, each run after syncing exactly its own dependency groups.
 No test now depends on the `eval` group: retrieval no longer loads a local embedding or reranker
 model on any path, so Core and Full run the identical, unskipped test set.
 
 | Lane | Command | Result |
 | --- | --- | --- |
-| Core | `uv sync --group dev --group data`; `ruff check .`; `mypy`; `pytest -q -m "not llm"` | lint clean, strict type check clean, **705 passed, 3 deselected, 2 xfailed** (17.1s) |
-| Full | `uv sync --group dev --group data --group eval`; `pytest -q -m "not reranker and not llm"` | **705 passed, 3 deselected, 2 xfailed** (16.9s) |
+| Core | `uv sync --group dev --group data`; `ruff check .`; `mypy`; `pytest -q -m "not llm"` | lint clean, strict type check clean, **723 passed, 3 deselected, 2 xfailed** (18.0s) |
+| Full | `uv sync --group dev --group data --group eval`; `pytest -q -m "not reranker and not llm"` | **723 passed, 3 deselected, 2 xfailed** (17.8s) |
 
 Formatting is clean repository-wide, and is checked repository-wide rather than over the files a
 change touches. The plan-vocabulary check passes over the whole tree outside `docs/`, excluding the
@@ -165,12 +165,6 @@ pending library inspection. It blocks the single accepted protocol exposure and 
 other decision record is accepted, and no contradiction was found between `decisions.md` and the
 repository.
 
-**One open question with no decision record.** If free-text intake clarifies through a short-lived
-normalization token, that token needs an explicit signing, expiry, and payload contract; a simpler
-resubmission path is preferred where it meets the requirement. Nothing in the repository takes a
-position, because no clarification path exists, so the absence of a token is not evidence that the
-simpler path was chosen. It blocks free-text intake and nothing else.
-
 **Comments describing something that is no longer true.** Four of these, in three modules, all of
 the same class: a comment that was accurate when written and that nothing re-reads when the thing
 it describes changes.
@@ -181,9 +175,8 @@ in-code references name the document without a heading and still resolve, so the
 Neither module carrying a stale citation is superseded, so nothing removes either as a side effect.
 
 `api.py` calls the assessment and brief a stub in two places, which stopped being accurate when real
-synthesis and admission landed. The second is the more misleading, because it justifies why there is
-no operation to interrupt mid-flight, and that claim shaped how cancellation was scoped. Both sit in
-a superseded module, so both leave with it.
+synthesis and admission landed, and its disconnect comment describes a signalling mechanism the
+design does not carry. All three sit in a superseded module, so all three leave with it.
 
 **Untracked local configuration.** `.claude/settings.json` and `.claude/settings.local.json` are
 untracked and unignored, so they appear in every `git status`.
