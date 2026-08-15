@@ -101,6 +101,7 @@ class DocHit(BaseModel):
     doc_id: str  # the retrieval ref, e.g. runbook:payment-timeout, also the evidence ref
     kind: str  # runbook | architecture | postmortem
     title: str
+    text: str  # the matched passage itself, never just a pointer to it (data-and-evidence.md §9)
     services: list[str]
     score: float
 

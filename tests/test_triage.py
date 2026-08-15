@@ -3,7 +3,8 @@
 Runs only the front of the graph (ingest -> triage_router -> route decision) for all six
 scenarios and checks: historical incidents take the known-incident route, novel ones take the
 diagnostic route, the derived severity/category/affected-services match, and the decision records
-the evidence behind it. Skipped without the retrieval extras (triage uses search_past_incidents).
+the evidence behind it. Retrieval runs over a fake Cosmos container (triage uses
+search_past_incidents), so this needs no live Azure dependency.
 """
 
 from __future__ import annotations
@@ -12,16 +13,13 @@ import importlib.util
 from pathlib import Path
 
 import pytest
+from fake_knowledge import knowledge_retriever
+from fake_operational_records import corpus_records
 
-pytest.importorskip("sentence_transformers")
-pytest.importorskip("rank_bm25")
-
-from fake_operational_records import corpus_records  # noqa: E402
-
-from opspilot.nodes.investigation import ingest, triage_router  # noqa: E402
-from opspilot.router import route_by_intent  # noqa: E402
-from opspilot.state import InvestigationState  # noqa: E402
-from opspilot.tools.service import ToolService  # noqa: E402
+from opspilot.nodes.investigation import ingest, triage_router
+from opspilot.router import route_by_intent
+from opspilot.state import InvestigationState
+from opspilot.tools.service import ToolService
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
@@ -47,7 +45,11 @@ ENTITIES = (
 def _front(scenario) -> tuple[InvestigationState, str]:
     # One service for the whole investigation, injected through every node that resolves one.
     # A node called without it falls back to the deployed default, which reaches Cosmos.
-    config = {"configurable": {"tool_service": ToolService(corpus_records())}}
+    config = {
+        "configurable": {
+            "tool_service": ToolService(corpus_records(), retriever_factory=knowledge_retriever)
+        }
+    }
     alert = {"incident_id": scenario["id"], "summary": scenario["alert"]["summary"]}
     state = InvestigationState(alert=alert)
     state = state.model_copy(update=ingest(state))

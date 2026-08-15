@@ -60,9 +60,11 @@ jobs:
         # deterministically by the cassette/factory tests, which need no live model.
         run: uv run pytest -q -m "not llm"
 
-  # Full lane: installs the eval group so the retrieval + scenario regression gate actually run
-  # (a skipped gate is not a gate). bge-small (~130MB) is cached across runs; the 2.2GB
-  # cross-encoder reranker tests are excluded via the `reranker` marker.
+  # Full lane: installs the eval group in addition to core's, for whatever CI-gated coverage
+  # comes to depend on it. No currently-collected test is `reranker`-marked or needs the eval
+  # group's dependencies (retrieval no longer loads a local model, D-003), so this lane is
+  # presently redundant with `core`'s test selection; kept as the lane 3.2's retrieval
+  # measurement work lands against, rather than removed and re-added.
   full:
     runs-on: ubuntu-latest
     steps:
@@ -70,14 +72,9 @@ jobs:
       - uses: astral-sh/setup-uv@v9.0.0
         with:
           enable-cache: true
-      - name: Cache Hugging Face models
-        uses: actions/cache@v5
-        with:
-          path: ~/.cache/huggingface
-          key: hf-models-${{ runner.os }}-bge-small-v1
       - name: Sync (dev + data + eval)
         run: uv sync --group dev --group data --group eval
-      - name: Full suite incl. scenario gate (exclude the heavy reranker + live LLM)
+      - name: Full suite (exclude the heavy reranker + live LLM)
         run: uv run pytest -q -m "not reranker and not llm"
 
   build-and-deploy:

@@ -292,20 +292,17 @@ def test_root_redirects_to_the_console():
 
 
 # --- investigation ----------------------------------------------------------------------------
-def _bm25_service():
+def _fake_retrieval_service():
+    from fake_knowledge import knowledge_retriever
     from fake_operational_records import corpus_records
 
-    from opspilot.retrieval.factory import build_retriever
     from opspilot.tools.service import ToolService
 
-    return ToolService(
-        corpus_records(),
-        retriever_factory=lambda: build_retriever("bm25", include_distractors=False),
-    )
+    return ToolService(corpus_records(), retriever_factory=knowledge_retriever)
 
 
-def test_investigation_smoke_path_over_bm25():
-    _override(_bm25_service)
+def test_investigation_smoke_path_over_fake_retrieval():
+    _override(_fake_retrieval_service)
     r = client.post(
         "/investigate",
         headers=SUBMIT_AUTH,
@@ -322,13 +319,13 @@ def test_investigation_smoke_path_over_bm25():
     assert body["report"] and body["report"]["hypothesis"]
     assert body["report"]["citations"]
     assert body["safety"] is not None and body["safety"]["passed"] is True
-    assert body["runtime"]["retrieval_backend"] == "bm25"
+    assert body["runtime"]["retrieval_backend"] == "cosmos"
     assert body["approval"]["kind"] == "deterministic_auto_approval"
     InvestigationResponse.model_validate(body)  # validates against the typed contract
 
 
 def test_investigation_unknown_incident_does_not_report_success():
-    _override(_bm25_service)
+    _override(_fake_retrieval_service)
     r = client.post(
         "/investigate",
         headers=SUBMIT_AUTH,
@@ -357,7 +354,7 @@ def test_escalated_response_surfaces_the_graph_escalation_reason(monkeypatch):
     # `get_graph()` (not the `api._graph` global) — the graph is built lazily, so the global is
     # still None until something asks for it.
     monkeypatch.setattr(api.get_graph(), "invoke", lambda *a, **k: fake_state)
-    _override(_bm25_service)
+    _override(_fake_retrieval_service)
     r = client.post(
         "/investigate", headers=SUBMIT_AUTH, json={"incident_id": "inc-999", "summary": "x"}
     )
@@ -368,7 +365,7 @@ def test_escalated_response_surfaces_the_graph_escalation_reason(monkeypatch):
 
 
 def test_degraded_response_surfaces_a_reason(monkeypatch):
-    _override(_bm25_service)
+    _override(_fake_retrieval_service)
     monkeypatch.setattr(api, "_safe_backend", lambda svc: "unavailable")
     r = client.post(
         "/investigate",
@@ -388,13 +385,13 @@ def test_degraded_response_surfaces_a_reason(monkeypatch):
 # The sync endpoint runs the same graph and spends the same model budget as `POST /investigations`,
 # so it carries the same submit role. These two cases are the exposure that stayed open after #49.
 def test_an_unauthenticated_caller_cannot_run_the_sync_investigation():
-    _override(_bm25_service)
+    _override(_fake_retrieval_service)
     r = client.post("/investigate", json={"incident_id": "inc-004", "summary": "x"})
     assert r.status_code == 401
 
 
 def test_a_principal_without_the_submit_role_cannot_run_the_sync_investigation():
-    _override(_bm25_service)
+    _override(_fake_retrieval_service)
     r = client.post(
         "/investigate", headers=NO_ROLE_AUTH, json={"incident_id": "inc-004", "summary": "x"}
     )

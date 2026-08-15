@@ -9,10 +9,12 @@ import pytest
 from fake_operational_records import FakeContainer, corpus_container
 
 from opspilot import api
-from opspilot.data import operational_records
+from opspilot.data import knowledge_records, operational_records
 from opspilot.data.operational_records import OperationalRecords
 from opspilot.llm import client as llm_client
 from opspilot.obs import tracing
+from opspilot.retrieval import embeddings as query_embeddings
+from opspilot.retrieval import retriever as retriever_module
 from opspilot.tools import service as tool_service_module
 from opspilot.tools.service import ToolService
 
@@ -44,6 +46,21 @@ def _no_deployed_container(monkeypatch: pytest.MonkeyPatch) -> None:
 
     for module in (operational_records, tool_service_module, api):
         monkeypatch.setattr(module, "default_operational_records", _refuse)
+
+    def _refuse_retriever() -> Any:
+        raise AssertionError(
+            "a test reached the deployed knowledge retriever. Inject one: "
+            "ToolService(records, retriever_factory=knowledge_retriever) from fake_knowledge."
+        )
+
+    # `ToolService._get_retriever()` imports `default_retriever` locally (inside the function, not
+    # at module load), so only the defining module needs patching: the local import re-resolves the
+    # attribute from `retriever_module` on every call, unlike a module-level `from x import y`.
+    monkeypatch.setattr(retriever_module, "default_retriever", _refuse_retriever)
+    monkeypatch.setattr(retriever_module, "default_knowledge_records", _refuse_retriever)
+    monkeypatch.setattr(knowledge_records, "default_knowledge_records", _refuse_retriever)
+    monkeypatch.setattr(retriever_module, "default_query_embedder", _refuse_retriever)
+    monkeypatch.setattr(query_embeddings, "default_query_embedder", _refuse_retriever)
 
 
 @pytest.fixture(autouse=True)

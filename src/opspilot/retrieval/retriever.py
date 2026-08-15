@@ -1,138 +1,195 @@
-"""Retriever — dense baseline, hybrid (dense + BM25 via RRF), and reranked, over the chunked corpus.
+"""The retrieval subsystem (D-003, `system-design.md` §8.3).
 
-Builds the index once (embeds every chunk), then answers queries in any mode. Results are chunk
-hits aggregated to doc ids (max chunk score), optionally filtered by kind/services. The dense mode
-is the baseline; hybrid adds a lexical (BM25) ranker and fuses with reciprocal-rank fusion; rerank
-takes the hybrid candidate chunks and re-scores them with a cross-encoder. The "hybrid beats
-vector-only" and "rerank lifts precision" proofs both live in the eval.
+Dense search (Cosmos vector search over the query embedding) and lexical search (an in-process
+term-overlap scorer, BM25-style, run over the same filtered candidates) are fused by reciprocal
+rank fusion. What a query names as its collection selects the categories searched; where it names
+none, routing selects from the question's shape. What returns is the matched passage itself, never
+a pointer.
+
+No local embedding model is loaded here: the query vector comes from the same Azure OpenAI
+deployment corpus preparation used to embed every passage (`retrieval/embeddings.py`).
 """
 
 from __future__ import annotations
 
-from pathlib import Path
-from typing import TYPE_CHECKING
+from dataclasses import dataclass
+from typing import Any
 
 from rank_bm25 import BM25Okapi
 
-from opspilot.config import DISTRACTOR_DIR, KB_DIR, RERANK_CANDIDATES
-from opspilot.retrieval.base import Hit, aggregate_to_docs, allowed_chunk_ids, tokenize
-from opspilot.retrieval.corpus import Chunk, chunk, load_docs
-from opspilot.retrieval.embeddings import Embedder
-from opspilot.retrieval.index import InMemoryVectorIndex
+from opspilot.data.knowledge_records import (
+    MAX_CANDIDATES,
+    KnowledgeRecords,
+    default_knowledge_records,
+)
+from opspilot.retrieval.base import tokenize
+from opspilot.retrieval.embeddings import QueryEmbedder, default_query_embedder
 
-if TYPE_CHECKING:
-    from opspilot.retrieval.reranker import Reranker
+# The three routed logical collections (D-003's storage row; `runtime-and-deployment.md` fixes the
+# container). Fixed at three; a fourth would need its own accepted collection.
+RUNBOOK = "runbook"
+ARCHITECTURE = "architecture"
+POSTMORTEM = "postmortem"
+CATEGORIES = (RUNBOOK, ARCHITECTURE, POSTMORTEM)
 
-__all__ = ["Hit", "Retriever"]
+# Reciprocal rank fusion constant. 60 is the RRF paper's own default and the value the superseded
+# hybrid retriever already used; nothing about D-003 asks for a different one.
+_RRF_K = 60
+
+# Deterministic collection routing from question shape (FR-92, `system-design.md` §8.3): "procedural
+# questions favor runbooks, structural questions favor service knowledge, and precedent questions
+# favor prior incidents." A question matching none of these defaults to runbooks, the most common
+# investigative ask, rather than searching every collection at once.
+_PROCEDURAL_HINTS = (
+    "how to",
+    "how do",
+    "runbook",
+    "remediate",
+    "remediation",
+    "restart",
+    "rollback",
+    "mitigat",
+    "steps to",
+    "procedure",
+    "fix ",
+)
+_STRUCTURAL_HINTS = (
+    "depend",
+    "architecture",
+    "topology",
+    "upstream",
+    "downstream",
+    "service map",
+    "integrat",
+    "owns",
+    "blast radius",
+)
+_PRECEDENT_HINTS = (
+    "similar incident",
+    "past incident",
+    "previous incident",
+    "before",
+    "history",
+    "precedent",
+    "recurr",
+    "last time",
+    "happened again",
+)
+
+
+def route_category(question: str) -> str:
+    """The single collection a question with no named collection routes to."""
+    text = question.lower()
+    scored = {
+        RUNBOOK: sum(1 for hint in _PROCEDURAL_HINTS if hint in text),
+        ARCHITECTURE: sum(1 for hint in _STRUCTURAL_HINTS if hint in text),
+        POSTMORTEM: sum(1 for hint in _PRECEDENT_HINTS if hint in text),
+    }
+    best = max(CATEGORIES, key=lambda category: scored[category])
+    return best if scored[best] > 0 else RUNBOOK
+
+
+@dataclass(frozen=True)
+class Passage:
+    """One retrieved passage: the matched content itself, never a pointer to it
+    (`data-and-evidence.md` §9)."""
+
+    reference: str  # the knowledge reference, e.g. "runbook:payment-timeout"
+    category: str  # runbook | architecture | postmortem
+    title: str
+    text: str  # the matched passage
+    services: tuple[str, ...]
+    score: float
+
+
+def _to_passage(row: dict[str, Any], score: float) -> Passage:
+    return Passage(
+        reference=str(row["doc_id"]),
+        category=str(row["category"]),
+        title=str(row.get("title", "")),
+        text=str(row["text"]),
+        services=tuple(row.get("services") or ()),
+        score=score,
+    )
 
 
 class Retriever:
-    """The dense/hybrid/rerank evaluation backend. The runtime tool path uses the lighter
-    `bm25.BM25Retriever`; both satisfy `base.SearchRetriever` via an adapter."""
+    """Dense + lexical retrieval over the `knowledge` container, fused by RRF.
 
-    def __init__(
+    `records` and `embedder` are injected so a test holds fakes and the deployed path holds the real
+    Cosmos container and Azure OpenAI deployment; there is one retrieval algorithm, only the sources
+    it reads differ.
+    """
+
+    def __init__(self, records: KnowledgeRecords, embedder: QueryEmbedder) -> None:
+        self._records = records
+        self._embedder = embedder
+
+    def search(
         self,
-        embedder: Embedder | None = None,
-        reranker: Reranker | None = None,
-        kb_dir: Path | str | None = None,
-        distractor_dir: Path | str | None = None,
-        include_distractors: bool = True,
-    ) -> None:
-        self.embedder = embedder or Embedder()
-        self._reranker = reranker  # lazily constructed on first rerank() call
-        self.docs = load_docs(
-            kb_dir or KB_DIR, distractor_dir or DISTRACTOR_DIR, include_distractors
+        query: str,
+        *,
+        k: int,
+        collection: str | tuple[str, ...] | None = None,
+        services: tuple[str, ...] | None = None,
+        deadline_s: float,
+    ) -> list[Passage]:
+        categories = self._categories_for(query, collection)
+
+        dense_rows = self._records.nearest(
+            categories,
+            self._embedder.embed(query, deadline_s=deadline_s),
+            services,
+            deadline_s=deadline_s,
         )
-        self.chunks: list[Chunk] = [c for d in self.docs for c in chunk(d)]
-        self._doc_kind = {d.doc_id: d.kind for d in self.docs}
+        candidate_rows = self._records.by_categories(categories, services, deadline_s=deadline_s)
 
-        vectors = self.embedder.encode_docs([c.text for c in self.chunks])
-        self.index = InMemoryVectorIndex()
-        self.index.add([c.chunk_id for c in self.chunks], vectors)
-        self._bm25 = BM25Okapi([tokenize(c.text) for c in self.chunks])
-        self._chunk_by_id = {c.chunk_id: c for c in self.chunks}
+        rows_by_id = {row["id"]: row for row in (*dense_rows, *candidate_rows)}
+        fused = _fuse(query, dense_rows, candidate_rows)
+        ranked = sorted(fused.items(), key=lambda item: -item[1])[:k]
+        return [_to_passage(rows_by_id[row_id], score) for row_id, score in ranked]
 
-    @property
-    def reranker(self) -> Reranker:
-        if self._reranker is None:
-            from opspilot.retrieval.reranker import Reranker
+    @staticmethod
+    def _categories_for(query: str, collection: str | tuple[str, ...] | None) -> tuple[str, ...]:
+        if collection is None:
+            return (route_category(query),)
+        if isinstance(collection, str):
+            return (collection,)
+        return tuple(collection)
 
-            self._reranker = Reranker()
-        return self._reranker
 
-    def _to_docs(self, chunk_scores: dict[str, float], k: int) -> list[Hit]:
-        return aggregate_to_docs(chunk_scores, self._chunk_by_id, self._doc_kind, k)
+def _fuse(
+    query: str, dense_rows: list[dict[str, Any]], candidate_rows: list[dict[str, Any]]
+) -> dict[str, float]:
+    """Reciprocal rank fusion over the dense candidate set and the lexically re-ranked candidate
+    set. Both stay within `MAX_CANDIDATES` (D-003's fused-candidate ceiling)."""
+    dense_rank = {row["id"]: i for i, row in enumerate(dense_rows)}
 
-    # --- modes --------------------------------------------------------------------------------
-    def dense(
-        self,
-        query: str,
-        k: int = 5,
-        kinds: tuple[str, ...] | None = None,
-        services: tuple[str, ...] | None = None,
-    ) -> list[Hit]:
-        allowed = allowed_chunk_ids(self.chunks, kinds, services)
-        qv = self.embedder.encode_query(query)
-        hits = self.index.search(qv, k=len(self.chunks), allowed=allowed)
-        return self._to_docs(dict(hits), k)
+    lexical_rank: dict[str, int] = {}
+    if candidate_rows:
+        bm25 = BM25Okapi([tokenize(row["text"]) for row in candidate_rows])
+        scores = bm25.get_scores(tokenize(query))
+        order = sorted(range(len(candidate_rows)), key=lambda i: -scores[i])[:MAX_CANDIDATES]
+        lexical_rank = {candidate_rows[i]["id"]: rank for rank, i in enumerate(order)}
 
-    def _hybrid_chunk_scores(
-        self, query: str, allowed: set[str] | None, rrf_k: int
-    ) -> dict[str, float]:
-        """Fused RRF score per chunk id — the shared first stage for hybrid and rerank."""
-        qv = self.embedder.encode_query(query)
-        dense_rank = {
-            cid: i
-            for i, (cid, _) in enumerate(self.index.search(qv, k=len(self.chunks), allowed=allowed))
-        }
+    fused: dict[str, float] = {}
+    for row_id in set(dense_rank) | set(lexical_rank):
+        score = 0.0
+        if row_id in dense_rank:
+            score += 1.0 / (_RRF_K + dense_rank[row_id])
+        if row_id in lexical_rank:
+            score += 1.0 / (_RRF_K + lexical_rank[row_id])
+        fused[row_id] = score
+    return fused
 
-        bm25_scores = self._bm25.get_scores(tokenize(query))
-        bm25_rank: dict[str, int] = {}
-        rank = 0
-        for i in sorted(range(len(self.chunks)), key=lambda j: -bm25_scores[j]):
-            cid = self.chunks[i].chunk_id
-            if allowed is not None and cid not in allowed:
-                continue
-            bm25_rank[cid] = rank
-            rank += 1
 
-        fused: dict[str, float] = {}
-        for cid in set(dense_rank) | set(bm25_rank):
-            score = 0.0
-            if cid in dense_rank:
-                score += 1.0 / (rrf_k + dense_rank[cid])
-            if cid in bm25_rank:
-                score += 1.0 / (rrf_k + bm25_rank[cid])
-            fused[cid] = score
-        return fused
+_default: Retriever | None = None
 
-    def hybrid(
-        self,
-        query: str,
-        k: int = 5,
-        kinds: tuple[str, ...] | None = None,
-        services: tuple[str, ...] | None = None,
-        rrf_k: int = 60,
-    ) -> list[Hit]:
-        allowed = allowed_chunk_ids(self.chunks, kinds, services)
-        fused = self._hybrid_chunk_scores(query, allowed, rrf_k)
-        return self._to_docs(fused, k)
 
-    def rerank(
-        self,
-        query: str,
-        k: int = 5,
-        kinds: tuple[str, ...] | None = None,
-        services: tuple[str, ...] | None = None,
-        rrf_k: int = 60,
-        cand_k: int = RERANK_CANDIDATES,
-    ) -> list[Hit]:
-        """Hybrid to pull `cand_k` candidate chunks, then a cross-encoder re-scores them."""
-        allowed = allowed_chunk_ids(self.chunks, kinds, services)
-        fused = self._hybrid_chunk_scores(query, allowed, rrf_k)
-        candidates = [cid for cid, _ in sorted(fused.items(), key=lambda kv: -kv[1])[:cand_k]]
-        if not candidates:
-            return []
-        scores = self.reranker.score(query, [self._chunk_by_id[cid].text for cid in candidates])
-        reranked = dict(zip(candidates, scores, strict=True))
-        return self._to_docs(reranked, k)
+def default_retriever() -> Retriever:
+    """The process-wide retriever (lazy, built once), over the deployed knowledge container and
+    embedding deployment."""
+    global _default
+    if _default is None:
+        _default = Retriever(default_knowledge_records(), default_query_embedder())
+    return _default
