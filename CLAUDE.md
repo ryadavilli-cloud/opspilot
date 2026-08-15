@@ -141,29 +141,26 @@ deterministic. Do not add a model call for convenience.
 
 Violating one of these silently changes what the system means.
 
-- **Two-axis capability results.** Whether the operation executed and how
-  complete its answer was are separate axes. `succeeded + empty` and
-  `unavailable` stay separately representable, separately admitted, separately
-  visible. No code reads a tool result as a boolean.
-- **Admission is the only door.** Nothing becomes evidence except through
-  deterministic admission, which assigns its reference. Every operation that did
-  not answer produces a limitation naming the question it failed to answer.
-- **The registry is the only path to a source.** Explicit static mapping.
-  Nothing registers itself.
-- **Every source call carries a deadline** no greater than the turn's remaining
-  time. A call that outlives its turn is a violation even when its data is
-  correct.
-- **No numeric confidence anywhere** in the assessment.
-- **Model routing is by task label alone.** No severity, confidence, cost, or
-  runtime signal. No fallback chain.
-- **Retrieval returns passages** with source, collection, and provenance — never
-  identifiers alone.
-- **The grounding gate is structural.** It checks shape and reference
-  resolution. It does not judge meaning.
-- **One writer, one artifact.** The Supervisor writes the completed-turn record.
-  A terminal success cannot be emitted before that commit succeeds.
-- **No query text is constructed anywhere.** The structured-query path validates
-  a bounded structure and executes it read-only under a limit and a timeout.
+- **Two-axis capability results.** `data-and-evidence.md` §4, Capability
+  Request and Result Semantics.
+- **Admission is the only door.** `data-and-evidence.md` §6, Evidence
+  Admission.
+- **The registry is the only path to a source.** `system-design.md` §8.1,
+  Capability validation and dispatch.
+- **Every source call carries a deadline.** `workflow-design.md` §5, Bounded
+  Investigation.
+- **No numeric confidence anywhere.** `data-and-evidence.md` §12, Candidate
+  Assessment.
+- **Model routing is by task label alone.** `decisions.md` D-002, Model
+  routing.
+- **Retrieval returns passages, never identifiers alone.**
+  `data-and-evidence.md` §9, Retrieved Knowledge.
+- **The grounding gate is structural.** `data-and-evidence.md` §13, Claims,
+  Citations, and Grounding.
+- **One writer, one artifact.** `workflow-design.md` §8, Delivery,
+  Persistence, and Follow-Up.
+- **No query text is constructed anywhere.** `system-design.md` §8.2,
+  Operational and structured access.
 
 For exact vocabularies — outcome values, citation roles, support labels,
 provenance categories, stream statuses — read the owning document. Do not
