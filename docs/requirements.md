@@ -1,640 +1,347 @@
 # OpsPilot Requirements
 
-**What must OpsPilot do, preserve, demonstrate, constrain, defer, prefer, and exclude?**
+**What must OpsPilot accomplish and demonstrate, and what stays out?**
 
-OpsPilot is an agentic incident-investigation assistant for on-call engineers. This document defines
-the required product behavior, the domain it supports, the output it must produce, the capabilities
-it must demonstrate, the quality it must hold to, what it accepts as proof that it works, and the
-boundaries that keep it achievable.
+OpsPilot is an educational and portfolio capstone: an agentic incident-investigation assistant that
+demonstrates a coherent set of important agentic-AI ideas through one believable, end-to-end
+investigation of an authored incident. It is not a production incident-management platform, and it
+is not measured as one.
 
-It states observable behavior and commitments, not mechanisms. Top-level system shape, component
-structure, execution mechanics, data and evidence semantics, runtime and deployment realization,
-evaluation method, settled technical choices, and implementation rules are each owned by their own
-document. Requirements names no library, framework, model, database, cloud service, query language,
-or transport, with a single exception: Azure is named as the fixed hosting environment, because that
-commitment is made at requirements level and portability is not a goal.
+This document states what OpsPilot must accomplish and demonstrate, and the properties that make it
+trustworthy. It does not state how. Structure, components, execution mechanics, data and evidence
+semantics, runtime realization, evaluation method, settled technical choices, and implementation
+rules are each owned by their own document. Requirements names no library, framework, model,
+database, query language, or transport, with one exception: Azure is the fixed hosting environment,
+because that commitment is made here and portability is not a goal.
+
+Identifiers here are stable references for the design set. They are not a decomposition to be
+implemented one at a time.
 
 ---
 
 ## 1. Purpose and Value
 
-When an operational alert occurs, an on-call engineer often spends the first fifteen to twenty
-minutes gathering context before meaningful diagnosis can begin. They inspect metrics and logs,
-check recent changes, review dependencies, search runbooks, and look for similar incidents and prior
-remediation work.
+When an operational alert fires, an on-call engineer typically spends the first fifteen to twenty
+minutes gathering context before real diagnosis can begin: metrics and logs, recent changes,
+dependencies, runbooks, and similar past incidents. The same visible symptom often has several
+plausible causes, and the engineer must work out which one the evidence supports, what remains
+uncertain, and what can safely be done now.
 
-The same alert or visible symptom may have several underlying causes. The engineer must determine
-which explanation best fits the current evidence, what remains uncertain, and what can be done
-immediately without confusing temporary mitigation with permanent prevention.
+OpsPilot prepares that initial investigation and presents it as one concise, evidence-supported
+brief that the engineer can question. It does not replace the engineer, does not guarantee a root
+cause, and does not act on the environment it investigates.
 
-OpsPilot must prepare the equivalent of this initial investigation and present it as a concise,
-evidence-supported brief the engineer can explore conversationally. It targets avoidable
-evidence-gathering and early-diagnosis overhead. It does not replace the engineer, guarantee the
-root cause, or operate as a production incident-management platform.
+The value being demonstrated is agentic: an investigation whose evidence path adapts to what it
+finds, carried out by agents with distinct responsibilities, using tools and retrieved knowledge,
+staying grounded and bounded throughout, and observable while it happens.
 
-### Why bounded adaptive investigation is required
+### Why the investigation must be adaptive
 
-Many common incidents can be handled by deterministic alerts, dashboards, and known-signature
-lookups. OpsPilot does not replace those simpler mechanisms.
-
-Adaptive investigation is required where the correct evidence path cannot be fully known in advance,
-where one observation changes what should be checked next, and where a conclusion requires
-correlating structured and unstructured information from several sources. OpsPilot must focus on
-bounded scenarios where adaptive investigation provides visible value over a fixed script.
-
-A simple fixed-sequence baseline must remain available for comparison, and at least one authored
-scenario must show why adaptive routing, follow-up retrieval, or hypothesis revision beats running
-the same lookups in the same order.
+Many incidents are handled well by fixed dashboards and known-signature lookups, and OpsPilot does
+not compete with those. Adaptive investigation earns its place where the right evidence path cannot
+be known in advance: where one observation changes what should be checked next, and where a
+conclusion requires correlating several kinds of evidence. OpsPilot targets exactly those scenarios,
+and the authored corpus is built so that at least one shows an adaptive path outperforming a fixed
+one.
 
 ---
 
-## 2. Product Posture and Scope
+## 2. Scope and Posture
 
-OpsPilot is a bounded, repeatable incident-investigation environment. It must work coherently end to
-end on the RetailEase domain and must demonstrate a set of agentic AI capabilities working together.
-Its value is judged by how well those capabilities combine, not by the number of agents, frameworks,
-services, protocols, or infrastructure components used. Every specialist responsibility must serve a
-distinct purpose, and any additional complexity must earn its place.
+OpsPilot is a bounded, repeatable investigation environment over a synthetic domain. It must work
+coherently end to end and demonstrate its agentic capabilities working together. Its quality is
+judged by how well those capabilities combine and how clearly a reviewer can see them, not by the
+number of agents, frameworks, services, or protocols it uses.
 
-OpsPilot recommends actions but remains read-only against the environment it investigates. It
-observes; it never changes what it observes.
+It is read-only. It recommends; it never changes what it observes.
 
-The project must remain suitable for one developer, incremental vertical slices, a bounded schedule,
-and an individual-scale runtime budget. Safety, grounding, bounded execution, provenance,
-traceability, reproducible deployment, and repeatable evaluation must be real. Production-scale
-availability, throughput, tenancy, compliance, and operational breadth are outside its ambitions.
+It must remain understandable, demonstrable, and buildable by one developer within a bounded
+schedule and an individual-scale runtime budget. Grounding, read-only safety, bounded execution,
+provenance, and repeatable evaluation must be real. Production availability, throughput, tenancy,
+compliance, and operational breadth are outside its ambitions, and complexity that serves only those
+ends is out of scope.
 
----
-
-## 3. Supported Domain and Corpus
-
-OpsPilot operates against **RetailEase**, a synthetic e-commerce microservices environment.
-RetailEase provides the service topology, operational knowledge, incident history, deployment
-records, dependency relationships, and post-incident narrative used by the primary flow.
-
-The existing authored corpus must be reused rather than replaced by a second primary environment.
-
-### Current authored corpus
-
-The corpus contains seven authored incidents spanning five overlapping incident families:
-
-- resource saturation or capacity exhaustion;
-- downstream or external dependency failure;
-- deployment regression;
-- cache failure or stale-data behavior;
-- queue backlog or consumer failure.
-
-These families share alerts and visible symptoms deliberately. OpsPilot must distinguish causes by
-evidence and must never assume that one alert name maps to one cause.
-
-### Evidence surface
-
-Investigation must be able to reach:
-
-- logs;
-- metric observations;
-- deployment records;
-- service dependencies;
-- runbooks;
-- postmortems;
-- prior incidents and remediation records;
-- structured operational tables.
-
-Evidence references must use stable typed identifiers so that citations and answer-key references
-can be checked automatically. Evidence must be typed by the meaning of the observation, not by the
-access path that returned it.
-
-### Corpus completeness before final evaluation
-
-Before final evaluation can run, the corpus must contain at least one clear example of each of:
-
-- a well-supported single-cause incident;
-- an incident with competing hypotheses;
-- an incident with multiple contributing failures;
-- an incident where important evidence is unavailable;
-- a transient or low-impact condition where immediate action is not justified.
-
-Some of these may already be represented among the seven authored incidents. Coverage must be
-audited rather than assumed, and any gap closed before final results are reported.
-
-Corpus structure, answer-key generation, and ground-truth schema are owned by `evaluation.md`.
+Complexity earns its place only where it materially supports the journey, an important agentic-AI
+concept, grounding or read-only safety, a meaningful evaluation, or basic troubleshooting of the
+demonstration.
 
 ---
 
-## 4. Authoritative User Journey
+## 3. Domain and Corpus
 
-An **investigation** is one incident under study. A **turn** is one bounded evidence-gathering and
-synthesis cycle within that investigation, producing one **investigation brief**. A **live session**
-is the ephemeral conversational surface over an investigation; it is not a separately persisted
-entity.
+OpsPilot operates against **RetailEase**, a synthetic e-commerce microservices environment with a
+service topology, operational knowledge, incident history, deployment records, dependency
+relationships, and post-incident narrative. The synthetic environment is a feature of the capstone:
+it makes every scenario reproducible and every answer checkable.
 
-**FR-1** An investigation opens from selection of a predefined RetailEase incident. **FR-3** The
-selected incident resolves into the structured incident form before investigation begins.
+**R-1 Authored corpus.** The bounded primary domain is seven authored RetailEase incidents spanning
+five overlapping incident families: resource saturation, downstream or external dependency failure,
+deployment regression, cache failure or stale data, and queue backlog or consumer failure. Families
+deliberately share alerts and visible symptoms, so OpsPilot must distinguish causes by evidence and
+must never treat one alert name as one cause.
 
-**FR-5** The authoritative flow is:
+Evaluation additionally needs to exercise five scenario classes: a clear single-cause incident, an
+incident with competing hypotheses, an incident with multiple contributing failures, an incident
+where important evidence is unavailable, and a benign or transient condition where immediate action
+is not justified. The seven authored incidents supply most of these; where a class is not naturally
+present among them, a small controlled fixture may represent it. That fixture is part of the
+evaluation corpus, not an eighth authored incident, and nothing here requires one.
 
-1. The engineer selects an incident.
-2. Investigation begins immediately; structured intake requires no blocking confirmation.
-3. The interface streams investigation activity, tool use, and evidence arrival while a turn runs.
-4. The turn runs adaptively within its configured bounds.
-5. One coherent investigation brief is produced for that turn.
-6. The engineer asks about reasoning, evidence, alternatives, or unknowns.
-7. The engineer may request a concise handoff or status summary.
-
-**FR-6** A follow-up question or a handoff-summary request must be answered from retained
-investigation state without opening a new evidence-gathering turn.
-
-**FR-8** New evidence does not alter a turn already executing.
-
-Every completed turn has exactly one outcome: **complete**, **partial**, or **inconclusive**.
-
-An execution attempt that cannot produce, validate, persist, and deliver a trustworthy brief fails
-without creating a completed turn. Failed execution is not a fourth investigation outcome.
+**R-2 Evidence surface.** An investigation must be able to reach logs, metric observations,
+deployment records, service dependencies, runbooks, postmortems, prior incidents and remediation
+records, and structured operational tables. Evidence carries stable references so that citations
+can be checked. How the corpus is structured and how expectations are recorded belong to
+`evaluation.md`.
 
 ---
 
-## 5. Investigation Brief Requirements
+## 4. The Journey
 
-**FR-9** The investigation brief is the authoritative user-facing result of a turn. **FR-10** A
-handoff or status summary is a secondary output derived from the same investigation state.
+An **investigation** is one bounded, adaptive evidence-gathering and synthesis run over one authored
+incident, producing one investigation brief. Once complete, its record is retained and can be
+questioned. There is one investigation per incident selection; nothing reopens or extends a
+completed one.
 
-### 5.1 Presentation
+**R-3 Start.** The engineer selects one authored RetailEase incident. Investigation begins
+immediately, with no confirmation step and no free-text intake.
 
-**FR-11** The brief must be concise enough to use during an active incident. **FR-12** It must lead
-with the most useful current conclusion and next action, while detailed evidence, alternate causes,
-history, diagnostics, and agent activity remain available through progressive disclosure.
+**R-4 Run.** The investigation runs adaptively within deterministic bounds while the engineer
+watches its activity. It ends when the evidence is ready to interpret, when a bound is reached, when
+required evidence is unavailable, or when the request carrying it disconnects. An investigation that
+cannot produce, ground, persist, and deliver a trustworthy brief fails without producing one; a
+failure is not a kind of result.
 
-### 5.2 What happened
+**R-5 Result.** The investigation delivers exactly one investigation brief, as defined in section 5.
+It states honestly whether the evidence supported a conclusion, established part of the picture, or
+was insufficient, and it never presents a best guess as an established finding.
 
-**FR-13** The brief must be able to summarize what happened: the incident or alert and its timing;
-the affected service, component, dependency, or user impact; the triggering metric, log, trace, or
-event; related symptoms and affected components; and whether the evidence is consistent with one
-issue or suggests multiple contributing failures.
-
-### 5.3 What may be causing it
-
-The brief must provide:
-
-- **FR-18** the leading candidate cause, the evidence that supports it, and the evidence that weakens
-  or contradicts it where available;
-- **FR-21** other plausible candidate causes;
-- **FR-22** the most useful next check when additional evidence could distinguish candidates;
-- **FR-23** an explicit statement when the available evidence is insufficient.
-
-**FR-24** Candidate causes must be ordered and assigned qualitative support labels such as
-**Leading**, **Plausible**, or **Weakly supported**. **FR-25** A supported causal conclusion may be
-stated only when the evidence supports one.
-
-**FR-26** Historical comparison must be shown separately from current support and must never be
-converted into a probability for the current incident. OpsPilot does not produce calibrated
-root-cause probabilities.
-
-### 5.4 What history says
-
-The brief must be able to summarize relevant previous occurrences:
-
-- **FR-27** what caused them, what mitigation or follow-up action was recorded, whether a longer-term
-  fix, change, ticket, or remediation item exists, whether the current evidence differs materially
-  from the historical pattern, and whether a plausible current cause has no prior occurrence in the
-  available history.
-
-**FR-33** History must inform the current investigation without overruling current evidence.
-
-### 5.5 What to do
-
-**FR-34** Recommendations must be separated into three horizons:
-
-| Horizon | Purpose |
-| --- | --- |
-| **Now (approximately 5 minutes)** | Reduce immediate impact, confirm whether intervention is needed, or explain why no immediate action is justified |
-| **Soon (approximately 1 hour)** | Stabilize the service, verify mitigation, gather remaining evidence, and determine escalation or coordination needs |
-| **Later (approximately 24 to 48 hours)** | Reduce recurrence through code, configuration, capacity, resilience, observability, alerting, runbook, or follow-up improvements |
-
-**FR-35** Recommendations must connect to observed evidence and candidate causes. **FR-36** Temporary
-mitigation and longer-term prevention must remain distinct. **FR-37** Where an immediate mitigation
-is recommended, the brief must state what should be observed to verify it worked.
-
-**FR-38** Each recommendation must identify its provenance where practical: retrieved runbook
-guidance, an action recorded in a prior incident, or general operational practice generated by the
-model.
-
-### 5.6 Outcome forms
-
-**FR-39** A **complete** brief presents a supported analysis for the turn's objective.
-
-**FR-40** A **partial** brief presents what was established before the turn stopped, states plainly
-that it is incomplete, and names what was not reached.
-
-**FR-41** An **inconclusive** brief states that the available evidence cannot support a cause, names
-what is missing or contradictory, and does not present a best guess as an established finding.
+**R-6 Question.** The engineer may ask a question about a completed investigation and receive an
+answer drawn only from that investigation's retained record. A question gathers no new evidence,
+introduces no new conclusion, and creates no new investigation. Where the record cannot answer, the
+answer says so. A concise handoff or status summary derived from the same record is a preference,
+not a requirement (section 10).
 
 ---
 
-## 6. Functional Requirements
+## 5. The Investigation Brief
 
-### 6.1 Intake and Investigation Control
+**R-7 Purpose and shape.** The brief is the authoritative result of an investigation. It must be
+concise enough to use during an active incident, lead with the most useful conclusion and next
+action, and make supporting detail available without burying the conclusion in it. Presentation and
+layout are design choices.
 
-OpsPilot must:
+**R-8 Content.** The brief must communicate, concisely and where the evidence supports each:
 
-- **FR-42** establish one incident as the active investigation;
-- **FR-43** accept selection of a predefined incident;
-- **FR-44** retain findings, tool results, and questions across the turns of one investigation;
-- **FR-45** keep unrelated investigations isolated from one another.
+- what appears to have happened: the incident, its timing, and what was affected;
+- the leading candidate cause and, where warranted, credible alternatives, each with a qualitative
+  support label rather than a number, and with the evidence that supports or weakens it;
+- the most useful next check where one would distinguish the remaining candidates;
+- important unknowns, missing or unavailable evidence, and contradictions;
+- useful action: what to do or verify now, kept distinct from longer-term follow-up or prevention,
+  and including "no immediate action is required" where the evidence supports that;
+- relevant historical context, where it materially helps, shown separately from current evidence.
 
-### 6.2 Adaptive and Bounded Investigation
+Where more than one failure contributes to an incident, the brief says so rather than forcing a
+single cause.
 
-OpsPilot must:
-
-- **FR-49** select evidence sources based on the incident and the findings so far;
-- **FR-50** avoid running every tool in the same sequence for every incident;
-- **FR-51** use one observation to decide whether another check is useful;
-- **FR-52** revise direction when evidence weakens the current explanation;
-- **FR-53** operate within configurable deterministic limits on steps, tool calls, retries, elapsed
-  time, context, and model use;
-- **FR-54** prevent runaway execution and its cost;
-- **FR-55** give every completed turn exactly one outcome: complete, partial, or inconclusive.
-
-**FR-56** No agent may extend, reset, or otherwise widen its own limits. The system must be adaptive
-without being open-ended.
-
-### 6.3 Evidence, Diagnosis, and History
-
-OpsPilot must:
-
-- **FR-57** gather evidence from a controlled subset of the RetailEase evidence surface;
-- **FR-58** distinguish observations, inferences, and recommendations;
-- **FR-59** produce a leading candidate cause and retain supported alternatives;
-- **FR-60** show evidence that supports or weakens each meaningful candidate;
-- **FR-61** identify a useful discriminator when one additional check could separate candidates;
-- **FR-62** state when evidence is sparse, contradictory, missing, or unavailable;
-- **FR-63** preserve contradictory evidence rather than resolving it away silently;
-- **FR-64** avoid manufacturing alternatives merely to appear comprehensive;
-- **FR-65** recognize multiple contributing failures within one incident;
-- **FR-66** retrieve and compare relevant historical occurrences;
-- **FR-67** never treat history as proof of the current cause.
-
-**FR-68** Tool failures and unreachable sources must be exposed as explicit limitations. **FR-69**
-They must never be fabricated into observations.
-
-### 6.4 Multi-Turn Conversation and Outputs
-
-OpsPilot must:
-
-- **FR-70** produce the investigation brief defined in section 5 for every completed turn;
-- **FR-71** answer follow-up questions from retained investigation state rather than starting over;
-- **FR-72** allow "no immediate action required" or "safe to defer pending follow-up" when supported;
-- **FR-73** expose the supporting sources and tool outcomes behind its conclusions;
-- **FR-74** produce a concise handoff or status summary from existing investigation state;
-- **FR-75** remain read-only against the target environment throughout.
+**R-9 Honesty.** The brief distinguishes what was observed from what was inferred, states a causal
+conclusion only where the evidence supports one, and states plainly when the evidence is
+insufficient. An honest inconclusive result that names what is missing is a good result. Candidate
+support is qualitative; OpsPilot never presents a probability that a cause is correct.
 
 ---
 
-## 7. Required Agentic Capability Commitments
+## 6. Agentic Capabilities
 
-**FR-76** These are required capabilities, not preferences. Each must be genuinely present and
-visibly demonstrable end to end.
+These are the capabilities OpsPilot exists to demonstrate. Each must be genuinely present and
+visible end to end.
 
-### 7.1 Agent responsibilities
+**R-10 Three agent responsibilities.** The investigation is carried out by three agents with
+distinct, visible responsibilities: a Supervisor that sets the objective, coordinates the work, and
+holds the bounds; an Evidence Investigator that decides what evidence to gather and gathers it
+through approved sources; and an RCA Analyst that is the sole owner of analysis and produces the
+brief's conclusions. Coordination between them is inspectable. How responsibilities are realized,
+how agents communicate, and how work is sequenced are design choices.
 
-Three logical agent responsibilities are required:
+**R-11 Adaptive investigation.** The evidence path adapts to what is found: which source to consult
+next depends on the incident and on what has already been observed, and the investigation revises
+direction when evidence weakens its current explanation. Different incidents must take demonstrably
+different evidence paths. A fixed sequence of the same lookups for every incident does not satisfy
+this.
 
-- **FR-77** a **Supervisor** that interprets each turn's objective, coordinates the work, and
-  enforces bounds;
-- **FR-78** an **Evidence Investigator** that gathers evidence adaptively through approved sources;
-- **FR-79** an **RCA Analyst** that is the sole authoritative owner of analysis and synthesis.
+**R-12 Analysis can redirect gathering.** When analysis identifies a material unresolved question
+that available evidence can still answer, it can redirect gathering to answer it, within the
+investigation's deterministic bounds. This is what makes the RCA Analyst part of the investigation
+rather than a formatter at the end of it. It is not a general re-investigation mechanism.
 
-**FR-80** Coordination must be Supervisor-mediated and inspectable rather than open-ended peer
-conversation.
+**R-13 Model-directed tool use.** Agents choose which approved read-only tools to use and with what
+arguments, across several evidence source types. Every tool result carries an explicit outcome the
+system can act on.
 
-**FR-81** The RCA Analyst's analysis may contain one leading candidate, supported alternatives,
-qualitative support labels, supporting and contradicting evidence, unresolved discriminators, and a
-supported causal conclusion where the evidence permits one.
+**R-14 Retrieval that influences the investigation.** OpsPilot retrieves relevant runbook,
+architecture, and past-incident knowledge in a way that handles both meaning and exact operational
+identifiers, such as service names, error codes, and deployment identifiers, well enough to be
+trusted on them. Retrieved knowledge must demonstrably influence what the investigation checks or
+concludes; retrieval that only decorates a finished result does not satisfy this. Retrieved
+knowledge informs interpretation and can never by itself establish the cause of the current
+incident.
 
-**FR-82** Ranked candidates do not become multiple authoritative conclusions.
+**R-15 Governed structured querying.** OpsPilot can answer natural-language questions about
+structured operational data through a bounded, read-only query capability over an approved surface,
+deterministically validated before anything executes, and never usable as a general database
+assistant. What it returns becomes evidence with provenance like any other observation.
 
-**FR-83** The engineer-facing interface, evidence access, retrieval, tools, deterministic controls,
-persistence, evaluation, and observability are not agents.
+**R-16 One real protocol boundary.** At least one genuine investigation capability is additionally
+exposed through a real MCP boundary, with the same read-only behavior, the same permissions, and the
+same semantics as the direct path. This demonstrates the protocol; it does not make OpsPilot a
+protocol platform.
 
-### 7.2 Adaptive investigation behavior
-
-Required:
-
-- **FR-84** a reason-act-observe style investigation loop, with the selected loop style and its
-  trade-off stated in the design documentation;
-- **FR-85** conditional routing, such that different incidents take demonstrably different evidence
-  paths;
-- **FR-86** adaptive evidence-source selection driven by what has already been observed;
-- **FR-87** parallel execution of independent evidence-gathering work;
-- **FR-88** bounded termination that reports a partial result honestly.
-
-### 7.3 Retrieval
-
-**FR-89** An end-to-end retrieval capability is required. It must:
-
-- **FR-90** handle both semantic similarity and exact operational identifiers well enough to be
-  trusted on service names, error codes, and deployment identifiers;
-- **FR-91** combine dense and lexical retrieval with result fusion and reranking;
-- **FR-92** use separate knowledge collections or indexes with routing between them;
-- **FR-93** demonstrably influence what the investigation checks and concludes, rather than
-  decorating a finished result.
-
-**FR-94** Retrieved knowledge informs interpretation. It can never independently establish the cause
-of the current incident.
-
-### 7.4 Governed structured-data access
-
-**FR-95** A bounded natural-language-to-structured-query capability is required, available to the
-Evidence Investigator only. It must be:
-
-- **FR-96** governed, and never a general-purpose database assistant;
-- **FR-97** bounded to an approved schema and query surface;
-- **FR-98** deterministically validated before execution;
-- **FR-99** executed read-only, under explicit limits and a timeout;
-- **FR-100** normalized into evidence with provenance;
-- **FR-101** unavailable directly to the RCA Analyst;
-- **FR-102** incapable of mutating operational data under any configuration.
-
-### 7.5 Tool boundary and protocol interoperability
-
-Required:
-
-- **FR-103** read-only operational tools with explicit, structured outcomes;
-- **FR-104** one real external protocol boundary, exposing at least one tool with no broader
-  permission and no different semantics than the direct path.
-
-### 7.6 Model routing
-
-**FR-105** One deliberate model-routing decision is required, using a lower-cost path for a bounded
-simple task that neither interprets evidence nor produces an assessment, with the routing signal
-visible.
-
-### 7.7 Observable investigation surface
-
-**FR-106** The engineer-facing surface must demonstrate both the incident-assistance experience and
-the agentic system producing it. **FR-107** Production polish is not required; a plain chat screen
-that hides the workflow is insufficient.
-
-While a turn runs and afterwards, the engineer must be able to see:
-
-- **FR-108** incident selection;
-- **FR-109** live investigation activity;
-- **FR-110** the announced next investigation action and the evidence checks already completed;
-- **FR-111** specialist-responsibility activity;
-- **FR-112** tools invoked and their outcomes;
-- **FR-113** retrieved documents and structured query results;
-- **FR-114** evidence connected to the conclusions it supports;
-- **FR-115** qualitative candidate labels and their ordering;
-- **FR-116** missing sources, retries, failures, and bounded-stop conditions;
-- **FR-117** handoff-summary generation.
-
-During a live turn this activity is streamed as it happens. After the turn completes, the retained
-completed turn satisfies this visibility through its brief, evidence, limitations, and outcome;
-durable replay of the complete live activity sequence is not required.
-
-**FR-118** A developer or diagnostics view may additionally expose model and prompt metadata,
-structured model outputs, detailed tool requests and responses, latency, token use, approximate cost,
-trace identifiers, and evaluation results. **FR-119** Raw model responses may be available for
-debugging or demonstration, but the primary interface must emphasize structured evidence and
-operationally useful output rather than hidden reasoning transcripts. The developer view may be
-realized as progressive disclosure within the primary interface; a separate diagnostics application
-is not required, and the interface must not expose chain-of-thought or other hidden model
-reasoning.
+**R-17 Observable agent activity.** While an investigation runs, and afterwards from its record, the
+engineer can understand which agent or capability is acting, what meaningful action it is taking,
+what evidence, retrieval, or tool result it obtained, why the investigation continued or stopped,
+and how the final result rests on its evidence. Activity is a compact projection of meaningful
+events, not a transcript, and it never exposes hidden model reasoning. A plain chat window that
+hides the agentic system does not satisfy this; production polish is not required.
 
 ---
 
-## 8. Quality and Non-Functional Requirements
+## 7. Trust and Safety
 
-### 8.1 Trust, safety, and correctness
+These properties define trustworthy behavior. Losing any of them is a defect, not a simplification.
 
-- **NFR-1** Operational access remains read-only on every path and under every configuration.
-- **NFR-2** Material claims must resolve to admitted evidence; unsupported claims must never be
-  presented as established facts.
-- **NFR-3** Citations must resolve to stable evidence references.
-- **NFR-4** Recommendation provenance must be available.
-- **NFR-5** Missing, contradictory, sparse, or unavailable evidence must be disclosed rather than
-  smoothed over.
-- **NFR-6** Contradictory observations must be preserved rather than overwritten.
-- **NFR-7** Tool results must preserve the observable distinction between a source that returned
-  evidence, a source that successfully found no matching evidence, a source that returned an
-  incomplete result, and a source that could not execute or answer.
-- **NFR-8** Degradation must be graceful: a failed or unavailable source produces a stated
-  limitation, never a fabricated observation.
-- **NFR-9** Retrieved content, tool output, and engineer-supplied text are untrusted data, never
-  instructions.
-- **NFR-10** Deterministic controls must be enforced in code and must not be overridable by an agent.
-- **NFR-11** Working or scratchpad state must remain separate from user-facing output.
-- **NFR-12** Unrelated investigations must remain isolated.
-- **NFR-13** Identity and secret handling must be sound at a basic level, with approved data access
-  only.
+**R-18 Read-only.** Operational access is read-only on every path, including the protocol boundary,
+under every configuration. No path can mutate what OpsPilot observes.
 
-### 8.2 Operability and evidence of correctness
+**R-19 Grounded.** Every material claim about the incident resolves to evidence gathered during the
+investigation, and every citation resolves to a stable reference. Recommendations show whether they
+came from retrieved guidance or from general practice.
 
-- **NFR-14** Agent, tool, and model activity must be traceable end to end for one investigation.
-- **NFR-15** Tools and evidence references must be deterministically testable.
-- **NFR-16** Evaluation must be repeatable, and changes must be regression-comparable.
-- **NFR-18** Per-investigation latency, token use, and approximate cost must be visible.
-- **NFR-19** The application must report basic health and fail in controlled, legible ways.
-- **NFR-20** The deployed application must be diagnosable from its logs and telemetry without
-  redeployment.
-- **NFR-21** Prompts, tools, and configuration must remain maintainable behind stable seams.
-- **NFR-22** Completed investigation records and traces must persist.
+**R-20 No fabrication.** A tool that fails, times out, is unavailable, or is refused produces a
+stated limitation, never a fabricated observation. Missing, unavailable, sparse, or contradictory
+evidence is disclosed rather than smoothed over.
 
-### 8.3 Depth of treatment
+**R-21 Result distinctions preserved.** OpsPilot preserves, and shows, the difference between a
+source that returned evidence, one that answered and found nothing, one that answered partially, and
+one that could not execute or answer.
 
-**NFR-23** The concerns in section 8.1 must be fully demonstrated. **NFR-24** Of those in section
-8.2, a practical baseline is sufficient for latency and token and cost visibility, basic application
-health and controlled errors, diagnosability of the deployed application from its logs and telemetry,
-prompt and tool and configuration maintainability, and persistence of investigation records and
-traces. The same practical baseline is sufficient for the local and hosted operation section 10
-states. Deferred capabilities are in section 12; concerns carried only as extension seams are in
-section 13.
+**R-22 Contradiction preserved.** Contradictory observations are kept and shown; they are not
+overwritten or resolved away.
+
+**R-23 Untrusted content.** Retrieved content, tool output, incident text, and engineer text are
+data and never instructions.
+
+**R-24 Bounded.** Execution runs within deterministic limits that code enforces and that no agent
+can extend, reset, or widen. Reaching a bound never turns insufficient evidence into a conclusion.
+
+**R-25 Isolation.** Unrelated investigations do not contaminate one another.
+
+**R-26 Basic hygiene.** Identity and secret handling are sound at a basic level, and the application
+holds only the data access it needs.
 
 ---
 
-## 9. Demonstration and Acceptance Expectations
+## 8. Evaluation
 
-Evaluation exists to demonstrate deliberate development and to enable comparison across changes. It
-does not certify production incident-management quality. **NFR-25** An offline model-assisted judge
-scores completed output against a rubric or golden scenario; it is never a runtime authority that
-confirms a diagnosis.
+Evaluation exists to show that development was deliberate, that OpsPilot's important claims hold,
+and that the capstone demonstrates how agentic systems are evaluated. It runs offline against the
+authored corpus and fixtures, informs rather than gates, and certifies nothing about production
+suitability. No numeric threshold is set before a measured baseline exists, and no published figure
+is a service-level commitment. It is reproducible enough that a meaningful prompt or model change
+can be compared before and after.
 
-**NFR-26** Final targets are recorded after an initial fixed-script and early OpsPilot baseline run.
-**NFR-27** Any numeric threshold is set after that baseline and must remain appropriate to a small
-corpus. **NFR-28** Any published timing, quality, or cost value is a demonstration target, not a
-service-level commitment. Scoring methods, judges, metric definitions, ablations, and reporting
-formats are owned by `evaluation.md`.
+Two kinds of evaluation are kept distinct. Where correctness can be determined mechanically, it is
+determined by code. Where quality requires semantic judgement, an offline model-assisted judge
+supplies it. Neither is a runtime authority.
 
-### 9.1 Diagnosis behavior by scenario class
+**R-27 Scenario behavior.** Each authored incident and evaluation fixture carries an authored
+expectation of what a correct investigation establishes. Evaluation reports, per scenario, whether
+OpsPilot reached a reasonable diagnosis, handled ambiguity honestly, recognized multiple
+contributors where they exist, admitted insufficient evidence where appropriate, and recommended no
+immediate action where none is justified. Failures are named.
 
-**NFR-29** The following scenario classes define the minimum diagnosis behavior OpsPilot must
-demonstrate.
+**R-28 Grounding and deterministic correctness.** Evaluation checks mechanically that cited
+references resolve, that material incident claims have admitted support, that no prohibited
+operational write occurred, and that structured-query results match expected results.
 
-| Scenario class | Acceptance expectation |
-| --- | --- |
-| Clear single-cause incident | The expected cause appears first, with correct supporting evidence |
-| Ambiguous incident | The expected cause appears among the top candidates, with supporting evidence |
-| Multiple contributing failures | The brief identifies that one cause does not explain all signals |
-| Sparse evidence | The brief states that evidence is insufficient and names what is missing |
-| Benign or transient condition | The brief allows no immediate action where that is supported |
+**R-29 Adaptive value.** A simple fixed-path baseline, using the same tools in a predetermined
+order, exists for comparison, and at least one authored scenario shows adaptive investigation
+reaching a better result than the fixed path. This is the falsification test for OpsPilot's central
+claim; it is not a benchmark across every incident.
 
-**NFR-30** Results must be reported by scenario class with named failures, never hidden inside one
-aggregate percentage.
+**R-30 Retrieval influence.** For scenarios where relevant knowledge is expected, evaluation
+demonstrates that retrieved knowledge materially influences an investigation action, hypothesis,
+interpretation, or recommendation. At least one suitable scenario must demonstrate this influence
+against the same investigation without that retrieval influence. Retrieval is not required where
+the scenario does not need it.
 
-### 9.2 Retrieval
-
-- **NFR-31** Retrieval must be measured for precision and recall.
-- **NFR-32** No evaluated incident may retrieve none of its expected evidence.
-- **NFR-33** Exact identifiers such as service names, error codes, and deployment identifiers must
-  be checked deterministically.
-- **NFR-34** The selected retrieval approach must be compared against a simpler baseline.
-
-### 9.3 Grounding and provenance
-
-**NFR-35** Every incident-specific observation must cite resolvable evidence, every cited identifier
-must resolve to a real corpus entry, inferences must identify the observations they depend on, and
-recommendations must identify whether they came from a runbook, a prior incident, or general
-operational practice.
-
-**NFR-36** A model-assisted judge may additionally score whether cited evidence supports the claim
-attached to it.
-
-### 9.4 Tools, degradation, and recommendations
-
-- **NFR-37** Evaluation must cover appropriate tool and evidence-path selection.
-- **NFR-38** Evaluation must cover completion with an explicit partial result when a noncritical
-  source fails.
-- **NFR-39** Evaluation must cover bounded retries and bounded termination.
-- **NFR-40** Evaluation must cover the presence of the required recommendation horizons.
-- **NFR-41** Deterministic checks must verify that no prohibited write or unsupported operational
-  action occurs.
-- **NFR-42** Model-assisted evaluation must score usefulness, completeness, and relevance.
-
-### 9.5 Structured-query and protocol correctness
-
-**NFR-43** Structured-query behavior must be checked by comparing execution results against a golden
-result, not by comparing generated query strings. **NFR-44** The protocol tool boundary must be
-verified to produce the same semantics and no broader permission than the direct path.
-
-### 9.6 Value of adaptive investigation
-
-**NFR-45** A fixed-script baseline must use the same corpus and tools in a predetermined lookup
-order, and at least one scenario must show an advantage from adaptive routing, follow-up retrieval,
-or hypothesis revision. This supports the design claim; it need not prove that adaptive investigation
-wins on every incident.
-
-### 9.7 Repeatability, latency, and cost
-
-**NFR-46** Repeated runs over a small representative subset must be recorded, along with whether the
-leading candidate remains reasonably stable, end-to-end and major-step latency, the number of model
-and tool calls, and token use and approximate cost. **NFR-47** These are reported alongside
-correctness, never in a separate appendix. **NFR-48** A prompt or model change must be comparable
-before and after.
-
-### 9.8 Continuous evaluation signal
-
-**NFR-49** Evaluation must run as an advisory, non-blocking signal on change. It informs; it does not
-gate merge.
+**R-31 Model-assisted judgement.** An offline judge evaluates the qualitative aspects of completed
+investigation output against an authored rubric or expected scenario: whether the brief is useful
+and coherent, whether uncertainty is communicated appropriately, whether the diagnosis is well
+explained in context, and whether recommendations fit the established situation. It complements the
+deterministic checks, is advisory, runs offline, and is never a runtime authority. One judge path
+and one authored rubric are enough.
 
 ---
 
-## 10. Runtime and Deployment Outcome
+## 9. Runtime and Deployment
 
-OpsPilot must:
+**R-32 Local and hosted.** OpsPilot runs locally for development and evaluation, and runs in Azure
+for a repeatable hosted demonstration. It may start on demand; ordinary demonstration downtime
+implies no availability commitment.
 
-- **NFR-50** run locally for development and evaluation;
-- **NFR-51** run in Azure for a repeatable hosted demonstration;
-- **NFR-52** be startable on demand rather than maintained as an always-on service;
-- **NFR-53** make live investigation activity visible to the engineer while a turn runs;
-- **NFR-54** tolerate ordinary demonstration downtime without implying an availability commitment;
-- **NFR-55** persist completed turns and their briefs, the evidence needed to resolve their
-  citations, and traces. Evaluation artifacts are also retained, and may be stored separately from
-  the completed turns they reference.
+**R-33 Retention.** A completed investigation, its brief, and the evidence needed to resolve its
+citations are retained and remain readable, so that questions can be answered and evaluation can run
+against them. Losing an in-progress investigation on restart is acceptable; it is simply run again.
 
-**NFR-56** Short-term context is retained across the turns of a live session. **NFR-57** Losing an
-in-flight turn's progress on process restart is acceptable baseline behavior; the turn is simply run
-again. **NFR-58** Completed records remain intact and readable.
-
-The hosted environment exists to demonstrate deployability and runtime observability, not production
-availability engineering.
+**R-34 Basic observability.** Agent, tool, model, and retrieval activity for one investigation is
+correlated end to end well enough to understand and troubleshoot a demonstration from its logs and
+telemetry, and the application reports basic health and fails in legible ways. This is a practical
+troubleshooting baseline, not production observability.
 
 ---
 
-## 11. Strong Preferences
+## 10. Preferences
 
-These may be attempted only after the primary end-to-end flow works. They create no downstream
-design or implementation obligation unless explicitly promoted. No other document may design for
-them, reserve structure for them, or plan against them. Promotion requires stating the promotion
-here first.
+These may be pursued after the primary journey works end to end. They create no obligation on any
+other document unless promoted here first.
 
-- **Numeric evidence-support scoring.** If implemented, a score must be derived from defined
-  supporting and contradicting evidence rather than invented by the model, and must never be
-  presented as the probability that a candidate is correct. Qualitative candidate labels are
-  required regardless; a numeric score is not.
-- **Query rewriting or expansion.**
-- **Context summarization or compression.**
-- **Lightweight caching.**
-- **A review or self-critique pass over the draft analysis.**
-- **Bounded schema-retrieval refinement beyond the baseline governed query path.**
-- **Explicit context-engineering documentation** covering write, select, compress, and isolate.
-- **A privacy-redaction extension seam**, even though the primary corpus is synthetic.
+- **A concise handoff or status summary** derived from a completed investigation's record.
+- **Parallel execution of independent evidence actions**, where it is cheap and does not complicate
+  bounds, failure handling, or the activity view.
+- **A verification signal for an immediate mitigation**: what to observe to confirm it worked.
+- **A developer view** exposing model and prompt metadata, structured model outputs, detailed tool
+  requests and responses, trace identifiers, basic usage figures such as latency and approximate
+  cost, and evaluation results, as progressive disclosure within the primary interface.
+- **Extending the R-31 rubric to entailment**: whether each cited piece of evidence actually
+  supports the claim it is attached to.
+- **Query rewriting or expansion; context compression; lightweight caching; a self-critique pass.**
 
 ---
 
-## 12. Deferred Capabilities
+## 11. Deferred and Non-Goals
 
-These are intentionally outside the baseline. They must not be designed for or built against unless
-promoted.
+Deferred, and not to be designed for unless promoted:
 
-- Restart-resumable live sessions or in-flight turns.
-- Long-term memory across investigations. If cross-investigation memory is ever promoted, admission
-  into it must be explicit and governed; delivering a brief must never by itself admit its content
-  into reusable memory.
-- Learning from engineer corrections.
-- An agent-to-agent interoperability card.
-- Tuned semantic caching.
-- Richer automatic proposal of diagnostic checks.
-- A held-out generalization probe on a small, structurally similar external slice. Its purpose would
-  be limited to showing that OpsPilot produces a coherent, evidence-grounded brief on unfamiliar
-  evidence; diagnostic accuracy against the RetailEase answer key would not be scored. It is
-  deferred wherever it would threaten completion of the primary RetailEase flow.
+- restart-resumable investigations;
+- long-term memory across investigations;
+- learning from engineer corrections;
+- a held-out generalization probe on unfamiliar evidence.
 
----
+Non-goals:
 
-## 13. Considered Concerns
-
-These are not baseline commitments and require no implementation. Runtime documentation should
-identify a reasonable extension seam for each, without introducing unused infrastructure.
-
-- Provider or model fallback.
-- Horizontal scalability and capacity planning.
-- Production-scale security hardening.
-
----
-
-## 14. Non-Goals and Exclusions
-
-OpsPilot does not include:
-
-- autonomous remediation or any operational write;
-- application of generated production code or configuration fixes;
-- approval gates for operational writes, since the system is read-only;
-- incident detection before an engineer request;
-- automatic webhook ingestion;
-- replacement of monitoring or incident-management platforms;
-- support for arbitrary incidents or infrastructure environments;
-- coordination of several independently declared incidents;
-- mid-flight evidence injection into a running turn;
-- a general-purpose multi-agent platform;
-- production-grade high availability, disaster recovery, regional failover, scalability, tenancy,
-  compliance certification, or service-level commitments;
-- production-scale performance and cost optimization;
+- autonomous remediation or any operational write, and approval gates for writes, since there are
+  none;
+- incident detection, webhook ingestion, or replacement of monitoring and incident-management
+  platforms;
+- free-text incident intake and clarification; redirecting an investigation; engineer-supplied
+  evidence; explicit cancellation controls beyond disconnect handling;
+- support for arbitrary incidents or environments, or coordination of several incidents;
+- a general-purpose multi-agent platform, agent-to-agent interoperability, or exposing more than the
+  demonstration needs through MCP;
+- production availability, disaster recovery, scalability, tenancy, compliance certification,
+  service-level commitments, or production-scale performance and cost optimization;
 - calibrated root-cause probabilities;
 - a large production-like corpus;
-- voice or speech interaction, which fits poorly with a dense evidence brief;
-- fine-tuning and related adaptation techniques, because the knowledge changes and must remain
-  retrievable and citable;
-- learned sparse retrieval at this corpus size;
-- canary and rollback workflows, which need real production traffic to mean anything;
-- automated drift detection, against a fixed corpus and a controlled demonstration runtime;
-- full agent-to-agent interoperability for a single bounded system;
-- implementing a technique merely to claim coverage of it.
+- voice or multimodal interaction, fine-tuning, learned sparse retrieval, canary and rollback
+  workflows, drift detection;
+- implementing any technique merely to claim coverage of it.
