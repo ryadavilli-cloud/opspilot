@@ -1,338 +1,368 @@
-"""Synthesis admission and the brief projection.
+"""Structural admission of a proposal, and the brief that renders what it produced.
 
-The model proposes; code admits. These assert the refusals, because the refusals are what stop a
-model's assertion from becoming a published structure nothing verified. The brief tests assert the
-symmetric rule: a rendering may not add what the assessment lacks, and may not drop what it holds.
+The property under test throughout is that nothing between the model and the gate exercises
+judgment. A candidate the run's evidence does not support still reaches the gate, because the gate
+is what says so; a filter here would answer that question first and quietly, leaving the gate to
+approve an assessment it never saw. What admission may refuse is structure: a response that is not
+a proposal, and a string no reference grammar could produce.
+
+The brief tests assert the symmetric rule: a rendering may not add what the assessment lacks, and
+may not drop what it holds.
 """
 
 from __future__ import annotations
 
-from opspilot.assessment.brief import project
-from opspilot.assessment.contracts import (
-    BRIEF_SECTIONS,
-    ConclusionDisposition,
-    Horizon,
-    RecommendationKind,
-    RecommendationProvenance,
-    Strength,
-    SupportLabel,
-)
+import json
+
+import pytest
+
+from opspilot.assessment.brief import outcome_of, render
+from opspilot.assessment.contracts import Action, Assessment, Candidate, Outcome, SupportLabel
 from opspilot.assessment.synthesis import (
+    ActionProposal,
     AssessmentProposal,
     CandidateProposal,
-    RecommendationProposal,
+    UnusableProposal,
     admit_assessment,
     parse_proposal,
 )
-from opspilot.evidence.admission import AdmittedObservation, EvidenceType, Limitation
-from opspilot.tools.contracts import Completeness, ExecutionOutcome
 
 MEMORY = "metrics:redis-cache:used_memory_pct@2026-06-22T11:35:00Z"
 EVICTED = "metrics:redis-cache:evicted_keys_rate@2026-06-22T11:40:00Z"
 LOG = "logs:checkout-api:evt-005-01"
-UNADMITTED = "logs:payment-api:evt-999-99"
+NEVER_ADMITTED = "logs:payment-api:evt-999-99"
+RUNBOOK = "runbook:redis-cache-degradation"
 
 
-def _observation(
-    ref: str,
-    completeness: Completeness = Completeness.COMPLETE,
-    *,
-    operation_ref: str = "op-0001",
-) -> AdmittedObservation:
-    return AdmittedObservation(
-        evidence_ref=ref,
-        investigation_id="inv-1",
-        turn_id="turn-1",
-        operation_ref=operation_ref,
-        evidence_type=EvidenceType.METRIC,
-        source="get_metrics",
-        completeness=completeness,
-        observation={"value": 99.0},
-        provenance="get_metrics(service=redis-cache)",
-        # What admission attaches to a partial observation, and the words the disclosure carries.
-        limitations=(
-            ("the source returned part of the requested scope",)
-            if completeness is Completeness.PARTIAL
-            else ()
-        ),
-    )
-
-
-def _limitation() -> Limitation:
-    return Limitation(
-        question="what did the change history show",
-        reason="the source could not be reached",
-        operation_ref="op-0002",
-        capability="get_deployments",
-        outcome=ExecutionOutcome.UNAVAILABLE,
-    )
-
-
-def _admit(
-    proposal: AssessmentProposal, refs=(MEMORY, EVICTED, LOG), limitations=(), *, partial=()
-):
-    return admit_assessment(
-        proposal,
-        investigation_id="inv-1",
-        turn_id="turn-1",
-        objective="explain the checkout latency rise",
-        observations=[
-            _observation(r, Completeness.PARTIAL if r in partial else Completeness.COMPLETE)
-            for r in refs
-        ],
-        limitations=list(limitations),
-    )
-
-
-def _full_proposal() -> AssessmentProposal:
-    return AssessmentProposal(
+def _proposal(**overrides) -> AssessmentProposal:
+    base = dict(
         what_happened="checkout latency rose while the cache evicted keys",
         what_happened_refs=[LOG],
-        leading=CandidateProposal(
-            statement="redis-cache hit its memory ceiling and evicted session keys",
-            supporting_refs=[MEMORY, EVICTED],
-        ),
-        recommendations=[
-            RecommendationProposal(
-                action="raise the cache memory ceiling",
-                horizon="now",
-                kind="mitigation",
-                responds_to="the leading candidate",
-                confirm_signal="eviction rate returns to zero",
+        candidates=[
+            CandidateProposal(
+                statement="redis-cache hit its memory ceiling and evicted session keys",
+                label="leading",
+                established=True,
+                supporting=[MEMORY, EVICTED],
             )
         ],
+        actions=[ActionProposal(action="raise the cache memory ceiling", now=True)],
     )
+    base.update(overrides)
+    return AssessmentProposal(**base)
 
 
-# --- what admission refuses ---------------------------------------------------------------------
-def test_a_reference_the_turn_never_admitted_is_dropped():
-    """The model may name anything. Only what admission produced can be cited."""
-    proposal = _full_proposal()
-    proposal = proposal.model_copy(
-        update={
-            "leading": CandidateProposal(
-                statement="cache ceiling", supporting_refs=[MEMORY, UNADMITTED]
+def _candidate(statement: str, *, established: bool, label=SupportLabel.LEADING, **kw) -> Candidate:
+    return Candidate(statement=statement, label=label, established=established, **kw)
+
+
+# --- structural admission removes nothing -------------------------------------------------------
+def test_a_reference_this_run_never_admitted_still_reaches_the_gate():
+    """Whether a citation names something observed is the gate's question. Dropping it here would
+    make the assessment look grounded to the very check that exists to say it is not."""
+    proposal = _proposal(
+        candidates=[
+            CandidateProposal(
+                statement="an invented cause",
+                label="leading",
+                established=True,
+                supporting=[NEVER_ADMITTED],
             )
-        }
+        ]
     )
-    assessment = _admit(proposal)
-    assert assessment.leading_candidate is not None
-    assert assessment.leading_candidate.supporting == [MEMORY]
+    assessment = admit_assessment(proposal)
+    assert assessment.candidates[0].supporting == [NEVER_ADMITTED]
 
 
-def test_a_candidate_with_no_admitted_support_is_dropped_entirely():
-    """A candidate resting on nothing this turn observed is not an explanation of it, so it is
-    removed rather than published with an empty support list."""
-    proposal = AssessmentProposal(
-        leading=CandidateProposal(statement="invented cause", supporting_refs=[UNADMITTED])
+def test_a_candidate_resting_on_nothing_is_not_removed():
+    proposal = _proposal(
+        candidates=[CandidateProposal(statement="a hunch", label="weakly_supported")]
     )
-    assessment = _admit(proposal)
-    assert assessment.leading_candidate is None
-    assert assessment.disposition is ConclusionDisposition.INSUFFICIENT_EVIDENCE
+    assessment = admit_assessment(proposal)
+    assert [c.statement for c in assessment.candidates] == ["a hunch"]
+    assert assessment.candidates[0].supporting == []
 
 
-def test_the_disposition_follows_the_evidence_not_the_model():
-    """Nothing the model says about its own certainty can turn insufficiency into a conclusion."""
-    grounded = _admit(_full_proposal())
-    assert grounded.disposition is ConclusionDisposition.SUPPORTED_CONCLUSION
-
-    ungrounded = _admit(_full_proposal(), refs=())
-    assert ungrounded.disposition is ConclusionDisposition.INSUFFICIENT_EVIDENCE
-    assert ungrounded.leading_candidate is None
-
-
-def test_what_happened_is_established_only_with_admitted_support():
-    with_support = _admit(_full_proposal())
-    assert with_support.what_happened.strength is Strength.ESTABLISHED
-
-    proposal = _full_proposal().model_copy(update={"what_happened_refs": [UNADMITTED]})
-    without = _admit(proposal)
-    assert without.what_happened.strength is Strength.POSSIBLE
-    assert without.what_happened.citations == []
-
-
-def test_alternatives_are_never_promoted_above_possible():
-    proposal = _full_proposal().model_copy(
-        update={
-            "alternatives": [
-                CandidateProposal(statement="a slow dependency", supporting_refs=[LOG])
+def test_established_is_the_models_and_is_neither_derived_nor_downgraded():
+    """Both directions. A candidate the model left open is not promoted because its references
+    happen to be citable, and one it established is not demoted because they are not."""
+    established = admit_assessment(
+        _proposal(
+            candidates=[
+                CandidateProposal(
+                    statement="c", label="leading", established=True, supporting=[NEVER_ADMITTED]
+                )
             ]
-        }
+        )
     )
-    assessment = _admit(proposal)
-    assert assessment.supported_alternatives[0].strength is Strength.POSSIBLE
-    assert assessment.supported_alternatives[0].label is SupportLabel.PLAUSIBLE
+    assert established.candidates[0].established is True
 
-
-def test_recommendations_are_labelled_model_generated_when_no_retrieval_ran():
-    """Nothing here can be attributed to a runbook, because no retrieval ran. Saying so is the
-    honest form, and it is what keeps a plausible suggestion from looking sourced."""
-    assessment = _admit(_full_proposal())
-    rec = assessment.recommendations[0]
-    assert rec.provenance is RecommendationProvenance.GENERAL_PRACTICE
-    assert rec.knowledge_reference is None
-
-
-def test_a_mitigation_without_a_confirm_signal_becomes_a_verification_step():
-    """Rather than refusing the whole recommendation: the action is still useful, it just is not a
-    mitigation if nothing would show it worked."""
-    proposal = AssessmentProposal(
-        recommendations=[
-            RecommendationProposal(action="restart the cache", horizon="now", kind="mitigation")
-        ]
+    open_candidate = admit_assessment(
+        _proposal(
+            candidates=[
+                CandidateProposal(
+                    statement="c", label="leading", established=False, supporting=[MEMORY]
+                )
+            ]
+        )
     )
-    assessment = _admit(proposal)
-    assert assessment.recommendations[0].kind is RecommendationKind.VERIFICATION
+    assert open_candidate.candidates[0].established is False
 
 
-def test_an_unknown_horizon_or_kind_falls_back_rather_than_failing_the_turn():
-    proposal = AssessmentProposal(
-        recommendations=[
-            RecommendationProposal(action="do something", horizon="immediately", kind="fix-it")
-        ]
+def test_an_action_is_never_discarded_for_its_provenance():
+    """Neither the one carrying retrieved guidance nor the one carrying none."""
+    assessment = admit_assessment(
+        _proposal(
+            actions=[
+                ActionProposal(
+                    action="follow the eviction runbook", now=True, knowledge_ref=RUNBOOK
+                ),
+                ActionProposal(action="raise the memory ceiling", now=False),
+            ]
+        )
     )
-    rec = _admit(proposal).recommendations[0]
-    assert rec.horizon is Horizon.SOON and rec.kind is RecommendationKind.VERIFICATION
+    assert [a.knowledge_ref for a in assessment.actions] == [RUNBOOK, None]
 
 
-def test_limitations_travel_from_admission_into_the_assessment():
-    assessment = _admit(_full_proposal(), limitations=[_limitation()])
-    assert len(assessment.limitations) == 1
-    assert assessment.limitations[0].outcome is ExecutionOutcome.UNAVAILABLE
+def test_the_affirmative_no_action_entry_survives_as_an_entry():
+    assessment = admit_assessment(
+        _proposal(actions=[ActionProposal(action="no immediate action is required", now=True)])
+    )
+    assert assessment.actions[0].action == "no immediate action is required"
+    assert assessment.actions[0].now is True
 
 
-# --- a partial observation stays marked partial where a claim rests on it ------------------------
-def test_a_claim_resting_on_a_partial_observation_discloses_what_it_did_not_see():
-    """The unseen remainder could change the picture, so an element resting on a capped read must
-    say so. Without this the assessment reads as though the whole scope was observed, which is the
-    one reading a partial observation must never support."""
-    assessment = _admit(_full_proposal(), partial=(MEMORY,))
-
-    disclosures = [lim for lim in assessment.limitations if lim.operation_ref == "op-0001"]
-    assert disclosures, "a cited partial observation disclosed nothing"
-    assert "did not return" in disclosures[0].question
-    assert "part of the requested scope" in disclosures[0].reason
+def test_recorded_limitations_and_unknowns_travel_as_the_analyst_stated_them():
+    assessment = admit_assessment(
+        _proposal(
+            limitations=["what did the change history show", "  "],
+            unknowns=["whether eviction preceded the latency rise"],
+        )
+    )
+    assert assessment.limitations == ["what did the change history show"]
+    assert assessment.unknowns == ["whether eviction preceded the latency rise"]
 
 
-def test_an_incompleteness_disclosure_stays_distinguishable_from_a_source_that_did_not_answer():
-    """Both are limitations, and they mean different things: one source answered incompletely, the
-    other did not answer. The execution outcome is what tells them apart, so it must not be
-    flattened onto a single failure value."""
-    assessment = _admit(_full_proposal(), limitations=[_limitation()], partial=(MEMORY,))
-
-    outcomes = {lim.capability: lim.outcome for lim in assessment.limitations}
-    assert outcomes["get_deployments"] is ExecutionOutcome.UNAVAILABLE  # did not answer
-    assert outcomes["get_metrics"] is ExecutionOutcome.SUCCEEDED  # answered, but not in full
-
-
-def test_a_complete_observation_discloses_nothing():
-    """A false disclosure is its own defect: it would understate evidence the turn fully saw."""
-    assessment = _admit(_full_proposal())
-    assert assessment.limitations == []
-
-
-def test_a_partial_observation_no_claim_rests_on_is_not_disclosed_as_a_gap_in_a_claim():
-    """LOG is admitted partial but the proposal below cites only the two metrics. The assessment
-    makes no claim on it, so there is no claim whose completeness is in question."""
-    proposal = _full_proposal().model_copy(update={"what_happened_refs": [MEMORY]})
-    assessment = _admit(proposal, partial=(LOG,))
-    assert assessment.limitations == []
+def test_representation_is_normalized_without_changing_content():
+    assessment = admit_assessment(
+        _proposal(
+            candidates=[
+                CandidateProposal(
+                    statement="  a cause  ",
+                    label="Weakly Supported",
+                    supporting=[f" {MEMORY} ", ""],
+                )
+            ],
+            next_check="  ",
+        )
+    )
+    candidate = assessment.candidates[0]
+    assert candidate.statement == "a cause"
+    assert candidate.label is SupportLabel.WEAKLY_SUPPORTED
+    assert candidate.supporting == [MEMORY]
+    assert assessment.next_check is None
 
 
-def test_several_references_capped_by_one_read_disclose_once():
-    """MEMORY and EVICTED come from the same operation. Two disclosures would read as two separate
-    incomplete answers when there was one."""
-    assessment = _admit(_full_proposal(), partial=(MEMORY, EVICTED))
-    assert len([lim for lim in assessment.limitations if lim.operation_ref == "op-0001"]) == 1
+# --- what admission refuses, and it is only ever structure --------------------------------------
+def test_a_string_no_grammar_could_produce_is_refused():
+    """Not the same as a reference that does not resolve. This one names nothing under any prefix,
+    so it would reach the resolver as a shape it has no branch for."""
+    with pytest.raises(UnusableProposal, match="not a reference"):
+        admit_assessment(_proposal(what_happened_refs=["evt-005-01"]))
 
 
-def test_the_incompleteness_disclosure_reaches_the_brief():
-    """The brief renders the assessment and introduces nothing it does not contain, so a
-    disclosure that stopped at the assessment would never reach the engineer who has to weigh it."""
-    brief = project(_admit(_full_proposal(), partial=(MEMORY,)))
-    body = "\n".join(section.body for section in brief.sections)
-    assert "part of the requested scope" in body
+def test_a_retired_reference_spelling_is_refused_as_structure():
+    with pytest.raises(UnusableProposal):
+        admit_assessment(_proposal(knowledge_used=["past_incident:inc-001"]))
 
 
-# --- parsing the model's response ----------------------------------------------------------------
+def test_a_label_outside_the_vocabulary_is_refused_rather_than_defaulted():
+    """Defaulting it would be choosing how well supported the candidate is, which is the model's
+    statement to make and the gate's to check."""
+    with pytest.raises(UnusableProposal, match="support labels"):
+        admit_assessment(
+            _proposal(candidates=[CandidateProposal(statement="c", label="quite likely")])
+        )
+
+
+def test_a_candidate_or_action_that_states_nothing_is_refused():
+    with pytest.raises(UnusableProposal):
+        admit_assessment(_proposal(candidates=[CandidateProposal(statement="  ", label="leading")]))
+    with pytest.raises(UnusableProposal):
+        admit_assessment(_proposal(actions=[ActionProposal(action="")]))
+
+
+def test_an_unreadable_response_is_unusable_rather_than_a_thin_assessment():
+    """Degrading would publish an assessment nothing proposed. Refusing leaves the caller free to
+    spend a correction instead."""
+    for text in ["", "I could not determine the cause.", "{not json at all"]:
+        with pytest.raises(UnusableProposal):
+            parse_proposal(text)
+
+
 def test_a_fenced_json_response_is_read():
     proposal = parse_proposal('```json\n{"what_happened": "something broke"}\n```')
     assert proposal.what_happened == "something broke"
 
 
-def test_an_unreadable_response_degrades_rather_than_raising():
-    """Losing the whole turn because the model wrote prose would discard the evidence the turn did
-    gather. A thin assessment that establishes nothing is the truthful result."""
-    for text in ["", "I could not determine the cause.", "{not json at all"]:
-        assessment = _admit(parse_proposal(text))
-        assert assessment.leading_candidate is None
-        assert assessment.disposition is ConclusionDisposition.INSUFFICIENT_EVIDENCE
+def test_the_unresolved_question_is_routing_metadata_and_not_assessment_content():
+    proposal = parse_proposal(
+        json.dumps(
+            {
+                "what_happened": "latency rose",
+                "unknowns": ["whether the cache was the cause"],
+                "unresolved_question": {
+                    "question": "did the cache evict before the latency rose",
+                    "evidence_kind": "metrics",
+                },
+            }
+        )
+    )
+    assert proposal.unresolved_question is not None
+    assert proposal.unresolved_question.evidence_kind == "metrics"
+    assessment = admit_assessment(proposal)
+    assert "unresolved_question" not in assessment.model_dump()
+    assert assessment.unknowns == ["whether the cache was the cause"]
+
+
+# --- the outcome follows from what the assessment holds -----------------------------------------
+def test_no_established_candidate_is_inconclusive():
+    assert outcome_of(Assessment()) is Outcome.INCONCLUSIVE
+    assert outcome_of(Assessment(candidates=[_candidate("c", established=False)])) is (
+        Outcome.INCONCLUSIVE
+    )
+
+
+def test_established_with_a_recorded_limitation_is_partial():
+    assessment = Assessment(
+        candidates=[_candidate("c", established=True)], limitations=["what changed"]
+    )
+    assert outcome_of(assessment) is Outcome.PARTIAL
+
+
+def test_established_with_nothing_undisclosed_is_complete():
+    assert outcome_of(Assessment(candidates=[_candidate("c", established=True)])) is (
+        Outcome.COMPLETE
+    )
 
 
 # --- the brief renders what the assessment holds -------------------------------------------------
-def test_the_brief_leads_with_the_conclusion_and_next_action():
-    brief = project(_admit(_full_proposal()))
-    lead = brief.sections[0]
-    assert lead.name == "current_conclusion_and_next_action"
-    assert "memory ceiling" in lead.body
-    assert "Next action:" in lead.body
+def test_the_brief_carries_the_outcome_and_no_probability():
+    brief = render(admit_assessment(_proposal()))
+    assert brief.outcome is Outcome.COMPLETE
+    assert "Outcome: complete" in brief.text
+    assert "%" not in brief.text
+    assert "probab" not in brief.text.lower()
 
 
-def test_an_inconclusive_brief_says_so_rather_than_presenting_a_best_guess():
-    proposal = AssessmentProposal(
-        leading=CandidateProposal(statement="a guess", supporting_refs=[UNADMITTED]),
-        unresolved_discriminator="whether eviction preceded the latency rise",
+def test_the_brief_drops_nothing_the_assessment_holds():
+    assessment = admit_assessment(
+        _proposal(
+            candidates=[
+                CandidateProposal(
+                    statement="the cache ceiling",
+                    label="leading",
+                    established=True,
+                    supporting=[MEMORY],
+                    weakening=[LOG],
+                ),
+                CandidateProposal(statement="a slow dependency", label="plausible"),
+            ],
+            unknowns=["whether eviction preceded the latency rise"],
+            limitations=["what did the change history show"],
+            next_check="compare the eviction and latency timestamps",
+            history="this resembles an earlier eviction storm",
+            history_refs=[RUNBOOK],
+            knowledge_used=[RUNBOOK],
+            actions=[ActionProposal(action="raise the memory ceiling", now=True)],
+        )
     )
-    brief = project(_admit(proposal))
-    assert "does not support stating a cause" in brief.sections[0].body
-    assert "whether eviction preceded" in brief.sections[0].body
+    text = render(assessment).text
+
+    for statement in (c.statement for c in assessment.candidates):
+        assert statement in text
+    for reference in (MEMORY, LOG, RUNBOOK):
+        assert reference in text
+    assert "whether eviction preceded the latency rise" in text
+    assert "what did the change history show" in text
+    assert "compare the eviction and latency timestamps" in text
+    assert "this resembles an earlier eviction storm" in text
+    assert "raise the memory ceiling" in text
 
 
 def test_weakening_evidence_is_never_dropped_from_the_brief():
     """A brief that drops a weakening observation asserts more than the assessment supports, which
     is the same defect as inventing a candidate."""
-    proposal = _full_proposal().model_copy(
-        update={
-            "leading": CandidateProposal(
-                statement="cache ceiling", supporting_refs=[MEMORY], weakening_refs=[LOG]
-            )
-        }
+    assessment = admit_assessment(
+        _proposal(
+            candidates=[
+                CandidateProposal(
+                    statement="the cache ceiling",
+                    label="leading",
+                    established=True,
+                    supporting=[MEMORY],
+                    weakening=[LOG],
+                )
+            ]
+        )
     )
-    brief = project(_admit(proposal))
-    evidence = next(s for s in brief.sections if s.name == "supporting_and_weakening_evidence")
-    assert f"weakens [leading]: {LOG}" in evidence.body
-
-
-def test_every_recorded_limitation_reaches_the_brief():
-    brief = project(_admit(_full_proposal(), limitations=[_limitation()]))
-    unknown = next(s for s in brief.sections if s.name == "what_remains_unknown")
-    assert "what did the change history show" in unknown.body
-
-
-def test_the_brief_omits_sections_the_assessment_left_empty():
-    """Omitting an empty section is presentation. Omitting a populated one is not."""
-    brief = project(_admit(AssessmentProposal(what_happened="something happened")))
-    names = {s.name for s in brief.sections}
-    assert "what_history_says" not in names
-    assert "what_to_do" not in names
-    assert "what_happened" in names
-
-
-def test_brief_sections_are_a_subset_of_the_accepted_eight_in_order():
-    brief = project(_admit(_full_proposal(), limitations=[_limitation()]))
-    names = [s.name for s in brief.sections]
-    assert set(names) <= set(BRIEF_SECTIONS)
-    assert names == sorted(names, key=BRIEF_SECTIONS.index)
+    assert f"Weakens: {LOG}" in render(assessment).text
 
 
 def test_the_brief_introduces_no_candidate_the_assessment_does_not_hold():
-    assessment = _admit(_full_proposal())
-    brief = project(assessment)
-    causes = next(s for s in brief.sections if s.name == "what_may_be_causing_it")
-    assert causes.body.count("\n") + 1 == len(assessment.candidates())
+    assessment = admit_assessment(_proposal())
+    text = render(assessment).text
+    assert text.count("[leading, established]") == 1
+    assert len([line for line in text.splitlines() if line.startswith("- ")]) == 1
 
 
-def test_projection_is_deterministic():
+def test_one_established_candidate_is_presented_as_the_leading_explanation():
+    assessment = Assessment(candidates=[_candidate("the cache ceiling", established=True)])
+    assert "What may be causing it" in render(assessment).text
+
+
+def test_two_established_candidates_are_presented_as_contributing_causes():
+    """Ranking co-causes would assert a structure the evidence did not produce."""
+    assessment = Assessment(
+        candidates=[
+            _candidate("the cache ceiling", established=True),
+            _candidate("the retry storm", established=True, label=SupportLabel.PLAUSIBLE),
+        ]
+    )
+    text = render(assessment).text
+    assert "Contributing causes" in text
+    assert "What may be causing it" not in text
+
+
+def test_an_affirmative_no_action_entry_renders_as_an_immediate_entry():
+    """Never inferred from an empty list, and never quietly dropped for saying nothing to do."""
+    assessment = Assessment(
+        actions=[Action(action="no immediate action is required", now=True)],
+    )
+    assert "Now: no immediate action is required" in render(assessment).text
+
+
+def test_an_action_says_whether_retrieved_guidance_supplied_it():
+    assessment = Assessment(
+        actions=[
+            Action(action="follow the eviction runbook", now=True, knowledge_ref=RUNBOOK),
+            Action(action="raise the memory ceiling", now=False),
+        ]
+    )
+    text = render(assessment).text
+    assert f"Now: follow the eviction runbook (guidance: {RUNBOOK})" in text
+    assert "Later: raise the memory ceiling (own judgement)" in text
+
+
+def test_the_brief_omits_what_the_assessment_left_empty():
+    """Omitting an empty section is presentation. Omitting a populated one is not."""
+    text = render(Assessment(what_happened="something happened")).text
+    assert "What happened" in text
+    assert "What history says" not in text
+    assert "What to do" not in text
+
+
+def test_rendering_is_deterministic():
     """No model call happens in rendering, so the same assessment renders identically every time."""
-    assessment = _admit(_full_proposal(), limitations=[_limitation()])
-    assert project(assessment) == project(assessment)
+    assessment = admit_assessment(_proposal())
+    assert render(assessment) == render(assessment)

@@ -1,1 +1,1 @@
-"""The grounding gate: four fixed deterministic checks over a proposed assessment."""
+"""The grounding gate: one deterministic function reporting issues over an admitted assessment."""

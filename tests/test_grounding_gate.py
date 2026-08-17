@@ -1,79 +1,53 @@
-"""The grounding gate: its result contracts, the four checks, and the correction routing.
+"""The grounding gate: what makes an assessment unsafe to deliver, and what does not.
 
-Three of the four checks (unsupported-element rejection, recommendation-provenance presence, and
-half of reference resolution) can never fail against a normally-constructed `Assessment`, because
-the contract's own validators already make the violation unconstructable. That is intentional
-defense in depth, not dead code: the gate re-verifies independently rather than trusting the object
-that produced it (`code-guidelines.md` §3). Reaching those checks' failure branches in a test
-therefore requires `model_construct()` at both the nested field and the `Assessment` itself:
-embedding an already-built, deliberately invalid nested model into a normally-constructed
-`Assessment` still re-runs that nested model's own validators, so `_unvalidated_assessment` below
-bypasses both levels. The tests below say so at each use so a reader does not mistake it for an
-accident. Reference resolution's admission-membership half, and required limitation disclosure,
-need no such trick: both compare the assessment against turn-scoped state the assessment's own
-validators have no view of, so a normally-constructed assessment can genuinely fail either one.
+Every case here is reachable by a normally-constructed assessment, because nothing upstream
+pre-enforces these properties any more. That is the arrangement worth protecting: the gate is the
+only place that decides whether a claim rests on something this run observed, so a test that had to
+bypass a validator to reach a failure branch would be testing defense in depth rather than the one
+decision that matters.
+
+Resolution is deliberately checked against the run rather than against the reference's own shape. A
+perfectly well-formed reference to a real record is still ungrounded if this investigation never
+admitted it, and that is the failure a model is most able to produce.
 """
 
 from __future__ import annotations
 
-import pytest
-
-from opspilot.assessment.contracts import (
-    Assessment,
-    CandidateCause,
-    Citation,
-    ConclusionDisposition,
-    GroundedElement,
-    Horizon,
-    Recommendation,
-    RecommendationKind,
-    RecommendationProvenance,
-    Strength,
-    SupportLabel,
-)
+from opspilot.assessment.contracts import Action, Assessment, Candidate, SupportLabel
 from opspilot.evidence.admission import Limitation
-from opspilot.evidence.references import CitationRole
-from opspilot.grounding.checks import (
-    CorrectionAllowance,
-    GateRouting,
-    check_recommendation_provenance_presence,
-    check_reference_resolution,
-    check_required_limitation_disclosure,
-    check_unsupported_element_rejection,
-    route_grounding_result,
-    run_gate,
-    unresolved_references,
+from opspilot.grounding.gate import (
+    KNOWLEDGE_AS_SUPPORT,
+    UNDISCLOSED_LIMITATION,
+    UNRESOLVED_REFERENCE,
+    UNSUPPORTED_CLAIM,
+    ground,
 )
-from opspilot.grounding.contracts import CheckName, CheckResult, GroundingResult
 from opspilot.tools.contracts import ExecutionOutcome
 
 LOG = "logs:checkout-api:evt-1"
 DEPLOY = "deploys:checkout-api:d-1"
+RUNBOOK = "runbook:checkout-timeout"
+POSTMORTEM = "postmortem:inc-001"
 
 
-_ASSESSMENT_DEFAULTS: dict[str, object] = dict(
-    investigation_id="inv-1",
-    turn_id="turn-1",
-    turn_objective="explain the checkout latency rise",
-    what_happened=GroundedElement(statement="under investigation", strength=Strength.POSSIBLE),
-    disposition=ConclusionDisposition.INSUFFICIENT_EVIDENCE,
-)
+def _candidate(*, established: bool = True, supporting=(LOG,), weakening=()) -> Candidate:
+    return Candidate(
+        statement="a bad deploy caused it",
+        label=SupportLabel.LEADING,
+        established=established,
+        supporting=list(supporting),
+        weakening=list(weakening),
+    )
 
 
-def _assessment(**overrides: object) -> Assessment:
-    """A minimal valid turn: nothing established, nothing cited. Every test overrides only the
-    field its check inspects, so a failure is traceable to that one field."""
-    return Assessment(**{**_ASSESSMENT_DEFAULTS, **overrides})  # type: ignore[arg-type]
-
-
-def _unvalidated_assessment(**overrides: object) -> Assessment:
-    """Like `_assessment`, but via `model_construct()`: no validator on `Assessment` or any nested
-    field runs, even for a field carrying an already-built, deliberately invalid nested model.
-    Embedding a nested model instance in a normal `Assessment(...)` call still re-runs that nested
-    model's own validators (proven empirically: `model_construct()` on the nested model alone is
-    not enough), so reaching a check's failure branch for a violation the contract itself forbids
-    requires bypassing validation at this, the outermost, level too."""
-    return Assessment.model_construct(**{**_ASSESSMENT_DEFAULTS, **overrides})
+def _assessment(**overrides) -> Assessment:
+    base = dict(
+        what_happened="checkout latency rose",
+        what_happened_refs=[LOG],
+        candidates=[_candidate()],
+    )
+    base.update(overrides)
+    return Assessment(**base)
 
 
 def _limitation(question: str = "what did the change history show") -> Limitation:
@@ -86,320 +60,159 @@ def _limitation(question: str = "what did the change history show") -> Limitatio
     )
 
 
-_ALL_PASSING = tuple(CheckResult(check=name, passed=True) for name in CheckName)
+def _kinds(issues) -> list[str]:
+    return [issue.kind for issue in issues]
 
 
-def _failing(
-    passing: tuple[CheckResult, ...], check: CheckName, reason: str
-) -> tuple[CheckResult, ...]:
-    """`passing` with one check's verdict replaced by a named failure."""
-    return tuple(
-        CheckResult(check=check, passed=False, reason=reason) if result.check is check else result
-        for result in passing
-    )
-
-
-# --- CheckResult -----------------------------------------------------------------------------
-def test_a_passing_check_carries_no_reason():
-    with pytest.raises(ValueError, match="no failure reason"):
-        CheckResult(check=CheckName.REFERENCE_RESOLUTION, passed=True, reason="unused")
-
-
-def test_a_failed_check_must_name_why():
-    with pytest.raises(ValueError, match="must name why"):
-        CheckResult(check=CheckName.REFERENCE_RESOLUTION, passed=False)
-
-
-def test_a_failed_check_carries_its_reason():
-    result = CheckResult(
-        check=CheckName.UNSUPPORTED_ELEMENT_REJECTION, passed=False, reason="no current support"
-    )
-    assert result.reason == "no current support"
-
-
-# --- GroundingResult: the fixed set of four ---------------------------------------------------
-def test_exactly_four_checks_are_required():
-    with pytest.raises(ValueError, match="exactly the four fixed checks"):
-        GroundingResult(checks=_ALL_PASSING[:3])
-
-
-def test_a_duplicate_check_is_rejected():
-    duplicated = (_ALL_PASSING[0],) + _ALL_PASSING
-    with pytest.raises(ValueError, match="each check once"):
-        GroundingResult(checks=duplicated)
-
-
-def test_an_unknown_check_cannot_stand_in_for_a_fixed_one():
-    # Four results, but one repeated in place of a required check: still not the fixed set.
-    substituted = _ALL_PASSING[:3] + (_ALL_PASSING[0],)
-    with pytest.raises(ValueError, match="exactly the four fixed checks"):
-        GroundingResult(checks=substituted)
-
-
-def test_all_four_passing_is_a_passing_result():
-    result = GroundingResult(checks=_ALL_PASSING)
-    assert result.passed is True
-    assert result.failures == ()
-
-
-def test_one_failure_fails_the_whole_result():
-    checks = _failing(
-        _ALL_PASSING, CheckName.RECOMMENDATION_PROVENANCE_PRESENCE, "no provenance category"
-    )
-    result = GroundingResult(checks=checks)
-
-    assert result.passed is False
-    assert [f.check for f in result.failures] == [CheckName.RECOMMENDATION_PROVENANCE_PRESENCE]
-
-
-def test_failures_names_every_check_that_failed_not_just_the_first():
-    checks = _failing(_ALL_PASSING, CheckName.REFERENCE_RESOLUTION, "unresolved")
-    checks = _failing(checks, CheckName.REQUIRED_LIMITATION_DISCLOSURE, "limitation omitted")
-    result = GroundingResult(checks=checks)
-
-    assert {f.check for f in result.failures} == {
-        CheckName.REFERENCE_RESOLUTION,
-        CheckName.REQUIRED_LIMITATION_DISCLOSURE,
-    }
-
-
-# --- unresolved_references ---------------------------------------------------------------------
-def test_unresolved_references_keeps_only_what_was_not_admitted():
-    assert unresolved_references([LOG, DEPLOY], admitted={LOG}) == [DEPLOY]
-
-
-def test_unresolved_references_is_empty_when_everything_was_admitted():
-    assert unresolved_references([LOG, DEPLOY], admitted={LOG, DEPLOY}) == []
-
-
-# --- check_reference_resolution: a real failure, no model_construct needed ----------------------
-def test_reference_resolution_passes_when_every_citation_was_admitted():
-    element = GroundedElement(
-        statement="checkout latency rose",
-        strength=Strength.ESTABLISHED,
-        citations=[Citation(reference=LOG, role=CitationRole.CURRENT_SUPPORT)],
-    )
-    assessment = _assessment(what_happened=element)
-
-    result = check_reference_resolution(assessment, admitted_refs={LOG})
-
-    assert result.passed is True
-
-
-def test_reference_resolution_fails_on_a_citation_this_turn_never_admitted():
-    """A well-formed, role-compatible citation can still fail: admission is turn-scoped state the
-    citation's own shape carries no view of."""
-    element = GroundedElement(
-        statement="checkout latency rose",
-        strength=Strength.ESTABLISHED,
-        citations=[Citation(reference=LOG, role=CitationRole.CURRENT_SUPPORT)],
-    )
-    assessment = _assessment(what_happened=element)
-
-    result = check_reference_resolution(assessment, admitted_refs=set())
-
-    assert result.passed is False
-    assert LOG in result.reason
-
-
-def test_reference_resolution_covers_candidate_support_and_relevant_knowledge():
-    candidate = CandidateCause(
-        statement="a bad deploy caused it",
-        label=SupportLabel.LEADING,
-        strength=Strength.ESTABLISHED,
-        supporting=[DEPLOY],
-    )
+# --- a clean assessment ---------------------------------------------------------------------
+def test_a_grounded_assessment_yields_no_issues():
+    limitation = _limitation()
     assessment = _assessment(
-        leading_candidate=candidate,
-        disposition=ConclusionDisposition.SUPPORTED_CONCLUSION,
-        relevant_knowledge=["runbook:checkout-timeout"],
+        limitations=[limitation.question],
+        knowledge_used=[RUNBOOK],
+        actions=[Action(action="roll back", now=True, knowledge_ref=RUNBOOK)],
     )
 
-    result = check_reference_resolution(assessment, admitted_refs={DEPLOY})
-
-    assert result.passed is False
-    assert "runbook:checkout-timeout" in result.reason
-    assert DEPLOY not in result.reason  # the admitted one is not reported as a violation
-
-
-# --- check_unsupported_element_rejection: needs model_construct to reach the failure branch -----
-def test_unsupported_element_rejection_passes_a_normally_constructed_assessment():
-    element = GroundedElement(
-        statement="checkout latency rose",
-        strength=Strength.ESTABLISHED,
-        citations=[Citation(reference=LOG, role=CitationRole.CURRENT_SUPPORT)],
-    )
-    assert check_unsupported_element_rejection(_assessment(what_happened=element)).passed is True
-
-
-def test_unsupported_element_rejection_catches_an_established_what_happened_with_no_support():
-    # GroundedElement's own validator refuses this on normal construction, and embedding an
-    # already-built instance still re-runs it, so both levels must be constructed unvalidated for
-    # the gate's independent check, not the contract, to be what the assertion below exercises.
-    bad_element = GroundedElement.model_construct(
-        statement="checkout latency rose", strength=Strength.ESTABLISHED, citations=[]
-    )
-    result = check_unsupported_element_rejection(_unvalidated_assessment(what_happened=bad_element))
-
-    assert result.passed is False
-    assert "what_happened" in result.reason
-
-
-def test_unsupported_element_rejection_catches_an_established_candidate_with_no_support():
-    # Same reasoning as above, for CandidateCause's own validator.
-    bad_candidate = CandidateCause.model_construct(
-        statement="a bad deploy caused it",
-        label=SupportLabel.LEADING,
-        strength=Strength.ESTABLISHED,
-        supporting=[],
-        weakening=[],
-        contextual=[],
-    )
-    assessment = _unvalidated_assessment(leading_candidate=bad_candidate)
-
-    result = check_unsupported_element_rejection(assessment)
-
-    assert result.passed is False
-    assert "a bad deploy caused it" in result.reason
-
-
-# --- check_recommendation_provenance_presence: needs model_construct ----------------------------
-def test_recommendation_provenance_presence_passes_a_normally_constructed_recommendation():
-    recommendation = Recommendation(
-        action="raise the cache memory ceiling",
-        horizon=Horizon.NOW,
-        kind=RecommendationKind.VERIFICATION,
-        responds_to="the leading candidate",
-        provenance=RecommendationProvenance.GENERAL_PRACTICE,
-    )
-    assessment = _assessment(recommendations=[recommendation])
-
-    assert check_recommendation_provenance_presence(assessment).passed is True
-
-
-def test_recommendation_provenance_presence_catches_a_claimed_provenance_with_no_reference():
-    # Recommendation's own validator refuses this on normal construction, and embedding an
-    # already-built instance still re-runs it, so the gate's independent check, not the contract,
-    # is what the assertion below exercises.
-    bad_recommendation = Recommendation.model_construct(
-        action="raise the cache memory ceiling",
-        horizon=Horizon.NOW,
-        kind=RecommendationKind.VERIFICATION,
-        responds_to="the leading candidate",
-        provenance=RecommendationProvenance.RUNBOOK_GUIDANCE,
-        knowledge_reference=None,
-        confirm_signal=None,
-    )
-    assessment = _unvalidated_assessment(recommendations=[bad_recommendation])
-
-    result = check_recommendation_provenance_presence(assessment)
-
-    assert result.passed is False
-    assert "raise the cache memory ceiling" in result.reason
-
-
-# --- check_required_limitation_disclosure: a real failure, no model_construct needed -------------
-def test_required_limitation_disclosure_passes_when_every_recorded_limitation_is_disclosed():
-    limitation = _limitation()
-    assessment = _assessment(limitations=[limitation])
-
-    result = check_required_limitation_disclosure(assessment, turn_limitations=[limitation])
-
-    assert result.passed is True
-
-
-def test_required_limitation_disclosure_fails_on_a_recorded_limitation_the_assessment_dropped():
-    recorded = _limitation("what did the change history show")
-    assessment = _assessment(limitations=[])  # the assessment discloses nothing
-
-    result = check_required_limitation_disclosure(assessment, turn_limitations=[recorded])
-
-    assert result.passed is False
-    assert "what did the change history show" in result.reason
-
-
-def test_required_limitation_disclosure_allows_extra_disclosures_beyond_what_was_recorded():
-    """Disclosing more than the turn recorded is not a violation; only an omission is."""
-    extra = _limitation("an incompleteness disclosure the turn itself never recorded")
-    assessment = _assessment(limitations=[extra])
-
-    result = check_required_limitation_disclosure(assessment, turn_limitations=[])
-
-    assert result.passed is True
-
-
-# --- run_gate: all four together -----------------------------------------------------------------
-def test_run_gate_passes_a_fully_grounded_assessment():
-    element = GroundedElement(
-        statement="checkout latency rose",
-        strength=Strength.ESTABLISHED,
-        citations=[Citation(reference=LOG, role=CitationRole.CURRENT_SUPPORT)],
-    )
-    limitation = _limitation()
-    assessment = _assessment(what_happened=element, limitations=[limitation])
-
-    result = run_gate(assessment, admitted_refs={LOG}, turn_limitations=[limitation])
-
-    assert result.passed is True
-
-
-def test_run_gate_fails_on_an_unadmitted_reference_alone():
-    element = GroundedElement(
-        statement="checkout latency rose",
-        strength=Strength.ESTABLISHED,
-        citations=[Citation(reference=LOG, role=CitationRole.CURRENT_SUPPORT)],
-    )
-    assessment = _assessment(what_happened=element)
-
-    result = run_gate(assessment, admitted_refs=set())
-
-    assert result.passed is False
-    assert [f.check for f in result.failures] == [CheckName.REFERENCE_RESOLUTION]
-
-
-# --- CorrectionAllowance and routing --------------------------------------------------------------
-def test_the_allowance_starts_unspent():
-    assert CorrectionAllowance().spent is False
-
-
-def test_the_allowance_can_be_spent_once():
-    allowance = CorrectionAllowance()
-    assert allowance.spend() is True
-    assert allowance.spent is True
-
-
-def test_the_allowance_refuses_a_second_spend():
-    """One shared allowance across both spend points: a structural spend leaves nothing for a
-    later grounding failure, and the reverse."""
-    allowance = CorrectionAllowance()
-    allowance.spend()
-    assert allowance.spend() is False
-    assert allowance.spent is True
-
-
-def test_a_passing_result_always_routes_to_passed_even_with_a_spent_allowance():
-    allowance = CorrectionAllowance()
-    allowance.spend()
-    assert route_grounding_result(GroundingResult(checks=_ALL_PASSING), allowance) is (
-        GateRouting.PASSED
+    assert (
+        ground(
+            assessment,
+            admitted_refs={LOG},
+            knowledge_refs={RUNBOOK},
+            limitations=[limitation],
+        )
+        == []
     )
 
 
-def test_a_failure_with_an_unspent_allowance_routes_to_correct_and_spends_it():
-    allowance = CorrectionAllowance()
-    failing = _failing(_ALL_PASSING, CheckName.REFERENCE_RESOLUTION, "unresolved")
+# --- references resolve against this run ------------------------------------------------------
+def test_an_operational_reference_this_run_never_admitted_is_an_issue():
+    issues = ground(_assessment(candidates=[_candidate(supporting=[DEPLOY])]), admitted_refs={LOG})
 
-    routing = route_grounding_result(GroundingResult(checks=failing), allowance)
-
-    assert routing is GateRouting.CORRECT
-    assert allowance.spent is True
+    assert UNRESOLVED_REFERENCE in _kinds(issues)
+    assert any(DEPLOY in issue.detail for issue in issues)
 
 
-def test_a_failure_with_an_already_spent_allowance_is_a_failed_execution():
-    allowance = CorrectionAllowance()
-    allowance.spend()  # spent on an earlier structural failure, in the real turn ordering
-    failing = _failing(_ALL_PASSING, CheckName.REFERENCE_RESOLUTION, "unresolved")
+def test_a_weakening_reference_is_resolved_like_any_other():
+    """Contradicting evidence is kept and shown, which means it has to name something real too."""
+    issues = ground(_assessment(candidates=[_candidate(weakening=[DEPLOY])]), admitted_refs={LOG})
 
-    assert route_grounding_result(GroundingResult(checks=failing), allowance) is (
-        GateRouting.FAILED_EXECUTION
+    assert any(issue.kind == UNRESOLVED_REFERENCE and DEPLOY in issue.detail for issue in issues)
+
+
+def test_a_knowledge_reference_this_run_never_retrieved_is_an_issue():
+    issues = ground(
+        _assessment(knowledge_used=[POSTMORTEM]), admitted_refs={LOG}, knowledge_refs={RUNBOOK}
     )
+
+    unresolved = [i for i in issues if i.kind == UNRESOLVED_REFERENCE]
+    assert any(POSTMORTEM in issue.detail for issue in unresolved)
+
+
+def test_an_actions_knowledge_reference_is_resolved_too():
+    """An action that claims a runbook supplied it is making a checkable claim about provenance."""
+    issues = ground(
+        _assessment(actions=[Action(action="roll back", now=True, knowledge_ref=RUNBOOK)]),
+        admitted_refs={LOG},
+        knowledge_refs=set(),
+    )
+
+    assert any(issue.kind == UNRESOLVED_REFERENCE and RUNBOOK in issue.detail for issue in issues)
+
+
+def test_a_history_reference_this_run_never_retrieved_is_an_issue():
+    issues = ground(
+        _assessment(history="this happened before", history_refs=[POSTMORTEM]),
+        admitted_refs={LOG},
+        knowledge_refs={RUNBOOK},
+    )
+
+    unresolved = [i for i in issues if i.kind == UNRESOLVED_REFERENCE]
+    assert any(POSTMORTEM in issue.detail for issue in unresolved)
+
+
+# --- knowledge can never stand as current proof -----------------------------------------------
+def test_a_knowledge_reference_offered_as_current_support_is_an_issue():
+    """A document cannot observe the running system. Retrieving it does not make it proof, so this
+    stays an issue even when the passage really was retrieved."""
+    issues = ground(
+        _assessment(candidates=[_candidate(supporting=[RUNBOOK])]),
+        admitted_refs={LOG},
+        knowledge_refs={RUNBOOK},
+    )
+
+    assert KNOWLEDGE_AS_SUPPORT in _kinds(issues)
+
+
+def test_knowledge_offered_as_support_for_what_happened_is_an_issue():
+    issues = ground(
+        _assessment(what_happened_refs=[RUNBOOK]), admitted_refs={LOG}, knowledge_refs={RUNBOOK}
+    )
+
+    assert KNOWLEDGE_AS_SUPPORT in _kinds(issues)
+
+
+# --- material claims rest on admitted evidence ------------------------------------------------
+def test_what_happened_without_operational_support_is_an_issue():
+    """It is itself a material statement about the incident, so it needs support like any other."""
+    issues = ground(_assessment(what_happened_refs=[]), admitted_refs={LOG})
+
+    assert UNSUPPORTED_CLAIM in _kinds(issues)
+    assert any("what_happened" in issue.detail for issue in issues)
+
+
+def test_an_established_candidate_without_admitted_support_is_an_issue():
+    issues = ground(_assessment(candidates=[_candidate(supporting=[])]), admitted_refs={LOG})
+
+    unsupported = [i for i in issues if i.kind == UNSUPPORTED_CLAIM]
+    assert any("established" in issue.detail for issue in unsupported)
+
+
+def test_a_candidate_left_open_needs_no_support():
+    """Only what the brief may present as current fact has to rest on something observed. An
+    explanation the evidence keeps open is allowed to be exactly that."""
+    issues = ground(
+        _assessment(candidates=[_candidate(established=False, supporting=[])]), admitted_refs={LOG}
+    )
+
+    assert UNSUPPORTED_CLAIM not in _kinds(issues)
+
+
+# --- limitations are disclosed ------------------------------------------------------------------
+def test_a_recorded_limitation_the_assessment_omits_is_an_issue():
+    recorded = _limitation()
+    issues = ground(_assessment(limitations=[]), admitted_refs={LOG}, limitations=[recorded])
+
+    assert UNDISCLOSED_LIMITATION in _kinds(issues)
+    assert any(recorded.question in issue.detail for issue in issues)
+
+
+def test_disclosing_more_than_was_recorded_is_not_an_issue():
+    """Only an omission understates what the run could not establish."""
+    issues = ground(
+        _assessment(limitations=["something the run never recorded"]),
+        admitted_refs={LOG},
+        limitations=[],
+    )
+
+    assert UNDISCLOSED_LIMITATION not in _kinds(issues)
+
+
+# --- the gate reports, and does nothing else ----------------------------------------------------
+def test_the_gate_reports_every_issue_not_only_the_first():
+    issues = ground(
+        _assessment(what_happened_refs=[], candidates=[_candidate(supporting=[DEPLOY])]),
+        admitted_refs={LOG},
+        limitations=[_limitation()],
+    )
+
+    assert set(_kinds(issues)) == {UNSUPPORTED_CLAIM, UNRESOLVED_REFERENCE, UNDISCLOSED_LIMITATION}
+
+
+def test_the_gate_does_not_edit_the_assessment():
+    """It reports; correcting is a separate decision made elsewhere with a model call."""
+    assessment = _assessment(candidates=[_candidate(supporting=[DEPLOY])])
+    before = assessment.model_dump()
+
+    ground(assessment, admitted_refs={LOG})
+
+    assert assessment.model_dump() == before

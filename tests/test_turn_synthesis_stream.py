@@ -93,12 +93,13 @@ def test_the_brief_arrives_before_the_close_marker():
     assert kinds.index("brief") < kinds.index("close")
 
 
-def test_the_turn_is_still_non_terminal():
-    """No grounding gate has run, so nothing may present itself as an accepted outcome."""
+def test_the_turn_still_commits_nothing():
+    """The brief states the outcome the assessment reached, but nothing is grounded, persisted, or
+    delivered as terminal: the closing event remains a transport marker."""
     events, _ = _run({})
     for event in events:
-        assert event.get("status") not in {"complete", "partial", "inconclusive"}
         assert event["event_type"] in {"identity", "activity", "brief", "close"}
+    assert set(events[-1]) == {"event_type", "turn_id"}
 
 
 # --- evidence actually flows ----------------------------------------------------------------
@@ -127,27 +128,42 @@ def test_the_model_is_called_once_and_shown_only_admitted_evidence():
     assert "resolution" not in model.evidence_shown
 
 
-def test_an_invented_citation_never_reaches_the_brief():
-    """The model may name anything. Only what admission produced can be cited, and the brief can
-    only render what the assessment holds."""
+def test_nothing_between_the_model_and_the_brief_edits_a_citation():
+    """A citation naming something this run never admitted is not silently removed on the way
+    through. Whether it resolves is the grounding gate's question, and answering it here would
+    leave the gate approving an assessment that had already been quietly cleaned up."""
     events, _ = _run(
         {
             "what_happened": "something happened",
-            "leading": {"statement": "an invented cause", "supporting_refs": [INVENTED]},
+            "candidates": [
+                {
+                    "statement": "an invented cause",
+                    "label": "leading",
+                    "established": True,
+                    "supporting": [INVENTED],
+                }
+            ],
         }
     )
-    body = json.dumps(events)
-    assert INVENTED not in body
+    brief = next(e for e in events if e["event_type"] == "brief")
+    assert INVENTED in json.dumps(brief)
 
 
-def test_a_grounded_citation_does_reach_the_brief():
+def test_a_citation_the_run_admitted_reaches_the_brief():
     baseline, _ = _run({})
     real = _first_real_ref(baseline)
     events, _ = _run(
         {
             "what_happened": "checkout latency rose",
             "what_happened_refs": [real],
-            "leading": {"statement": "the cache degraded", "supporting_refs": [real]},
+            "candidates": [
+                {
+                    "statement": "the cache degraded",
+                    "label": "leading",
+                    "established": True,
+                    "supporting": [real],
+                }
+            ],
         }
     )
     brief = next(e for e in events if e["event_type"] == "brief")

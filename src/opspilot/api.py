@@ -28,7 +28,8 @@ from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
 from opspilot import __version__, config
-from opspilot.assessment.brief import project
+from opspilot.assessment.brief import render
+from opspilot.assessment.synthesis import UnusableProposal
 from opspilot.auth import (
     ReviewerAuthenticator,
     ReviewerAuthError,
@@ -635,10 +636,11 @@ def ready(
 
 # --------------------------------------------------------------------------------------
 # Streaming turn endpoint. Added beside the old routes, not a replacement: the old async job
-# surface below stays reachable until the cutover slice deletes both together. One live streaming
-# request owns one turn: identities first, then activity as it happens, then the close marker
-# last. This closing event is a transport-ordering proof only; no accepted completed-turn outcome
-# exists yet, so the stub assessment/brief here demonstrates transport and rendering, nothing more.
+# surface below stays reachable until both are replaced together. One live streaming request owns
+# one turn: identities first, then activity as it happens, then the close marker last. The
+# assessment and brief here are the real ones, produced by the same functions the graph will call;
+# what is missing is everything around them, so the closing event stays a transport-ordering proof
+# rather than a delivered outcome, and nothing is grounded or persisted.
 # --------------------------------------------------------------------------------------
 # The evidence path for a predefined incident. Deterministic and fixed: adaptive source selection
 # belongs to the Evidence Investigator, which does not exist yet, so this gathers a small standing
@@ -660,9 +662,9 @@ async def _predefined_turn_stream(
     # `disconnect` (typed as Request; a lighter duck-typed fake is all a test needs) is the
     # in-process cancellation signal: checked before doing each further unit of work, so a client
     # that has left gets nothing more emitted. Alive only for this streaming request, not durable,
-    # not a job registry. This is the minimal signal a later slice's safe-boundary cancellation and
-    # commit-on-disconnect semantics build on; there is no operation to interrupt mid-flight yet,
-    # since everything below is deterministic and stub-backed.
+    # not a job registry. Checked between units of work rather than during one: the only call that
+    # can be in flight is the synthesis request, and abandoning a run mid-call would leave nothing
+    # to clean up, since nothing here is persisted.
     turn = start_turn(incident_id=incident_id)
     context = from_predefined_incident(incident)
     projector = ActivityProjector()
@@ -725,7 +727,28 @@ async def _predefined_turn_stream(
             return
 
         # --- one bounded synthesis call ---------------------------------------------------
-        assessment = synthesize(model, context, evidence, f"Explain: {context.symptom}")
+        # A proposal that cannot be admitted structurally ends the stream without a brief. There is
+        # no corrective call on this path and nothing degrades into a thinner assessment: publishing
+        # a brief the model never proposed is the outcome refusal exists to prevent.
+        try:
+            assessment = synthesize(model, context, evidence, f"Explain: {context.symptom}")
+        except UnusableProposal as exc:
+            yield (
+                emit(
+                    "turn.synthesizing",
+                    turn,
+                    projector,
+                    phase="synthesizing",
+                    action="assessment refused",
+                    status="error",
+                    detail=f"The proposal could not be admitted: {exc}",
+                ).model_dump_json()
+                + "\n"
+            )
+            yield StreamCloseMarker(turn_id=turn.turn_id).model_dump_json() + "\n"
+            return
+
+        brief = render(assessment)
         yield (
             emit(
                 "turn.synthesizing",
@@ -734,11 +757,11 @@ async def _predefined_turn_stream(
                 phase="synthesizing",
                 action="assessment produced",
                 detail=(
-                    f"Assessment produced: {assessment.disposition.value}, "
-                    f"{len(assessment.candidates())} candidate(s), "
+                    f"Assessment produced: {len(assessment.candidates)} candidate(s), "
+                    f"{len(assessment.established)} established, "
                     f"{len(assessment.limitations)} limitation(s)."
                 ),
-                outcome=assessment.disposition.value,
+                outcome=brief.outcome.value,
             ).model_dump_json()
             + "\n"
         )
@@ -747,9 +770,9 @@ async def _predefined_turn_stream(
             return
 
         # The brief renders that assessment and nothing else. Deliberately non-terminal: no
-        # grounding gate has run, so nothing is committed and no accepted outcome is emitted.
-        # The close marker below stays a transport marker.
-        yield BriefEvent(turn_id=turn.turn_id, brief=project(assessment)).model_dump_json() + "\n"
+        # grounding gate has run, so nothing is committed and nothing is persisted. The close
+        # marker below stays a transport marker.
+        yield BriefEvent(turn_id=turn.turn_id, brief=brief).model_dump_json() + "\n"
 
         if await disconnect.is_disconnected():
             return

@@ -12,16 +12,14 @@ repository contradicts it.
 
 ## 1. Baseline
 
-- **Inspected:** `main` at `23c44aa`, working tree, 2026-08-16.
+- **Inspected:** `main` at `bd5a1de`, working tree, 2026-08-17.
 - **Toolchain:** `uv`; Python 3.12.
 - **Gates at this tree:** `ruff check` clean; `ruff format --check` clean repository-wide; `mypy`
-  strict clean over 85 source files; deterministic lane `pytest -q -m "not llm"`: **723 passed,
+  strict clean over 84 source files; deterministic lane `pytest -q -m "not llm"`: **681 passed,
   3 deselected, 2 xfailed**; the pre-commit hook (lint, format, em-dash, plan-vocabulary) passes.
 - **The two xfails** are both in `tests/test_single_agent_gate.py` and both belong to superseded
   numeric-gate machinery scheduled for retirement; they are disclosed, not regressions in accepted
   code.
-- **Working tree note:** `docs/archive/2026-07/` (22 files) is deleted in the working tree by
-  something outside this inspection and is neither part of the design set nor of this status.
 
 ---
 
@@ -40,14 +38,15 @@ anything, must still shrink.
 | Retrieval | `retrieval/retriever.py`, `retrieval/embeddings.py`, `data/knowledge_records.py` | Cosmos vector search over an Azure OpenAI query embedding, in-process BM25-style lexical pass over the same category-filtered candidates, reciprocal-rank fusion, section-level passages carrying their text; routing by question shape when no collection is named | Deterministic identifier promotion after fusion does not exist yet; `Doc`/`Chunk`/`Passage` collapse toward one shape |
 | Corpus preparation | `scripts/prepare_corpus.py`, `retrieval/corpus.py`, `data/answer_key/topology.yaml` | Loads, chunks, embeds, and indexes the authored corpus into the containers the runtime reads, and verifies by read-back; runs under its own identity; the topology file is what preparation reads for entities | Nothing; `retrieval/corpus.py` and `topology.yaml` are reached only by preparation and stay for it |
 | Model seam | `llm/base.py`, `llm/client.py`, `llm/fake.py`, `llm/cassette.py`, `llm/prompts.py`, `llm/manifest.py` | One Azure adapter, one fake, cassette record and replay, prompt loading with versions | The Ollama and generic-OpenAI branches, `LLM_SEED`, and the planner/triage response models in `llm/schema.py` go |
-| Synthesis, structural half | `assessment/synthesis.py`, `llm/prompts/rca_synthesis.v1.md` | One task-labelled call proposes; code parses the proposal | Its semantic filtering (`_grounded`, the drop-if-unsupported and derive-`established` branches of `_candidate`) moves out; the proposal model shrinks with the assessment |
-| Grounding logic | `grounding/checks.py` | The four check functions compute the right things over an assessment, an admitted set, and limitations | They return `CheckResult`s into an exact-set `GroundingResult`; the target returns a list of issues from one function; the contract layer and `CorrectionAllowance`/`GateRouting` go |
+| Assessment and brief | `assessment/contracts.py`, `assessment/brief.py` | The designed field set once: `what_happened` with its references, ordered `candidates` (statement, label, `established`, supporting, weakening), `unknowns`, `limitations`, `next_check`, `actions` (action, `now`, optional knowledge reference), `history`, `knowledge_used`; no shape re-checks support and none carries a number; the brief renders deterministically, states the outcome, presents co-causes as contributing causes, and never shows a probability | Nothing |
+| Synthesis | `assessment/synthesis.py`, `llm/prompts/rca_synthesis.v2.md` | One task-labelled call proposes; admission is structural only, so no candidate is removed, no `established` is derived, and no action is discarded; an unreadable response, a label outside the vocabulary, or a string no reference grammar could produce is refused as unusable rather than degraded | Nothing |
+| Grounding | `grounding/gate.py` | One deterministic function returning zero or more issues over the assessment, the admitted references, the retrieved knowledge references, and the recorded limitations: operational support resolves in this run, knowledge resolves in what was retrieved, knowledge never stands as current proof, `what_happened` and every established candidate rest on admitted evidence, every recorded limitation is disclosed | Nothing |
 | Telemetry seam and projection | `obs/tracing.py`, `stream/projection.py`, `stream/contracts.py` | One seam with contextvar-nested spans and a swappable exporter; the activity event is built at the span call site so the two cannot drift | `turn_id` leaves the correlation attributes and the events; the close marker folds into a terminal event carrying the outcome |
 | Streaming transport and screen | `POST /turns`, `static/investigation.html` | One streaming request emits identity, activity, a brief event, and a close marker; the page shows intake, the feed, a brief region, and one details area | Route and identity vocabulary become investigation-only; the page needs a brief branch and a question box |
 | Normalized incident context | `intake/contracts.py` | Typed, frozen, excludes the answer-bearing and ticket-workflow fields | Five fields become four: `supplied_context` goes and `incident_id` becomes required; `InteractionKind` goes |
 | In-memory record | `record/memory.py` | Refuses a second save of the same key; creates the investigation on first save | The port narrows to `save`/`get` and one model; the plural-turn methods and outcome types go |
 | Authored expectations and fixture | `data/answer_key/golden_scenarios.yaml`, `benign_fixture.yaml`, `data/answer_key/scenarios.yaml`, `data/answer_key/build_goldens.py` | Seven authored records with all required parts; every required reference resolves in the corpus; the benign fixture is structurally invisible to scenario counting; the builder derives `golden_scenarios.yaml` from `scenarios.yaml` | The record shape may simplify to what evaluation reads; the builder's `golden_incidents.json` and `golden_retrieval.json` outputs go with numeric evaluation |
-| Deterministic replay | `eval/cassettes/turn_synthesis.json`, `eval/record_turn_synthesis.py` | One committed cassette keeps synthesis reproducible without a live model | Nothing |
+| Deterministic replay | `eval/cassettes/turn_synthesis.json`, `eval/record_turn_synthesis.py` | One committed cassette, recorded against the current proposal shape, keeps synthesis reproducible without a live model; the manifest refuses a cassette recorded under a different prompt version by name | Nothing |
 | Azure baseline | `infra/main.bicep`, `.github/workflows` | One Container App, ACR, one OpenAI account with one chat and one embedding deployment, one Cosmos account with the three containers, Log Analytics, scoped data-plane roles, OIDC deploy | Replicas 0-3 become 0-1; App Insights and built-in auth are absent |
 
 ---
@@ -56,8 +55,8 @@ anything, must still shrink.
 
 | Capability | What exists | What does not |
 | --- | --- | --- |
-| The investigation run | A linear generator in `api.py` gathers a fixed evidence plan (`turn/synthesis_step.py`), admits, synthesizes once, renders a brief, closes | No graph, no objective step, no adaptive proposal or authorization, no return, no grounding call, no persistence, no outcome; the comment at the render site says so |
-| Grounding | Checks and a shared correction flag exist as pure functions | Nothing calls them from the run; no correction call; no outcome assignment |
+| The investigation run | A linear generator in `api.py` gathers a fixed evidence plan (`turn/synthesis_step.py`), admits, synthesizes once, renders the brief, closes; an unusable proposal ends the stream without a brief | No graph, no objective step, no adaptive proposal or authorization, no return, no grounding call in the run, no correction, no persistence, no outcome assigned to a run. Until the gate runs there, a citation naming something the run never admitted reaches the rendered brief |
+| Grounding | The function exists and reports issues | Nothing calls it from the run; no correction call; no run assigns an outcome |
 | Persistence | Port and in-memory backend with delivery-after-save expressed once | No completed-investigation model; no Cosmos implementation; the `investigations` container is declared and empty; no runtime path writes |
 | Retrieval | As in section 2 | Identifier promotion; passage-budget-only truncation |
 | Screen | As in section 2 | A branch for the brief event (a rendered brief lands only in the details area); a question box |
@@ -75,7 +74,8 @@ Required by the governing design and not present in any form:
   objective-interpretation call;
 - the `CompletedInvestigation` model, carrying the operations list, and its Cosmos repository;
 - the `alert:`, `incident:`, and `query:` reference forms and their admission;
-- outcome assignment;
+- outcome assignment on a run: the rule exists as one function the brief renders from, and nothing
+  runs it over an investigation or records the result;
 - the question over a completed record;
 - the MCP exposure of `get_deployments` (the current server exposes three superseded tools);
 - the evaluation runner, the two controlled comparisons and their harness seam, the judge, the
@@ -136,16 +136,6 @@ spans, and stream events.
 **Interaction and intake residue.** `InteractionKind` (five members, no consumer),
 `supplied_context`, and the optionality of `incident_id`, which becomes required.
 
-**Grounding contract layer.** `CheckName`, `CheckResult`, `GroundingResult` and its exact-set
-validators, `CorrectionAllowance`, `GateRouting`, `route_grounding_result`; the eleven
-`model_construct()` sites in `tests/test_grounding_gate.py` and the tests that exist only to
-exercise them.
-
-**Oversized assessment.** `SupportRelationship`, `Horizon`, `RecommendationKind`,
-`RecommendationProvenance`, `ConclusionDisposition`, `BriefSection`, `Citation` as a model,
-`GroundedElement`, `HistoricalComparison`; the validators duplicating the grounding gate; the
-semantic filtering in `assessment/synthesis.py`.
-
 **Evidence and tool wrappers.** The eight per-capability request models, `legacy_status()`,
 `DocHit`, `AuthoritativeAbsence`, `AdmissionResult`, `Resolution`, `OperationRecord`,
 `OperationLedger` as classes; the pairing-table tests in `tests/test_evidence_admission.py`.
@@ -195,8 +185,7 @@ superseded endpoints and `POST /turns` is unauthenticated; the three containers 
 - **D-004 library detail** is settled at design level (official `mcp` SDK, in-process, stdio) and
   the current server already runs that way; only the exposed set changes.
 - **Comments describing something no longer true.** `turn/identity.py` cites a status section
-  number; `tests/test_answer_key.py` cites a heading that no longer exists; `api.py` calls the
-  assessment a stub in two places and describes a disconnect signalling mechanism the design does
-  not carry. All sit in modules that are rewritten or retired.
+  number; `tests/test_answer_key.py` cites a heading that no longer exists. Both sit in modules
+  that are rewritten or retired.
 - **Untracked local configuration.** `.claude/settings.json` and `.claude/settings.local.json`
   appear in every `git status`.
