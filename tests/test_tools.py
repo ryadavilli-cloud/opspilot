@@ -18,7 +18,6 @@ from opspilot.tools.contracts import (
     Completeness,
     DeploymentRecord,
     ExecutionOutcome,
-    IncidentRecord,
 )
 from opspilot.tools.service import ToolService
 
@@ -40,7 +39,7 @@ def test_get_incident_success():
     r = SVC.get_incident(incident_id="inc-001")
     assert r.outcome is ExecutionOutcome.SUCCEEDED and r.completeness is Completeness.COMPLETE
     assert len(r.results) == 1
-    assert isinstance(r.results[0], IncidentRecord) and r.results[0].incident_id == "inc-001"
+    assert r.results[0]["incident_id"] == "inc-001"
     assert r.metadata.result_count == 1 and r.metadata.duration_ms >= 0
 
 
@@ -57,9 +56,19 @@ def test_get_incident_invalid_input_is_error():
     assert r.error and "invalid request" in r.error
 
 
-def test_known_error_incident_yields_past_incident_ref():
-    r = SVC.get_incident(incident_id="inc-001")  # historical -> known error
-    assert r.evidence_refs == ["past_incident:inc-001"]
+def test_the_incident_is_cited_as_the_record_it_is():
+    """The incident record is an operational observation about this incident, so its citation names
+    the record. Pointing at the postmortem instead would let a document stand as current proof."""
+    r = SVC.get_incident(incident_id="inc-001")
+    assert r.evidence_refs == ["incident:inc-001"]
+
+
+def test_the_incident_record_reaches_the_caller_without_its_stored_answers():
+    """The corpus carries its own root cause and resolution. Narrowing to the approved surface here
+    is what makes them unreachable rather than merely unread."""
+    fields = set(SVC.get_incident(incident_id="inc-001").results[0])
+    assert {"incident_id", "category", "priority", "opened_at", "state"} <= fields
+    assert fields.isdisjoint({"root_cause", "resolution", "close_code", "short_description"})
 
 
 # --- get_correlated_alerts --------------------------------------------------------------------
@@ -69,6 +78,14 @@ def test_correlated_alerts_returns_storm():
     assert len(r.results) >= 2
     assert "root_cause" in {a.role for a in r.results}
     assert sum(a.is_trigger for a in r.results) == 1
+
+
+def test_correlated_alerts_are_cited_as_the_alerts_they_are():
+    """An alert is an observation of the running system at a moment, so it is citable like a log
+    line. Returning the storm uncited would make the entities it names unusable as support."""
+    r = SVC.get_correlated_alerts(incident_id="inc-004")
+    assert r.results
+    assert r.evidence_refs == [f"alert:{a.service}:{a.alert_id}" for a in r.results]
 
 
 def test_correlated_alerts_unknown_incident_empty():

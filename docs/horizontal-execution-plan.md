@@ -41,7 +41,22 @@ repository as `docs/status.md` describes it to the system the governing design d
 
 ## H1. Evidence foundation
 
-**State:** Not started.
+**State:** Partial.
+
+*Already present.* Everything this step builds and every removal it names, as `status.md` records:
+the three added evidence forms parse and resolve through the one parser and resolver; admission
+returns plain values and the evidence set carries observations, limitations, and the operations
+list keyed by `investigation_id`; the pairing rule is inline at its one enforcement point; the
+adapters take typed parameters that the registry validates; the incident record is admitted only in
+the approved structured-query surface's fields; a structured-query row carries its record's
+reference, a count is citable by its operation, and an empty result stays an `absence:`. The eight
+request models, `legacy_status()`, `DocHit`, the five wrapper classes, `turn_id` on the evidence
+set, the pairing-table tests, and the three superseded MCP exposures with their parity test are
+absent.
+
+*Remaining.* The committed synthesis cassette, which the changed evidence digest invalidated, is
+not re-recorded, so the deterministic lane errors in `tests/test_turn_replay_end_to_end.py`. The
+hosted effect below has not run.
 
 **Builds.** The final evidence contract, end to end below the agents. The reference grammar gains
 the three evidence forms the design fixes for alerts, the incident record, and aggregate query
@@ -85,7 +100,12 @@ values, adapters take typed parameters, and the named wrappers and superseded ex
 
 ## H2. Retrieval, final
 
-**State:** Not started.
+**State:** Partial.
+
+*Already present.* The retrieval adapter in `tools/search.py` returns the retriever's passage shape
+unreshaped, and the fourth shape it used to convert into is absent.
+
+*Remaining.* Everything else this step builds and removes.
 
 **Builds.** The final retrieval behavior over the knowledge container: embed the question, vector
 search plus the in-process lexical pass over the same category-filtered candidates, reciprocal-rank
@@ -351,8 +371,8 @@ of the runtime.
 
 **Provides.** The one designed protocol boundary with a parity proof.
 
-**If present, remove.** Any superseded MCP exposure still present (the three legacy tools were
-removed with the evidence foundation).
+**If present, remove.** Nothing: the three legacy tools and the server that fronted them went with
+the evidence foundation, so this step builds against no existing exposure.
 
 **Proof unique to this step.** For the same arguments the MCP path and the direct path return the
 same admitted result; the MCP path refuses any write-shaped request; the activity event for an MCP

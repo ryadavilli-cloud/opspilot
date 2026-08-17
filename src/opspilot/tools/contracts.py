@@ -1,22 +1,25 @@
 """Typed contracts for the deterministic tools.
 
-Every tool takes a validated request and returns the uniform envelope `ToolResult`. The envelope
-answers two independent questions: did the operation execute, and if it did, how complete was the
-answer. They are separate fields because collapsing them is the specific mistake that turns an
-unreachable source into a clean bill of health.
+Every capability returns the uniform envelope `ToolResult`. The envelope answers two independent
+questions: did the operation execute, and if it did, how complete was the answer. They are separate
+fields because collapsing them is the specific mistake that turns an unreachable source into a
+clean bill of health.
 
-Records mirror the corpus; `evidence_refs` carry the provenance keys admission assigns evidence
-references from (see `evidence/references.py`). A tool reports what it saw; it does not decide
-what becomes evidence.
+Records mirror the corpus; `evidence_refs` carry the references admission assigns to observations
+(see `evidence/references.py`). A tool reports what it saw; it does not decide what becomes
+evidence.
+
+Capability arguments are the adapters' own typed parameters, validated where the registry invokes
+them. There is no request model per capability: a conceptual request is a function's parameter
+list, and the two constraints that are not expressible in a type, an impossible time window and an
+oversized one, are checked by `check_window` at the one boundary that owns them.
 """
 
 from __future__ import annotations
 
-from collections.abc import Mapping
 from datetime import UTC, datetime
 from enum import StrEnum
-from types import MappingProxyType
-from typing import Literal
+from typing import Annotated
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -24,14 +27,49 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 MAX_RESULTS = 500
 MAX_WINDOW_DAYS = 90
 
+# A string argument that must name something. Shared because five capabilities take one, and
+# because "" reaching a partition-scoped read would query a partition that cannot exist.
+NonEmptyText = Annotated[str, Field(min_length=1)]
+
+
+class RequestRejected(ValueError):
+    """A request that will not be executed, and why, in caller-safe terms.
+
+    Raised before anything reaches a source, so the refusal becomes a limitation naming the
+    question it failed to answer rather than an authoritative absence. The two would read
+    identically to anything counting rows and they mean opposite things.
+    """
+
 
 def to_utc(dt: datetime) -> datetime:
     """Normalize to tz-aware UTC so corpus (…Z) and caller-supplied times compare cleanly."""
     return dt if dt.tzinfo else dt.replace(tzinfo=UTC)
 
 
+def check_window(
+    start: datetime | None, end: datetime | None, *, max_days: int | None = None
+) -> None:
+    """Refuse a window that cannot be satisfied, before the read is spent on it.
+
+    An end before its start describes no interval at all, and a window wider than the ceiling is a
+    scan rather than a query. Both are refusals rather than empty answers.
+    """
+    if start and end and end < start:
+        raise RequestRejected("end_time is before start_time")
+    if max_days is not None and start and end and (end - start).days > max_days:
+        raise RequestRejected(f"time window exceeds {max_days} days")
+
+
 # --- records (mirror the corpus rows) ---------------------------------------------------------
 class IncidentRecord(BaseModel):
+    """The stored incident row.
+
+    Read whole here because incident selection needs the reported symptom and the time anchor.
+    What an agent may observe is narrower: the `get_incident` capability admits only the fields the
+    approved structured-query surface exposes, so `root_cause` and `resolution` never leave the
+    adapter.
+    """
+
     number: str
     incident_id: str
     short_description: str
@@ -97,98 +135,6 @@ class DependencyEdge(BaseModel):
     critical: bool = False
 
 
-class DocHit(BaseModel):
-    doc_id: str  # the retrieval ref, e.g. runbook:payment-timeout, also the evidence ref
-    kind: str  # runbook | architecture | postmortem
-    title: str
-    text: str  # the matched passage itself, never just a pointer to it (data-and-evidence.md §9)
-    services: list[str]
-    score: float
-
-
-# --- requests (validated at the tool-service boundary) ----------------------------------------
-class GetIncidentRequest(BaseModel):
-    incident_id: str = Field(min_length=1)
-
-
-class GetCorrelatedAlertsRequest(BaseModel):
-    incident_id: str = Field(min_length=1)
-    start_time: datetime | None = None
-    end_time: datetime | None = None
-
-    @model_validator(mode="after")
-    def _check_window(self) -> GetCorrelatedAlertsRequest:
-        self.start_time = to_utc(self.start_time) if self.start_time else None
-        self.end_time = to_utc(self.end_time) if self.end_time else None
-        if self.start_time and self.end_time and self.end_time < self.start_time:
-            raise ValueError("end_time is before start_time")
-        return self
-
-
-class GetDeploymentsRequest(BaseModel):
-    services: list[str] = Field(min_length=1)
-    start_time: datetime
-    end_time: datetime
-
-    @model_validator(mode="after")
-    def _check_window(self) -> GetDeploymentsRequest:
-        self.start_time = to_utc(self.start_time)
-        self.end_time = to_utc(self.end_time)
-        if self.end_time < self.start_time:
-            raise ValueError("end_time is before start_time")
-        if (self.end_time - self.start_time).days > MAX_WINDOW_DAYS:
-            raise ValueError(f"time window exceeds {MAX_WINDOW_DAYS} days")
-        return self
-
-
-class GetLogsRequest(BaseModel):
-    service: str = Field(min_length=1)
-    start_time: datetime | None = None
-    end_time: datetime | None = None
-    level: str | None = None  # optional filter, e.g. "error"
-    contains: str | None = None  # optional case-insensitive message substring
-
-    @model_validator(mode="after")
-    def _check_window(self) -> GetLogsRequest:
-        self.start_time = to_utc(self.start_time) if self.start_time else None
-        self.end_time = to_utc(self.end_time) if self.end_time else None
-        if self.start_time and self.end_time and self.end_time < self.start_time:
-            raise ValueError("end_time is before start_time")
-        return self
-
-
-class GetMetricsRequest(BaseModel):
-    service: str = Field(min_length=1)  # service or infra entity that emits metrics
-    metric: str | None = None  # optional single metric; else all for the entity
-    start_time: datetime | None = None
-    end_time: datetime | None = None
-
-    @model_validator(mode="after")
-    def _check_window(self) -> GetMetricsRequest:
-        self.start_time = to_utc(self.start_time) if self.start_time else None
-        self.end_time = to_utc(self.end_time) if self.end_time else None
-        if self.start_time and self.end_time and self.end_time < self.start_time:
-            raise ValueError("end_time is before start_time")
-        return self
-
-
-class GetServiceDependenciesRequest(BaseModel):
-    service: str | None = None  # None -> the whole graph
-    direction: Literal["upstream", "downstream", "both"] = "both"
-
-
-class SearchRunbooksRequest(BaseModel):
-    query: str = Field(min_length=1)
-    k: int = Field(default=5, ge=1, le=MAX_RESULTS)
-    service: str | None = None  # optional metadata filter
-
-
-class SearchPastIncidentsRequest(BaseModel):
-    query: str = Field(min_length=1)
-    k: int = Field(default=5, ge=1, le=MAX_RESULTS)
-    service: str | None = None
-
-
 # --- the two axes -----------------------------------------------------------------------------
 class ExecutionOutcome(StrEnum):
     """Whether the operation executed, and if not, why not."""
@@ -210,21 +156,6 @@ class Completeness(StrEnum):
     NOT_APPLICABLE = "not_applicable"
 
 
-# The legal pairings. Any other combination is a defect in the adapter that produced it, so the
-# envelope refuses to construct rather than carrying a pairing nothing downstream can read.
-LEGAL_PAIRINGS: Mapping[ExecutionOutcome, frozenset[Completeness]] = MappingProxyType(
-    {
-        ExecutionOutcome.SUCCEEDED: frozenset(
-            {Completeness.COMPLETE, Completeness.EMPTY, Completeness.PARTIAL}
-        ),
-        ExecutionOutcome.TIMED_OUT: frozenset({Completeness.NOT_APPLICABLE}),
-        ExecutionOutcome.UNAVAILABLE: frozenset({Completeness.NOT_APPLICABLE}),
-        ExecutionOutcome.REJECTED: frozenset({Completeness.NOT_APPLICABLE}),
-        ExecutionOutcome.FAILED: frozenset({Completeness.NOT_APPLICABLE}),
-    }
-)
-
-
 # --- uniform envelope -------------------------------------------------------------------------
 class ToolMetadata(BaseModel):
     tool_name: str
@@ -244,11 +175,19 @@ class ToolResult[T](BaseModel):
 
     @model_validator(mode="after")
     def _check_pairing(self) -> ToolResult[T]:
-        if self.completeness not in LEGAL_PAIRINGS[self.outcome]:
+        """The one enforcement point for the two axes.
+
+        Completeness is a property of an answer, so a succeeded result has one and nothing else
+        does. That single rule is the whole legal-pairing space; a table enumerating it would say
+        the same thing at more length. Content follows the same line: only a succeeded result may
+        carry any, because content on a call that did not answer is how fabricated evidence gets in.
+        """
+        succeeded = self.outcome is ExecutionOutcome.SUCCEEDED
+        if succeeded is (self.completeness is Completeness.NOT_APPLICABLE):
             raise ValueError(
                 f"illegal result pairing {self.outcome}/{self.completeness} from {self.tool_name}"
             )
-        if self.outcome is not ExecutionOutcome.SUCCEEDED and (self.results or self.evidence_refs):
+        if not succeeded and (self.results or self.evidence_refs):
             raise ValueError(
                 f"{self.tool_name} returned content on a non-succeeded outcome {self.outcome}"
             )
@@ -260,14 +199,3 @@ class ToolResult[T](BaseModel):
         a substitute for reading the completeness: a source that answered with nothing has
         `answered` True and `completeness` empty, which is a finding, not a failure."""
         return self.outcome is ExecutionOutcome.SUCCEEDED
-
-
-def legacy_status(result: ToolResult[object]) -> str:
-    """TEMPORARY. Collapses the two axes back to the binary the old runtime reads.
-
-    It exists so the old planner keeps working through the change and dies with that runtime. No
-    new caller may use it: collapsing here is exactly the loss the two axes exist to prevent,
-    because an unreachable source and a source that answered with nothing both become "error" and
-    "ok" respectively, and the distinction is gone.
-    """
-    return "ok" if result.outcome is ExecutionOutcome.SUCCEEDED else "error"

@@ -42,7 +42,6 @@ def _observation(
     return AdmittedObservation(
         evidence_ref=ref,
         investigation_id="inv-1",
-        turn_id="turn-1",
         operation_ref=operation_ref,
         evidence_type=EvidenceType.METRIC,
         source="get_metrics",

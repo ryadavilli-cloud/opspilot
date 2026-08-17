@@ -18,7 +18,7 @@ from typing import Any
 
 from opspilot.assessment.contracts import Assessment
 from opspilot.assessment.synthesis import SYNTHESIS_TASK, admit_assessment, parse_proposal
-from opspilot.evidence.operations import TurnEvidence
+from opspilot.evidence.operations import EvidenceSet
 from opspilot.llm.base import ChatMessage
 from opspilot.llm.prompts import get_prompt
 from opspilot.obs import tracing
@@ -74,7 +74,7 @@ def evidence_plan(context: Any, alerts: list[Any]) -> list[tuple[str, str, dict[
     return plan
 
 
-def evidence_digest(evidence: TurnEvidence) -> str:
+def evidence_digest(evidence: EvidenceSet) -> str:
     """What the model reasons over: admitted observations by reference, and what went unanswered."""
     lines = ["Admitted evidence:"]
     if evidence.observations:
@@ -90,11 +90,16 @@ def evidence_digest(evidence: TurnEvidence) -> str:
     return "\n".join(lines)
 
 
-def synthesize(model: Any, context: Any, evidence: TurnEvidence, objective: str) -> Assessment:
+def synthesize(
+    model: Any, context: Any, evidence: EvidenceSet, objective: str, *, turn_id: str
+) -> Assessment:
     """One bounded model call, then deterministic admission of what it proposed.
 
     The model's answer is a proposal. What survives into the assessment is decided against the
     admitted evidence set, not by the model.
+
+    The evidence set is keyed by the investigation alone, so the identity the assessment still
+    carries is supplied by the caller that holds it rather than read back off the evidence.
     """
     prompt = get_prompt("rca_synthesis")
     user = "\n".join(
@@ -119,7 +124,7 @@ def synthesize(model: Any, context: Any, evidence: TurnEvidence, objective: str)
     return admit_assessment(
         parse_proposal(result.text),
         investigation_id=evidence.investigation_id,
-        turn_id=evidence.turn_id,
+        turn_id=turn_id,
         objective=objective,
         observations=evidence.observations,
         limitations=evidence.limitations,

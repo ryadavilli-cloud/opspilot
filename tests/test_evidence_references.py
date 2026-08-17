@@ -14,7 +14,7 @@ from fake_operational_records import corpus_records, log_documents, records_from
 
 from opspilot.data.operational_records import OperationalRecords
 from opspilot.evidence.admission import admit
-from opspilot.evidence.operations import TurnEvidence
+from opspilot.evidence.operations import EvidenceSet
 from opspilot.evidence.references import (
     PREFIX_TYPES,
     RETIRED_PREFIXES,
@@ -36,7 +36,10 @@ EVIDENCE_REFS = [
     "metrics:checkout-api:http_5xx_rate@2026-05-12T14:30:00Z",
     "deploys:payment-api:dep-20260512-01",
     "deps:checkout-api->payment-api",
+    "alert:payment-api:alrt-001-01",
+    "incident:inc-001",
     "absence:get_deployments:op-0007",
+    "query:op-0009",
 ]
 KNOWLEDGE_REFS = [
     "runbook:payment-timeout",
@@ -52,7 +55,10 @@ def test_every_prefix_has_exactly_one_declared_type():
         "metrics",
         "deploys",
         "deps",
+        "alert",
+        "incident",
         "absence",
+        "query",
         "runbook",
         "architecture",
         "postmortem",
@@ -124,6 +130,24 @@ def test_log_and_deploy_references_name_one_service_and_an_identifier():
     assert parse("deploys:payment-api:dep-20260512-01").entities == ("payment-api",)
 
 
+def test_an_alert_reference_names_the_service_that_raised_it_and_the_alert():
+    """An alert is an observation of the running system at a moment, so it is cited like a log
+    line, and the service it names is what scopes the calls that follow it."""
+    parsed = parse("alert:payment-api:alrt-001-01")
+    assert parsed.is_evidence
+    assert parsed.entities == ("payment-api",)
+    assert parsed.identifier == "alrt-001-01"
+
+
+def test_an_incident_reference_names_the_record_and_no_entity():
+    """The incident record belongs to no single service: its blast radius is what the alerts and
+    the dependency graph say, not something the reference may assert."""
+    parsed = parse("incident:inc-001")
+    assert parsed.is_evidence
+    assert parsed.identifier == "inc-001"
+    assert parsed.entities == ()
+
+
 # --- authoritative absence ----------------------------------------------------------------------
 def test_an_absence_reference_names_its_capability_and_producing_operation():
     parsed = parse("absence:get_deployments:op-0007")
@@ -157,6 +181,23 @@ def test_an_absence_reference_names_no_entity():
     assert entities_named(["absence:get_deployments:op-0007"]) == set()
 
 
+# --- the aggregate form -------------------------------------------------------------------------
+def test_an_aggregate_reference_names_the_operation_that_produced_it():
+    """A count is a fact about a scope and has no underlying row, so the operation is the only
+    thing a citation can point at."""
+    parsed = parse("query:op-0009")
+    assert parsed.reference_type is ReferenceType.EVIDENCE
+    assert parsed.identifier == "op-0009"
+    assert parsed.entities == ()
+
+
+def test_an_aggregate_reference_may_occupy_any_citation_role():
+    """It reports what a scope holds, which is a current operational observation."""
+    parsed = parse("query:op-0009")
+    for role in CitationRole:
+        assert role_is_admissible(parsed.reference_type, role)
+
+
 @pytest.mark.parametrize(
     "raw",
     [
@@ -174,6 +215,14 @@ def test_an_absence_reference_names_no_entity():
         "absence::op-0007",
         "absence:get_deployments:",
         "absence:get_deployments:op-0007:extra",
+        "alert:",
+        "alert:payment-api",
+        "alert::alrt-1",
+        "alert:payment-api:alrt-1:extra",
+        "incident:",
+        "incident:inc-001:extra",
+        "query:",
+        "query:op-0009:extra",
     ],
 )
 def test_malformed_references_raise_rather_than_degrade(raw):
@@ -211,24 +260,38 @@ def resolver() -> ReferenceResolver:
         "logs:checkout-api:evt-005-01",
         "metrics:redis-cache:used_memory_pct@2026-06-22T11:35:00Z",
         "deps:checkout-api->redis-cache",
+        "incident:inc-001",
         "runbook:redis-cache-degradation",
         "architecture:service-dependency-map",
         "postmortem:inc-001",
     ],
 )
 def test_authored_references_resolve_against_the_real_corpus(resolver, raw):
-    assert resolver.resolve(raw).resolved
+    assert resolver.resolves(raw)
 
 
-def test_a_wellformed_reference_that_names_nothing_is_unresolved_not_malformed():
+@pytest.mark.parametrize(
+    "raw",
+    [
+        "logs:payment-api:evt-does-not-exist",
+        "incident:inc-999",
+        "alert:payment-api:alrt-does-not-exist",
+        "alert:no-such-service:alrt-001-01",
+    ],
+)
+def test_a_wellformed_reference_that_names_nothing_is_unresolved_not_malformed(resolver, raw):
     """The distinction matters: malformed means nobody can interpret it, unresolved means it was
     interpreted fine and the thing is not there. Collapsing them hides a corpus gap as a syntax
     error."""
-    resolver = ReferenceResolver(corpus_records())
-    result = resolver.resolve("logs:payment-api:evt-does-not-exist")
-    assert result.reference.prefix == "logs"
-    assert result.resolved is False
-    assert result.record is None
+    assert parse(raw)  # interpretable
+    assert resolver.resolves(raw) is False
+
+
+def test_an_alert_reference_resolves_against_the_service_that_raised_it(resolver, container):
+    """Scoped by service rather than by incident: an alert names its own service, and resolving one
+    must not need the incident it was later correlated to."""
+    alert = next(doc for doc in container.documents if doc["kind"] == "alert" and doc["service"])
+    assert resolver.resolves(f"alert:{alert['service']}:{alert['alert_id']}")
 
 
 def test_a_metric_reference_off_the_sample_instant_does_not_resolve():
@@ -251,8 +314,7 @@ def test_resolves_is_false_for_a_malformed_reference_rather_than_raising():
 
 def test_resolution_accepts_an_already_parsed_reference():
     resolver = ReferenceResolver(corpus_records())
-    parsed = parse("deps:checkout-api->redis-cache")
-    assert resolver.resolve(parsed).resolved
+    assert resolver.resolves(parse("deps:checkout-api->redis-cache"))
 
 
 def test_resolver_reads_the_container_it_was_given():
@@ -264,35 +326,48 @@ def test_resolver_reads_the_container_it_was_given():
     assert not resolver.resolves("logs:svc-a:evt-8")
 
 
-def test_an_absence_reference_resolves_to_the_admitted_observation(container):
-    """An absence has no source row by definition, so it resolves against what admission recorded.
-    Resolving it against the container would ask a source to produce the row whose non-existence
-    is the finding."""
-    turn = TurnEvidence(investigation_id="inv-1", turn_id="turn-1")
-    empty = ToolResult(
-        tool_name="get_deployments",
-        outcome=ExecutionOutcome.SUCCEEDED,
-        completeness=Completeness.EMPTY,
-        metadata=ToolMetadata(tool_name="get_deployments", duration_ms=1.0, result_count=0),
+def _admitted(capability: str, completeness: Completeness, results: list[object]) -> EvidenceSet:
+    evidence = EvidenceSet(investigation_id="inv-1")
+    admit(
+        ToolResult(
+            tool_name=capability,
+            outcome=ExecutionOutcome.SUCCEEDED,
+            completeness=completeness,
+            results=results,
+            metadata=ToolMetadata(tool_name=capability, duration_ms=1.0, result_count=0),
+        ),
+        evidence=evidence,
+        question="did anything change",
+        request_scope={"svc": "a"},
     )
-    outcome = admit(empty, turn=turn, question="did anything change", request_scope={"svc": "a"})
-    observation = outcome.observations[0]
-
-    resolver = ReferenceResolver(OperationalRecords(container), absences=turn.observations)
-    result = resolver.resolve(observation.evidence_ref)
-    assert result.resolved
-    assert result.record is observation
-    assert result.record.is_authoritative_absence
+    return evidence
 
 
-def test_an_absence_reference_the_resolver_was_not_given_is_unresolved_not_malformed(container):
-    """Well formed and naming nothing here. Raising instead would report a turn's own absence as a
-    grammar error once the reference travelled outside that turn."""
-    resolver = ReferenceResolver(OperationalRecords(container))
-    result = resolver.resolve("absence:get_deployments:op-0007")
-    assert result.reference.prefix == "absence"
-    assert result.resolved is False
-    assert result.record is None
+@pytest.mark.parametrize(
+    "capability,completeness,results",
+    [
+        ("get_deployments", Completeness.EMPTY, []),
+        ("structured_query", Completeness.COMPLETE, [{"count": 3}]),
+    ],
+    ids=["absence", "aggregate"],
+)
+def test_an_operation_backed_reference_resolves_against_what_admission_recorded(
+    container, capability, completeness, results
+):
+    """Neither form has a source row: one names a scope that held nothing, the other an aggregate
+    over a scope. Resolving them against the container would ask a source to produce the row whose
+    absence is the finding."""
+    evidence = _admitted(capability, completeness, results)
+    resolver = ReferenceResolver(OperationalRecords(container), observations=evidence.observations)
+    assert resolver.resolves(evidence.observations[0].evidence_ref)
+
+
+@pytest.mark.parametrize("raw", ["absence:get_deployments:op-0007", "query:op-0007"])
+def test_an_operation_backed_reference_the_resolver_was_not_given_is_unresolved(container, raw):
+    """Well formed and naming nothing here. Raising instead would report one investigation's own
+    absence as a grammar error once the reference travelled outside it."""
+    assert parse(raw)  # interpretable
+    assert ReferenceResolver(OperationalRecords(container)).resolves(raw) is False
 
 
 def test_a_malformed_absence_reference_does_not_resolve(container):

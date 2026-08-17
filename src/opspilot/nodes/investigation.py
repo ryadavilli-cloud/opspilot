@@ -18,10 +18,12 @@ from langchain_core.runnables import RunnableConfig
 from opspilot.config import MAX_DIAGNOSE_ITERS, WORKFLOW_VERSION
 from opspilot.contracts import EvidenceItem as ReportEvidence
 from opspilot.contracts import IncidentReport
+from opspilot.data.operational_records import SourceUnavailable
 from opspilot.diagnosis.admission import entities_from_refs
 from opspilot.diagnosis.contracts import EvidenceCitation, Hypothesis
 from opspilot.diagnosis.render import render_report_claim_statement
 from opspilot.state import DiagnosisTrace, EvidenceItem, Intent, InvestigationState
+from opspilot.tools.contracts import IncidentRecord
 
 _UNIT_SEP = "\x1f"
 
@@ -116,6 +118,22 @@ def ingest(state: InvestigationState) -> dict[str, Any]:
 _PRIORITY_TO_SEV = {"1": "SEV1", "2": "SEV2", "3": "SEV3", "4": "SEV4"}
 
 
+def _stored_incident(svc: Any, incident_id: str) -> IncidentRecord | None:
+    """The stored incident row, read directly rather than through the capability.
+
+    This path wants the incident's own description and its stored resolution, and neither is
+    something a capability may hand an agent: what `get_incident` admits is the narrower approved
+    surface. Reading the row here keeps that boundary intact while this deterministic baseline
+    still works. An unreachable source reads as an unknown incident, which is what the envelope
+    this replaced already did.
+    """
+    try:
+        raw = svc.records.incident(incident_id, deadline_s=svc.deadline_s)
+    except SourceUnavailable:
+        return None
+    return IncidentRecord(**raw) if raw else None
+
+
 def triage_router(
     state: InvestigationState, config: RunnableConfig | None = None
 ) -> dict[str, Any]:
@@ -125,7 +143,7 @@ def triage_router(
     """
     incident_id = state.incident_id
     svc = _svc(config)
-    record = (svc.get_incident(incident_id=incident_id).results or [None])[0]
+    record = _stored_incident(svc, incident_id)
 
     if record is None:  # unknown incident id — cannot classify from data; treat as novel
         alert = state.alert
@@ -154,7 +172,7 @@ def triage_router(
         category=record.category,
         affected_services=affected,
         alert_signals=sorted({a.signal for a in alerts if a.signal}),
-        past_candidates=[PastCandidate(doc_id=h.doc_id, title=h.title) for h in past],
+        past_candidates=[PastCandidate(doc_id=p.reference, title=p.title) for p in past],
     )
     decision = _triager(config).classify(ctx)
     matched = decision.matched_incident
@@ -171,7 +189,7 @@ def triage_router(
             "matched_incident": matched,
             "affected_services": affected,
             "onset": onset.isoformat(),
-            "top_past_incidents": [h.doc_id for h in past],
+            "top_past_incidents": [p.reference for p in past],
             "reason": (
                 f"known-issue candidate: {matched}"
                 if matched
@@ -188,8 +206,8 @@ def known_issue_fast_path(
     resolution as the hypothesis and skip the full diagnose loop."""
     match = state.matched_incident
     inc_id = match.split(":", 1)[1] if ":" in match else state.incident_id
-    record = _svc(config).get_incident(incident_id=inc_id).results
-    resolution = record[0].resolution if (record and record[0].resolution) else ""
+    record = _stored_incident(_svc(config), inc_id)
+    resolution = (record.resolution or "") if record else ""
     ref = f"past_incident:{inc_id}"
     hypothesis = Hypothesis(
         statement=f"Known issue — recurrence of {inc_id}. Prior resolution: {resolution}",
@@ -208,11 +226,12 @@ def retrieve(state: InvestigationState, config: RunnableConfig | None = None) ->
     query = state.alert.get("summary", "")
     svc = _svc(config)
     items: list[EvidenceItem] = []
-    for hit in svc.search_runbooks(query=query, k=5).results:
-        items.append(EvidenceItem.make("runbook", hit.doc_id, hit.title))
-    for hit in svc.search_past_incidents(query=query, k=3).results:
-        inc_id = hit.doc_id.split(":", 1)[1] if ":" in hit.doc_id else hit.doc_id
-        items.append(EvidenceItem.make("past_incident", f"past_incident:{inc_id}", hit.title))
+    for passage in svc.search_runbooks(query=query, k=5).results:
+        items.append(EvidenceItem.make("runbook", passage.reference, passage.title))
+    for passage in svc.search_past_incidents(query=query, k=3).results:
+        reference = passage.reference
+        inc_id = reference.split(":", 1)[1] if ":" in reference else reference
+        items.append(EvidenceItem.make("past_incident", f"past_incident:{inc_id}", passage.title))
     # Retrieved docs are real, tool-produced evidence — part of the grounding set the safety gate
     # validates citations against (a report may cite a retrieved runbook or past incident).
     return {"evidence_by_id": _evidence_map(items), "produced_refs": [it.ref for it in items]}

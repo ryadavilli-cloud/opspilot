@@ -1,15 +1,14 @@
-"""The single owner of reference encoding, parsing, and resolution (D-008).
+"""The single owner of reference encoding, parsing, and resolution.
 
 A reference travels through the system as its string form. This module is the only place that
 interprets one: it decides the reference's type, splits it into parts, and answers whether it
 resolves to something real. Nothing else parses a reference, keeps its own prefix list, or infers
 a reference's type from the capability that produced it.
 
-Two reference types exist, and the prefix is the declared discriminator between them
-(`data-and-evidence.md` "Identity and Reference Model"). That is what makes citation-role
-compatibility decidable by inspection rather than by judgment: an evidence reference may occupy
-any citation role, a knowledge reference only the historical-or-contextual role, and
-`role_is_admissible` is the one function that answers it.
+Two reference types exist, and the prefix is the declared discriminator between them. That is what
+makes citation-role compatibility decidable by inspection rather than by judgment: an evidence
+reference may occupy any citation role, a knowledge reference only the historical-or-contextual
+role, and `role_is_admissible` is the one function that answers it.
 
 Grammar, as authored in `data/answer_key/README.md`:
 
@@ -17,15 +16,20 @@ Grammar, as authored in `data/answer_key/README.md`:
     metrics:<service or infra entity>:<metric>@<ts>
     deploys:<service>:<deploy_id>
     deps:<from>-><to>
+    alert:<service>:<alert_id>
+    incident:<incident_id>
     absence:<capability>:<operation_ref>
+    query:<operation_ref>
     runbook:<doc_id>
     architecture:<doc_id>
     postmortem:<incident_id>
 
-`absence:` names an authoritative empty result: the capability executed successfully over the
-recorded scope and observed no matching item. It is an evidence reference like any other, and it
-embeds the producing operation reference without becoming one: a bare operation reference is
-still not citable, because an operation names an attempt rather than an observation.
+Two of the evidence forms name an operation rather than a stored row. `absence:` names an
+authoritative empty result: the capability executed successfully over the recorded scope and
+observed no matching item. `query:` names an aggregate answer, which is a fact about a scope and
+has no underlying row to point at. Both embed an operation reference without becoming one: a bare
+operation reference is still not citable, because an operation names an attempt rather than an
+observation.
 
 Parsing validates shape only. Whether a reference names something that exists is resolution, and
 whether a metric timestamp lands on the corpus sample boundary is an authoring rule the answer
@@ -71,16 +75,24 @@ PREFIX_TYPES: Mapping[str, ReferenceType] = MappingProxyType(
         "metrics": ReferenceType.EVIDENCE,
         "deploys": ReferenceType.EVIDENCE,
         "deps": ReferenceType.EVIDENCE,
+        "alert": ReferenceType.EVIDENCE,
+        "incident": ReferenceType.EVIDENCE,
         "absence": ReferenceType.EVIDENCE,
+        "query": ReferenceType.EVIDENCE,
         "runbook": ReferenceType.KNOWLEDGE,
         "architecture": ReferenceType.KNOWLEDGE,
         "postmortem": ReferenceType.KNOWLEDGE,
     }
 )
 
-# `past_incident:` named the same document as `postmortem:` and is retired by D-008. It is called
-# out separately so the old runtime's spelling fails with the reason rather than as "unknown".
+# `past_incident:` named the same document as `postmortem:` and is retired. It is called out
+# separately so the old runtime's spelling fails with the reason rather than as "unknown".
 RETIRED_PREFIXES: Mapping[str, str] = MappingProxyType({"past_incident": "postmortem"})
+
+# The two evidence forms with no stored row behind them, by definition: one names a scope that
+# contained nothing, the other an aggregate over a scope. Both resolve against what admission
+# recorded in this investigation rather than against a source.
+_OPERATION_BACKED = frozenset({"absence", "query"})
 
 _KNOWLEDGE_DIRS: Mapping[str, str] = MappingProxyType(
     {"runbook": "runbooks", "architecture": "architecture", "postmortem": "postmortems"}
@@ -154,8 +166,8 @@ def _parse_timestamp(raw: str, text: str) -> datetime:
 def parse(raw: str) -> Reference:
     """Parse a reference string, or raise `ReferenceError`.
 
-    Shape only. Existence is `ReferenceResolver`'s question, and the two are kept apart so a
-    well-formed reference to a deleted row reports as unresolved rather than as malformed.
+    Shape only. Existence is the resolver's question, and the two are kept apart so a well-formed
+    reference to a deleted row reports as unresolved rather than as malformed.
     """
     text = (raw or "").strip()
     _require(bool(text), raw, "empty")
@@ -196,10 +208,11 @@ def parse(raw: str) -> Reference:
             observed_at=_parse_timestamp(text, timestamp.strip()),
         )
 
-    if prefix in ("logs", "deploys"):
+    if prefix in ("logs", "deploys", "alert"):
         entity, separator, identifier = rest.partition(":")
         _require(bool(separator), text, f"{prefix} reference needs a service and an identifier")
         _require(bool(entity.strip()) and bool(identifier.strip()), text, "empty service or id")
+        _require(":" not in identifier, text, f"{prefix} reference carries one identifier")
         return Reference(
             text, prefix, reference_type, entities=(entity.strip(),), identifier=identifier.strip()
         )
@@ -221,8 +234,9 @@ def parse(raw: str) -> Reference:
             capability=capability.strip(),
         )
 
-    # Knowledge references are a single opaque document identity.
-    _require(":" not in rest, text, "knowledge reference carries one identifier")
+    # What is left names one thing by its own identifier: the incident record, the operation behind
+    # an aggregate, or one knowledge document. None of them names an entity.
+    _require(":" not in rest, text, f"{prefix} reference carries one identifier")
     return Reference(text, prefix, reference_type, identifier=rest.strip())
 
 
@@ -248,15 +262,6 @@ def entities_named(refs: object) -> set[str]:
     return found
 
 
-@dataclass(frozen=True)
-class Resolution:
-    """Whether a reference names something real, and what it named when it did."""
-
-    reference: Reference
-    resolved: bool
-    record: Any | None = None
-
-
 class ReferenceResolver:
     """Resolves references against the sources the capabilities already read.
 
@@ -264,15 +269,19 @@ class ReferenceResolver:
     against the knowledge base on disk. The two live together because a caller resolving a citation
     should not have to know which kind it holds.
 
+    The answer is whether the reference names something real, and nothing else. A caller that needs
+    the record itself already holds it, because a reference only ever travels beside the evidence
+    it was assigned to.
+
     A reference names its own entity, so every read here is scoped to that entity's partition
     rather than sweeping the container. What is read is cached per entity for the resolver's life,
     because resolving a brief's citations asks about the same few services repeatedly. Each read
     carries the deadline the resolver was given, like any other source call.
 
-    An `absence:` reference is the one form with no source row behind it, by definition: it names a
-    scope that contained nothing. It resolves against the admitted absence observations passed in
-    at construction, so this stays one resolver rather than two. Searching the container for it
-    would ask a source to produce the row whose non-existence is the finding.
+    The two operation-backed forms have no source row by definition: one names a scope that
+    contained nothing, the other an aggregate over a scope. They resolve against the admitted
+    observations passed in at construction, so this stays one resolver rather than two. Searching
+    the container for them would ask a source to produce the row whose absence is the finding.
     """
 
     def __init__(
@@ -281,33 +290,45 @@ class ReferenceResolver:
         kb_dir: Path | str | None = None,
         *,
         deadline_s: float | None = None,
-        absences: Iterable[Any] = (),
+        observations: Iterable[Any] = (),
     ) -> None:
         self._records = records
         # Indexed by the reference admission assigned. Duck-typed rather than importing the
         # admission contract, which imports this module.
-        self._absences: dict[str, Any] = {
-            str(getattr(obs, "evidence_ref", "")): obs for obs in absences
-        }
+        self._admitted: set[str] = {str(getattr(obs, "evidence_ref", "")) for obs in observations}
         self._kb_dir = Path(kb_dir) if kb_dir is not None else KB_DIR
         self._deadline_s = deadline_s if deadline_s is not None else config.SOURCE_DEADLINE_SECONDS
-        self._logs: dict[str, dict[str, dict[str, Any]]] = {}
-        self._deploys: dict[str, dict[str, dict[str, Any]]] = {}
+        self._logs: dict[str, set[str]] = {}
+        self._deploys: dict[str, set[str]] = {}
+        self._alerts: dict[str, set[str]] = {}
+        self._incidents: dict[str, bool] = {}
         self._edges: set[tuple[str, str]] | None = None
         self._metric_entities: dict[str, dict[str, list[dict[str, Any]]]] = {}
 
     # --- lazy, entity-scoped indexes over the container ---------------------------------------
-    def _log_index(self, service: str) -> dict[str, dict[str, Any]]:
+    def _log_index(self, service: str) -> set[str]:
         if service not in self._logs:
             rows = self._records.logs(service, deadline_s=self._deadline_s)
-            self._logs[service] = {row.get("event_id", ""): row for row in rows}
+            self._logs[service] = {str(row.get("event_id", "")) for row in rows}
         return self._logs[service]
 
-    def _deploy_index(self, service: str) -> dict[str, dict[str, Any]]:
+    def _deploy_index(self, service: str) -> set[str]:
         if service not in self._deploys:
             rows = self._records.deployments([service], deadline_s=self._deadline_s)
-            self._deploys[service] = {row.get("deploy_id", ""): row for row in rows}
+            self._deploys[service] = {str(row.get("deploy_id", "")) for row in rows}
         return self._deploys[service]
+
+    def _alert_index(self, service: str) -> set[str]:
+        if service not in self._alerts:
+            rows = self._records.alerts(service, deadline_s=self._deadline_s)
+            self._alerts[service] = {str(row.get("alert_id", "")) for row in rows}
+        return self._alerts[service]
+
+    def _incident_exists(self, incident_id: str) -> bool:
+        if incident_id not in self._incidents:
+            row = self._records.incident(incident_id, deadline_s=self._deadline_s)
+            self._incidents[incident_id] = row is not None
+        return self._incidents[incident_id]
 
     def _edge_index(self) -> set[tuple[str, str]]:
         if self._edges is None:
@@ -324,7 +345,7 @@ class ReferenceResolver:
         return self._metric_entities[entity]
 
     # --- resolution ---------------------------------------------------------------------------
-    def _resolve_metric(self, ref: Reference) -> tuple[bool, Any | None]:
+    def _resolve_metric(self, ref: Reference) -> bool:
         entity = ref.entities[0] if ref.entities else ""
         for series in self._metric_index(entity).get(ref.metric or "", []):
             for sample in series.get("samples", []):
@@ -333,47 +354,37 @@ class ReferenceResolver:
                     continue
                 parsed = datetime.fromisoformat(str(stamp).replace("Z", "+00:00"))
                 if parsed.astimezone(UTC) == ref.observed_at:
-                    return True, sample
-        return False, None
+                    return True
+        return False
 
-    def _resolve_knowledge(self, ref: Reference) -> tuple[bool, Any | None]:
+    def _resolve_knowledge(self, ref: Reference) -> bool:
         directory = self._kb_dir / _KNOWLEDGE_DIRS[ref.prefix]
         identifier = ref.identifier or ""
-        exact = directory / f"{identifier}.md"
-        if exact.exists():
-            return True, exact
+        if (directory / f"{identifier}.md").exists():
+            return True
         # A postmortem is filed as `<incident_id>-<slug>.md`, so its reference resolves by prefix.
-        matches = sorted(directory.glob(f"{identifier}-*.md")) if identifier else []
-        return (True, matches[0]) if matches else (False, None)
+        return bool(identifier and sorted(directory.glob(f"{identifier}-*.md")))
 
-    def resolve(self, raw: str | Reference) -> Resolution:
-        """Resolve one reference. A malformed string raises; a well-formed one that names nothing
-        returns `resolved=False`."""
-        ref = raw if isinstance(raw, Reference) else parse(raw)
-
-        if ref.reference_type is ReferenceType.KNOWLEDGE:
-            found, record = self._resolve_knowledge(ref)
-        elif ref.prefix == "logs":
-            record = self._log_index(ref.entities[0]).get(ref.identifier or "")
-            found = record is not None
-        elif ref.prefix == "deploys":
-            record = self._deploy_index(ref.entities[0]).get(ref.identifier or "")
-            found = record is not None
-        elif ref.prefix == "deps":
-            edge = (ref.entities[0], ref.entities[1])
-            found = edge in self._edge_index()
-            record = edge if found else None
-        elif ref.prefix == "absence":
-            record = self._absences.get(ref.raw)
-            found = record is not None
-        else:
-            found, record = self._resolve_metric(ref)
-
-        return Resolution(reference=ref, resolved=found, record=record)
-
-    def resolves(self, raw: str) -> bool:
-        """Whether a reference resolves. A malformed reference does not resolve, by definition."""
+    def resolves(self, raw: str | Reference) -> bool:
+        """Whether a reference names something real. A malformed reference does not, by definition,
+        and a well-formed one naming nothing is unresolved rather than an error."""
         try:
-            return self.resolve(raw).resolved
+            ref = raw if isinstance(raw, Reference) else parse(raw)
         except ReferenceError:
             return False
+
+        if ref.reference_type is ReferenceType.KNOWLEDGE:
+            return self._resolve_knowledge(ref)
+        if ref.prefix in _OPERATION_BACKED:
+            return ref.raw in self._admitted
+        if ref.prefix == "logs":
+            return (ref.identifier or "") in self._log_index(ref.entities[0])
+        if ref.prefix == "deploys":
+            return (ref.identifier or "") in self._deploy_index(ref.entities[0])
+        if ref.prefix == "alert":
+            return (ref.identifier or "") in self._alert_index(ref.entities[0])
+        if ref.prefix == "incident":
+            return self._incident_exists(ref.identifier or "")
+        if ref.prefix == "deps":
+            return (ref.entities[0], ref.entities[1]) in self._edge_index()
+        return self._resolve_metric(ref)

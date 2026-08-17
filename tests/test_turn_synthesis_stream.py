@@ -122,8 +122,13 @@ def test_the_model_is_called_once_and_shown_only_admitted_evidence():
     events, model = _run({})
     assert model.calls == 1
     assert "Admitted evidence:" in model.evidence_shown
-    # The answer key must never reach a prompt: it is what the investigation exists to discover.
-    assert "root_cause" not in model.evidence_shown
+    # The corpus carries its own answers and they must never reach a prompt: they are what the
+    # investigation exists to discover. The incident record is admitted only in the approved
+    # surface, so the two fields holding that text are absent by name. Asserted on the field name
+    # rather than the bare word, because an alert's own role vocabulary contains one of them as a
+    # value, and a value describing an alert is not the incident's stored cause.
+    assert "root_cause=" not in model.evidence_shown
+    assert "'root_cause':" not in model.evidence_shown
     assert "resolution" not in model.evidence_shown
 
 
