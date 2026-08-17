@@ -5,11 +5,11 @@ interprets one: it decides the reference's type, splits it into parts, and answe
 resolves to something real. Nothing else parses a reference, keeps its own prefix list, or infers
 a reference's type from the capability that produced it.
 
-Two reference types exist, and the prefix is the declared discriminator between them
-(`data-and-evidence.md` "Identity and Reference Model"). That is what makes citation-role
-compatibility decidable by inspection rather than by judgment: an evidence reference may occupy
-any citation role, a knowledge reference only the historical-or-contextual role, and
-`role_is_admissible` is the one function that answers it.
+Two reference types exist, and the prefix is the declared discriminator between them. That is what
+makes the one rule that matters decidable by inspection rather than by judgment: retrieved
+knowledge may inform history, interpretation, and an action's provenance, and may never stand as
+current operational support, because a document cannot observe the running system. Grounding reads
+the type from here and needs no role field to enforce it.
 
 Grammar, as authored in `data/answer_key/README.md`:
 
@@ -52,15 +52,6 @@ class ReferenceType(StrEnum):
 
     EVIDENCE = "evidence"
     KNOWLEDGE = "knowledge"
-
-
-class CitationRole(StrEnum):
-    """The three citation roles. A larger vocabulary would invite relabeling, and relabeling is
-    how a deterministic grounding check becomes negotiable."""
-
-    CURRENT_SUPPORT = "current_operational_support"
-    CURRENT_CONTRADICTION = "current_operational_contradiction"
-    HISTORICAL_CONTEXT = "historical_or_contextual_support"
 
 
 # The authoritative prefix-to-type map. No other list of prefixes exists, and a prefix absent here
@@ -118,18 +109,6 @@ class Reference:
     @property
     def is_knowledge(self) -> bool:
         return self.reference_type is ReferenceType.KNOWLEDGE
-
-
-def role_is_admissible(reference_type: ReferenceType, role: CitationRole) -> bool:
-    """Whether a reference of this type may occupy this citation role.
-
-    Retrieved knowledge cannot carry current operational support or contradiction, because a
-    document cannot observe the running system. Deciding this from the type alone is the whole
-    point of the prefix map.
-    """
-    if reference_type is ReferenceType.EVIDENCE:
-        return True
-    return role is CitationRole.HISTORICAL_CONTEXT
 
 
 def reference_type_of(raw: str) -> ReferenceType:

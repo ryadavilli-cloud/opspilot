@@ -24,7 +24,7 @@ from opspilot.llm.prompts import get_prompt
 from opspilot.obs import tracing
 from opspilot.stream.contracts import ActivityEvent
 from opspilot.stream.projection import ActivityProjector, emit
-from opspilot.tools.contracts import ToolResult
+from opspilot.tools.contracts import Completeness, ToolResult
 from opspilot.turn.identity import TurnIdentity
 
 # The window either side of the incident's time anchor that telemetry queries are scoped to.
@@ -75,11 +75,17 @@ def evidence_plan(context: Any, alerts: list[Any]) -> list[tuple[str, str, dict[
 
 
 def evidence_digest(evidence: TurnEvidence) -> str:
-    """What the model reasons over: admitted observations by reference, and what went unanswered."""
+    """What the model reasons over: admitted observations by reference, and what went unanswered.
+
+    A partial observation says so on its own line. The source answered over part of the requested
+    scope, and an analyst reading it as a complete picture would claim more than was observed.
+    """
     lines = ["Admitted evidence:"]
     if evidence.observations:
         lines.extend(
-            f"- {obs.evidence_ref} [{obs.evidence_type.value}] {obs.observation}"
+            f"- {obs.evidence_ref} [{obs.evidence_type.value}]"
+            f"{' [partial]' if obs.completeness is Completeness.PARTIAL else ''}"
+            f" {obs.observation}"
             for obs in evidence.observations
         )
     else:
@@ -91,10 +97,11 @@ def evidence_digest(evidence: TurnEvidence) -> str:
 
 
 def synthesize(model: Any, context: Any, evidence: TurnEvidence, objective: str) -> Assessment:
-    """One bounded model call, then deterministic admission of what it proposed.
+    """One bounded model call, then structural admission of what it proposed.
 
-    The model's answer is a proposal. What survives into the assessment is decided against the
-    admitted evidence set, not by the model.
+    Admission enforces the shape and nothing else. Whether the proposal's claims rest on evidence
+    this run admitted is grounding's question, and it is asked of the assessment that comes out of
+    here rather than of a filtered version of it.
     """
     prompt = get_prompt("rca_synthesis")
     user = "\n".join(
@@ -116,14 +123,7 @@ def synthesize(model: Any, context: Any, evidence: TurnEvidence, objective: str)
                 ChatMessage(role="user", content=user),
             ]
         )
-    return admit_assessment(
-        parse_proposal(result.text),
-        investigation_id=evidence.investigation_id,
-        turn_id=evidence.turn_id,
-        objective=objective,
-        observations=evidence.observations,
-        limitations=evidence.limitations,
-    )
+    return admit_assessment(parse_proposal(result.text))
 
 
 def capability_event(

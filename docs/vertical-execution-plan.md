@@ -47,7 +47,18 @@ seams narrowly from the first slice that needs them and widening afterwards, fro
 
 ## V1. Final assessment, structural synthesis, grounding, and brief
 
-**State:** Not started.
+**State:** Partial.
+
+*Already present.* The assessment is the designed field set; synthesis is structural only and
+refuses an unusable proposal rather than thinning one; one grounding function returns issues over
+the assessment, the admitted evidence, the retrieved knowledge, and the recorded limitations; the
+brief renders deterministically with the outcome, contributing causes where more than one candidate
+is established, and no probability. The synthesis cassette is re-recorded against the new proposal
+shape and the streaming request demonstrates the seam. Every named contract type, oversized model,
+validator, semantic filter, and test scaffold below is absent. See `docs/status.md`.
+
+*Remaining.* The hosted effect: deploy the application and confirm one hosted investigation
+delivers a brief with the designed sections and no probability.
 
 **Builds.** The final output seam, as pure functions the graph will call unchanged. The assessment
 shape becomes the designed field set once: `what_happened`, ordered `candidates` (statement, label,

@@ -123,7 +123,21 @@ failure is a limitation, and the reranker implementation, dependencies, marker, 
 
 ## H3. Assessment, synthesis, grounding, and the brief
 
-**State:** Not started.
+**State:** Partial.
+
+*Already present.* The assessment is the designed field set; synthesis is structural only and
+refuses an unusable proposal rather than thinning one; one grounding function returns issues over
+the assessment, the admitted evidence, the retrieved knowledge, and the recorded limitations; the
+brief renders deterministically with the outcome, contributing causes where more than one candidate
+is established, and no probability. The synthesis cassette is re-recorded against the new proposal
+shape. Of the removals below, the assessment types, the grounding contract layer, the semantic
+filtering, and the `model_construct()` scaffolding are absent. See `docs/status.md`.
+
+*Remaining.* The model seam still carries the Ollama and generic-OpenAI branches, `LLM_SEED`, the
+planner, claim, report, triage, and tool-call response models in `llm/schema.py`, and the `llm`
+marker's provider text; reducing it to one Azure adapter with the fake and the cassette is the
+outstanding build. Then the hosted effect: deploy and confirm one hosted investigation delivers a
+brief with the designed sections and no probability.
 
 **Builds.** The final assessment-producing capability as pure functions, called by the graph later
 without change. The assessment shape becomes the designed field set once: `what_happened`, ordered
