@@ -93,7 +93,7 @@ def _incident(results: list[Any], refs: list[str]) -> str:
 
 
 def _docs(results: list[Any], refs: list[str]) -> str:
-    return "; ".join(f"{r.doc_id}: {r.title}" for r in results[:_MAX_ITEMS])
+    return "; ".join(f"{r.reference}: {r.title}" for r in results[:_MAX_ITEMS])
 
 
 _SUMMARIZERS = {

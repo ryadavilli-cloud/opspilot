@@ -103,15 +103,14 @@ def test_traced_node_does_not_pass_config_to_state_only_nodes():
 
 
 def test_tool_span_nests_under_node_and_inherits_trace(span_exporter):
-    from pydantic import BaseModel
+    from opspilot.tools.errors import run_tool, validated
 
-    from opspilot.tools.errors import run_tool
-
-    class _Req(BaseModel):
-        x: int = 0
+    @validated
+    def _capability(source: str, deadline_s: float, *, x: int = 0) -> tuple[list[dict], list[str]]:
+        return [{"a": x}], ["metrics:m-1"]
 
     with tracing.span("node.diagnose", trace_id="t-9"):
-        run_tool("get_metrics", _Req, lambda r: ([{"a": 1}], ["metrics:m-1"]), x=1)
+        run_tool("get_metrics", _capability, "source", 1.0, x=1)
 
     tool = next(s for s in span_exporter.spans if s.name == "tool.get_metrics")
     node = next(s for s in span_exporter.spans if s.name == "node.diagnose")

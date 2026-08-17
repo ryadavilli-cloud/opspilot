@@ -1,16 +1,15 @@
-"""Admission: the deterministic boundary between a source result and the turn's evidence.
+"""Admission: the deterministic boundary between a source result and the investigation's evidence.
 
 This is code, not agent judgment, and it is the only way into the evidence set. An agent cannot
 create evidence; a model summary is not evidence however well formed. Every capability goes
 through here, so a result reached one way is admitted exactly as a result reached another.
 
-Only a `succeeded` result may be admitted. Everything else produces an operation record and a
-limitation, and no observation. The workflow never fabricates an observation to stand in for a
-call that did not answer.
+Only a `succeeded` result may be admitted. Everything else records an operation and a limitation
+and no observation. Nothing fabricates an observation to stand in for a call that did not answer.
 
 `succeeded` with `empty` is admitted, because an authoritative absence is a real observation about
 the scope that was queried. "No error logs for this service in this window" can rule a hypothesis
-out. It is admitted with a canonical representation naming the scope and the absence, so it is as
+out. It is admitted with a canonical sentence naming the scope and the absence, so it is as
 inspectable as any other observation rather than an empty record a reader must interpret.
 
 Admission does not re-decide what the boundary already settled. Dispatch decided whether the call
@@ -22,12 +21,12 @@ evidence reference. It does not score, rank, weight, or judge.
 from __future__ import annotations
 
 from collections.abc import Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from enum import StrEnum
 from types import MappingProxyType
 from typing import Any
 
-from opspilot.evidence.operations import OperationRecord, TurnEvidence
+from opspilot.evidence.operations import EvidenceSet, Operation
 from opspilot.evidence.references import Reference, try_parse
 from opspilot.obs.tracing import span
 from opspilot.tools.contracts import Completeness, ExecutionOutcome, ToolResult
@@ -77,6 +76,8 @@ _LIMITATION_REASONS: Mapping[ExecutionOutcome, str] = MappingProxyType(
     }
 )
 
+_PARTIAL_NOTE = ("the source returned part of the requested scope",)
+
 
 @dataclass(frozen=True)
 class Limitation:
@@ -103,7 +104,6 @@ class AdmittedObservation:
 
     evidence_ref: str
     investigation_id: str
-    turn_id: str
     operation_ref: str
     evidence_type: EvidenceType
     source: str
@@ -120,36 +120,6 @@ class AdmittedObservation:
         return self.completeness is Completeness.EMPTY
 
 
-@dataclass(frozen=True)
-class AuthoritativeAbsence:
-    """The canonical representation of `succeeded + empty`.
-
-    Deterministic and inspectable: it names the scope that was queried and states that nothing
-    matched. No model writes this, because a generated sentence would make an absence look like an
-    interpretation rather than a fact about the query.
-    """
-
-    capability: str
-    scope: str
-    nothing_matched: bool = True
-
-    def __str__(self) -> str:
-        return f"no matching observations for {self.capability}({self.scope})"
-
-
-@dataclass
-class AdmissionResult:
-    """What one capability call produced: observations, or a limitation, never both."""
-
-    operation: OperationRecord
-    observations: list[AdmittedObservation] = field(default_factory=list)
-    limitation: Limitation | None = None
-
-    @property
-    def admitted(self) -> bool:
-        return bool(self.observations)
-
-
 def _scope_text(request_scope: Mapping[str, Any] | None) -> str:
     if not request_scope:
         return ""
@@ -163,21 +133,26 @@ def _entities_of(parsed: Reference | None) -> tuple[str, ...]:
 def admit(
     result: ToolResult[Any],
     *,
-    turn: TurnEvidence,
+    evidence: EvidenceSet,
     question: str,
     request_scope: Mapping[str, Any] | None = None,
-) -> AdmissionResult:
-    """Admit a capability result into the turn, or record why it could not be admitted.
+) -> list[AdmittedObservation]:
+    """Admit a capability result, or record why it could not be admitted.
+
+    Returns the observations it produced, which is empty when the call became a limitation or
+    produced knowledge rather than operational evidence. The observations, the limitation, and the
+    operation are all recorded on the evidence set; the return value is the caller's shortcut to
+    what this one call contributed.
 
     `question` is what this call was meant to answer. It is required rather than optional because
     a limitation that cannot name its question discloses nothing useful.
 
     One span is emitted per call, whatever the outcome. An unresolvable citation is diagnosable
-    from what was admitted and which reference it was assigned, without re-running the turn; a
-    result that produced no evidence is as visible here as one that did.
+    from what was admitted and which reference it was assigned, without re-running the
+    investigation; a result that produced no evidence is as visible here as one that did.
     """
     capability = result.tool_name
-    operation_ref = turn.ledger.mint()
+    operation_ref = evidence.next_operation_ref()
     scope = _scope_text(request_scope)
 
     with span(
@@ -189,31 +164,29 @@ def admit(
             "completeness": result.completeness.value,
         },
     ) as sp:
-        return _admit(result, turn, question, capability, operation_ref, scope, sp)
+        return _admit(result, evidence, question, capability, operation_ref, scope, sp)
+
+
+def _record(
+    evidence: EvidenceSet, operation_ref: str, capability: str, outcome: ExecutionOutcome
+) -> None:
+    evidence.operations.append(
+        Operation(operation_ref=operation_ref, capability=capability, outcome=outcome)
+    )
 
 
 def _admit(
     result: ToolResult[Any],
-    turn: TurnEvidence,
+    evidence: EvidenceSet,
     question: str,
     capability: str,
     operation_ref: str,
     scope: str,
     sp: Any,
-) -> AdmissionResult:
+) -> list[AdmittedObservation]:
     """The admission decision itself. Split from `admit` only so the span wraps every exit."""
     if result.outcome is not ExecutionOutcome.SUCCEEDED:
-        operation = turn.ledger.record(
-            OperationRecord(
-                operation_ref=operation_ref,
-                capability=capability,
-                outcome=result.outcome,
-                completeness=result.completeness,
-                duration_ms=result.metadata.duration_ms,
-                admitted=False,
-                scope=scope,
-            )
-        )
+        _record(evidence, operation_ref, capability, result.outcome)
         limitation = Limitation(
             question=question,
             reason=_LIMITATION_REASONS.get(result.outcome, "the operation did not answer"),
@@ -221,91 +194,69 @@ def _admit(
             capability=capability,
             outcome=result.outcome,
         )
-        turn.limitations.append(limitation)
+        evidence.limitations.append(limitation)
         sp.attributes["admitted"] = False
         sp.attributes["limitation"] = limitation.question
-        return AdmissionResult(operation=operation, limitation=limitation)
+        return []
 
     evidence_type = CAPABILITY_EVIDENCE_TYPES.get(capability)
     if evidence_type is None:
         # Retrieval produces knowledge, not operational evidence. It is not admitted here, and
         # silently admitting it would put a document into the current-proof set.
-        operation = turn.ledger.record(
-            OperationRecord(
-                operation_ref=operation_ref,
-                capability=capability,
-                outcome=result.outcome,
-                completeness=result.completeness,
-                duration_ms=result.metadata.duration_ms,
-                admitted=False,
-                scope=scope,
-            )
-        )
+        _record(evidence, operation_ref, capability, result.outcome)
         sp.attributes["admitted"] = False
         sp.attributes["not_operational_evidence"] = True
-        return AdmissionResult(operation=operation)
+        return []
+
+    def observed(
+        reference: str, content: Any, entities: tuple[str, ...] = ()
+    ) -> AdmittedObservation:
+        return AdmittedObservation(
+            evidence_ref=reference,
+            investigation_id=evidence.investigation_id,
+            operation_ref=operation_ref,
+            evidence_type=evidence_type,
+            source=capability,
+            completeness=result.completeness,
+            observation=content,
+            entities=entities,
+            provenance=f"{capability}({scope})",
+            limitations=_PARTIAL_NOTE if result.completeness is Completeness.PARTIAL else (),
+        )
 
     observations: list[AdmittedObservation] = []
-    partial_note = ("the source returned part of the requested scope",)
-
     if result.completeness is Completeness.EMPTY:
         observations.append(
-            AdmittedObservation(
-                evidence_ref=f"absence:{capability}:{operation_ref}",
-                investigation_id=turn.investigation_id,
-                turn_id=turn.turn_id,
-                operation_ref=operation_ref,
-                evidence_type=evidence_type,
-                source=capability,
-                completeness=Completeness.EMPTY,
-                observation=AuthoritativeAbsence(capability=capability, scope=scope),
-                provenance=f"{capability}({scope})",
+            observed(
+                f"absence:{capability}:{operation_ref}",
+                f"no matching observations for {capability}({scope})",
             )
         )
+    elif not result.evidence_refs:
+        # An aggregate answers about the scope rather than with rows, so it has no underlying
+        # record for a citation to resolve to. The operation that produced it is what makes it
+        # citable, and every row-producing capability names its rows, so this is that one case.
+        observations.append(observed(f"query:{operation_ref}", result.results))
     else:
-        already: set[str] = {obs.evidence_ref for obs in turn.observations}
+        already: set[str] = {obs.evidence_ref for obs in evidence.observations}
         for index, ref in enumerate(result.evidence_refs):
             if ref in already:
                 continue  # one operation does not admit the same item twice
             already.add(ref)
             record = result.results[index] if index < len(result.results) else None
-            observations.append(
-                AdmittedObservation(
-                    evidence_ref=ref,
-                    investigation_id=turn.investigation_id,
-                    turn_id=turn.turn_id,
-                    operation_ref=operation_ref,
-                    evidence_type=evidence_type,
-                    source=capability,
-                    completeness=result.completeness,
-                    observation=record,
-                    entities=_entities_of(try_parse(ref)),
-                    provenance=f"{capability}({scope})",
-                    limitations=partial_note if result.completeness is Completeness.PARTIAL else (),
-                )
-            )
+            observations.append(observed(ref, record, _entities_of(try_parse(ref))))
 
-    operation = turn.ledger.record(
-        OperationRecord(
-            operation_ref=operation_ref,
-            capability=capability,
-            outcome=result.outcome,
-            completeness=result.completeness,
-            duration_ms=result.metadata.duration_ms,
-            admitted=bool(observations),
-            scope=scope,
-        )
-    )
-    turn.observations.extend(observations)
+    _record(evidence, operation_ref, capability, result.outcome)
+    evidence.observations.extend(observations)
     sp.attributes["admitted"] = bool(observations)
     sp.attributes["observation_count"] = len(observations)
     sp.attributes["evidence_refs"] = ",".join(obs.evidence_ref for obs in observations)
-    # An absence carries a real evidence reference of its own, so it goes through the one parser
-    # like any other. The marker stays because it is diagnostically useful, not because it stands
-    # in for the reference.
+    # An absence and an aggregate carry real evidence references of their own, so they go through
+    # the one parser like any other. The marker stays because it is diagnostically useful, not
+    # because it stands in for the reference.
     sp.attributes["references_parsed"] = sum(
         1 for obs in observations if try_parse(obs.evidence_ref) is not None
     )
     if result.completeness is Completeness.EMPTY:
         sp.attributes["authoritative_absence"] = True
-    return AdmissionResult(operation=operation, observations=observations)
+    return observations

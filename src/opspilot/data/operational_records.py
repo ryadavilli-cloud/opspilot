@@ -126,6 +126,16 @@ class OperationalRecords:
             deadline_s=deadline_s,
         )
 
+    def alerts(self, service: str, *, deadline_s: float) -> list[dict[str, Any]]:
+        """Every alert a service raised. Scoped by service rather than by incident, because an
+        alert reference names the service that raised it and the alert's own identifier, and
+        resolving one must not need the incident it was later correlated to."""
+        return self._query(
+            f"SELECT TOP {MAX_ROWS} * FROM c WHERE c.kind = @kind AND c.service = @service",
+            [{"name": "@kind", "value": _KIND_ALERT}, {"name": "@service", "value": service}],
+            deadline_s=deadline_s,
+        )
+
     def deployments(self, services: list[str], *, deadline_s: float) -> list[dict[str, Any]]:
         return self._query(
             f"SELECT TOP {MAX_ROWS} * FROM c "

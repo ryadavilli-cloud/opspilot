@@ -163,6 +163,48 @@ def test_representation_is_normalized_without_changing_content():
     assert assessment.next_check is None
 
 
+def test_a_null_for_an_optional_field_reads_as_absent():
+    """`null` is how JSON says a field carries nothing, and several of these fields are optional.
+    Refusing the proposal over the difference between an omitted key and an explicit null would
+    discard a complete assessment for a punctuation choice, and models write both."""
+    assessment = admit_assessment(
+        parse_proposal(
+            json.dumps(
+                {
+                    "what_happened": "checkout latency rose",
+                    "candidates": [
+                        {"statement": "the cache evicted keys", "label": "leading"},
+                    ],
+                    "history": None,
+                    "next_check": None,
+                    "unknowns": None,
+                    "unresolved_question": None,
+                }
+            )
+        )
+    )
+    assert assessment.what_happened == "checkout latency rose"
+    assert [c.statement for c in assessment.candidates] == ["the cache evicted keys"]
+    assert assessment.history is None
+    assert assessment.next_check is None
+    assert assessment.unknowns == []
+
+
+def test_a_null_inside_a_nested_proposal_reads_as_absent_too():
+    proposal = parse_proposal(
+        json.dumps(
+            {
+                "candidates": [
+                    {"statement": "c", "label": "leading", "weakening": None},
+                ],
+                "actions": [{"action": "raise the ceiling", "knowledge_ref": None}],
+            }
+        )
+    )
+    assert proposal.candidates[0].weakening == []
+    assert admit_assessment(proposal).actions[0].knowledge_ref is None
+
+
 # --- what admission refuses, and it is only ever structure --------------------------------------
 def test_a_string_no_grammar_could_produce_is_refused():
     """Not the same as a reference that does not resolve. This one names nothing under any prefix,

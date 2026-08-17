@@ -32,7 +32,6 @@ from opspilot.diagnosis.contracts import (
 )
 from opspilot.diagnosis.observe import summarize
 from opspilot.guardrails.policies import is_read_only
-from opspilot.tools.contracts import legacy_status
 
 if TYPE_CHECKING:
     from opspilot.tools.service import ToolService
@@ -154,7 +153,10 @@ def run_cycle(
             ToolObservation(
                 question=q.question,
                 tool=q.call.tool,
-                status=legacy_status(result),
+                # This loop reads one binary status. Collapsing the two axes here, at its one
+                # reader, keeps the loss local to the path that needs it: an unreachable source
+                # and a source that answered with nothing are otherwise separately representable.
+                status="ok" if result.answered else "error",
                 evidence_refs=list(result.evidence_refs),
                 result_count=len(result.results),
                 summary=summarize(q.call.tool, result.results, list(result.evidence_refs)),

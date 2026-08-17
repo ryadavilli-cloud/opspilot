@@ -1,63 +1,40 @@
-"""What the turn attempted, kept apart from what it observed.
+"""The investigation's evidence set: what was observed, what could not be, and what was attempted.
 
-The two answer different questions. The admitted evidence set reads as "what was observed" with
-no filtering; refusals, timeouts, and unreachable sources stay visible here and in the limitations
-a brief must disclose. Keeping them in one collection would force every reader to filter, and a
-reader that forgot would treat an unreachable source as an observation.
+The three answer different questions and are kept apart. The admitted observations read as "what
+was observed" with no filtering; refusals, timeouts, and unreachable sources stay visible in the
+limitations a brief must disclose and in the operations list. Holding them in one collection would
+force every reader to filter, and a reader that forgot would treat an unreachable source as an
+observation.
 
-An operation reference is opaque and turn-scoped. It names an attempt, not an observation, so it
-deliberately carries no source semantics and does not parallel the evidence-reference grammar:
-`evidence/references.py` owns that, and a reader must never be able to mistake one for the other.
+An operation reference is opaque and scoped to the investigation. It names an attempt, not an
+observation, so it deliberately carries no source semantics and does not parallel the evidence
+reference grammar: `evidence/references.py` owns that, and a reader must never be able to mistake
+one for the other.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from itertools import count
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from opspilot.evidence.admission import AdmittedObservation, Limitation
-    from opspilot.tools.contracts import Completeness, ExecutionOutcome
+    from opspilot.tools.contracts import ExecutionOutcome
 
 _OPERATION_PREFIX = "op-"
 
 
 @dataclass(frozen=True)
-class OperationRecord:
-    """One attempted capability call. Preserved whether or not it answered."""
+class Operation:
+    """One attempted capability call: its identifier, what it called, and how it ended.
+
+    Preserved whether or not it answered, and carrying nothing else. Its arguments and its raw
+    result are not part of what an investigation records about itself.
+    """
 
     operation_ref: str
     capability: str
     outcome: ExecutionOutcome
-    completeness: Completeness
-    duration_ms: float
-    admitted: bool = False
-    scope: str = ""
-
-
-class OperationLedger:
-    """The turn's operation history. Ephemeral while the turn runs, like everything else a turn
-    holds before commit."""
-
-    def __init__(self) -> None:
-        self._counter = count(1)
-        self._records: list[OperationRecord] = []
-
-    def mint(self) -> str:
-        """A fresh operation reference, unique within this turn and meaningful nowhere else."""
-        return f"{_OPERATION_PREFIX}{next(self._counter):04d}"
-
-    def record(self, record: OperationRecord) -> OperationRecord:
-        self._records.append(record)
-        return record
-
-    @property
-    def records(self) -> tuple[OperationRecord, ...]:
-        return tuple(self._records)
-
-    def __len__(self) -> int:
-        return len(self._records)
 
 
 def is_operation_ref(value: str) -> bool:
@@ -67,15 +44,20 @@ def is_operation_ref(value: str) -> bool:
 
 
 @dataclass
-class TurnEvidence:
-    """The turn's ephemeral evidence state: what was admitted, what could not be established, and
-    the ledger of what was attempted."""
+class EvidenceSet:
+    """The investigation's evidence while it runs: what was admitted, what could not be
+    established, and every operation attempted. Ephemeral, like everything an investigation holds
+    before it completes."""
 
     investigation_id: str
-    turn_id: str
-    ledger: OperationLedger = field(default_factory=OperationLedger)
     observations: list[AdmittedObservation] = field(default_factory=list)
     limitations: list[Limitation] = field(default_factory=list)
+    operations: list[Operation] = field(default_factory=list)
+
+    def next_operation_ref(self) -> str:
+        """The reference the next operation will carry. Derived from the operations already
+        recorded, so a minted reference and a recorded operation cannot drift apart."""
+        return f"{_OPERATION_PREFIX}{len(self.operations) + 1:04d}"
 
     @property
     def admitted_refs(self) -> list[str]:

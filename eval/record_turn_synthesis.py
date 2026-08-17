@@ -4,22 +4,22 @@ Drives the real streaming endpoint rather than rebuilding the prompt by hand. Re
 request up by a content hash of the messages, so anything that assembles them differently here
 would record a cassette the replay test could never hit.
 
-Only the model call is live, and it goes through the same Azure adapter the application ships
-with, so the recorded response comes from the provider boundary the deployment actually uses. The
-operational records come from the authored corpus fake, so this touches no deployed container and
-no other Azure resource.
+Only the model is live, and it is reached the way the deployed application reaches it: through the
+Azure adapter, against the chat deployment the application calls. That is the point of the
+recording. A response taken through any other client would certify a serving path the application
+never takes, and two endpoints answering to the same model name are still two endpoints. The
+operational records come from the authored corpus fake, so nothing else here touches a deployed
+resource.
 
 The cassette is invalidated by any change to the synthesis prompt, the evidence digest, or the
 evidence plan, because each of those moves the messages. That is loud rather than silent: replay
 raises with the cassette named. Re-record after such a change, not before.
 
-Authentication is keyless: the adapter authenticates as the environment's identity, so a local run
-needs `az login` and an identity holding the data-plane role on the account. `AZURE_OPENAI_ENDPOINT`
-names the account.
+Authentication is keyless: the adapter authenticates as the environment's identity, so a local
+run needs `az login` and an identity holding the data-plane role on the account.
 
-Run (spends against the configured Azure OpenAI deployment):
-  AZURE_OPENAI_ENDPOINT=https://<account>.openai.azure.com/ \
-    uv run --group llm python eval/record_turn_synthesis.py
+Run (spends one call; the `llm` group carries the SDK the adapter imports):
+  uv run --group llm python eval/record_turn_synthesis.py
 """
 
 from __future__ import annotations
@@ -35,6 +35,7 @@ sys.path.insert(0, str(REPO_ROOT / "tests"))
 from fake_operational_records import corpus_records  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 
+from opspilot import config  # noqa: E402
 from opspilot.api import (  # noqa: E402
     app,
     get_operational_records,
@@ -48,18 +49,26 @@ from opspilot.tools.service import ToolService  # noqa: E402
 # inc-005: a Redis eviction storm. Its authored answer key records no deployment anywhere in the
 # window, so the run exercises an authoritative absence as well as ordinary admitted evidence.
 INCIDENT = "inc-005"
-# The chat deployment the application calls (`infra/main.bicep`). A reasoning deployment: the
-# client sends `reasoning_effort`, and the manifest pins that effort so a change to it invalidates
-# the cassette rather than silently replaying a response recorded under a different setting.
-RECORD_DEPLOYMENT = "gpt-5-mini"
 CASSETTE = REPO_ROOT / "eval" / "cassettes" / "turn_synthesis.json"
 
 
 def main() -> None:
+    # Refused rather than defaulted. Without these the adapter would fall back to the local
+    # development model name, and the recording would certify a model and an endpoint the
+    # application does not call while looking like a successful take.
+    if not config.AZURE_OPENAI_ENDPOINT or not config.AZURE_OPENAI_DEPLOYMENT:
+        raise SystemExit(
+            "set AZURE_OPENAI_ENDPOINT and AZURE_OPENAI_DEPLOYMENT to the chat deployment the "
+            "application calls; a recording taken against anything else certifies a path it "
+            "never takes"
+        )
+
     CASSETTE.parent.mkdir(parents=True, exist_ok=True)
-    # The provider and deployment are named rather than config-resolved, so a local environment
-    # pointed somewhere else cannot quietly record a cassette against it.
-    model = RecordingChatModel(build_chat_model("azure", deployment=RECORD_DEPLOYMENT), CASSETTE)
+    # The provider is named rather than config-resolved, because the local default is Ollama. It is
+    # named `azure` specifically: the deployed application reaches its model through this adapter,
+    # so this is the one client whose responses are evidence about what the deployment produces.
+    # Auth is keyless, as it is in the deployment; only the identity differs.
+    model = RecordingChatModel(build_chat_model("azure"), CASSETTE)
     records = corpus_records()
 
     app.dependency_overrides[get_operational_records] = lambda: records

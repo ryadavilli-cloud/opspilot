@@ -14,7 +14,8 @@ from pathlib import Path
 from fake_knowledge import knowledge_retriever
 from fake_operational_records import corpus_records
 
-from opspilot.tools.contracts import Completeness, DocHit, ExecutionOutcome
+from opspilot.retrieval.retriever import Passage
+from opspilot.tools.contracts import Completeness, ExecutionOutcome
 from opspilot.tools.service import ToolService
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -47,10 +48,10 @@ def _svc() -> ToolService:
 def test_search_runbooks_returns_kb_docs_and_refs_resolve():
     r = _svc().search_runbooks(query="payment authorizations timing out", k=5)
     assert r.answered and r.results
-    assert all(isinstance(h, DocHit) for h in r.results)
-    assert all(h.kind in ("runbook", "architecture") for h in r.results)
-    assert all(h.text for h in r.results)
-    assert r.evidence_refs == [h.doc_id for h in r.results]
+    assert all(isinstance(p, Passage) for p in r.results)
+    assert all(p.category in ("runbook", "architecture") for p in r.results)
+    assert all(p.text for p in r.results)
+    assert r.evidence_refs == [p.reference for p in r.results]
     for ref in r.evidence_refs:
         assert _kb_doc(ref) is not None, f"citation {ref} does not resolve to a doc"
 
@@ -60,14 +61,14 @@ def test_search_runbooks_surfaces_the_matching_runbook():
         query="Cosmos connection pool exhausted causing payment-api authorization timeouts", k=5
     )
     assert r.answered
-    assert any(h.doc_id == "runbook:payment-timeout" for h in r.results)
+    assert any(p.reference == "runbook:payment-timeout" for p in r.results)
 
 
 def test_search_runbooks_ranked_and_metadata_filtered():
     r = _svc().search_runbooks(query="throttling", k=5, service="cosmos-db")
     assert r.answered and r.results
-    assert all("cosmos-db" in h.services for h in r.results)
-    assert r.results == sorted(r.results, key=lambda h: -h.score)
+    assert all("cosmos-db" in p.services for p in r.results)
+    assert r.results == sorted(r.results, key=lambda p: -p.score)
 
 
 def test_search_unknown_filter_is_empty_not_error():
@@ -83,7 +84,7 @@ def test_search_invalid_input_is_error():
 def test_search_past_incidents_returns_postmortems():
     r = _svc().search_past_incidents(query="cosmos db 429 throttling on reads", k=3)
     assert r.answered and r.results
-    assert all(h.kind == "postmortem" for h in r.results)
+    assert all(p.category == "postmortem" for p in r.results)
     for ref in r.evidence_refs:
         assert _kb_doc(ref) is not None, f"citation {ref} does not resolve to a KB doc"
 

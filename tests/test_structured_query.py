@@ -33,6 +33,7 @@ from opspilot.data.structured_query import (
 )
 from opspilot.tools.contracts import Completeness, ExecutionOutcome
 from opspilot.tools.service import ToolService
+from opspilot.tools.structured_query import ROW_REFERENCES
 
 DEADLINE = 3.0
 
@@ -216,7 +217,39 @@ def test_a_count_answers_with_its_number():
         **_query(projection=[], aggregate="count").model_dump()
     )
     assert result.results == [{"count": 7}]
-    assert result.evidence_refs == [], "a count is about the scope, not a record to cite"
+    assert result.evidence_refs == [], "a count projects no row, so it names no record"
+
+
+# --- every row can be cited ----------------------------------------------------------------------
+def test_the_row_reference_forms_cover_exactly_the_approved_collections():
+    """A collection reachable without a reference form would return rows nothing could cite."""
+    assert set(ROW_REFERENCES) == set(APPROVED_SURFACE)
+
+
+@pytest.mark.parametrize("collection", sorted(APPROVED_SURFACE))
+def test_a_projection_is_widened_to_carry_the_fields_its_reference_needs(collection):
+    """The model chooses the projection, and a row an assessment cannot cite is a row it cannot
+    use. So the identifying fields are added rather than required, whatever was asked for."""
+    _, identifying = ROW_REFERENCES[collection]
+    assert set(identifying) <= set(APPROVED_SURFACE[collection])
+
+    other = next(name for name in APPROVED_SURFACE[collection] if name not in identifying)
+    container = CannedContainer([])
+    _service(container).structured_query(collection=collection, projection=[other], limit=5)
+    for field in identifying:
+        assert f"c.{field}" in container.queries[0]
+
+
+def test_each_row_carries_the_reference_of_the_record_it_projects():
+    """The same deploy reached through the dedicated capability carries the same reference, so the
+    two paths cite one record rather than two."""
+    container = CannedContainer(
+        [{"version": "v2", "service": "checkout-api", "deploy_id": "dep-20260622-01"}]
+    )
+    result = _service(container).structured_query(
+        collection="deployment", projection=["version"], limit=10
+    )
+    assert result.evidence_refs == ["deploys:checkout-api:dep-20260622-01"]
 
 
 def test_a_refused_query_is_rejected_and_never_reaches_the_container():
