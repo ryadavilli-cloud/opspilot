@@ -127,22 +127,27 @@ def test_model_span_captures_usage(span_exporter):
     from opspilot.llm.client import TracedChatModel
 
     class _Model:
-        model_id = "gpt-5-mini"
+        deployment = "gpt-5-mini"
 
-        def complete(self, messages, *, temperature=0.0):
+        def complete(self, task, messages):
             return ChatResult(
                 text="ok",
-                model_id="gpt-5-mini",
+                task=task,
+                deployment="gpt-5-mini",
                 finish_reason="stop",
+                latency_ms=41.5,
                 usage={"prompt_tokens": 12, "completion_tokens": 5},
             )
 
     with tracing.span("node.diagnose", trace_id="t-9"):
-        TracedChatModel(_Model()).complete([ChatMessage("user", "hi")])
+        TracedChatModel(_Model()).complete("rca_synthesis", [ChatMessage("user", "hi")])
 
     model = next(s for s in span_exporter.spans if s.name == "model.complete")
     assert model.trace_id == "t-9" and model.attributes["model_deployment"] == "gpt-5-mini"
     assert model.attributes["tokens_in"] == 12 and model.attributes["tokens_out"] == 5
+    # The task the call served and what it cost in wall time, both from what the seam reported.
+    assert model.attributes["task"] == "rca_synthesis"
+    assert model.attributes["latency_ms"] == 41.5
 
 
 def test_traced_node_reflects_error_onto_span(span_exporter: tracing.InMemorySpanExporter):

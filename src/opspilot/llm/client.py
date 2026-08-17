@@ -1,18 +1,22 @@
-"""Chat-model factory — selects a provider from config/env and returns a `ChatModel`.
+"""The chat-model factory: one live adapter, or recorded replay.
 
-Providers:
-  - ``ollama`` / ``openai`` — an OpenAI-compatible HTTP client (the ``openai`` SDK, imported
-    lazily). Ollama serves the OpenAI chat API at ``/v1``; OpenAI and Azure Foundry are the same
-    shape with a real key. One client, three providers, differing only in base_url, api_key, model.
-  - ``replay`` — recorded-cassette playback (no network, no ``openai`` dependency) for the
-    deterministic LLM wiring tests that gate CI.
+There is one provider. Azure OpenAI serves every model task through one chat deployment, and the
+factory's only other answer is cassette replay, which needs no network and no provider SDK so the
+deterministic test lane never reaches a live service.
 
-Unknown provider -> ``ValueError``, mirroring the retrieval factory: fail loud rather than silently
-fall back to a different model than the caller asked for. Nothing heavy imports at module load.
+Authentication is keyless and has no alternative. The Azure OpenAI account has local authentication
+disabled, so no key exists to configure, and an api-key branch beside this one would be a fallback
+to a path that cannot work. `DefaultAzureCredential` resolves the Container App's managed identity
+in production and a developer's `az login` locally, which is the same code path in both.
+
+An unknown provider raises rather than falling back to something else, mirroring the retrieval
+factory: silently answering with a different model than the caller asked for is how a run gets
+certified against something it never ran on.
 """
 
 from __future__ import annotations
 
+import time
 from typing import TYPE_CHECKING, Any
 
 from opspilot import config
@@ -20,71 +24,73 @@ from opspilot import config
 if TYPE_CHECKING:
     from opspilot.llm.base import ChatMessage, ChatModel, ChatResult
 
-_KNOWN = ("ollama", "openai", "azure", "replay")
+_KNOWN = ("azure", "replay")
 
-# Reasoning models (gpt-5*, o1/o3/o4*) reject an explicit `temperature` — only the default (1)
-# is allowed, so sending our eval default of 0.0 is a 400. Detect them by deployment/model id
-# prefix and omit the parameter. The replay key still records the temperature *argument*
-# (cassette.py), so replay determinism is unaffected; only the live request drops it.
+# Reasoning models (gpt-5*, o1/o3/o4*) reject an explicit `temperature`, so the request carries
+# `reasoning_effort` instead. Detected by deployment-name prefix, which is how the deployment is
+# named after its model in this account.
 _REASONING_PREFIXES = ("gpt-5", "o1", "o3", "o4")
 
 
-def _is_reasoning_model(model_id: str) -> bool:
-    return model_id.startswith(_REASONING_PREFIXES)
+def _is_reasoning_model(deployment: str) -> bool:
+    return deployment.startswith(_REASONING_PREFIXES)
 
 
-class OpenAICompatModel:
-    """A `ChatModel` over any OpenAI-compatible endpoint. The `openai` SDK is imported lazily on
-    first call, so constructing the model (and importing this module) needs no optional dependency.
+class AzureChatModel:
+    """The one live adapter. `deployment` is the Azure deployment name the request calls.
+
+    The Azure SDK is imported lazily on first call, so importing this module needs no optional
+    dependency and constructing the model touches no network.
     """
 
-    def __init__(self, model_id: str, *, base_url: str | None, api_key: str) -> None:
-        self.model_id = model_id
-        self._base_url = base_url or None
-        self._api_key = api_key
+    _TOKEN_SCOPE = "https://cognitiveservices.azure.com/.default"
+
+    def __init__(self, deployment: str, *, endpoint: str | None, api_version: str) -> None:
+        self.deployment = deployment
+        self._endpoint = endpoint
+        self._api_version = api_version
         self._client: Any = None
 
     def _ensure_client(self) -> Any:
         if self._client is None:
-            from openai import OpenAI  # lazy: optional `llm` dependency group
+            from azure.identity import (  # lazy: optional `llm` dependency group
+                DefaultAzureCredential,
+                get_bearer_token_provider,
+            )
+            from openai import AzureOpenAI  # lazy: optional `llm` dependency group
 
-            self._client = OpenAI(base_url=self._base_url, api_key=self._api_key)
+            token_provider = get_bearer_token_provider(DefaultAzureCredential(), self._TOKEN_SCOPE)
+            self._client = AzureOpenAI(
+                azure_endpoint=self._endpoint or "",
+                api_version=self._api_version,
+                azure_ad_token_provider=token_provider,
+            )
         return self._client
 
-    def complete(
-        self,
-        messages: list[ChatMessage],
-        *,
-        temperature: float = 0.0,
-    ) -> ChatResult:
+    def complete(self, task: str, messages: list[ChatMessage]) -> ChatResult:
         from opspilot.llm.base import ChatResult
 
         payload = [{"role": m.role, "content": m.content} for m in messages]
         client = self._ensure_client()
-        if _is_reasoning_model(self.model_id):
-            # Reasoning models reject an explicit temperature; and left unbounded their reasoning
-            # tokens make each call slow + expensive. `reasoning_effort` (config-tuned, default
-            # "medium") keeps latency within the round trip and cost sane on open ingress, while
-            # being thorough enough to gather every required evidence class (too-low escalated).
+        started = time.perf_counter()
+        if _is_reasoning_model(self.deployment):
+            # Left unbounded, a reasoning model's hidden tokens make each call slow and expensive.
+            # The configured effort keeps latency inside the request while staying thorough enough
+            # to work through the whole evidence set.
             resp = client.chat.completions.create(
-                model=self.model_id, messages=payload, reasoning_effort=config.REASONING_EFFORT
+                model=self.deployment, messages=payload, reasoning_effort=config.REASONING_EFFORT
             )
         else:
-            # `seed` rides alongside `temperature` because both are rejected by reasoning models.
-            # temperature=0 alone is not determinism (see config.LLM_SEED); the seed is what makes
-            # a cassette re-record reproducible enough for a scorecard delta to mean something.
-            resp = client.chat.completions.create(
-                model=self.model_id,
-                messages=payload,
-                temperature=temperature,
-                seed=config.LLM_SEED,
-            )
+            resp = client.chat.completions.create(model=self.deployment, messages=payload)
+        latency_ms = (time.perf_counter() - started) * 1000
         choice = resp.choices[0]
         usage = getattr(resp, "usage", None)
         return ChatResult(
             text=choice.message.content or "",
-            model_id=self.model_id,
+            task=task,
+            deployment=self.deployment,
             finish_reason=choice.finish_reason or "",
+            latency_ms=latency_ms,
             usage=(
                 {
                     "prompt_tokens": usage.prompt_tokens,
@@ -96,73 +102,16 @@ class OpenAICompatModel:
         )
 
 
-class AzureChatModel(OpenAICompatModel):
-    """Azure OpenAI (Foundry) — the production path. `model` is the *deployment* name. The Azure
-    client is imported lazily on first call, like the OpenAI-compatible one.
-
-    Auth is keyless by default: when `api_key` is blank, the client authenticates with an Entra
-    bearer token from the environment's managed identity (the Container App's system-assigned
-    identity in production; `az login` locally) via `DefaultAzureCredential`. A non-empty `api_key`
-    still selects key auth for environments that provide one. Keyless is the deployed path — the
-    Azure OpenAI account has local-auth disabled, so no key exists to leak.
-    """
-
-    _TOKEN_SCOPE = "https://cognitiveservices.azure.com/.default"
-
-    def __init__(
-        self, model_id: str, *, endpoint: str | None, api_version: str, api_key: str
-    ) -> None:
-        super().__init__(model_id, base_url=endpoint, api_key=api_key)
-        self._api_version = api_version
-
-    def _ensure_client(self) -> Any:
-        if self._client is None:
-            from openai import AzureOpenAI  # lazy: optional `llm` dependency group
-
-            if self._api_key:
-                self._client = AzureOpenAI(
-                    azure_endpoint=self._base_url or "",
-                    api_version=self._api_version,
-                    api_key=self._api_key,
-                )
-            else:
-                # Keyless: an Entra token from the managed identity, refreshed by the provider.
-                from azure.identity import (  # lazy: optional `llm` dependency group
-                    DefaultAzureCredential,
-                    get_bearer_token_provider,
-                )
-
-                token_provider = get_bearer_token_provider(
-                    DefaultAzureCredential(), self._TOKEN_SCOPE
-                )
-                self._client = AzureOpenAI(
-                    azure_endpoint=self._base_url or "",
-                    api_version=self._api_version,
-                    azure_ad_token_provider=token_provider,
-                )
-        return self._client
-
-
-def _endpoint(provider: str) -> tuple[str | None, str]:
-    """Resolve (base_url, api_key) for a live provider from config/env."""
-    if provider == "ollama":
-        # Ollama ignores the key but the OpenAI SDK requires a non-empty one.
-        base_url = config.LLM_BASE_URL or config.OLLAMA_BASE_URL
-        return base_url, (config.LLM_API_KEY or "ollama")
-    # openai / Foundry: empty base_url -> the SDK's default OpenAI endpoint.
-    return (config.LLM_BASE_URL or None), config.LLM_API_KEY
-
-
 def build_chat_model(
     provider: str | None = None,
     *,
-    model: str | None = None,
+    deployment: str | None = None,
     cassette: str | None = None,
 ) -> ChatModel:
     """Build a `ChatModel` for `provider` (default: `config.LLM_PROVIDER`).
 
-    `model` overrides `config.LLM_MODEL`; `cassette` is the recording path for the replay provider.
-    Unknown provider -> ValueError.
+    `deployment` overrides `config.AZURE_OPENAI_DEPLOYMENT`; `cassette` is the recording path the
+    replay provider reads. Unknown provider raises.
     """
     provider = (provider or config.LLM_PROVIDER).lower()
 
@@ -173,39 +122,35 @@ def build_chat_model(
 
         return ReplayChatModel(cassette)
 
-    if provider in ("ollama", "openai"):
-        base_url, api_key = _endpoint(provider)
-        return OpenAICompatModel(model or config.LLM_MODEL, base_url=base_url, api_key=api_key)
-
     if provider == "azure":
         return AzureChatModel(
-            model or config.AZURE_OPENAI_DEPLOYMENT or config.LLM_MODEL,
+            deployment or config.AZURE_OPENAI_DEPLOYMENT,
             endpoint=config.AZURE_OPENAI_ENDPOINT or None,
             api_version=config.AZURE_OPENAI_API_VERSION,
-            api_key=config.AZURE_OPENAI_API_KEY,
         )
 
     raise ValueError(f"unknown LLM provider {provider!r}; known: {', '.join(_KNOWN)}")
 
 
 class TracedChatModel:
-    """Wraps any `ChatModel` to emit a model span with normalized usage per call (code guidelines
-    §23).
+    """Wraps any `ChatModel` to emit one span per call from what the result already carries.
 
-    Applied at the composition root, NOT in `build_chat_model`, so the factory and cassette-replay
-    paths stay untraced (and the factory's `isinstance` contract is unchanged). Capture only — the
-    usage is captured here and read by whatever enforces a budget, which is not this wrapper."""
+    Capture only: the span records the task, deployment, latency, and token usage the call
+    reported, and nothing reads them back to enforce anything here.
+    """
 
     def __init__(self, inner: ChatModel) -> None:
         self._inner = inner
-        self.model_id = inner.model_id
+        self.deployment = inner.deployment
 
-    def complete(self, messages: list[ChatMessage], *, temperature: float = 0.0) -> ChatResult:
+    def complete(self, task: str, messages: list[ChatMessage]) -> ChatResult:
         from opspilot.obs.tracing import span
 
-        with span("model.complete", attributes={"model_deployment": self.model_id}) as sp:
-            result = self._inner.complete(messages, temperature=temperature)
+        with span("model.complete", attributes={"task": task}) as sp:
+            result = self._inner.complete(task, messages)
             usage = result.usage or {}
+            sp.attributes["model_deployment"] = result.deployment
+            sp.attributes["latency_ms"] = result.latency_ms
             sp.attributes["tokens_in"] = usage.get("prompt_tokens", 0)
             sp.attributes["tokens_out"] = usage.get("completion_tokens", 0)
             sp.attributes["finish_reason"] = result.finish_reason

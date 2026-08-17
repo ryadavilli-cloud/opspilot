@@ -21,13 +21,13 @@ from opspilot.triage import (
 
 
 class ScriptedModel:
-    model_id = "scripted"
+    deployment = "scripted"
 
     def __init__(self, text: str) -> None:
         self._text = text
 
-    def complete(self, messages, *, temperature=0.0):
-        return ChatResult(text=self._text, model_id=self.model_id)
+    def complete(self, task, messages):
+        return ChatResult(text=self._text, task=task, deployment=self.deployment)
 
 
 def _ctx(incident_id: str = "inc-007", candidates=("postmortem:inc-003",)) -> TriageContext:

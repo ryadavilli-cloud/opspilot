@@ -1,13 +1,12 @@
 """The cassette replay manifest: every behaviour-affecting input other than the messages.
 
-The replay key used to be `(model_id, messages, temperature)`. The recorded response is a function
-of far more than that, so a change to anything outside those three shifted real behaviour while the
-key stayed identical: CI then replayed a response the current inputs would never produce and passed
-green on a lie.
+A recorded response is a function of far more than the messages, so a change to anything outside
+them shifts real behaviour while the request key stays identical: CI then replays a response the
+current inputs would never produce and passes green on a lie.
 
-This is not hypothetical. `#45` changed `reasoning_effort` from `low` to `medium` precisely because
-the model was not gathering all the evidence at `low`. Every cassette key was unchanged, so the
-committed scorecard kept certifying responses recorded under the old setting.
+This is not hypothetical. Changing `reasoning_effort` from `low` to `medium`, because the model was
+not working through all the evidence at `low`, left every cassette key unchanged, so the committed
+results kept certifying responses recorded under the old setting.
 
 What the manifest covers, and what it deliberately does not:
 
@@ -17,15 +16,12 @@ What the manifest covers, and what it deliberately does not:
   turns that into a loud, named drift report. Only the prompts a recording actually pinned are
   compared: the registry is global, so registering a prompt for one workflow must not invalidate
   cassettes recorded for another that never resolved it.
-- **Provider identity is excluded on purpose.** Replay legitimately runs under the `replay`
-  provider while the recording ran under `ollama` or `azure`, so comparing it would fail every
-  time and teach everyone to ignore the check. The provider *knobs* that shape output are compared
-  instead.
-- **`max_tokens`, stop sequences, and safety settings** are not sent by this codebase yet. They
-  join the manifest with the request that starts sending them, not before: a field pinned to a
-  constant nobody sets is coverage theatre.
-- **Hosting mode** (Azure OpenAI chat-completions vs the Anthropic Messages API) joins the
-  manifest with the change that first makes it vary, for the same reason.
+- **Provider identity is excluded on purpose.** Replay runs under the `replay` provider while the
+  recording ran against Azure, so comparing it would fail every time and teach everyone to ignore
+  the check. The knobs that shape output are compared instead.
+- **`max_tokens`, stop sequences, and safety settings** are not sent by this codebase. They join
+  the manifest with the request that starts sending them, not before: a field pinned to a constant
+  nobody sets is coverage theatre.
 """
 
 from __future__ import annotations
@@ -37,18 +33,17 @@ from opspilot import config
 from opspilot.llm.prompts import resolved_versions
 
 
-def behaviour_manifest(*, model_id: str) -> dict[str, str]:
+def behaviour_manifest(*, deployment: str) -> dict[str, str]:
     """The behaviour-affecting configuration a recorded response depends on.
 
-    `model_id` is passed in rather than read from config so replay can rebuild the manifest around
-    the model the cassette was actually recorded against, while every other field reflects what the
-    current code would send.
+    `deployment` is passed in rather than read from config so replay can rebuild the manifest
+    around the deployment the cassette was actually recorded against, while every other field
+    reflects what the current code would send.
     """
     return {
-        "model_id": model_id,
+        "deployment": deployment,
         "reasoning_effort": config.REASONING_EFFORT,
         "azure_api_version": config.AZURE_OPENAI_API_VERSION,
-        "sampling_seed": str(config.LLM_SEED),
         "prompt_versions": ",".join(f"{n}={v}" for n, v in sorted(resolved_versions().items())),
     }
 

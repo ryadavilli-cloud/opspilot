@@ -55,10 +55,10 @@ class _NoOpModel:
     reaching for a real provider. They assert ordering and sanitization, not synthesis: an empty
     proposal still produces an assessment, and the stream shape is what is under test."""
 
-    def complete(self, messages, **_):
+    def complete(self, task, messages):
         from opspilot.llm.base import ChatResult
 
-        return ChatResult(text="{}", model_id="fake")
+        return ChatResult(text="{}", task=task, deployment="fake")
 
 
 class _DisconnectAfter:

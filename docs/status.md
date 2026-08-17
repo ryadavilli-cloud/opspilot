@@ -12,14 +12,13 @@ repository contradicts it.
 
 ## 1. Baseline
 
-- **Inspected:** working tree at the evidence-contract landing, 2026-08-17.
+- **Inspected:** `main` at `45dbfe4` plus the model-seam landing, working tree, 2026-08-17.
 - **Toolchain:** `uv`; Python 3.12.
 - **Gates at this tree:** `ruff check` clean; `ruff format --check` clean repository-wide; `mypy`
-  strict clean over 82 source files; deterministic lane `pytest -q -m "not llm"`: **703 passed,
-  3 deselected, 2 xfailed**; the pre-commit hook (lint, format, em-dash, plan-vocabulary) passes.
-- **The two xfails** are both in `tests/test_single_agent_gate.py` and both belong to superseded
-  numeric-gate machinery scheduled for retirement; they are disclosed, not regressions in accepted
-  code.
+  strict clean over 82 source files; deterministic lane `pytest -q -m "not llm"`: **706 passed,
+  2 deselected, no xfails**; the pre-commit hook (lint, format, em-dash, plan-vocabulary) passes.
+- **The two deselected** are the only cases that call a live deployment; both are excluded from
+  every CI lane, and the seam they exercise is covered deterministically by cassette replay.
 
 ---
 
@@ -37,16 +36,16 @@ anything, must still shrink.
 | Evidence admission | `evidence/admission.py`, `evidence/operations.py` | Only a succeeded result becomes evidence; empty becomes a citable absence; an aggregate becomes an observation citable by its operation; partial stays marked; everything else becomes a limitation naming its question; the evidence set carries observations, limitations, and the operations list, keyed by `investigation_id` alone | Nothing |
 | Retrieval | `retrieval/retriever.py`, `retrieval/embeddings.py`, `data/knowledge_records.py` | Cosmos vector search over an Azure OpenAI query embedding, in-process BM25-style lexical pass over the same category-filtered candidates, reciprocal-rank fusion, section-level passages carrying their text; routing by question shape when no collection is named; the retrieval capabilities return that passage shape unreshaped | Deterministic identifier promotion after fusion does not exist yet; `Doc`/`Chunk` in `retrieval/corpus.py` still stand beside `Passage` |
 | Corpus preparation | `scripts/prepare_corpus.py`, `retrieval/corpus.py`, `data/answer_key/topology.yaml` | Loads, chunks, embeds, and indexes the authored corpus into the containers the runtime reads, and verifies by read-back; runs under its own identity; the topology file is what preparation reads for entities | Nothing; `retrieval/corpus.py` and `topology.yaml` are reached only by preparation and stay for it |
-| Model seam | `llm/base.py`, `llm/client.py`, `llm/fake.py`, `llm/cassette.py`, `llm/prompts.py`, `llm/manifest.py` | One Azure adapter, one fake, cassette record and replay, prompt loading with versions | The Ollama and generic-OpenAI branches, `LLM_SEED`, and the planner/triage response models in `llm/schema.py` go |
+| Model seam | `llm/base.py`, `llm/client.py`, `llm/fake.py`, `llm/cassette.py`, `llm/prompts.py`, `llm/manifest.py` | One Azure adapter, one fake, cassette record and replay, prompt loading with versions. A call takes a task label and messages and nothing else; the result carries the task, the deployment that answered, the latency, and the token usage, for every call through every implementation. Authentication is keyless with no key setting, because the account has local authentication disabled | Nothing here; the planner and triage response models in `llm/schema.py` are retired by the legacy diagnosis path that imports them |
 | Assessment and brief | `assessment/contracts.py`, `assessment/brief.py` | The designed field set once: `what_happened` with its references, ordered `candidates` (statement, label, `established`, supporting, weakening), `unknowns`, `limitations`, `next_check`, `actions` (action, `now`, optional knowledge reference), `history`, `knowledge_used`; no shape re-checks support and none carries a number; the brief renders deterministically, states the outcome, presents co-causes as contributing causes, and never shows a probability | Nothing |
 | Synthesis | `assessment/synthesis.py`, `llm/prompts/rca_synthesis.v2.md` | One task-labelled call proposes; admission is structural only, so no candidate is removed, no `established` is derived, and no action is discarded; an unreadable response, a label outside the vocabulary, or a string no reference grammar could produce is refused as unusable rather than degraded; a `null` written for an optional field reads as absent, because that is what JSON means by it and what the field's default already says | Nothing |
 | Grounding | `grounding/gate.py` | One deterministic function returning zero or more issues over the assessment, the admitted references, the retrieved knowledge references, and the recorded limitations: operational support resolves in this run, knowledge resolves in what was retrieved, knowledge never stands as current proof, `what_happened` and every established candidate rest on admitted evidence, every recorded limitation is disclosed | Nothing |
 | Telemetry seam and projection | `obs/tracing.py`, `stream/projection.py`, `stream/contracts.py` | One seam with contextvar-nested spans and a swappable exporter; the activity event is built at the span call site so the two cannot drift | `turn_id` leaves the correlation attributes and the events; the close marker folds into a terminal event carrying the outcome |
 | Streaming transport and screen | `POST /turns`, `static/investigation.html` | One streaming request emits identity, activity, a brief event, and a close marker; the page shows intake, the feed, a brief region, and one details area | Route and identity vocabulary become investigation-only; the page needs a brief branch and a question box |
-| Normalized incident context | `intake/contracts.py` | Typed, frozen, excludes the answer-bearing and ticket-workflow fields | Five fields become four: `supplied_context` goes and `incident_id` becomes required; `InteractionKind` goes |
+| Normalized incident context | `intake/contracts.py` | Typed and frozen: `incident_id` required, `scope` where the incident names one, `symptom`, `time_anchor`, and nothing answer-bearing or ticket-workflow shaped | Nothing |
 | In-memory record | `record/memory.py` | Refuses a second save of the same key; creates the investigation on first save | The port narrows to `save`/`get` and one model; the plural-turn methods and outcome types go |
 | Authored expectations and fixture | `data/answer_key/golden_scenarios.yaml`, `benign_fixture.yaml`, `data/answer_key/scenarios.yaml`, `data/answer_key/build_goldens.py` | Seven authored records with all required parts; every required reference resolves in the corpus; the benign fixture is structurally invisible to scenario counting; the builder derives `golden_scenarios.yaml` from `scenarios.yaml` | The record shape may simplify to what evaluation reads; the builder's `golden_incidents.json` and `golden_retrieval.json` outputs go with numeric evaluation |
-| Deterministic replay | `eval/cassettes/turn_synthesis.json`, `eval/record_turn_synthesis.py` | One committed cassette keeps synthesis reproducible without a live model; the recorder drives the real streaming request, so a recorded response can only be one the replay path would ask for, and the manifest refuses a cassette recorded under a different prompt version by name; the recording is taken through the Azure adapter against the chat deployment the application calls, keyless as the signed-in identity, so it is evidence about the serving path the application actually takes | Nothing |
+| Deterministic replay | `eval/cassettes/turn_synthesis.json`, `eval/record_turn_synthesis.py` | One committed cassette keeps synthesis reproducible without a live model; the recorder drives the real streaming request, so a recorded response can only be one the replay path would ask for; the recording is taken through the Azure adapter against the chat deployment the application calls, keyless as the signed-in identity, so it is evidence about the serving path the application actually takes; the manifest refuses a cassette recorded under a different deployment, reasoning effort, API version, or prompt version, and names the field that moved | Nothing |
 | Azure baseline | `infra/main.bicep`, `.github/workflows` | One Container App, ACR, one OpenAI account with one chat and one embedding deployment, one Cosmos account with the three containers, Log Analytics, scoped data-plane roles, OIDC deploy | Replicas 0-3 become 0-1; App Insights and built-in auth are absent |
 
 ---
@@ -114,9 +113,8 @@ dependency, imported only by `graph.py` and `nodes/investigation.py`.
 **Console.** `static/console.html`, `/console`, `/console/config`; the `entraConsoleClientId`
 template parameter and the `OPSPILOT_CONSOLE_CLIENT_ID` setting.
 
-**Numeric evaluation.** `eval/scenario_eval.py`, `eval/record_single_agent.py`,
-`eval/cassettes/single_agent.json`, `eval/baselines/*.json`, `eval/harness.py`, `EvalTargets` and
-`TARGETS` in `config.py`, `tests/test_scenario_gate.py`, `tests/test_single_agent_gate.py`,
+**Numeric evaluation.** `eval/scenario_eval.py`, `eval/baselines/slice_baseline.json`,
+`eval/harness.py`, `EvalTargets` and `TARGETS` in `config.py`, `tests/test_scenario_gate.py`,
 `tests/test_scaffold.py`; `eval/golden_incidents.json` and `eval/golden_retrieval.json` with the
 builder branches in `data/answer_key/build_goldens.py` that emit them and the sync assertions in
 `tests/test_answer_key.py` that read them; the `full` lane in `.github/workflows/deploy.yml`, which
@@ -124,18 +122,13 @@ exists to install the eval group for the reranker.
 
 **Model reranker.** `retrieval/reranker.py`, `CrossEncoder`, `RERANKER_MODEL`,
 `RERANK_CANDIDATES`, the `reranker` pytest marker, `sentence-transformers` and its transitive
-`torch`, `transformers`, `scikit-learn`, `scipy` in the eval group. No caller anywhere. The `llm`
-marker's text names Ollama and OpenAI providers the model seam drops; the marker stays, its text
-follows the seam.
+`torch`, `transformers`, `scikit-learn`, `scipy` in the eval group. No caller anywhere.
 
 **Plural-turn identity and persistence.** `turn_id` and `TurnIdentity` in `turn/identity.py`;
 `CompletedTurn`, `completed_turns()`, `turn()`, `CommitOutcome`, `CommitResult`,
 `DeliveryOutcome`, `commit_then_deliver()` in `record/port.py`; `turn_id` on spans and stream
 events. It has left the evidence set and the assessment: what remains carries it is the streaming
 transport, the tracing correlation attributes, and the plural-turn record port.
-
-**Interaction and intake residue.** `InteractionKind` (five members, no consumer),
-`supplied_context`, and the optionality of `incident_id`, which becomes required.
 
 **Tests attached to deleted behavior.** `test_investigations_api.py`, `test_investigations.py`,
 `test_report_binding.py`, `test_checkpointer.py`, `test_auth.py`, `test_triage.py`,
@@ -170,7 +163,8 @@ retirement target.
 
 ## 7. Deployment state
 
-Last live-inspected 2026-08-17, at revision `opspilot-api--0000074`, carrying this tree. One
+Last live-inspected 2026-08-17, at revision `opspilot-api--0000074`, which carries the evidence
+contract and the assessment seam but predates the model-seam reduction. One
 Container App and image from the Bicep template; replicas 0-3; one chat and one embedding
 deployment; no Application Insights; hand-rolled three-role authorization fronts the superseded
 endpoints and `POST /turns` is unauthenticated; the three containers are declared. Readiness

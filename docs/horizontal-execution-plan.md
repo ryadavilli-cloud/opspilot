@@ -134,23 +134,18 @@ failure is a limitation, and the reranker implementation, dependencies, marker, 
 
 ## H3. Assessment, synthesis, grounding, and the brief
 
-**State:** Partial.
+**State:** Complete.
 
-*Already present.* The assessment is the designed field set; synthesis is structural only and
-refuses an unusable proposal rather than thinning one; one grounding function returns issues over
-the assessment, the admitted evidence, the retrieved knowledge, and the recorded limitations; the
-brief renders deterministically with the outcome, contributing causes where more than one candidate
-is established, and no probability. The synthesis prompt is the new proposal shape. Of the removals
-below, the assessment types, the grounding contract layer, the semantic filtering, and the
-`model_construct()` scaffolding are absent. See `docs/status.md`.
-
-The hosted effect has run: a deployed investigation delivered a brief with the designed sections
-and no probability.
-
-*Remaining.* Only the model seam, which still carries the Ollama and generic-OpenAI branches,
-`LLM_SEED`, the planner, claim, report, triage, and tool-call response models in `llm/schema.py`,
-and the `llm` marker's provider text. Reducing it to one Azure adapter with the fake and the
-cassette is the outstanding build.
+The assessment is the designed field set; synthesis is structural only and refuses an unusable
+proposal rather than thinning one; one grounding function returns issues over the assessment, the
+admitted evidence, the retrieved knowledge, and the recorded limitations; the brief renders
+deterministically with the outcome, contributing causes where more than one candidate is
+established, and no probability. The synthesis prompt is the new proposal shape. The model seam is
+one Azure adapter with the fake and the cassette, and the cassette is recorded through it. The
+assessment types, the grounding contract layer, the semantic filtering, the `model_construct()`
+scaffolding, and the removed provider branches are absent. The hosted effect has run: a deployed
+investigation delivered a brief with the designed sections and no probability. See
+`docs/status.md`.
 
 **Builds.** The final assessment-producing capability as pure functions, called by the graph later
 without change. The assessment shape becomes the designed field set once: `what_happened`, ordered
@@ -184,8 +179,9 @@ filtering in `assessment/synthesis.py` (`_grounded`, the drop-if-unsupported and
 derive-`established` branches of `_candidate`); `CheckName`, `CheckResult`, `GroundingResult` and
 its exact-set validators, `CorrectionAllowance`, `GateRouting`, `route_grounding_result`; the eleven
 `model_construct()` sites in `tests/test_grounding_gate.py` and the tests that exist only to
-exercise them; the Ollama and generic-OpenAI branches, `LLM_SEED`, and the planner, claim, report,
-triage, and tool-call response models in `llm/schema.py`; the `llm` marker's provider text.
+exercise them; the Ollama and generic-OpenAI branches with their endpoint and key settings, and
+`LLM_SEED`; the `llm` marker's provider text. The response models in `llm/schema.py` are not
+removed here: the legacy diagnosis path still imports them, and they are retired with it.
 
 **Proof unique to this step.** A proposal with an unsupported candidate reaches the gate unchanged
 and the gate reports the issue; `what_happened` without operational support is an issue; a
@@ -295,12 +291,14 @@ the `CMD`. The async job, approval, and polling path: `investigations.py`,
 and `/investigate` routes and helpers in `api.py`, `CommittedDecision`, idempotency, leases,
 fencing, outbox, job-status vocabulary, publication identity, the approval-bound report hash. The
 legacy diagnosis path: root `contracts.py`, `diagnosis/` (nine modules), `triage.py`,
-`composition.py`, `guardrails/policies.py`, the `OPSPILOT_IMPLEMENTATION` setting and selector code,
-the explicit `langchain-core` dependency. The fixed synthesis path: `turn/synthesis_step.py` and the
-stub-backed branch of the streaming route in `api.py`. Hand-rolled authorization code: `auth.py`,
-`ReviewerPrincipal`, `pyjwt[crypto]`, and the `OPSPILOT_API_AUDIENCE` and `OPSPILOT_APPROVER_ROLE`
-settings. The console: `static/console.html`, `/console`, `/console/config`, the
-`OPSPILOT_CONSOLE_CLIENT_ID` setting. Plural-turn identity: `turn/identity.py`, `TurnIdentity`,
+`composition.py`, `guardrails/policies.py`, the planner, claim, report, triage, and tool-call
+response models in `llm/schema.py` and `tests/test_schema.py`, the `OPSPILOT_IMPLEMENTATION`
+setting and selector code, the explicit `langchain-core` dependency. The fixed synthesis path:
+`turn/synthesis_step.py` and the stub-backed branch of the streaming route in `api.py`.
+Hand-rolled authorization code: `auth.py`, `ReviewerPrincipal`, `pyjwt[crypto]`, and the
+`OPSPILOT_API_AUDIENCE` and `OPSPILOT_APPROVER_ROLE` settings. The console:
+`static/console.html`, `/console`, `/console/config`, the `OPSPILOT_CONSOLE_CLIENT_ID` setting.
+Plural-turn identity: `turn/identity.py`, `TurnIdentity`,
 `turn_id` on spans and stream events, the close marker folded into the terminal event. Intake
 residue: `InteractionKind`, `supplied_context`, the optionality of `incident_id`. Their tests:
 `test_investigations_api.py`, `test_investigations.py`, `test_repository_factory.py`,
@@ -428,9 +426,8 @@ persistence seam; the model seam and cassette replay; the authored scenarios and
 
 **Provides.** The designed evaluation capability and its report.
 
-**If present, remove.** `eval/scenario_eval.py`, `eval/record_single_agent.py`,
-`eval/cassettes/single_agent.json`, `eval/baselines/*.json`, `eval/harness.py`, `EvalTargets` and
-`TARGETS` in `config.py`, `tests/test_scenario_gate.py`, `tests/test_single_agent_gate.py`,
+**If present, remove.** `eval/scenario_eval.py`, `eval/baselines/slice_baseline.json`,
+`eval/harness.py`, `EvalTargets` and `TARGETS` in `config.py`, `tests/test_scenario_gate.py`,
 `tests/test_scaffold.py`; `eval/golden_incidents.json`, `eval/golden_retrieval.json`, the branches
 of `data/answer_key/build_goldens.py` that emit them, and the sync assertions in
 `tests/test_answer_key.py` that read them.

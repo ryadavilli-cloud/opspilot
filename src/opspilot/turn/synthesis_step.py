@@ -116,13 +116,19 @@ def synthesize(model: Any, context: Any, evidence: EvidenceSet, objective: str) 
     with tracing.span(
         f"model.{SYNTHESIS_TASK}",
         attributes={"task": SYNTHESIS_TASK, "prompt_version": prompt.version},
-    ):
+    ) as sp:
         result = model.complete(
+            SYNTHESIS_TASK,
             [
                 ChatMessage(role="system", content=prompt.text),
                 ChatMessage(role="user", content=user),
-            ]
+            ],
         )
+        # What the call cost, taken from what the seam reported rather than measured again here.
+        sp.attributes["model_deployment"] = result.deployment
+        sp.attributes["latency_ms"] = result.latency_ms
+        sp.attributes["tokens_in"] = result.usage.get("prompt_tokens", 0)
+        sp.attributes["tokens_out"] = result.usage.get("completion_tokens", 0)
     return admit_assessment(parse_proposal(result.text))
 
 

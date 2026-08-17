@@ -152,7 +152,7 @@ class LLMPlanner:
             "{observations}", _render_observations(observations)
         )
 
-        result = self._model.complete([ChatMessage(role="user", content=rendered)])
+        result = self._model.complete("diagnose_plan", [ChatMessage(role="user", content=rendered)])
         try:
             decision = extract_json_object(result.text)
             response = PlannerResponse.model_validate(decision)
@@ -229,7 +229,9 @@ class LLMPlanner:
         ).replace("{observations}", _render_observations(observations))
         try:
             decision = extract_json_object(
-                self._model.complete([ChatMessage(role="user", content=rendered)]).text
+                self._model.complete(
+                    "diagnose_synthesize", [ChatMessage(role="user", content=rendered)]
+                ).text
             )
             response = SynthesisResponse.model_validate(decision)
         except (ValueError, ValidationError):

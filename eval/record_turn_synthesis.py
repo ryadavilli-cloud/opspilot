@@ -15,8 +15,11 @@ The cassette is invalidated by any change to the synthesis prompt, the evidence 
 evidence plan, because each of those moves the messages. That is loud rather than silent: replay
 raises with the cassette named. Re-record after such a change, not before.
 
-Run (spends one call against the Azure chat deployment; authenticates as the signed-in identity):
-  uv run python eval/record_turn_synthesis.py
+Authentication is keyless: the adapter authenticates as the environment's identity, so a local
+run needs `az login` and an identity holding the data-plane role on the account.
+
+Run (spends one call; the `llm` group carries the SDK the adapter imports):
+  uv run --group llm python eval/record_turn_synthesis.py
 """
 
 from __future__ import annotations
@@ -84,7 +87,7 @@ def main() -> None:
         app.dependency_overrides.pop(get_synthesis_model, None)
 
     print(f"incident:     {INCIDENT}")
-    print(f"model:        {model.model_id}")
+    print(f"deployment:   {model.deployment}")
     print(f"stream events: {len(events)}")
     print(f"wrote {CASSETTE.relative_to(REPO_ROOT)}")
 

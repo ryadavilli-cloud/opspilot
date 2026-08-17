@@ -1,4 +1,4 @@
-"""S-1 / D-007: the normalized incident-context contract for predefined intake."""
+"""The normalized incident context: four fields, and what must never appear beside them."""
 
 from __future__ import annotations
 
@@ -34,17 +34,17 @@ def _incident(**overrides: object) -> IncidentRecord:
     return IncidentRecord(**fields)
 
 
-def test_from_predefined_incident_populates_only_d007_fields():
+def test_a_raw_record_normalizes_to_exactly_the_four_fields():
     context = from_predefined_incident(_incident())
     assert context.incident_id == "inc-001"
     assert context.symptom == "Elevated checkout failures; payment authorizations timing out."
     assert context.time_anchor == datetime(2026, 5, 12, 14, 30, tzinfo=UTC)
-    assert context.supplied_context is None
+    assert context.scope is None
 
 
-def test_from_predefined_incident_never_populates_scope_from_category():
-    # D-007: category is a classification label, not a component identity, and populating scope
-    # from it risks leaking the category as an answer hint. scope must stay None.
+def test_scope_is_never_populated_from_the_category():
+    # A classification label is not a component identity, and populating scope from it would leak
+    # the category as an answer hint. scope stays None unless the incident names one.
     context = from_predefined_incident(_incident(category="datastore"))
     assert context.scope is None
 
@@ -57,15 +57,27 @@ def test_from_predefined_incident_excludes_answer_key_content():
     assert "close_code" not in dumped
 
 
-def test_normalized_incident_context_carries_no_ticket_workflow_fields():
-    # D-007: no severity, priority, ownership, environment, ticket, or session/status field.
+def test_the_context_carries_no_ticket_workflow_fields():
+    # No severity, priority, ownership, environment, ticket, or session field, and nothing that
+    # would carry engineer-supplied text into an investigation ahead of admission.
     fields = set(NormalizedIncidentContext.model_fields)
-    assert fields == {"incident_id", "scope", "symptom", "time_anchor", "supplied_context"}
+    assert fields == {"incident_id", "scope", "symptom", "time_anchor"}
 
 
-def test_normalized_incident_context_is_frozen():
+def test_an_incident_identity_is_required():
+    """One investigation is one incident. A context without one could not name what it is about,
+    and nothing downstream could key evidence, telemetry, or the record to it."""
+    with pytest.raises(ValidationError):
+        NormalizedIncidentContext(
+            symptom="checkout errors", time_anchor=datetime(2026, 5, 12, tzinfo=UTC)
+        )
+
+
+def test_the_context_is_frozen():
     context = NormalizedIncidentContext(
-        symptom="checkout errors", time_anchor=datetime(2026, 5, 12, tzinfo=UTC)
+        incident_id="inc-001",
+        symptom="checkout errors",
+        time_anchor=datetime(2026, 5, 12, tzinfo=UTC),
     )
     with pytest.raises(ValidationError):
         context.symptom = "tampered"

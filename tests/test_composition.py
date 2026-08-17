@@ -44,7 +44,7 @@ def test_single_agent_missing_llm_dependency_falls_back_explicitly(monkeypatch):
 def test_single_agent_builds_the_llm_pair_when_configured(monkeypatch):
     # A fake ChatModel keeps this ML-free: no live provider, no openai SDK import.
     class _FakeModel:
-        model_id = "gpt-4o-mini"
+        deployment = "gpt-4o-mini"
 
     import opspilot.llm.client as client
 

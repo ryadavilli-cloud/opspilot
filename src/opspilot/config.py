@@ -8,9 +8,9 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-# Load a local, gitignored `.env` before any getenv below (dev convenience for keys like
-# OPENAI_API_KEY). No-op in production, where the container supplies real environment variables and
-# no .env exists. Never network or heavy — just a local file read.
+# Load a local, gitignored `.env` before any getenv below, a dev convenience for endpoints and
+# container settings. No-op in production, where the container supplies real environment variables
+# and no .env exists. Never network or heavy, just a local file read.
 load_dotenv()
 
 # --------------------------------------------------------------------------------------
@@ -26,8 +26,8 @@ _REPO_ROOT = Path(__file__).resolve().parents[2]
 def _env(var: str, default: str = "") -> str:
     """Read an env var, tolerating a `.env` inline comment (`KEY=val  # note`) and treating a
     blank value as unset. python-dotenv keeps inline-comment text as the value, so a `.env` line
-    like `OPSPILOT_LLM_MODEL=   # blank -> default` would otherwise poison config. These settings
-    never legitimately contain '#'."""
+    like `AZURE_OPENAI_DEPLOYMENT=   # blank -> default` would otherwise poison config. These
+    settings never legitimately contain '#'."""
     raw = os.getenv(var)
     if raw is None:
         return default
@@ -65,62 +65,32 @@ DISTRACTOR_DIR = _dir_env("OPSPILOT_DISTRACTOR_DIR", _REPO_ROOT / "data" / "dist
 RETRIEVAL_BACKEND = "cosmos"
 
 
-# --------------------------------------------------------------------------------------
-# Local dev model: qwen3:8b (~5 GB, CPU-only, has the `tools` capability) — one model
-# simulates all tiers in dev. NOTE: the larger qwen3.6 (36B MoE, 23 GB) was pulled but
-# won't run on this box (23 GB > 15.5 GB RAM, integrated GPU only). Build/iterate against
-# gpt-4o-mini for tool-call reliability; qwen3:8b is the free local/demo path.
-DEV_MODEL = _env("OPSPILOT_DEV_MODEL", "qwen3:8b")
-
 # DEPRECATED: superseded by D-005 (the primary chat deployment is the single offline judge).
 # No new consumer.
 JUDGE_MODEL = _env("OPSPILOT_JUDGE_MODEL", "gpt-4.1")
 
 
 # --------------------------------------------------------------------------------------
-# LLM provider seam
+# Model seam
 # --------------------------------------------------------------------------------------
-# Dev default = local Ollama (qwen3:8b via DEV_MODEL, the free floor). The `openai` provider
-# reuses the same OpenAI-compatible client with a real key + base_url for gpt-4o-mini / Azure
-# Foundry (the capability headline). `replay` plays back recorded cassettes in CI. Empty base_url
-# means "the provider's default endpoint".
-LLM_PROVIDER = _env("OPSPILOT_LLM_PROVIDER", "ollama")
-LLM_MODEL = _env("OPSPILOT_LLM_MODEL", DEV_MODEL)
-LLM_BASE_URL = _env("OPSPILOT_LLM_BASE_URL")
-# Reasoning effort for reasoning models (gpt-5*, o*). `low` was too shallow — the planner skipped an
-# evidence class and the sufficiency gate escalated (coverage 0.75); `medium` gives thorough enough
-# tool planning while staying within the /investigate timeout. Env-tunable so the demo can dial it
-# without a code change. Ignored by non-reasoning models.
+# One live provider. `azure` calls the chat deployment as the environment's identity; `replay`
+# plays back a recorded cassette, which is what the deterministic lane runs on.
+LLM_PROVIDER = _env("OPSPILOT_LLM_PROVIDER", "azure")
+# Reasoning effort for reasoning deployments. `low` was too shallow: source selection skipped an
+# evidence class and the run escalated. `medium` is thorough enough while staying inside the
+# request. Env-tunable so a demo can dial it without a code change.
 REASONING_EFFORT = _env("OPSPILOT_REASONING_EFFORT", "medium")
-# Sampling seed sent alongside temperature=0 on non-reasoning models. temperature=0 is NOT
-# determinism: re-recording the eval against gpt-4o-mini produced byte-identical planner prompts
-# and different responses.
-#
-# MEASURED, 2026-07-26: the seed does NOT fix that. Two recordings at this same seed produced
-# different cassettes and different scorecards (evidence_recall 0.6222 vs 0.5111). OpenAI documents
-# `seed` as best-effort, and on this model it is not effective. It is kept because it costs nothing,
-# it is the documented mechanism if their determinism improves, and pinning it in the replay
-# manifest records what was in effect. Do NOT re-run this experiment expecting a stable
-# scorecard. The real instability is the sample size (3 novel scenarios) amplified by the
-# planner's batched tool calls: one sampling wobble rewrites up to _MAX_BATCH actions.
-#
-# Note this does not make CI flaky: the committed cassette replays deterministically. The variance
-# only appears when someone RE-RECORDS.
-LLM_SEED = _env_int("OPSPILOT_LLM_SEED", 20260726)
 
 # Observability span exporter: none (default, emission on, no sink until a real one is wired) |
 # memory (tests) | stdout (dev). A real sink (e.g. App Insights) is not yet wired; see
 # runtime-and-deployment.md for the target backend.
 TRACE_EXPORTER = _env("OPSPILOT_TRACE_EXPORTER", "none")
-LLM_API_KEY = _env("OPSPILOT_LLM_API_KEY") or _env("OPENAI_API_KEY")
-OLLAMA_BASE_URL = _env("OPSPILOT_OLLAMA_BASE_URL", "http://localhost:11434/v1")
 
-# Azure OpenAI (Foundry) — the production LLM path. AZURE_OPENAI_DEPLOYMENT is the *deployment* name
-# the app calls (falls back to LLM_MODEL). AZURE_OPENAI_API_KEY is OPTIONAL: when it is blank the
-# client authenticates keyless via the environment's managed identity (see llm/client.py).
+# Azure OpenAI. AZURE_OPENAI_DEPLOYMENT names the chat deployment the app calls. No key setting
+# exists: the account has local authentication disabled and the client authenticates as the
+# environment's identity (see llm/client.py).
 AZURE_OPENAI_ENDPOINT = _env("AZURE_OPENAI_ENDPOINT") or _env("AZURE_FOUNDRY_ENDPOINT")
 AZURE_OPENAI_API_VERSION = _env("AZURE_OPENAI_API_VERSION", "2025-04-01-preview")
-AZURE_OPENAI_API_KEY = _env("AZURE_OPENAI_API_KEY") or _env("AZURE_FOUNDRY_API_KEY")
 AZURE_OPENAI_DEPLOYMENT = _env("AZURE_OPENAI_DEPLOYMENT")
 
 # Deployed diagnosis implementation: `deterministic` (the hand-tuned floor) or `single_agent` (the

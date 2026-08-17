@@ -23,9 +23,15 @@ from opspilot.api import (
     ReadinessResponse,
     VersionResponse,
 )
+from opspilot.config import RETRIEVAL_BACKEND
 
-# inc-004: a fixed, answer-keyed incident (data/answer_key/scenarios.yaml) — same fixture
-# used by tests/test_api.py::test_investigation_smoke_path_over_bm25.
+# inc-004: a fixed, answer-keyed incident (data/answer_key/scenarios.yaml).
+#
+# The backend assertions below compare against the constant this code declares rather than a
+# literal. There is one retrieval realization, so a hardcoded name says nothing about the
+# deployment and goes stale the moment the realization is renamed, which is exactly what it did.
+# Compared against the constant, the check still earns its place: it catches a revision serving
+# traffic that was built from different code.
 # Every terminal state the investigation endpoint can report. The smoke asserts the deployment
 # reached one of them coherently, not which one: that choice belongs to the model.
 TERMINAL_STATUSES = frozenset({"completed", "degraded", "escalated"})
@@ -91,9 +97,9 @@ def check_version(client: httpx.Client) -> VersionResponse:
     )
     version = VersionResponse.model_validate(resp.json())
     _require(
-        version.retrieval_backend == "bm25",
-        f"/version reports backend {version.retrieval_backend!r}, expected 'bm25' "
-        "(deployed image forces bm25)",
+        version.retrieval_backend == RETRIEVAL_BACKEND,
+        f"/version reports backend {version.retrieval_backend!r}, expected "
+        f"{RETRIEVAL_BACKEND!r}; the deployed revision was built from different code",
     )
     # The whole point of this deploy: Azure must be running the real LLM agent, not the floor. A
     # non-null fallback_reason means single_agent was requested but its model could not be built.
@@ -186,9 +192,9 @@ def run_investigation(client: httpx.Client, auth: dict[str, str]) -> Investigati
             f"investigation ended {investigation.status!r} with no reason given",
         )
     _require(
-        investigation.runtime.retrieval_backend == "bm25",
+        investigation.runtime.retrieval_backend == RETRIEVAL_BACKEND,
         f"investigation ran against backend {investigation.runtime.retrieval_backend!r}, "
-        "expected 'bm25'",
+        f"expected {RETRIEVAL_BACKEND!r}",
     )
     # Prove THIS investigation was produced by the LLM agent on Azure, not the deterministic floor.
     _require(
@@ -373,8 +379,9 @@ def main(argv: list[str] | None = None) -> int:
                 f"repository check not ok: {ready.checks}",
             )
             _require(
-                ready.retrieval_backend == "bm25",
-                f"expected bm25 retrieval backend at readiness, got {ready.retrieval_backend!r}",
+                ready.retrieval_backend == RETRIEVAL_BACKEND,
+                f"expected {RETRIEVAL_BACKEND!r} retrieval backend at readiness, got "
+                f"{ready.retrieval_backend!r}",
             )
             check_version(client)
             auth = _smoke_auth_headers()

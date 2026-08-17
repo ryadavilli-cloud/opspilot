@@ -1,12 +1,13 @@
-"""Provider-agnostic chat-model contract.
+"""The chat-model contract: one shape, whichever implementation answers it.
 
-One OpenAI-compatible interface fronts every provider OpsPilot uses — qwen3:8b via Ollama,
-gpt-4o-mini via OpenAI, Claude via Azure Foundry — so the diagnosis core never imports a vendor
-SDK. The `replay` model (see `cassette.py`) satisfies the same contract from recorded responses and
-pulls in no heavy dependency, so LLM wiring tests run deterministically in the lean CI lane.
+A call names the task it serves and carries its messages, and nothing else. There is one live
+implementation, one fake, and cassette replay; a task label plus messages is all any of them needs,
+so the contract carries no provider knobs, no sampling controls, and no model selection.
 
-Contracts-first (guideline §4): this is frozen before the LLM planner plugs in at 4b. `ChatResult`
-carries `model_id` + `prompt_version` so every model call is attributable in the audit trail.
+The result carries what an investigation has to be able to say afterwards about a call it made:
+which task it served, which deployment answered, how long it took, and what it cost in tokens.
+Those are recorded for every call rather than sampled, because a run that cannot account for its
+model calls cannot be audited, and reconstructing them later from a provider bill is not an audit.
 """
 
 from __future__ import annotations
@@ -25,28 +26,25 @@ class ChatMessage:
 
 @dataclass(frozen=True)
 class ChatResult:
-    """A model completion plus the provenance needed to audit it.
+    """A completion and the provenance needed to account for the call that produced it.
 
-    `prompt_version` is stamped by the caller from the prompt registry (empty when the prompt did
-    not come from the registry); `usage` holds token counts when the provider reports them.
+    `prompt_version` is stamped by the caller from the prompt registry, and is empty when the
+    prompt did not come from it.
     """
 
     text: str
-    model_id: str
+    task: str
+    deployment: str
     prompt_version: str = ""
     finish_reason: str = ""
+    latency_ms: float = 0.0
     usage: dict[str, int] = field(default_factory=dict)
 
 
 @runtime_checkable
 class ChatModel(Protocol):
-    """A callable chat model. `temperature` defaults to 0.0 — eval runs must be reproducible."""
+    """A callable chat model, named by the deployment that serves it."""
 
-    model_id: str
+    deployment: str
 
-    def complete(
-        self,
-        messages: list[ChatMessage],
-        *,
-        temperature: float = 0.0,
-    ) -> ChatResult: ...
+    def complete(self, task: str, messages: list[ChatMessage]) -> ChatResult: ...

@@ -69,7 +69,7 @@ def _no_live_model(monkeypatch: pytest.MonkeyPatch) -> None:
 
     The synthesis dependency, the planner, the triager, and the composition root all reach
     `build_chat_model()` with no provider, which resolves whatever `OPSPILOT_LLM_PROVIDER` names
-    and defaults to Ollama. Construction takes no network, so a missing injection does not surface
+    and defaults to Azure. Construction takes no network, so a missing injection does not surface
     until `.complete()` blocks on a connection that never resolves. That reads as a slow suite
     rather than as a missing seam, and sends the next hour into the wrong investigation.
 

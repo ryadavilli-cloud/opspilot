@@ -1,9 +1,8 @@
 """End-to-end: the LLM planner drives the real graph on inc-004.
 
-Live model (Ollama qwen or OpenAI, per env) — CI-excluded (`-m "not llm"`); the deterministic
-scorecard is the CI gate. This asserts the loop *terminates* and that every citation it ships is
-grounded in the tool-produced trail — not that it beats the floor (that is the single_agent
-scorecard, recorded via a cassette).
+Calls the live chat deployment, so it is excluded from the CI gate lane (`-m "not llm"`). It
+asserts that the loop terminates and that every citation it ships is grounded in the tool-produced
+trail, not that it reaches any particular quality.
 """
 
 from __future__ import annotations
