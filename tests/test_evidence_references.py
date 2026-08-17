@@ -18,7 +18,6 @@ from opspilot.evidence.operations import EvidenceSet
 from opspilot.evidence.references import (
     PREFIX_TYPES,
     RETIRED_PREFIXES,
-    CitationRole,
     Reference,
     ReferenceError,
     ReferenceResolver,
@@ -26,7 +25,6 @@ from opspilot.evidence.references import (
     entities_named,
     parse,
     reference_type_of,
-    role_is_admissible,
     try_parse,
 )
 from opspilot.tools.contracts import Completeness, ExecutionOutcome, ToolMetadata, ToolResult
@@ -81,25 +79,11 @@ def test_the_prefix_map_is_not_mutable_by_a_caller():
         PREFIX_TYPES["telemetry"] = ReferenceType.EVIDENCE  # type: ignore[index]
 
 
-# --- citation-role compatibility is decidable from type alone ---------------------------------
-def test_evidence_may_occupy_any_citation_role():
-    assert all(role_is_admissible(ReferenceType.EVIDENCE, role) for role in CitationRole)
-
-
-def test_knowledge_may_only_occupy_the_historical_role():
-    """A document cannot observe the running system, so retrieved knowledge can never carry
-    current operational support. Letting it would turn 'the runbook says' into current proof."""
-    assert role_is_admissible(ReferenceType.KNOWLEDGE, CitationRole.HISTORICAL_CONTEXT)
-    assert not role_is_admissible(ReferenceType.KNOWLEDGE, CitationRole.CURRENT_SUPPORT)
-    assert not role_is_admissible(ReferenceType.KNOWLEDGE, CitationRole.CURRENT_CONTRADICTION)
-
-
-def test_architecture_is_knowledge_and_so_carries_no_current_support():
+# --- the type alone decides what a reference may be used for -----------------------------------
+def test_architecture_is_knowledge_and_so_can_never_be_current_proof():
     """Architecture docs orient an investigation but are not evidence about this incident. That
     restriction rides on the reference type rather than on a special case at any call site."""
-    parsed = parse("architecture:service-dependency-map")
-    assert parsed.is_knowledge
-    assert not role_is_admissible(parsed.reference_type, CitationRole.CURRENT_SUPPORT)
+    assert parse("architecture:service-dependency-map").is_knowledge
 
 
 # --- the retired spelling ---------------------------------------------------------------------
@@ -156,13 +140,11 @@ def test_an_absence_reference_names_its_capability_and_producing_operation():
     assert parsed.identifier == "op-0007"
 
 
-def test_an_absence_reference_is_evidence_and_may_occupy_any_citation_role():
+def test_an_absence_reference_is_evidence_not_knowledge():
     """It reports what a scope contained, which is a current operational observation. Classing it
-    as knowledge would bar it from the roles an absence is most useful in."""
+    as knowledge would bar it from standing as support for the claims it can genuinely settle."""
     parsed = parse("absence:query_logs:op-0002")
     assert parsed.is_evidence and not parsed.is_knowledge
-    for role in CitationRole:
-        assert role_is_admissible(parsed.reference_type, role)
 
 
 def test_a_bare_operation_reference_is_still_not_an_evidence_reference():
@@ -191,11 +173,11 @@ def test_an_aggregate_reference_names_the_operation_that_produced_it():
     assert parsed.entities == ()
 
 
-def test_an_aggregate_reference_may_occupy_any_citation_role():
-    """It reports what a scope holds, which is a current operational observation."""
+def test_an_aggregate_reference_is_evidence_not_knowledge():
+    """It reports what a scope holds, which is a current operational observation. Classing it as
+    knowledge would bar a counted answer from supporting the claims it can genuinely settle."""
     parsed = parse("query:op-0009")
-    for role in CitationRole:
-        assert role_is_admissible(parsed.reference_type, role)
+    assert parsed.is_evidence and not parsed.is_knowledge
 
 
 @pytest.mark.parametrize(

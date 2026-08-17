@@ -1,131 +1,93 @@
-"""Deterministic projection from an assessment to its brief.
+"""Deterministic rendering from an assessment to its brief.
 
 A rendering, not a second analysis. No model call happens here: the brief presents what the
-assessment holds and cannot introduce a candidate, relationship, recommendation, or conclusion it
-does not, nor drop one it does. A brief that quietly omits a weakening observation asserts more
-than the assessment supports, exactly as one that invents a candidate does.
+assessment holds and cannot introduce a candidate, an action, or a conclusion it does not, nor drop
+one it does. A brief that quietly omits a weakening observation asserts more than the assessment
+supports, exactly as one that invents a candidate does.
 
-What may vary is presentation: which sections are visible, how detail is disclosed, how citations
-are formatted. Omitting a section the assessment left empty is presentation. Removing, reordering,
-or rewriting content the assessment holds is not, and the brief contract refuses both.
+Ordering is the presentation choice that does most of the work. What happened comes first, then the
+explanations with the best-supported one leading, then what to do with immediate actions first, so
+an engineer reading only the top of the brief reads the three things that matter soonest. Where the
+evidence establishes more than one cause, they are presented as contributing causes rather than as
+one leading candidate and a set of alternatives, because ranking co-causes would assert a structure
+the evidence did not produce.
+
+No probability appears, and none can: nothing in the assessment carries a number, and support is
+expressed by the label a candidate carries and the references attached to it.
 """
 
 from __future__ import annotations
 
-from opspilot.assessment.contracts import (
-    Assessment,
-    Brief,
-    BriefSection,
-    Citation,
-    ConclusionDisposition,
-    Horizon,
-    Strength,
-)
-from opspilot.evidence.references import CitationRole
-
-_HORIZON_LABELS = {Horizon.NOW: "Now", Horizon.SOON: "Soon", Horizon.LATER: "Later"}
+from opspilot.assessment.contracts import Assessment, Brief, Candidate, Outcome
 
 
-def _conclusion_line(assessment: Assessment) -> str:
-    if assessment.disposition is ConclusionDisposition.SUPPORTED_CONCLUSION:
-        assert assessment.leading_candidate is not None  # the contract guarantees this pairing
-        return assessment.leading_candidate.statement
-    # Insufficiency is stated plainly rather than dressed as a weak conclusion.
-    return "Current evidence does not support stating a cause. " + (
-        f"The most useful next check: {assessment.unresolved_discriminator}"
-        if assessment.unresolved_discriminator
-        else "No single check would clearly separate the remaining possibilities."
-    )
+def outcome_of(assessment: Assessment) -> Outcome:
+    """The outcome the investigation reached, from two facts the assessment already holds.
+
+    This over-reports partial, since one small limitation makes an otherwise clean investigation
+    partial. That is the honest direction to err: the limitation is disclosed either way.
+    """
+    if not assessment.established:
+        return Outcome.INCONCLUSIVE
+    return Outcome.PARTIAL if assessment.limitations else Outcome.COMPLETE
 
 
-def _next_action(assessment: Assessment) -> str:
-    for horizon in (Horizon.NOW, Horizon.SOON, Horizon.LATER):
-        for rec in assessment.recommendations:
-            if rec.horizon is horizon:
-                return rec.action
-    return ""
+def _refs(label: str, refs: list[str]) -> list[str]:
+    # Space-separated, never punctuated: each reference stays a token the one parser can read.
+    return [f"{label}: {' '.join(refs)}"] if refs else []
 
 
-def _candidate_lines(assessment: Assessment) -> list[str]:
-    lines: list[str] = []
-    for candidate in assessment.candidates():
-        marker = "established" if candidate.strength is Strength.ESTABLISHED else "possible"
-        lines.append(f"[{candidate.label.value}, {marker}] {candidate.statement}")
+def _candidate_lines(candidate: Candidate) -> list[str]:
+    marker = "established" if candidate.established else "not established"
+    lines = [f"- {candidate.statement} [{candidate.label.value}, {marker}]"]
+    lines.extend(f"  {line}" for line in _refs("Supports", candidate.supporting))
+    lines.extend(f"  {line}" for line in _refs("Weakens", candidate.weakening))
     return lines
 
 
-def _evidence_lines(assessment: Assessment) -> tuple[list[str], list[Citation]]:
-    """Supporting and weakening references, per candidate, with weakening never dropped."""
-    lines: list[str] = []
-    citations: list[Citation] = []
-    for candidate in assessment.candidates():
-        for ref in candidate.supporting:
-            lines.append(f"supports [{candidate.label.value}]: {ref}")
-            citations.append(Citation(reference=ref, role=CitationRole.CURRENT_SUPPORT))
-        for ref in candidate.weakening:
-            lines.append(f"weakens [{candidate.label.value}]: {ref}")
-            citations.append(Citation(reference=ref, role=CitationRole.CURRENT_CONTRADICTION))
-    return lines, citations
+def _section(heading: str, lines: list[str]) -> list[str]:
+    """One heading and its body, or nothing at all when the assessment left it empty. Omitting an
+    empty section is presentation; omitting a populated one would not be."""
+    return [heading, *lines, ""] if lines else []
 
 
-def _section(name: str, lines: list[str], citations: list[Citation] | None = None) -> BriefSection:
-    return BriefSection(name=name, body="\n".join(lines), citations=citations or [])
+def render(assessment: Assessment) -> Brief:
+    """Render the brief and the outcome it reached."""
+    outcome = outcome_of(assessment)
+    blocks: list[str] = [f"Outcome: {outcome.value}", ""]
 
+    happened = [assessment.what_happened] if assessment.what_happened else []
+    happened.extend(_refs("Evidence", assessment.what_happened_refs))
+    blocks.extend(_section("What happened", happened))
 
-def project(assessment: Assessment) -> Brief:
-    """Render the brief. Empty sections are omitted; populated ones carry everything they hold."""
-    sections: list[BriefSection] = []
-
-    lead = [_conclusion_line(assessment)]
-    action = _next_action(assessment)
-    if action:
-        lead.append(f"Next action: {action}")
-    sections.append(_section("current_conclusion_and_next_action", lead))
-
-    happened = assessment.what_happened
-    sections.append(_section("what_happened", [happened.statement], list(happened.citations)))
-
-    candidate_lines = _candidate_lines(assessment)
-    if candidate_lines:
-        sections.append(_section("what_may_be_causing_it", candidate_lines))
-
-    evidence_lines, evidence_citations = _evidence_lines(assessment)
-    if evidence_lines:
-        sections.append(
-            _section("supporting_and_weakening_evidence", evidence_lines, evidence_citations)
-        )
-
-    unknown = [str(limitation) for limitation in assessment.limitations]
-    if assessment.unresolved_discriminator:
-        unknown.append(f"Most useful next check: {assessment.unresolved_discriminator}")
-    if unknown:
-        sections.append(_section("what_remains_unknown", unknown))
-
-    if assessment.historical_comparison is not None:
-        history = assessment.historical_comparison
-        sections.append(_section("what_history_says", [history.statement], list(history.citations)))
-
-    if assessment.recommendations:
-        lines = []
-        for horizon in (Horizon.NOW, Horizon.SOON, Horizon.LATER):
-            for rec in assessment.recommendations:
-                if rec.horizon is not horizon:
-                    continue
-                provenance = rec.provenance.value.replace("_", " ")
-                confirm = f" Confirm by: {rec.confirm_signal}" if rec.confirm_signal else ""
-                lines.append(
-                    f"{_HORIZON_LABELS[horizon]}: {rec.action} ({rec.kind.value}, {provenance})"
-                    f"{confirm}"
-                )
-        sections.append(_section("what_to_do", lines))
-
-    sources = sorted({ref for c in assessment.candidates() for ref in c.supporting + c.weakening})
-    sources += sorted(assessment.relevant_knowledge)
-    if sources:
-        sections.append(_section("sources_limitations_and_diagnostics", sources))
-
-    return Brief(
-        investigation_id=assessment.investigation_id,
-        turn_id=assessment.turn_id,
-        sections=sections,
+    causes = [line for candidate in assessment.candidates for line in _candidate_lines(candidate)]
+    contributing = len(assessment.established) > 1
+    blocks.extend(
+        _section("Contributing causes" if contributing else "What may be causing it", causes)
     )
+
+    # Immediate actions first, then the rest, each stated with where it came from. An action that
+    # says no immediate action is required is an entry like any other and is rendered as one.
+    actions: list[str] = []
+    for immediate in (True, False):
+        for action in assessment.actions:
+            if action.now is not immediate:
+                continue
+            reference = action.knowledge_ref
+            source = f"guidance: {reference}" if reference else "own judgement"
+            actions.append(f"{'Now' if immediate else 'Later'}: {action.action} ({source})")
+    blocks.extend(_section("What to do", actions))
+
+    blocks.extend(_section("What remains unknown", [f"- {text}" for text in assessment.unknowns]))
+    blocks.extend(
+        _section("What could not be established", [f"- {text}" for text in assessment.limitations])
+    )
+    if assessment.next_check:
+        blocks.extend(_section("Most useful next check", [assessment.next_check]))
+
+    if assessment.history:
+        history = [assessment.history, *_refs("Sources", assessment.history_refs)]
+        blocks.extend(_section("What history says", history))
+    blocks.extend(_section("Knowledge used", _refs("References", assessment.knowledge_used)))
+
+    return Brief(outcome=outcome, text="\n".join(blocks).strip())
