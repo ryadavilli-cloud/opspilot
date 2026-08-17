@@ -14,7 +14,9 @@ from pathlib import Path
 from fake_knowledge import knowledge_retriever
 from fake_operational_records import corpus_records
 
-from opspilot.retrieval.retriever import Passage
+from opspilot.evidence.admission import admit
+from opspilot.evidence.operations import EvidenceSet
+from opspilot.retrieval.retriever import PASSAGE_BUDGET, Passage
 from opspilot.tools.contracts import Completeness, ExecutionOutcome
 from opspilot.tools.service import ToolService
 
@@ -103,3 +105,48 @@ def test_search_reports_unavailable_when_the_source_cannot_be_reached():
     assert r.outcome is ExecutionOutcome.UNAVAILABLE
     assert r.completeness is Completeness.NOT_APPLICABLE
     assert r.results == []
+
+
+# --- what retrieval is, once admission sees it --------------------------------------------------
+def test_a_retrieval_that_cannot_execute_yields_a_limitation_and_no_passage():
+    """A retrieval that did not answer leaves its question open, exactly like any other capability
+    that did not answer. Passing silently would let an investigation read as though the knowledge
+    had been consulted and found wanting."""
+    svc = ToolService(
+        corpus_records(), retriever_factory=lambda: knowledge_retriever(unreachable=True)
+    )
+    evidence = EvidenceSet(investigation_id="inv-1")
+
+    admitted = admit(
+        svc.search_runbooks(query="payment timeout"),
+        evidence=evidence,
+        question="does a runbook describe this failure",
+    )
+
+    assert admitted == [] and evidence.observations == []
+    limitation = evidence.limitations[0]
+    assert limitation.question == "does a runbook describe this failure"
+    assert limitation.capability == "search_runbooks"
+    assert [op.capability for op in evidence.operations] == ["search_runbooks"]
+
+
+def test_a_successful_retrieval_produces_knowledge_rather_than_operational_evidence():
+    """Passages join the knowledge set. A document cannot observe the running system, so nothing
+    retrieval returns may become an observation about the current incident."""
+    evidence = EvidenceSet(investigation_id="inv-1")
+    result = _svc().search_runbooks(query="payment authorizations timing out")
+    assert result.answered and result.results
+
+    admitted = admit(result, evidence=evidence, question="does a runbook describe this failure")
+
+    assert admitted == [] and evidence.observations == []
+    assert evidence.limitations == []
+    assert [op.outcome for op in evidence.operations] == [ExecutionOutcome.SUCCEEDED]
+
+
+def test_the_passage_budget_is_not_a_number_a_caller_may_raise():
+    """Expressible is the point: a request above the budget has no valid form rather than being
+    accepted and quietly clipped."""
+    over = _svc().search_runbooks(query="payment timeout", k=PASSAGE_BUDGET + 1)
+    assert over.outcome is ExecutionOutcome.REJECTED
+    assert len(_svc().search_runbooks(query="payment timeout").results) <= PASSAGE_BUDGET
