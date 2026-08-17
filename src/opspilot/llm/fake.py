@@ -1,8 +1,7 @@
-"""A deterministic fake `ChatModel` — canned responses, no network, no dependency.
+"""A deterministic fake chat model: canned responses, no network, no dependency.
 
-The offline stand-in for the model abstraction: drive the LLM diagnosis/triage nodes in tests and
-demos without a live provider or a recorded cassette. Give it either a list of responses (returned
-in order; the last repeats once exhausted) or a callable that maps the messages to a response.
+The offline stand-in for the seam. Give it either a list of responses, returned in order with the
+last repeating once exhausted, or a callable mapping the messages to a response.
 """
 
 from __future__ import annotations
@@ -13,13 +12,13 @@ from opspilot.llm.base import ChatMessage, ChatResult
 
 
 class FakeChatModel:
-    model_id = "fake"
+    deployment = "fake"
 
     def __init__(self, responses: Sequence[str] | Callable[[list[ChatMessage]], str]) -> None:
         self._responses = responses
         self._index = 0
 
-    def complete(self, messages: list[ChatMessage], *, temperature: float = 0.0) -> ChatResult:
+    def complete(self, task: str, messages: list[ChatMessage]) -> ChatResult:
         if callable(self._responses):
             text = self._responses(messages)
         else:
@@ -27,4 +26,4 @@ class FakeChatModel:
                 raise ValueError("FakeChatModel has no responses")
             text = self._responses[min(self._index, len(self._responses) - 1)]
             self._index += 1
-        return ChatResult(text=text, model_id=self.model_id)
+        return ChatResult(text=text, task=task, deployment=self.deployment)

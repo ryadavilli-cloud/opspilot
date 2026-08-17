@@ -108,7 +108,9 @@ class LLMTriager:
         )
         # An unparseable response or an unknown `intent` (not in the closed set) fails closed.
         try:
-            raw = extract_json_object(self._model.complete([ChatMessage("user", rendered)]).text)
+            raw = extract_json_object(
+                self._model.complete("triage", [ChatMessage("user", rendered)]).text
+            )
             decision = TriageResponse.model_validate(raw)
         except (ValueError, ValidationError):
             return TriageDecision(intent=Intent.NOVEL_INVESTIGATION.value)

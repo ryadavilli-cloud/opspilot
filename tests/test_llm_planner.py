@@ -1,4 +1,4 @@
-"""LLMPlanner: parsing + fail-closed selection are ML-free; one live qwen check.
+"""LLMPlanner: parsing and fail-closed selection, all of it without a model.
 
 The read-only registry is the hard boundary: the planner must never surface a mutating or
 hallucinated tool, whatever the model returns.
@@ -21,13 +21,13 @@ CTX = DiagnosisContext(
 
 
 class ScriptedModel:
-    model_id = "scripted"
+    deployment = "scripted"
 
     def __init__(self, text: str) -> None:
         self._text = text
 
-    def complete(self, messages, *, temperature=0.0):
-        return ChatResult(text=self._text, model_id=self.model_id)
+    def complete(self, task, messages):
+        return ChatResult(text=self._text, task=task, deployment=self.deployment)
 
 
 def test_extract_json_handles_think_and_fences():
@@ -186,17 +186,3 @@ def test_report_claims_are_admitted_and_carry_their_support_refs():
     claims = _conclude_with_causal().report_claims
     assert [c.kind for c in claims] == ["recommendation"]
     assert claims[0].support_refs == ["metrics:payment-api:p95@t"]
-
-
-@pytest.mark.llm
-def test_qwen_selects_a_read_only_tool_on_inc004():
-    from opspilot.guardrails.policies import is_read_only
-    from opspilot.llm.client import build_chat_model
-
-    pytest.importorskip("openai")
-    planner = LLMPlanner(build_chat_model("ollama", model="qwen3:8b"))
-    plan = planner.plan(CTX, answered=set(), observations=[])
-    print("\nqwen decision:", planner.last_decision)
-    assert planner.last_decision is not None
-    if plan.questions:  # a first step, not a premature 'done'
-        assert is_read_only(plan.questions[0].call.tool)

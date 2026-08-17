@@ -4,15 +4,22 @@ Drives the real streaming endpoint rather than rebuilding the prompt by hand. Re
 request up by a content hash of the messages, so anything that assembles them differently here
 would record a cassette the replay test could never hit.
 
-Only the model is live. The operational records come from the authored corpus fake, so this
-touches no deployed container and no Azure resource.
+Only the model call is live, and it goes through the same Azure adapter the application ships
+with, so the recorded response comes from the provider boundary the deployment actually uses. The
+operational records come from the authored corpus fake, so this touches no deployed container and
+no other Azure resource.
 
 The cassette is invalidated by any change to the synthesis prompt, the evidence digest, or the
 evidence plan, because each of those moves the messages. That is loud rather than silent: replay
 raises with the cassette named. Re-record after such a change, not before.
 
-Run (spends against the configured API key):
-  uv run python eval/record_turn_synthesis.py
+Authentication is keyless: the adapter authenticates as the environment's identity, so a local run
+needs `az login` and an identity holding the data-plane role on the account. `AZURE_OPENAI_ENDPOINT`
+names the account.
+
+Run (spends against the configured Azure OpenAI deployment):
+  AZURE_OPENAI_ENDPOINT=https://<account>.openai.azure.com/ \
+    uv run --group llm python eval/record_turn_synthesis.py
 """
 
 from __future__ import annotations
@@ -41,19 +48,18 @@ from opspilot.tools.service import ToolService  # noqa: E402
 # inc-005: a Redis eviction storm. Its authored answer key records no deployment anywhere in the
 # window, so the run exercises an authoritative absence as well as ordinary admitted evidence.
 INCIDENT = "inc-005"
-# The model the deployment runs (`infra/main.bicep`), so the recorded response is representative of
-# what the hosted app produces. A reasoning model: the client sends `reasoning_effort` and omits
-# temperature and seed, and the manifest pins that effort so a change to it invalidates the
-# cassette rather than silently replaying a response recorded under a different setting.
-RECORD_MODEL = "gpt-5-mini"
+# The chat deployment the application calls (`infra/main.bicep`). A reasoning deployment: the
+# client sends `reasoning_effort`, and the manifest pins that effort so a change to it invalidates
+# the cassette rather than silently replaying a response recorded under a different setting.
+RECORD_DEPLOYMENT = "gpt-5-mini"
 CASSETTE = REPO_ROOT / "eval" / "cassettes" / "turn_synthesis.json"
 
 
 def main() -> None:
     CASSETTE.parent.mkdir(parents=True, exist_ok=True)
-    # The provider is named rather than config-resolved: the local default is Ollama, and a
-    # cassette recorded against it would certify a model the deployment does not run.
-    model = RecordingChatModel(build_chat_model("openai", model=RECORD_MODEL), CASSETTE)
+    # The provider and deployment are named rather than config-resolved, so a local environment
+    # pointed somewhere else cannot quietly record a cassette against it.
+    model = RecordingChatModel(build_chat_model("azure", deployment=RECORD_DEPLOYMENT), CASSETTE)
     records = corpus_records()
 
     app.dependency_overrides[get_operational_records] = lambda: records
@@ -72,7 +78,7 @@ def main() -> None:
         app.dependency_overrides.pop(get_synthesis_model, None)
 
     print(f"incident:     {INCIDENT}")
-    print(f"model:        {model.model_id}")
+    print(f"deployment:   {model.deployment}")
     print(f"stream events: {len(events)}")
     print(f"wrote {CASSETTE.relative_to(REPO_ROOT)}")
 

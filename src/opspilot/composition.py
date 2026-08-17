@@ -44,13 +44,12 @@ def _single_agent_blocker() -> str | None:
     if importlib.util.find_spec("openai") is None:
         return "optional 'llm' dependency group is not installed (openai SDK missing)"
     provider = config.LLM_PROVIDER.lower()
-    if provider not in ("ollama", "openai", "azure"):
-        return f"provider {provider!r} cannot back single_agent (need ollama|openai|azure)"
-    if provider == "azure":
-        if not config.AZURE_OPENAI_ENDPOINT:
-            return "provider=azure but AZURE_OPENAI_ENDPOINT is not set"
-        if not config.AZURE_OPENAI_API_KEY and importlib.util.find_spec("azure.identity") is None:
-            return "provider=azure keyless but the azure-identity package is not installed"
+    if provider != "azure":
+        return f"provider {provider!r} cannot back single_agent (need azure)"
+    if not config.AZURE_OPENAI_ENDPOINT:
+        return "provider=azure but AZURE_OPENAI_ENDPOINT is not set"
+    if importlib.util.find_spec("azure.identity") is None:
+        return "provider=azure but the azure-identity package is not installed"
     return None
 
 
@@ -83,8 +82,8 @@ def build_diagnosis(implementation: str | None = None) -> DiagnosisComposition:
         from opspilot.llm.client import TracedChatModel, build_chat_model
         from opspilot.triage import build_triager
 
-        # provider/model resolved from config (azure in prod); wrapped so every model call emits a
-        # usage span, emitted here and not in build_chat_model, so factory/eval stay untraced.
+        # Wrapped so every model call emits a usage span, emitted here and not in
+        # build_chat_model, so the factory and recording paths stay untraced.
         model = TracedChatModel(build_chat_model())
         planner = build_planner("single_agent", model=model)
         triager = build_triager("single_agent", model=model)
@@ -98,5 +97,5 @@ def build_diagnosis(implementation: str | None = None) -> DiagnosisComposition:
         planner=planner,
         triager=triager,
         provider=config.LLM_PROVIDER.lower(),
-        model_id=getattr(model, "model_id", None),
+        model_id=getattr(model, "deployment", None),
     )

@@ -119,5 +119,5 @@ pythonpath = ["src", "tests"]
 testpaths = ["tests"]
 markers = [
     "reranker: exercises the bge-reranker-v2-m3 cross-encoder (heavy ~2.2GB model; excluded from the CI gate lane with -m 'not reranker')",
-    "llm: hits a live LLM provider (Ollama/OpenAI); excluded from the CI gate lane with -m 'not llm'. Wiring is covered deterministically by cassette replay, which needs no live model.",
+    "llm: calls the live Azure OpenAI chat deployment; excluded from the CI gate lane with -m 'not llm'. Wiring is covered deterministically by cassette replay, which needs no live model.",
 ]

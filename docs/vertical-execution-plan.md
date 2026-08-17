@@ -111,7 +111,10 @@ models, filtering, and scaffolding are absent.
 
 ## V2. Final model seam and incident intake
 
-**State:** Not started.
+**State:** Complete. Model access is one Azure adapter with the fake and the cassette, a call takes
+a task label and messages, and every call accounts for its deployment, latency, and token usage;
+the incident context is the four fields with `incident_id` required. The cassette is re-recorded
+through the shipping adapter. See `docs/status.md`.
 
 **Builds.** The two seams the graph is built against and must not change inside the graph PR. Model
 access reduces to one Azure adapter, one fake, and cassette record and replay, taking a task label
@@ -124,9 +127,10 @@ records them; the final assessment proposal shape.
 
 **Provides.** The final model seam and the final incident context.
 
-**If present, remove.** The Ollama and generic-OpenAI branches, `LLM_SEED`, and the planner,
-claim, report, triage, and tool-call response models in `llm/schema.py`; the `llm` marker's
-provider text; `InteractionKind`, `supplied_context`, and the optionality of `incident_id`.
+**If present, remove.** The Ollama and generic-OpenAI branches, their endpoint and key settings,
+and `LLM_SEED`; the `llm` marker's provider text; `InteractionKind`, `supplied_context`, and the
+optionality of `incident_id`. The response models in `llm/schema.py` are not removed here: the
+legacy diagnosis path still imports them, and they are retired with it.
 
 **Proof unique to this slice.** Every model call records its task label, deployment, latency, and
 usage; the fake and cassette stand in for the adapter without a live service; a raw incident
@@ -207,11 +211,13 @@ approval, and polling path: `investigations.py`, `cosmos_investigations.py`, `re
 `api.py`, `CommittedDecision`, idempotency, leases, fencing, outbox, job-status vocabulary,
 publication identity, the approval-bound report hash. The legacy diagnosis path: root
 `contracts.py`, `diagnosis/` (nine modules), `triage.py`, `composition.py`,
-`guardrails/policies.py`, the `OPSPILOT_IMPLEMENTATION` setting and selector code, the explicit
-`langchain-core` dependency. The fixed synthesis path: `turn/synthesis_step.py` and the stub-backed
-branch of the streaming route. Hand-rolled authorization code: `auth.py`, `ReviewerPrincipal`,
-`pyjwt[crypto]`, the `OPSPILOT_API_AUDIENCE` and `OPSPILOT_APPROVER_ROLE` settings. The console:
-`static/console.html`, `/console`, `/console/config`, the `OPSPILOT_CONSOLE_CLIENT_ID` setting.
+`guardrails/policies.py`, the planner, claim, report, triage, and tool-call response models in
+`llm/schema.py` and `tests/test_schema.py`, the `OPSPILOT_IMPLEMENTATION` setting and selector
+code, the explicit `langchain-core` dependency. The fixed synthesis path: `turn/synthesis_step.py`
+and the stub-backed branch of the streaming route. Hand-rolled authorization code: `auth.py`,
+`ReviewerPrincipal`, `pyjwt[crypto]`, the `OPSPILOT_API_AUDIENCE` and `OPSPILOT_APPROVER_ROLE`
+settings. The console: `static/console.html`, `/console`, `/console/config`, the
+`OPSPILOT_CONSOLE_CLIENT_ID` setting.
 Plural-turn identity and persistence: `turn/identity.py`, `TurnIdentity`, `turn_id` on the evidence
 set, spans, and stream events, the close marker folded into the terminal event; `CompletedTurn`,
 `completed_turns()`, `turn()`, `CommitOutcome`, `CommitResult`, `DeliveryOutcome`,
@@ -461,9 +467,8 @@ and benign fixture as `status.md` records them.
 
 **Provides.** The designed evaluation capability and its report.
 
-**If present, remove.** `eval/scenario_eval.py`, `eval/record_single_agent.py`,
-`eval/cassettes/single_agent.json`, `eval/baselines/*.json`, `eval/harness.py`, `EvalTargets` and
-`TARGETS` in `config.py`, `tests/test_scenario_gate.py`, `tests/test_single_agent_gate.py`,
+**If present, remove.** `eval/scenario_eval.py`, `eval/baselines/slice_baseline.json`,
+`eval/harness.py`, `EvalTargets` and `TARGETS` in `config.py`, `tests/test_scenario_gate.py`,
 `tests/test_scaffold.py`; `eval/golden_incidents.json`, `eval/golden_retrieval.json`, the branches
 of `data/answer_key/build_goldens.py` that emit them, and the sync assertions in
 `tests/test_answer_key.py` that read them.

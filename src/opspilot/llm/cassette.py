@@ -1,10 +1,10 @@
-"""Record/replay for `ChatModel` — how LLM-driven tests gate CI deterministically.
+"""Record and replay for the chat seam: how model-driven tests gate CI deterministically.
 
-CI cannot reach Ollama or Azure Foundry, and model output is non-deterministic, so the LLM wiring
-tests replay a committed *cassette*: a JSON file of (request -> response) interactions recorded once
-against a live model. `ReplayChatModel` looks up each request by a stable content hash and returns
-the recorded `ChatResult`; a request with no recorded match fails loudly (re-record the cassette).
-`RecordingChatModel` wraps a live model to capture a cassette locally.
+CI cannot reach Azure OpenAI, and model output is not reproducible, so the tests that need a real
+response replay a committed *cassette*: a JSON file of recorded interactions. `ReplayChatModel`
+looks each request up by a stable content hash and returns the recorded result; a request with no
+recorded match fails loudly rather than answering with something else. `RecordingChatModel` wraps
+the live adapter to capture a cassette locally.
 
 Cassettes store the request messages verbatim so a reviewer can read what the model was asked; the
 hash keys the lookup so replay is order-independent.
@@ -25,21 +25,21 @@ class CassetteDriftError(RuntimeError):
     """A cassette was recorded under a different behaviour manifest than the code now uses.
 
     Raised at load time, naming the drifted fields, rather than letting the run proceed to a
-    per-request miss (or worse, a hit that replays a response the current inputs would never
-    produce). See `llm/manifest.py` for what the manifest covers and why.
+    per-request miss or, worse, a hit that replays a response the current inputs would never
+    produce.
     """
 
 
-def request_key(manifest: dict[str, str], messages: list[ChatMessage], temperature: float) -> str:
-    """Stable content hash of a request — the replay lookup key. Canonical JSON so it is
+def request_key(manifest: dict[str, str], task: str, messages: list[ChatMessage]) -> str:
+    """Stable content hash of a request, and the replay lookup key. Canonical JSON so it is
     reproducible across processes and machines.
 
-    The manifest is part of the key, not just a load-time check, so two cassettes recorded under
+    The manifest is part of the key, not only a load-time check, so two cassettes recorded under
     different settings can never collide even if someone merges them by hand.
     """
     payload = {
         "manifest": manifest_digest(manifest),
-        "temperature": round(temperature, 6),
+        "task": task,
         "messages": [{"role": m.role, "content": m.content} for m in messages],
     }
     blob = json.dumps(payload, sort_keys=True, ensure_ascii=False)
@@ -49,9 +49,11 @@ def request_key(manifest: dict[str, str], messages: list[ChatMessage], temperatu
 def _result_to_dict(r: ChatResult) -> dict[str, object]:
     return {
         "text": r.text,
-        "model_id": r.model_id,
+        "task": r.task,
+        "deployment": r.deployment,
         "prompt_version": r.prompt_version,
         "finish_reason": r.finish_reason,
+        "latency_ms": r.latency_ms,
         "usage": r.usage,
     }
 
@@ -59,25 +61,27 @@ def _result_to_dict(r: ChatResult) -> dict[str, object]:
 def _result_from_dict(d: dict[str, Any]) -> ChatResult:
     return ChatResult(
         text=d["text"],
-        model_id=d.get("model_id", ""),
+        task=d.get("task", ""),
+        deployment=d.get("deployment", ""),
         prompt_version=d.get("prompt_version", ""),
         finish_reason=d.get("finish_reason", ""),
+        latency_ms=d.get("latency_ms", 0.0),
         usage=d.get("usage", {}),
     )
 
 
 class ReplayChatModel:
-    """Serves recorded responses from a cassette. Unknown request -> KeyError (re-record).
+    """Serves recorded responses from a cassette. An unknown request raises, so re-record.
 
-    Load fails closed on manifest drift: a cassette recorded under a different `reasoning_effort`,
-    API version, or prompt version is stale by definition, and replaying it would certify
-    behaviour the current code cannot produce.
+    Load fails closed on manifest drift: a cassette recorded under a different reasoning effort,
+    API version, or prompt version is stale by definition, and replaying it would certify behaviour
+    the current code cannot produce.
     """
 
     def __init__(self, cassette_path: str | Path) -> None:
         self._path = Path(cassette_path)
         data = json.loads(self._path.read_text(encoding="utf-8"))
-        self.model_id = data.get("model_id", "replay")
+        self.deployment = data.get("deployment", "replay")
 
         recorded = data.get("manifest")
         if recorded is None:
@@ -85,9 +89,9 @@ class ReplayChatModel:
                 f"{self._path.name} predates the replay manifest and cannot be validated; "
                 "re-record it against a live model"
             )
-        # Rebuild around the RECORDED model so the comparison isolates the settings that drifted,
-        # not the model itself, which replay never resolves live.
-        drift = manifest_drift(recorded, behaviour_manifest(model_id=self.model_id))
+        # Rebuilt around the RECORDED deployment so the comparison isolates the settings that
+        # drifted, not the deployment itself, which replay never resolves live.
+        drift = manifest_drift(recorded, behaviour_manifest(deployment=self.deployment))
         if drift:
             raise CassetteDriftError(
                 f"{self._path.name} was recorded under different behaviour-affecting settings; "
@@ -96,13 +100,8 @@ class ReplayChatModel:
         self._manifest = recorded
         self._by_key = {i["key"]: i["response"] for i in data.get("interactions", [])}
 
-    def complete(
-        self,
-        messages: list[ChatMessage],
-        *,
-        temperature: float = 0.0,
-    ) -> ChatResult:
-        key = request_key(self._manifest, messages, temperature)
+    def complete(self, task: str, messages: list[ChatMessage]) -> ChatResult:
+        key = request_key(self._manifest, task, messages)
         try:
             return _result_from_dict(self._by_key[key])
         except KeyError:
@@ -117,25 +116,20 @@ class RecordingChatModel:
 
     def __init__(self, inner: ChatModel, cassette_path: str | Path) -> None:
         self._inner = inner
-        self.model_id = inner.model_id
+        self.deployment = inner.deployment
         self._path = Path(cassette_path)
         self._interactions: list[dict[str, object]] = []
         # Captured once at construction: the manifest describes the run that produced the
         # responses, so it must not be re-read per call and drift mid-recording.
-        self._manifest = behaviour_manifest(model_id=self.model_id)
+        self._manifest = behaviour_manifest(deployment=self.deployment)
 
-    def complete(
-        self,
-        messages: list[ChatMessage],
-        *,
-        temperature: float = 0.0,
-    ) -> ChatResult:
-        result = self._inner.complete(messages, temperature=temperature)
+    def complete(self, task: str, messages: list[ChatMessage]) -> ChatResult:
+        result = self._inner.complete(task, messages)
         self._interactions.append(
             {
-                "key": request_key(self._manifest, messages, temperature),
+                "key": request_key(self._manifest, task, messages),
                 "request": {
-                    "temperature": temperature,
+                    "task": task,
                     "messages": [{"role": m.role, "content": m.content} for m in messages],
                 },
                 "response": _result_to_dict(result),
@@ -149,7 +143,7 @@ class RecordingChatModel:
         self._path.write_text(
             json.dumps(
                 {
-                    "model_id": self.model_id,
+                    "deployment": self.deployment,
                     "manifest": self._manifest,
                     "interactions": self._interactions,
                 },

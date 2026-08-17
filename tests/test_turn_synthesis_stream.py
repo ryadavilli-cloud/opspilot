@@ -33,11 +33,12 @@ class _ScriptedModel:
         self.payload = payload
         self.calls = 0
 
-    def complete(self, messages, **_):
+    def complete(self, task, messages):
         self.calls += 1
+        self.task = task
         self.prompt = messages[0].content
         self.evidence_shown = messages[1].content
-        return ChatResult(text=json.dumps(self.payload), model_id="fake")
+        return ChatResult(text=json.dumps(self.payload), task=task, deployment="fake")
 
 
 def _events(client: TestClient, incident: str = INCIDENT) -> list[dict]:
