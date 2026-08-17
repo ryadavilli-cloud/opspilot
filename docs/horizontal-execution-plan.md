@@ -41,7 +41,13 @@ repository as `docs/status.md` describes it to the system the governing design d
 
 ## H1. Evidence foundation
 
-**State:** Not started.
+**State:** Complete.
+
+Everything this step builds and every removal it names holds, as `status.md` records, and the
+hosted proof has run: a deployed investigation admitted through this code and delivered a brief
+whose every citation was assigned by admission. `incident:` and `query:` were exercised against the
+real corpus rather than hosted, because the streaming request's fixed evidence plan reaches neither
+capability; they become reachable hosted when the Evidence Investigator chooses what to call.
 
 **Builds.** The final evidence contract, end to end below the agents. The reference grammar gains
 the three evidence forms the design fixes for alerts, the incident record, and aggregate query
@@ -85,7 +91,12 @@ values, adapters take typed parameters, and the named wrappers and superseded ex
 
 ## H2. Retrieval, final
 
-**State:** Not started.
+**State:** Partial.
+
+*Already present.* The retrieval adapter in `tools/search.py` returns the retriever's passage shape
+unreshaped, and the fourth shape it used to convert into is absent.
+
+*Remaining.* Everything else this step builds and removes.
 
 **Builds.** The final retrieval behavior over the knowledge container: embed the question, vector
 search plus the in-process lexical pass over the same category-filtered candidates, reciprocal-rank
@@ -129,15 +140,17 @@ failure is a limitation, and the reranker implementation, dependencies, marker, 
 refuses an unusable proposal rather than thinning one; one grounding function returns issues over
 the assessment, the admitted evidence, the retrieved knowledge, and the recorded limitations; the
 brief renders deterministically with the outcome, contributing causes where more than one candidate
-is established, and no probability. The synthesis cassette is re-recorded against the new proposal
-shape. Of the removals below, the assessment types, the grounding contract layer, the semantic
-filtering, and the `model_construct()` scaffolding are absent. See `docs/status.md`.
+is established, and no probability. The synthesis prompt is the new proposal shape. Of the removals
+below, the assessment types, the grounding contract layer, the semantic filtering, and the
+`model_construct()` scaffolding are absent. See `docs/status.md`.
 
-*Remaining.* The model seam still carries the Ollama and generic-OpenAI branches, `LLM_SEED`, the
-planner, claim, report, triage, and tool-call response models in `llm/schema.py`, and the `llm`
-marker's provider text; reducing it to one Azure adapter with the fake and the cassette is the
-outstanding build. Then the hosted effect: deploy and confirm one hosted investigation delivers a
-brief with the designed sections and no probability.
+The hosted effect has run: a deployed investigation delivered a brief with the designed sections
+and no probability.
+
+*Remaining.* Only the model seam, which still carries the Ollama and generic-OpenAI branches,
+`LLM_SEED`, the planner, claim, report, triage, and tool-call response models in `llm/schema.py`,
+and the `llm` marker's provider text. Reducing it to one Azure adapter with the fake and the
+cassette is the outstanding build.
 
 **Builds.** The final assessment-producing capability as pure functions, called by the graph later
 without change. The assessment shape becomes the designed field set once: `what_happened`, ordered
@@ -365,8 +378,8 @@ of the runtime.
 
 **Provides.** The one designed protocol boundary with a parity proof.
 
-**If present, remove.** Any superseded MCP exposure still present (the three legacy tools were
-removed with the evidence foundation).
+**If present, remove.** Nothing: the three legacy tools and the server that fronted them went with
+the evidence foundation, so this step builds against no existing exposure.
 
 **Proof unique to this step.** For the same arguments the MCP path and the direct path return the
 same admitted result; the MCP path refuses any write-shaped request; the activity event for an MCP

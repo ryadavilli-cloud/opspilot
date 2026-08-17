@@ -10,7 +10,6 @@ Run:  python eval/scenario_eval.py     # regenerates the baseline
 
 from __future__ import annotations
 
-import asyncio
 import json
 from pathlib import Path
 from typing import Any
@@ -121,28 +120,6 @@ def _score_one(scenario: dict, state: dict, root_by_incident: dict[str, str]) ->
     }
 
 
-def _mcp_parity_ok(service: ToolService | None = None) -> bool:
-    from mcp.shared.memory import create_connected_server_and_client_session
-
-    from opspilot.mcp.server import build_server
-
-    svc = service or ToolService()
-    server = build_server(svc)
-    direct = json.loads(svc.call("get_incident", incident_id="inc-001").model_dump_json())
-
-    async def _go() -> dict:
-        async with create_connected_server_and_client_session(server) as client:
-            result = await client.call_tool("get_incident", {"incident_id": "inc-001"})
-            return json.loads(result.content[0].text)
-
-    over_mcp = asyncio.run(_go())
-    return (
-        over_mcp["outcome"] == direct["outcome"]
-        and over_mcp["completeness"] == direct["completeness"]
-        and over_mcp["results"] == direct["results"]
-    )
-
-
 def evaluate(
     implementation: str = "deterministic", *, model: Any = None, service: ToolService | None = None
 ) -> dict[str, Any]:
@@ -213,7 +190,6 @@ def evaluate(
         "tool_selection_accuracy": mean("tool_selection"),
         "loop_termination_accuracy": mean("loop_termination"),
         "iteration_limit_compliance": mean("iteration_ok"),
-        "mcp_parity": _mcp_parity_ok(svc),
     }
 
 

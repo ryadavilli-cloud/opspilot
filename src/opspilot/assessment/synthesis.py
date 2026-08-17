@@ -19,8 +19,9 @@ decides what an unusable proposal costs.
 from __future__ import annotations
 
 import json
+from typing import Any
 
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import BaseModel, Field, ValidationError, model_validator
 
 from opspilot.assessment.contracts import Action, Assessment, Candidate, SupportLabel
 from opspilot.evidence.references import try_parse
@@ -38,7 +39,24 @@ class UnusableProposal(ValueError):
     so the caller can spend a correction instead of publishing something nothing proposed."""
 
 
-class CandidateProposal(BaseModel):
+class _Proposed(BaseModel):
+    """A shape the model writes, where a field it has nothing for may arrive as `null`.
+
+    Several of these fields are optional, and `null` is how JSON says a value is absent. The
+    defaults below already say the same thing, so the two encodings are read as one. Refusing the
+    whole proposal over the difference would discard a complete assessment for a punctuation
+    choice, and refusal is meant for output nothing can be made of.
+    """
+
+    @model_validator(mode="before")
+    @classmethod
+    def _null_means_absent(cls, data: Any) -> Any:
+        if isinstance(data, dict):
+            return {key: value for key, value in data.items() if value is not None}
+        return data
+
+
+class CandidateProposal(_Proposed):
     statement: str = ""
     label: str = ""
     established: bool = False
@@ -46,13 +64,13 @@ class CandidateProposal(BaseModel):
     weakening: list[str] = Field(default_factory=list)
 
 
-class ActionProposal(BaseModel):
+class ActionProposal(_Proposed):
     action: str = ""
     now: bool = False
     knowledge_ref: str = ""
 
 
-class UnresolvedQuestion(BaseModel):
+class UnresolvedQuestion(_Proposed):
     """What remains unanswered and the kind of evidence that could answer it.
 
     Routing metadata only: the same matter is stated in `unknowns`, so the assessment is complete
@@ -63,7 +81,7 @@ class UnresolvedQuestion(BaseModel):
     evidence_kind: str = ""
 
 
-class AssessmentProposal(BaseModel):
+class AssessmentProposal(_Proposed):
     """The assessment's shape as the model offers it: loose strings, plus the one routing field."""
 
     what_happened: str = ""

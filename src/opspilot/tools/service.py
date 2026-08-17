@@ -1,17 +1,22 @@
-"""ToolService — the in-process tool boundary the agent binds to.
+"""ToolService: the in-process capability registry the agents reach evidence through.
 
 Wires the read-only capabilities in-process over the `operational-records` container (the six
-deterministic capabilities) and a lazily-built `Retriever` over the `knowledge` container (the two
-retrieval capabilities). `call()` is the allowlisted, dispatch-by-name shape an MCP client uses; the
-MCP server (see `opspilot.mcp`) fronts these same methods: transport swap, not a rewrite. The
-retriever is built on first retrieval call and cached; if it cannot be reached (Cosmos or the
-embedding deployment unavailable), the search tools return a sanitized `unavailable` rather than
-breaking the service.
+deterministic capabilities and the governed structured query) and a lazily-built `Retriever` over
+the `knowledge` container (the two retrieval capabilities). `call()` is the allowlisted,
+dispatch-by-name shape; a capability is reachable only by being registered here, and registration
+is a static mapping with no discovery. The retriever is built on first retrieval call and cached;
+if it cannot be reached (Cosmos or the embedding deployment unavailable), the search capabilities
+return a sanitized `unavailable` rather than breaking the service.
 
-Every capability call carries a deadline this service supplies. The deadline is a bound, so it is
-established by deterministic code and is unreachable from a prompt (`code-guidelines.md` §7): a
-request naming its own `deadline_s` is refused at dispatch rather than honored or silently dropped.
-Until the turn controller owns the turn's remaining time, the configured ceiling supplies it.
+Every capability is invoked through `run_tool`, which is where its typed parameters become its
+validation and where what happened becomes the two-axis envelope. There is no request model per
+capability: the implementation's parameter list is the contract, and an argument that does not fit
+it is refused before the body runs.
+
+Every call also carries a deadline this service supplies. The deadline is a bound, so it is
+established by deterministic code and is unreachable from a prompt: a request naming its own
+`deadline_s` is refused at dispatch rather than honored or silently dropped. Until the investigation
+owns its remaining time, the configured ceiling supplies it.
 """
 
 from __future__ import annotations
@@ -26,7 +31,7 @@ from opspilot.tools.alerts import get_correlated_alerts
 from opspilot.tools.contracts import ExecutionOutcome, ToolResult
 from opspilot.tools.dependencies import get_service_dependencies
 from opspilot.tools.deployments import get_deployments
-from opspilot.tools.errors import error_result
+from opspilot.tools.errors import error_result, run_tool
 from opspilot.tools.incidents import get_incident
 from opspilot.tools.logs import query_logs
 from opspilot.tools.metrics import get_metrics
@@ -66,31 +71,48 @@ class ToolService:
 
     # --- deterministic capabilities (operational-records container) ---------------------------
     def get_incident(self, **kwargs: Any) -> ToolResult[Any]:
-        return get_incident(self.records, deadline_s=self.deadline_s, **kwargs)
+        return run_tool("get_incident", get_incident, self.records, self.deadline_s, **kwargs)
 
     def get_correlated_alerts(self, **kwargs: Any) -> ToolResult[Any]:
-        return get_correlated_alerts(self.records, deadline_s=self.deadline_s, **kwargs)
+        return run_tool(
+            "get_correlated_alerts",
+            get_correlated_alerts,
+            self.records,
+            self.deadline_s,
+            **kwargs,
+        )
 
     def get_deployments(self, **kwargs: Any) -> ToolResult[Any]:
-        return get_deployments(self.records, deadline_s=self.deadline_s, **kwargs)
+        return run_tool("get_deployments", get_deployments, self.records, self.deadline_s, **kwargs)
 
     def query_logs(self, **kwargs: Any) -> ToolResult[Any]:
-        return query_logs(self.records, deadline_s=self.deadline_s, **kwargs)
+        return run_tool("query_logs", query_logs, self.records, self.deadline_s, **kwargs)
 
     def get_metrics(self, **kwargs: Any) -> ToolResult[Any]:
-        return get_metrics(self.records, deadline_s=self.deadline_s, **kwargs)
+        return run_tool("get_metrics", get_metrics, self.records, self.deadline_s, **kwargs)
 
     def get_service_dependencies(self, **kwargs: Any) -> ToolResult[Any]:
-        return get_service_dependencies(self.records, deadline_s=self.deadline_s, **kwargs)
+        return run_tool(
+            "get_service_dependencies",
+            get_service_dependencies,
+            self.records,
+            self.deadline_s,
+            **kwargs,
+        )
 
     def structured_query(self, **kwargs: Any) -> ToolResult[Any]:
         # The grant is supplied here, alongside the deadline and for the same reason: both bound
         # what a request may reach, so neither is a value a request carries.
-        return structured_query(
-            self.records, deadline_s=self.deadline_s, granted=self.granted_collections, **kwargs
+        return run_tool(
+            "structured_query",
+            structured_query,
+            self.records,
+            self.deadline_s,
+            self.granted_collections,
+            **kwargs,
         )
 
-    # --- retrieval tools (retriever-backed, lazy) ---------------------------------------------
+    # --- retrieval capabilities (retriever-backed, lazy) ---------------------------------------
     def _get_retriever(self) -> Retriever | None:
         if self._retriever is None and not self._retriever_attempted:
             self._retriever_attempted = True
@@ -124,13 +146,15 @@ class ToolService:
         retriever = self._get_retriever()
         if retriever is None:
             return self._unavailable("search_runbooks")
-        return search_runbooks(retriever, deadline_s=self.deadline_s, **kwargs)
+        return run_tool("search_runbooks", search_runbooks, retriever, self.deadline_s, **kwargs)
 
     def search_past_incidents(self, **kwargs: Any) -> ToolResult[Any]:
         retriever = self._get_retriever()
         if retriever is None:
             return self._unavailable("search_past_incidents")
-        return search_past_incidents(retriever, deadline_s=self.deadline_s, **kwargs)
+        return run_tool(
+            "search_past_incidents", search_past_incidents, retriever, self.deadline_s, **kwargs
+        )
 
     @staticmethod
     def _unavailable(tool_name: str) -> ToolResult[Any]:

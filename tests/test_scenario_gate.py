@@ -55,7 +55,6 @@ def test_no_material_regression_vs_baseline(scorecard):
             f"{metric} regressed: {scorecard[metric]} < baseline {BASELINE[metric]}"
         )
     assert scorecard["unsupported_evidence_rate"] <= BASELINE["unsupported_evidence_rate"] + EPS
-    assert scorecard["mcp_parity"] is True is BASELINE["mcp_parity"]
 
 
 def _run_scenario(inc_id: str) -> dict:

@@ -46,7 +46,7 @@ def test_chain_reconstructs_expected_deploy_evidence(scenario):
 
     incident = SVC.get_incident(incident_id=incident_id)
     assert incident.answered and incident.results, f"{incident_id}: no incident"
-    opened_at = to_utc(incident.results[0].opened_at)
+    opened_at = to_utc(incident.results[0]["opened_at"])
 
     alerts = SVC.get_correlated_alerts(incident_id=incident_id)
     assert alerts.answered and alerts.results, f"{incident_id}: no alert storm"

@@ -58,7 +58,7 @@ from opspilot.data.operational_records import (
 )
 from opspilot.diagnosis.contracts import CausalClaim
 from opspilot.evidence.admission import admit
-from opspilot.evidence.operations import TurnEvidence
+from opspilot.evidence.operations import EvidenceSet
 from opspilot.graph import _initial_state, build_graph, invoke_auto_approving
 from opspilot.intake.contracts import from_predefined_incident
 from opspilot.investigations import (
@@ -690,18 +690,23 @@ async def _predefined_turn_stream(
             return
 
         # --- gather, and admit ------------------------------------------------------------
-        evidence = TurnEvidence(investigation_id=turn.investigation_id, turn_id=turn.turn_id)
+        evidence = EvidenceSet(investigation_id=turn.investigation_id)
 
         alerts = svc.call("get_correlated_alerts", incident_id=incident_id)
-        admit(
+        admitted = admit(
             alerts,
-            turn=evidence,
+            evidence=evidence,
             question="which alerts correlate with this incident",
             request_scope={"incident_id": incident_id},
         )
         yield (
             capability_event(
-                turn, projector, "get_correlated_alerts", alerts, admitted=0
+                turn,
+                projector,
+                "get_correlated_alerts",
+                alerts,
+                admitted=len(admitted),
+                references=[o.evidence_ref for o in admitted],
             ).model_dump_json()
             + "\n"
         )
@@ -710,15 +715,15 @@ async def _predefined_turn_stream(
             if await disconnect.is_disconnected():
                 return
             result = svc.call(capability, **params)
-            outcome = admit(result, turn=evidence, question=question, request_scope=params)
+            admitted = admit(result, evidence=evidence, question=question, request_scope=params)
             yield (
                 capability_event(
                     turn,
                     projector,
                     capability,
                     result,
-                    admitted=len(outcome.observations),
-                    references=[o.evidence_ref for o in outcome.observations],
+                    admitted=len(admitted),
+                    references=[o.evidence_ref for o in admitted],
                 ).model_dump_json()
                 + "\n"
             )

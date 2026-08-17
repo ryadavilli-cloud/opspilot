@@ -47,18 +47,15 @@ seams narrowly from the first slice that needs them and widening afterwards, fro
 
 ## V1. Final assessment, structural synthesis, grounding, and brief
 
-**State:** Partial.
+**State:** Complete.
 
-*Already present.* The assessment is the designed field set; synthesis is structural only and
-refuses an unusable proposal rather than thinning one; one grounding function returns issues over
-the assessment, the admitted evidence, the retrieved knowledge, and the recorded limitations; the
-brief renders deterministically with the outcome, contributing causes where more than one candidate
-is established, and no probability. The synthesis cassette is re-recorded against the new proposal
-shape and the streaming request demonstrates the seam. Every named contract type, oversized model,
-validator, semantic filter, and test scaffold below is absent. See `docs/status.md`.
-
-*Remaining.* The hosted effect: deploy the application and confirm one hosted investigation
-delivers a brief with the designed sections and no probability.
+The assessment is the designed field set; synthesis is structural only and refuses an unusable
+proposal rather than thinning one; one grounding function returns issues over the assessment, the
+admitted evidence, the retrieved knowledge, and the recorded limitations; the brief renders
+deterministically with the outcome, contributing causes where more than one candidate is
+established, and no probability. Every named contract type, oversized model, validator, semantic
+filter, and test scaffold below is absent, and a deployed investigation delivered a brief with the
+designed sections. See `docs/status.md`.
 
 **Builds.** The final output seam, as pure functions the graph will call unchanged. The assessment
 shape becomes the designed field set once: `what_happened`, ordered `candidates` (statement, label,
@@ -142,7 +139,17 @@ four fields, and the named branches, models, and residue are absent.
 
 ## V3. One authored incident through the final graph
 
-**State:** Not started.
+**State:** Partial.
+
+*Already present.* The evidence half of this slice: admission returns plain values and the evidence
+set carries observations, limitations, and the operations list keyed by `investigation_id`; the
+`alert:<service>:<alert_id>` form parses and resolves. The five admission wrapper classes and
+`turn_id` on the evidence set are absent. The operational adapters now take typed parameters rather
+than the request models this slice expected to leave in place; nothing this slice builds depends on
+which of the two they were.
+
+*Remaining.* The graph, the three roles, the bounds, grounding, correction, outcome, failure rules,
+persistence, delivery, and every other removal named below.
 
 **Builds.** The designed runtime, narrowly: one authored incident (the fast change-time scenario,
 inc-005) investigated end to end by the final three-agent graph in the streaming request, with the
@@ -284,7 +291,12 @@ activity.
 
 ## V5. Retrieval materially influences the investigation
 
-**State:** Not started.
+**State:** Partial.
+
+*Already present.* The retrieval adapter in `tools/search.py` returns the retriever's passage shape
+unreshaped, and the fourth shape it used to convert into is absent.
+
+*Remaining.* Everything else this slice builds and removes.
 
 **Builds.** Retrieval as a registered capability inside the investigation, final in behavior: embed
 the question, vector search plus the in-process lexical pass over the same category-filtered
@@ -326,7 +338,20 @@ and the reranker implementation, dependencies, marker, and lane are absent.
 
 ## V6. Governed structured query and the full evidence surface
 
-**State:** Not started.
+**State:** Partial.
+
+*Already present.* The whole evidence surface below the agents, and every removal this slice names.
+Rows carry the reference of the record they project, formed from identifying fields every
+projection is widened to include; a count carries `query:<operation>` and an empty result an
+`absence:`; the `incident:` and `query:` forms parse and resolve; the incident record reaches a
+caller only in the approved surface's fields; the adapters take typed parameters that the registry
+validates; the two-axis result keeps its one enforcement point as an inline rule. The eight request
+models, `legacy_status()`, `DocHit`, the pairing-table tests, and the three superseded MCP
+exposures with their parity test are absent, and MCP is intentionally absent until the final
+boundary is built.
+
+*Remaining.* The structured query as a capability the Evidence Investigator proposes inside the
+bounded investigation, which needs the graph runtime; and the hosted proof.
 
 **Builds.** The governed structured query as a capability the Evidence Investigator can propose: the
 model proposes a bounded structure of predicates, projection, optional count, and limit over one
@@ -412,7 +437,8 @@ of the runtime.
 
 **Provides.** The one designed protocol boundary with a parity proof.
 
-**If present, remove.** Any superseded MCP exposure still present.
+**If present, remove.** Nothing: the superseded exposures and the server that fronted them are
+already absent, so this slice builds against no existing exposure.
 
 **Proof unique to this slice.** For the same arguments the MCP path and the direct path return the
 same admitted result; the MCP path refuses any write-shaped request; the activity event for an MCP

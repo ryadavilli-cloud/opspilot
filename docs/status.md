@@ -12,10 +12,10 @@ repository contradicts it.
 
 ## 1. Baseline
 
-- **Inspected:** `main` at `bd5a1de`, working tree, 2026-08-17.
+- **Inspected:** working tree at the evidence-contract landing, 2026-08-17.
 - **Toolchain:** `uv`; Python 3.12.
 - **Gates at this tree:** `ruff check` clean; `ruff format --check` clean repository-wide; `mypy`
-  strict clean over 84 source files; deterministic lane `pytest -q -m "not llm"`: **681 passed,
+  strict clean over 82 source files; deterministic lane `pytest -q -m "not llm"`: **703 passed,
   3 deselected, 2 xfailed**; the pre-commit hook (lint, format, em-dash, plan-vocabulary) passes.
 - **The two xfails** are both in `tests/test_single_agent_gate.py` and both belong to superseded
   numeric-gate machinery scheduled for retirement; they are disclosed, not regressions in accepted
@@ -30,23 +30,23 @@ anything, must still shrink.
 
 | Area | Where | What holds | Still to simplify |
 | --- | --- | --- | --- |
-| Governed structured query | `data/structured_query.py`, `tools/structured_query.py` | Predicates, projection, count, limit over an approved surface of three collections; two validators guard the boundary; one parameterized read-only query; admitted like any other result | Nothing |
-| Operational tool adapters | `tools/{alerts,logs,metrics,deployments,dependencies,incidents}.py`, `data/operational_records.py` | Read the operational-records container through the registry with validated arguments and an explicit deadline; refuse a call with no deadline; report unavailability rather than a generic error | The eight per-capability request models become typed function parameters |
-| Two-axis tool result | `tools/contracts.py` | Execution outcome and completeness as separate fields with one pairing validator that rejects a meaningless combination and content on a non-succeeded outcome | The lookup table may become an inline rule; the enforcement point stays; `legacy_status()` and `DocHit` go |
-| Reference grammar | `evidence/references.py` | One parser and one resolver over eight prefixes; the prefix decides evidence versus knowledge; `absence:` makes an empty result citable | `Resolution` folds into a return value; the `alert:`, `incident:`, and `query:` evidence forms are absent |
-| Evidence admission | `evidence/admission.py`, `evidence/operations.py` | Only a succeeded result becomes evidence; empty becomes a citable absence; partial stays marked; everything else becomes a limitation naming its question | `AuthoritativeAbsence`, `AdmissionResult`, `OperationRecord`, `OperationLedger` become fields or plain returns; `turn_id` leaves the evidence set |
-| Retrieval | `retrieval/retriever.py`, `retrieval/embeddings.py`, `data/knowledge_records.py` | Cosmos vector search over an Azure OpenAI query embedding, in-process BM25-style lexical pass over the same category-filtered candidates, reciprocal-rank fusion, section-level passages carrying their text; routing by question shape when no collection is named | Deterministic identifier promotion after fusion does not exist yet; `Doc`/`Chunk`/`Passage` collapse toward one shape |
+| Governed structured query | `data/structured_query.py`, `tools/structured_query.py` | Predicates, projection, count, limit over an approved surface of three collections; two validators guard the boundary; one parameterized read-only query; every projection is widened with the collection's identifying fields so each row carries the reference of the record it projects; a count carries no row reference; admitted like any other result | Nothing |
+| Operational tool adapters | `tools/{alerts,logs,metrics,deployments,dependencies,incidents}.py`, `data/operational_records.py` | Typed function parameters, validated where the registry invokes them; read the operational-records container with an explicit deadline; refuse a call that names its own deadline; report unavailability rather than a generic error; every row-producing capability names its rows, alerts as `alert:` and the incident record as `incident:` | Nothing |
+| Two-axis tool result | `tools/contracts.py` | Execution outcome and completeness as separate fields with one inline pairing rule that rejects a meaningless combination and content on a non-succeeded outcome | Nothing |
+| Reference grammar | `evidence/references.py` | One parser and one resolver over eleven prefixes; the prefix decides evidence versus knowledge; `absence:` makes an empty result citable and `query:` an aggregate, both resolving against what admission recorded; the resolver answers whether a reference names something real and nothing more | Nothing |
+| Evidence admission | `evidence/admission.py`, `evidence/operations.py` | Only a succeeded result becomes evidence; empty becomes a citable absence; an aggregate becomes an observation citable by its operation; partial stays marked; everything else becomes a limitation naming its question; the evidence set carries observations, limitations, and the operations list, keyed by `investigation_id` alone | Nothing |
+| Retrieval | `retrieval/retriever.py`, `retrieval/embeddings.py`, `data/knowledge_records.py` | Cosmos vector search over an Azure OpenAI query embedding, in-process BM25-style lexical pass over the same category-filtered candidates, reciprocal-rank fusion, section-level passages carrying their text; routing by question shape when no collection is named; the retrieval capabilities return that passage shape unreshaped | Deterministic identifier promotion after fusion does not exist yet; `Doc`/`Chunk` in `retrieval/corpus.py` still stand beside `Passage` |
 | Corpus preparation | `scripts/prepare_corpus.py`, `retrieval/corpus.py`, `data/answer_key/topology.yaml` | Loads, chunks, embeds, and indexes the authored corpus into the containers the runtime reads, and verifies by read-back; runs under its own identity; the topology file is what preparation reads for entities | Nothing; `retrieval/corpus.py` and `topology.yaml` are reached only by preparation and stay for it |
 | Model seam | `llm/base.py`, `llm/client.py`, `llm/fake.py`, `llm/cassette.py`, `llm/prompts.py`, `llm/manifest.py` | One Azure adapter, one fake, cassette record and replay, prompt loading with versions | The Ollama and generic-OpenAI branches, `LLM_SEED`, and the planner/triage response models in `llm/schema.py` go |
 | Assessment and brief | `assessment/contracts.py`, `assessment/brief.py` | The designed field set once: `what_happened` with its references, ordered `candidates` (statement, label, `established`, supporting, weakening), `unknowns`, `limitations`, `next_check`, `actions` (action, `now`, optional knowledge reference), `history`, `knowledge_used`; no shape re-checks support and none carries a number; the brief renders deterministically, states the outcome, presents co-causes as contributing causes, and never shows a probability | Nothing |
-| Synthesis | `assessment/synthesis.py`, `llm/prompts/rca_synthesis.v2.md` | One task-labelled call proposes; admission is structural only, so no candidate is removed, no `established` is derived, and no action is discarded; an unreadable response, a label outside the vocabulary, or a string no reference grammar could produce is refused as unusable rather than degraded | Nothing |
+| Synthesis | `assessment/synthesis.py`, `llm/prompts/rca_synthesis.v2.md` | One task-labelled call proposes; admission is structural only, so no candidate is removed, no `established` is derived, and no action is discarded; an unreadable response, a label outside the vocabulary, or a string no reference grammar could produce is refused as unusable rather than degraded; a `null` written for an optional field reads as absent, because that is what JSON means by it and what the field's default already says | Nothing |
 | Grounding | `grounding/gate.py` | One deterministic function returning zero or more issues over the assessment, the admitted references, the retrieved knowledge references, and the recorded limitations: operational support resolves in this run, knowledge resolves in what was retrieved, knowledge never stands as current proof, `what_happened` and every established candidate rest on admitted evidence, every recorded limitation is disclosed | Nothing |
 | Telemetry seam and projection | `obs/tracing.py`, `stream/projection.py`, `stream/contracts.py` | One seam with contextvar-nested spans and a swappable exporter; the activity event is built at the span call site so the two cannot drift | `turn_id` leaves the correlation attributes and the events; the close marker folds into a terminal event carrying the outcome |
 | Streaming transport and screen | `POST /turns`, `static/investigation.html` | One streaming request emits identity, activity, a brief event, and a close marker; the page shows intake, the feed, a brief region, and one details area | Route and identity vocabulary become investigation-only; the page needs a brief branch and a question box |
 | Normalized incident context | `intake/contracts.py` | Typed, frozen, excludes the answer-bearing and ticket-workflow fields | Five fields become four: `supplied_context` goes and `incident_id` becomes required; `InteractionKind` goes |
 | In-memory record | `record/memory.py` | Refuses a second save of the same key; creates the investigation on first save | The port narrows to `save`/`get` and one model; the plural-turn methods and outcome types go |
 | Authored expectations and fixture | `data/answer_key/golden_scenarios.yaml`, `benign_fixture.yaml`, `data/answer_key/scenarios.yaml`, `data/answer_key/build_goldens.py` | Seven authored records with all required parts; every required reference resolves in the corpus; the benign fixture is structurally invisible to scenario counting; the builder derives `golden_scenarios.yaml` from `scenarios.yaml` | The record shape may simplify to what evaluation reads; the builder's `golden_incidents.json` and `golden_retrieval.json` outputs go with numeric evaluation |
-| Deterministic replay | `eval/cassettes/turn_synthesis.json`, `eval/record_turn_synthesis.py` | One committed cassette, recorded against the current proposal shape, keeps synthesis reproducible without a live model; the manifest refuses a cassette recorded under a different prompt version by name | Nothing |
+| Deterministic replay | `eval/cassettes/turn_synthesis.json`, `eval/record_turn_synthesis.py` | One committed cassette keeps synthesis reproducible without a live model; the recorder drives the real streaming request, so a recorded response can only be one the replay path would ask for, and the manifest refuses a cassette recorded under a different prompt version by name; the recording is taken through the Azure adapter against the chat deployment the application calls, keyless as the signed-in identity, so it is evidence about the serving path the application actually takes | Nothing |
 | Azure baseline | `infra/main.bicep`, `.github/workflows` | One Container App, ACR, one OpenAI account with one chat and one embedding deployment, one Cosmos account with the three containers, Log Analytics, scoped data-plane roles, OIDC deploy | Replicas 0-3 become 0-1; App Insights and built-in auth are absent |
 
 ---
@@ -73,11 +73,11 @@ Required by the governing design and not present in any form:
 - the Evidence Investigator and RCA Analyst as model-directed roles; the Supervisor's
   objective-interpretation call;
 - the `CompletedInvestigation` model, carrying the operations list, and its Cosmos repository;
-- the `alert:`, `incident:`, and `query:` reference forms and their admission;
 - outcome assignment on a run: the rule exists as one function the brief renders from, and nothing
   runs it over an investigation or records the result;
 - the question over a completed record;
-- the MCP exposure of `get_deployments` (the current server exposes three superseded tools);
+- any MCP exposure: the server that fronted three superseded tools is gone and nothing replaces it
+  yet;
 - the evaluation runner, the two controlled comparisons and their harness seam, the judge, the
   report;
 - Application Insights and the exporter wiring; Container Apps built-in authentication; the
@@ -130,15 +130,12 @@ follows the seam.
 
 **Plural-turn identity and persistence.** `turn_id` and `TurnIdentity` in `turn/identity.py`;
 `CompletedTurn`, `completed_turns()`, `turn()`, `CommitOutcome`, `CommitResult`,
-`DeliveryOutcome`, `commit_then_deliver()` in `record/port.py`; `turn_id` on the evidence set,
-spans, and stream events.
+`DeliveryOutcome`, `commit_then_deliver()` in `record/port.py`; `turn_id` on spans and stream
+events. It has left the evidence set and the assessment: what remains carries it is the streaming
+transport, the tracing correlation attributes, and the plural-turn record port.
 
 **Interaction and intake residue.** `InteractionKind` (five members, no consumer),
 `supplied_context`, and the optionality of `incident_id`, which becomes required.
-
-**Evidence and tool wrappers.** The eight per-capability request models, `legacy_status()`,
-`DocHit`, `AuthoritativeAbsence`, `AdmissionResult`, `Resolution`, `OperationRecord`,
-`OperationLedger` as classes; the pairing-table tests in `tests/test_evidence_admission.py`.
 
 **Tests attached to deleted behavior.** `test_investigations_api.py`, `test_investigations.py`,
 `test_report_binding.py`, `test_checkpointer.py`, `test_auth.py`, `test_triage.py`,
@@ -173,17 +170,36 @@ retirement target.
 
 ## 7. Deployment state
 
-Last live-inspected 2026-08-09; deployed and green at the superseded composition. One Container
-App and image from the Bicep template through the OIDC workflow; replicas 0-3; one chat and one
-embedding deployment; no Application Insights; hand-rolled three-role authorization fronts the
-superseded endpoints and `POST /turns` is unauthenticated; the three containers are declared.
+Last live-inspected 2026-08-17, at revision `opspilot-api--0000074`, carrying this tree. One
+Container App and image from the Bicep template; replicas 0-3; one chat and one embedding
+deployment; no Application Insights; hand-rolled three-role authorization fronts the superseded
+endpoints and `POST /turns` is unauthenticated; the three containers are declared. Readiness
+reports every check ok: operational records, repository, logs, retrieval.
+
+One hosted investigation ran end to end against that revision. It admitted 79 observations across
+the alert, log, metric, and absence forms; every one parsed and every one is an evidence
+reference. The brief it delivered cites fifteen references and every one was assigned by admission
+during that run, including the alert and the authoritative absence, which the assessment uses to
+weaken a candidate rather than to support one. The brief carries the designed sections and no
+probability.
+
+Two reference forms were not exercised hosted: `incident:` and `query:` have no path through the
+streaming request, because its evidence plan is fixed and calls neither the incident capability nor
+the structured query. Both are proven against the real corpus in the deterministic suite. They
+become reachable hosted when the Evidence Investigator chooses capabilities.
+
+That every citation in a brief resolves is a property of this run, not yet a guarantee: no gate
+runs in the streaming path, so an invented reference would reach the brief rather than being
+reported. The gate joins the run with the graph.
 
 ---
 
 ## 8. Open items
 
-- **D-004 library detail** is settled at design level (official `mcp` SDK, in-process, stdio) and
-  the current server already runs that way; only the exposed set changes.
+- **The MCP boundary is settled at design level** (official `mcp` SDK, in-process, stdio) and no
+  server exists in the tree: the one that fronted three superseded tools went with the request
+  models its schemas were generated from. The `mcp` dependency is retained for the exposure the
+  design carries.
 - **Comments describing something no longer true.** `turn/identity.py` cites a status section
   number; `tests/test_answer_key.py` cites a heading that no longer exists. Both sit in modules
   that are rewritten or retired.

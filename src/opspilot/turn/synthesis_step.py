@@ -18,7 +18,7 @@ from typing import Any
 
 from opspilot.assessment.contracts import Assessment
 from opspilot.assessment.synthesis import SYNTHESIS_TASK, admit_assessment, parse_proposal
-from opspilot.evidence.operations import TurnEvidence
+from opspilot.evidence.operations import EvidenceSet
 from opspilot.llm.base import ChatMessage
 from opspilot.llm.prompts import get_prompt
 from opspilot.obs import tracing
@@ -74,7 +74,7 @@ def evidence_plan(context: Any, alerts: list[Any]) -> list[tuple[str, str, dict[
     return plan
 
 
-def evidence_digest(evidence: TurnEvidence) -> str:
+def evidence_digest(evidence: EvidenceSet) -> str:
     """What the model reasons over: admitted observations by reference, and what went unanswered.
 
     A partial observation says so on its own line. The source answered over part of the requested
@@ -96,7 +96,7 @@ def evidence_digest(evidence: TurnEvidence) -> str:
     return "\n".join(lines)
 
 
-def synthesize(model: Any, context: Any, evidence: TurnEvidence, objective: str) -> Assessment:
+def synthesize(model: Any, context: Any, evidence: EvidenceSet, objective: str) -> Assessment:
     """One bounded model call, then structural admission of what it proposed.
 
     Admission enforces the shape and nothing else. Whether the proposal's claims rest on evidence
