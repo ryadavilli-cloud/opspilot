@@ -41,21 +41,13 @@ repository as `docs/status.md` describes it to the system the governing design d
 
 ## H1. Evidence foundation
 
-**State:** Partial.
+**State:** Complete.
 
-*Already present.* Everything this step builds and every removal it names, as `status.md` records:
-the three added evidence forms parse and resolve through the one parser and resolver; admission
-returns plain values and the evidence set carries observations, limitations, and the operations
-list keyed by `investigation_id`; the pairing rule is inline at its one enforcement point; the
-adapters take typed parameters that the registry validates; the incident record is admitted only in
-the approved structured-query surface's fields; a structured-query row carries its record's
-reference, a count is citable by its operation, and an empty result stays an `absence:`. The eight
-request models, `legacy_status()`, `DocHit`, the five wrapper classes, `turn_id` on the evidence
-set, the pairing-table tests, and the three superseded MCP exposures with their parity test are
-absent.
-
-*Remaining.* Only the hosted effect below: the deployed revision predates this code, so no hosted
-investigation has yet admitted through it.
+Everything this step builds and every removal it names holds, as `status.md` records, and the
+hosted proof has run: a deployed investigation admitted through this code and delivered a brief
+whose every citation was assigned by admission. `incident:` and `query:` were exercised against the
+real corpus rather than hosted, because the streaming request's fixed evidence plan reaches neither
+capability; they become reachable hosted when the Evidence Investigator chooses what to call.
 
 **Builds.** The final evidence contract, end to end below the agents. The reference grammar gains
 the three evidence forms the design fixes for alerts, the incident record, and aggregate query
@@ -152,11 +144,13 @@ is established, and no probability. The synthesis prompt is the new proposal sha
 below, the assessment types, the grounding contract layer, the semantic filtering, and the
 `model_construct()` scaffolding are absent. See `docs/status.md`.
 
-*Remaining.* The model seam still carries the Ollama and generic-OpenAI branches, `LLM_SEED`, the
-planner, claim, report, triage, and tool-call response models in `llm/schema.py`, and the `llm`
-marker's provider text; reducing it to one Azure adapter with the fake and the cassette is the
-outstanding build. Then the hosted effect: deploy and confirm one hosted investigation delivers a
-brief with the designed sections and no probability.
+The hosted effect has run: a deployed investigation delivered a brief with the designed sections
+and no probability.
+
+*Remaining.* Only the model seam, which still carries the Ollama and generic-OpenAI branches,
+`LLM_SEED`, the planner, claim, report, triage, and tool-call response models in `llm/schema.py`,
+and the `llm` marker's provider text. Reducing it to one Azure adapter with the fake and the
+cassette is the outstanding build.
 
 **Builds.** The final assessment-producing capability as pure functions, called by the graph later
 without change. The assessment shape becomes the designed field set once: `what_happened`, ordered

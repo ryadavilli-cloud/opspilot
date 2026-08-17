@@ -170,14 +170,27 @@ retirement target.
 
 ## 7. Deployment state
 
-Last live-inspected 2026-08-09; deployed and green at the superseded composition. One Container
-App and image from the Bicep template through the OIDC workflow; replicas 0-3; one chat and one
-embedding deployment; no Application Insights; hand-rolled three-role authorization fronts the
-superseded endpoints and `POST /turns` is unauthenticated; the three containers are declared.
+Last live-inspected 2026-08-17, at revision `opspilot-api--0000074`, carrying this tree. One
+Container App and image from the Bicep template; replicas 0-3; one chat and one embedding
+deployment; no Application Insights; hand-rolled three-role authorization fronts the superseded
+endpoints and `POST /turns` is unauthenticated; the three containers are declared. Readiness
+reports every check ok: operational records, repository, logs, retrieval.
 
-The deployed revision predates both the assessment landing and the evidence-contract landing: the
-streaming path it runs renders the previous brief shape and admits through the previous contract,
-so no hosted citation yet uses the alert, incident-record, or aggregate forms.
+One hosted investigation ran end to end against that revision. It admitted 79 observations across
+the alert, log, metric, and absence forms; every one parsed and every one is an evidence
+reference. The brief it delivered cites fifteen references and every one was assigned by admission
+during that run, including the alert and the authoritative absence, which the assessment uses to
+weaken a candidate rather than to support one. The brief carries the designed sections and no
+probability.
+
+Two reference forms were not exercised hosted: `incident:` and `query:` have no path through the
+streaming request, because its evidence plan is fixed and calls neither the incident capability nor
+the structured query. Both are proven against the real corpus in the deterministic suite. They
+become reachable hosted when the Evidence Investigator chooses capabilities.
+
+That every citation in a brief resolves is a property of this run, not yet a guarantee: no gate
+runs in the streaming path, so an invented reference would reach the brief rather than being
+reported. The gate joins the run with the graph.
 
 ---
 
