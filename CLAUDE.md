@@ -1,352 +1,131 @@
-# OpsPilot — standing instructions
-
-Governs implementation work anywhere in this repository. `docs/CLAUDE.md` governs
-edits to files under `docs/` and wins for the file being edited.
-
----
-
-## Operating principle
-
-This is a bounded demonstration system. It is small on purpose, and every rule
-below exists to keep it that way.
-
-Prefer removing machinery to preserving it. Prefer fewer components to more.
-Prefer a scoped edit to a structural rewrite. When no requirement justifies a
-piece of code, the correct action is deletion, not a smaller version of it.
-
-Thoroughness here means closing exactly what the current slice names, not
-everything nearby that looks unfinished. An absence is not a gap unless
-`status.md` says it is.
-
-The burden of proof is on adding, never on omitting.
-
----
-
-## The accepted design is a ceiling
-
-The documents describe what the system needs. They are not an invitation to
-elaborate each concept into a subsystem. Implement the concept; do not expand it.
-
-- Three agents means three agents — not a framework with configurable agent
-  registration.
-- Six boundaries means logical ownership — not six deployed services.
-- One MCP boundary means one real protocol demonstration — not an MCP platform.
-- Structured query means the bounded accepted structure — not a text-to-SQL
-  engine.
-- Retrieval means the accepted lexical, dense, fusion, and deterministic
-  promotion path — not a search platform.
-- Investigation persistence means completed-turn artifacts — not durable
-  workflow state.
-- Activity means a compact projection of instrumentation facts — not an event
-  architecture.
-- Evaluation means the accepted evaluation layers — not a scoring framework.
-- Azure deployment means the accepted small hosted composition — not a landing
-  zone.
-
-An abstraction is justified when it removes real duplication or enforces an
-accepted seam. Otherwise leave the code explicit.
-
----
-
-## Existing code has no presumption of survival
-
-Much of the repository predates the accepted design. A module is not retained
-because it works, has tests, took effort to build, looks production-ready, or is
-reusable in theory.
-
-Keep it only when all three hold: it directly serves the accepted design, it is
-the simplest realization of that, and it drags no obsolete concept or dependency
-along with it.
-
-Prefer deletion to wrapping obsolete machinery in an adapter. Do not repair
-obsolete architecture. A temporary adapter exists only where the plan explicitly
-permits coexistence, and it dies in the slice the plan names.
-
----
-
-## Never add
-
-Not in code, tests, Bicep, config, or a document. Not stubbed, scaffolded,
-feature-flagged, or reserved structure for:
-
-- Queues, workers, background jobs, outboxes, durable dispatch
-- Checkpointing, replay, per-stage recovery, recovery scanners, durable
-  suspension
-- Approval, review, or publication stages; report versioning or publication
-  identity
-- Escalation as a status
-- Leases, fencing, epochs, multi-replica coordination, sticky routing
-- Idempotency indexes, version salts, accept-once index containers
-- Per-user or role-based concurrency admission; role or group authorization
-- High availability, disaster recovery, multi-region, tenancy, compliance
-  machinery
-- Dynamic capability registration, plugin registries, runtime discovery,
-  dependency-injection frameworks
-- Another agent of any kind — reviewer, planner, narrator, critic — or
-  reflection loops, recursive delegation, autonomous background agents
-- A model reranker
-- A model call whose only purpose is presentation
-- Another database, container, screen, or frontend application
-- Provider or backend abstraction for providers OpsPilot does not use
-- An Azure service no accepted document requires
-- Retries, caches, or timeouts beyond what the owning document specifies
-
-If implementing something appears to require one of these, assume first that the
-implementation approach is wrong and re-read the accepted design. If it still
-appears necessary after that, stop and ask. Do not implement it and flag it.
-
-**No silent fallbacks.** When an accepted approach will not work, the answer is a
-recorded revision in `decisions.md`, made by a human, before the code changes.
-Never a `try:` block that quietly takes the rejected path.
-
----
-
-## Do not simplify away the agentic behavior
-
-Every rule above pushes toward less. This one pushes back, and it is not
-optional: the agentic behavior is what the system exists to demonstrate.
-
-These stay real and model-directed. Do not replace one with a deterministic
-script because scripting it is easier or more testable:
-
-- Supervisor judgment, held apart from deterministic control
-- Evidence Investigator selecting sources from what has been observed
-- RCA Analyst synthesis
-- Proposal and authorization as separate acts
-- Evidence paths that adapt to what was found
-- Retrieval influencing the investigation
-- One bounded further-evidence cycle
-- Model-directed capability use, and the structured-query proposal
-- Task-based model routing
-- Evaluation of agent behavior, not just of outputs
-
-Simplify the realization. Preserve the concept.
-
----
-
-## Models judge, code controls
-
-Keep the seam obvious. Models interpret objectives, choose sources, propose
-actions, synthesize, and answer bounded follow-ups. Deterministic code owns
-validation, authorization, bounds, reference resolution, admission, grounding,
-persistence ordering, read-only enforcement, cancellation, transport, and the
-activity projection.
-
-Do not ask a model to make a decision the design deliberately made
-deterministic. Do not add a model call for convenience.
-
----
-
-## Contracts to honor
-
-Violating one of these silently changes what the system means.
-
-- **Two-axis capability results.** `data-and-evidence.md` §4, Capability
-  Request and Result Semantics.
-- **Admission is the only door.** `data-and-evidence.md` §6, Evidence
-  Admission.
-- **The registry is the only path to a source.** `system-design.md` §8.1,
-  Capability validation and dispatch.
-- **Every source call carries a deadline.** `workflow-design.md` §5, Bounded
-  Investigation.
-- **No numeric confidence anywhere.** `data-and-evidence.md` §12, Candidate
-  Assessment.
-- **Model routing is by task label alone.** `decisions.md` D-002, Model
-  routing.
-- **Retrieval returns passages, never identifiers alone.**
-  `data-and-evidence.md` §9, Retrieved Knowledge.
-- **The grounding gate is structural.** `data-and-evidence.md` §13, Claims,
-  Citations, and Grounding.
-- **One writer, one artifact.** `workflow-design.md` §8, Delivery,
-  Persistence, and Follow-Up.
-- **No query text is constructed anywhere.** `system-design.md` §8.2,
-  Operational and structured access.
-
-For exact vocabularies — outcome values, citation roles, support labels,
-provenance categories, stream statuses — read the owning document. Do not
-reconstruct one from surrounding code. Do not extend one because a case looks
-uncovered; an uncovered case is a question, not a new enum member.
-
----
-
-## Runtime posture
-
-One application, one process, one streaming request owning a turn. Active-turn
-state is ephemeral. Only completed turns persist, committed before successful
-terminal delivery. Zero-to-one hosted replica. No durable active-turn recovery.
-
-The engineer-facing surface is one screen: intake and follow-up, a compact
-activity feed, the brief as the dominant element, one expandable details area.
-Not a portal. No dashboards, admin views, trace viewers, or configuration
-screens. Activity exists to make useful agent behavior visible, not to expose
-internals.
-
----
-
-## Slice discipline
-
-THere are two different plans available - vertical and horizontal. Each task or 
-slice can come from either document. However, it should always be the next step
- in the corresponding document. 
-
-`horizontal-execution-plan.md` owns the horizontal execution plan order. 
-These are the rules for the horizontal execution plan slices. 
-
-- A slice leaves the tree green. One that cannot is too big — say so rather than
-  splitting it yourself.
-- **Replaces, does not extend.** The old path dies in the slice that supersedes
-  it. No parallel implementations, no switch flags, no "until the new one is
-  proven."
-- Do not start the next slice because this one finished early.
-- Do not implement what a later slice owns because you are already in the file.
-- Do not add a caller to a module the plan schedules for deletion.
-- Do not create a second implementation of a contract that already has one.
-- Nothing is committed until the local pass for the slice has been reviewed.
-
-Write the tests the slice names — the ones a reviewer would not predict.
-Ordinary unit coverage is assumed and needs no discussion.
-
-Evaluation is advisory and gates no merge. No numeric target before a measured
-baseline exists; no baseline re-set downward without recorded justification.
-
-
-`vertical-execution-plan.md` owns the vertical execution plan order. 
-These are the rules for the vertical execution plan slices.
-
-Each slice must produce something that can be run, observed, tested, or demonstrated.
-
-Prefer:
-
-> contract + minimal implementation + tests + visible behavior
-
-over:
-
-> framework + infrastructure + abstractions now, useful behavior later.
-
-A PR should have one primary completion claim.
-
-Do not create broad horizontal PRs such as:
-
-* "add orchestration framework";
-* "build common infrastructure";
-* "introduce extensibility layer";
-* "create generic repository framework";
-* "add event architecture";
-* "prepare for future agents."
-
-Build only the infrastructure required by the vertical behavior currently being implemented.
-
----
-
-## When the documents are silent
-
-A gap is not the same as a contradiction. A contradiction stops work; a gap
-usually does not.
-
-1. Confirm the authoritative documents genuinely do not answer it — check
-   `decisions.md`, `status.md`, and the plan before concluding they are silent.
-2. Choose the smallest local, reversible implementation that preserves the
-   accepted intent.
-3. Do not create a subsystem to fill a documentation gap.
-4. Record what was implemented in `status.md`.
-
-Stop and ask instead whenever the answer would expand architecture,
-dependencies, runtime components, persistence concepts, or scope. Those are not
-gaps to fill on your own authority.
-
----
-
-## Verification
-
-Never assert repository state you have not checked in this session. Read the file
-before describing it. Grep before calling something absent. Report what you did
-not find, not only what you did.
-
-`status.md` is the only file that records what is built. If your work changes
-what is true about the repository, that is a `status.md` edit — and only where
-inspection contradicts what is written. A row never changes because reasoning
-suggests it should.
-
-Status is anchored to the design, not to a plan. It carries no slice identifiers,
-no stage or layer numbering, no sequence, and no statement of what comes next.
-Work that landed ahead of the sequence describing it is simply built.
-
-Both halves run at every landing, as part of the definition of done: status
-records what was built, and every slice whose subject that landing touched
-re-derives its marker from status. Updating one without the other leaves derived
-data stale and silently wrong, and nothing else in the repository will catch it.
-
-Design documents describe intent. Never add build status, completion markers, or
-"not yet implemented" notes to one.
-
----
-
-## Documents
-
-Each element belongs to exactly one document; point to the owner rather than
-restating it. Ownership, source precedence, and the three editing modes are in
-`docs/CLAUDE.md`. Do not author or modify anything under `docs/` unless the
-prompt names the file and names a mode.
-
-`status.md`, `vertical-execution-plan.md` and `horizontal-execution-plan.md` are not design documents.
-
-`NFR-NOTE` comments mark where production hardening would attach. They are
-markers, not TODOs. Do not implement one.
-
----
-
-## Code guidelines
-
-`docs/code-guidelines.md` is binding on every change to code, tests,
-configuration, and infrastructure. **It does not load with this file.** Read it
-before starting implementation work, not after the code is written.
-
-Sixteen sections. The merge gates are §13 Merge Standards, which carries the
-definition of done, §14 Prohibited Patterns, and §16 Change Scope, Deletion, and
-Proportion. A change is checked against those three before it is presented as
-done.
-
-Do not cite a section number from memory. The numbering has changed before, and
-a confident wrong citation is worse than looking it up.
-
-Two rules are enforced mechanically, by CI and by `.githooks/pre-commit`, so a
-violation fails before the push rather than after it:
-
-- **§12, no execution-plan vocabulary outside `docs/`.** Stage, phase, layer,
-  gap, slice, and PR-sequence identifiers, and references to a plan document or
-  one of its sections, appear nowhere in code, tests, configuration,
-  infrastructure, prompts, log strings, or names, and in no commit or
-  pull-request title or body. Say what the code does and which contract it
-  satisfies; delete the comment where nothing remains once the identifier is
-  gone. Requirement, NFR, and `D-nnn` identifiers stay: they resolve.
-- **Lint and formatting, repo-wide** rather than scoped to touched files.
-
-A fresh clone does not have the hook enabled: `git config core.hooksPath
-.githooks`.
-
----
-
-## Toolchain
-
-- `uv` for everything: `uv sync --group dev --group data`, `uv run pytest -q`,
-  `uv run mypy`, `uv run ruff check .`. Never `pip`, never bare `python -m`.
-- All four pass before a slice is presented as done.
-- For a quick behavioral check, prefer an inline `python -c` under `uv run` over
-  a throwaway test file.
-- **Never run git commands** — add, commit, branch, checkout, push, delete —
-  unless explicitly instructed.
-- Do not create files that were not requested.
-
----
-
-## Stop and ask
-
-An internal contradiction, a stale reference, a conflict between documents, or an
-instruction that cannot be satisfied as written is a question for the author, not
-a defect to repair.
-
-Do not resolve it, work around it, note it and proceed, or fix it silently
-because the fix seemed obvious.
-
-Surface open forks explicitly, each with a recommended default. Do not leave an
-ambiguity unstated, and do not resolve one on your own authority.
+# OpsPilot: instructions for the coding agent
+
+OpsPilot is an educational Agentic AI capstone: an incident-investigation assistant over a
+synthetic environment, built to make agentic ideas visible. It is small on purpose. Prefer removing
+machinery to keeping it, fewer components to more, a scoped edit to a rewrite. The burden of proof
+is on adding, never on omitting. The one thing simplification must not remove is the agentic
+behavior the system exists to demonstrate; the governing design says what that is.
+
+## Where truth lives
+
+- `docs/requirements.md` defines what OpsPilot must accomplish. Frozen.
+- The governing design defines the target system: `docs/architecture.md`, `system-design.md`,
+  `workflow-design.md`, `data-and-evidence.md`, `runtime-and-deployment.md`, `evaluation.md`,
+  `decisions.md`, `code-guidelines.md`. Settled. Do not reopen architecture or requirements from
+  an implementation task.
+- `docs/status.md` is the single source of current implementation truth.
+- `docs/cascade-inventory.md` is the migration and retirement handoff for execution planning.
+- `docs/horizontal-execution-plan.md` and `docs/vertical-execution-plan.md` are two valid
+  sequencing views over the same implementation. They are not sources of implementation truth;
+  the repository and `status.md` are.
+
+`docs/code-guidelines.md` is binding on every change to code, tests, configuration, and
+infrastructure, and it owns the testing policy and the gates. It does not load with this file:
+read it before writing code. Ownership and editing rules for everything under `docs/` are in
+`docs/CLAUDE.md`.
+
+## The two plans
+
+Horizontal builds technical capabilities or layers progressively; a step may complete a layer or
+only the portion it declares. Vertical builds the smallest coherent functional increment using the
+final architectural seams: narrow but final. Never build a disposable interim architecture (one
+model call, then a temporary tool loop, then a temporary multi-agent path, then the real graph
+later). If a vertical slice needs the real graph, the real grounding boundary, or the real
+persistence seam, use the final seam narrowly from the start.
+
+Executing either plan to completion produces the same final repository and hosted OpsPilot. The
+plans differ only in sequencing. Neither may invent functionality or abstractions the governing
+design does not require.
+
+There is no default plan. If asked to "implement the next step" without Horizontal or Vertical
+being named, ask which plan. Do not infer it from the previous PR, the conversation, or which plan
+looks further along. If the plan and step are named, execute that step.
+
+## Executing a step
+
+Eligibility comes from the current repository, not from history. Before implementing: read the
+step's Consumes, inspect `docs/status.md`, inspect the relevant code where needed, and verify every
+prerequisite actually exists. If one is missing, stop and report. Do not build the missing
+prerequisite; the only things you may build are inside the selected step's scope. This matters
+because the user alternates between the two plans.
+
+Completion comes from the current repository too: the step is complete when the repository
+provides what the step says it provides and any obsolete implementation the step names is absent.
+A step may already be fully or partly satisfied by work that landed through the other plan; do
+not rebuild what exists, implement only the remaining declared scope.
+
+One plan step is normally one PR. That is a scope rule, not a size target: a PR may be substantial
+if that is the coherent unit, and work is not split into micro-PRs or merged into one large PR
+for count. Split only for a real technical reason (prerequisite separation, an independently risky
+migration, a deployment boundary, a change too large to review coherently). Multiple commits are
+fine; keep the trailing status and plan bookkeeping in the same PR, not a separate one.
+
+Every plan step states its hosted effect: None (no hosted behavior changes; no ceremonial deploy),
+Data (prepared corpus, database, or vector state changes; publish and verify the data, no app
+redeploy unless code changed), Application (deploy the application and run the relevant hosted
+proof), Infrastructure (deploy the affected infrastructure or configuration and verify it). A step
+without one is an incomplete definition; report it.
+
+## Implementation discipline
+
+- Implement only the selected step. Do not start the next one because this finished early, do not
+  generalize a seam for hypothetical work, do not add speculative contracts or extension points.
+- Boundaries are typed where necessary; ordinary implementation stays ordinary Python. No class,
+  enum, protocol, validator, or abstraction layer unless the final design needs it.
+- Deletion first. Superseded code disappears as soon as its replacement makes that safe. Both
+  plans may name the same retirement as "if present, remove"; whichever plan gets there first
+  deletes, and the later arrival finds the absence and does nothing. Never keep obsolete code
+  because it exists, has tests, or cost effort, and never defer known retirement into a generic
+  cleanup stage when the owning replacement is landing.
+- The design is a ceiling. If a step seems to need something the design does not carry (queues,
+  workers, checkpointing, approval stages, another agent, another database, a model call for
+  presentation, provider abstractions), the approach is wrong: re-read the design, and if it still
+  seems necessary, stop and ask. No silent fallbacks: an approach that will not work is a human
+  revision to `docs/decisions.md`, never a `try:` block that quietly takes the rejected path.
+- Never assert repository state you have not checked in this session. Grep before calling
+  something absent; read a file before describing it; report what you did not find.
+- Do not create files that were not requested. For a quick behavioral check prefer an inline
+  `uv run python -c` over a throwaway test file.
+
+## After a step lands, in the same PR
+
+1. Update `docs/status.md` first so it describes the repository as it now is. Add, move, or remove
+   rows as the truth requires; every statement traces to something inspected.
+2. Re-evaluate both execution plans against the updated status. Edit each only where the current
+   repository changes whether a step's completion condition holds, partly holds, or does not hold.
+   Status is the synchronization point; a Vertical landing may satisfy Horizontal steps and the
+   reverse. No second progress model inside the plans, no cross-plan bookkeeping.
+3. These three edits are execution bookkeeping and need no separate documentation prompt or mode.
+   They may not redesign future steps, change the target, invent scope, or redefine unrelated
+   completion conditions. If the landing exposes a real problem in a future step or in the design,
+   record the discrepancy and report it; do not silently redesign.
+
+## No plan or document vocabulary in implementation
+
+Plan step identifiers, stage or layer names, requirement and decision identifiers, document
+section numbers, and migration terminology appear nowhere in source, comments, tests,
+configuration, branch names, commit messages, PR titles, or PR descriptions unless the user asks
+for traceability there. Say what the code does and why, technically ("replace the fixed evidence
+sequence with bounded adaptive capability selection"), not where the instruction came from. The
+pre-commit hook and CI enforce the plan-vocabulary part repository-wide.
+
+Completion notes in a plan point at `status.md`, the implementing PR or commit, or a stable
+artifact; not at dense requirement or design citations.
+
+## Tooling and safety
+
+- `uv` for everything: `uv sync --group dev --group data`, `uv run pytest -q`, `uv run mypy`,
+  `uv run ruff check .`, `uv run ruff format --check .`. Never `pip`, never bare `python -m`. The
+  gates `code-guidelines.md` names pass before a step is presented as done, run with the exact
+  CI-lane commands and groups.
+- Enable the hook once per clone: `git config core.hooksPath .githooks`.
+- No em-dash on any line you write, in code or prose. Use a hyphen, colon, or shorter sentence.
+- Never run git commands that change state (add, commit, branch, checkout, push, merge, rebase,
+  delete) unless the user explicitly instructs it in that turn. Never force-push, rewrite history,
+  or bypass hooks. Read-only git is fine.
+- Never edit `docs/requirements.md` or a governing design document from an implementation task.
+  If the code proves the design wrong, stop and report: file, section, what the code established,
+  why the text cannot stand, the recommended change, and whether the step is blocked.
+- Contradictions between documents, stale references, and instructions that cannot be satisfied
+  as written are questions for the author. Surface them with a recommended default; do not repair
+  them silently.
