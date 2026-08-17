@@ -54,9 +54,8 @@ request models, `legacy_status()`, `DocHit`, the five wrapper classes, `turn_id`
 set, the pairing-table tests, and the three superseded MCP exposures with their parity test are
 absent.
 
-*Remaining.* The committed synthesis cassette, which the changed evidence digest invalidated, is
-not re-recorded, so the deterministic lane errors in `tests/test_turn_replay_end_to_end.py`. The
-hosted effect below has not run.
+*Remaining.* Only the hosted effect below: the deployed revision predates this code, so no hosted
+investigation has yet admitted through it.
 
 **Builds.** The final evidence contract, end to end below the agents. The reference grammar gains
 the three evidence forms the design fixes for alerts, the incident record, and aggregate query
@@ -153,9 +152,7 @@ is established, and no probability. The synthesis prompt is the new proposal sha
 below, the assessment types, the grounding contract layer, the semantic filtering, and the
 `model_construct()` scaffolding are absent. See `docs/status.md`.
 
-*Remaining.* The synthesis cassette needs recording once more: the admitted-evidence digest changed
-after it was last recorded, when correlated alerts became citable, so replay errors until it is
-taken again. The model seam still carries the Ollama and generic-OpenAI branches, `LLM_SEED`, the
+*Remaining.* The model seam still carries the Ollama and generic-OpenAI branches, `LLM_SEED`, the
 planner, claim, report, triage, and tool-call response models in `llm/schema.py`, and the `llm`
 marker's provider text; reducing it to one Azure adapter with the fake and the cassette is the
 outstanding build. Then the hosted effect: deploy and confirm one hosted investigation delivers a

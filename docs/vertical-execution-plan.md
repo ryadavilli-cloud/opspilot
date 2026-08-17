@@ -56,10 +56,8 @@ brief renders deterministically with the outcome, contributing causes where more
 is established, and no probability. Every named contract type, oversized model, validator, semantic
 filter, and test scaffold below is absent. See `docs/status.md`.
 
-*Remaining.* The cassette needs recording once more: the admitted-evidence digest changed after it
-was last recorded, when correlated alerts became citable, so replay errors until it is taken again.
-And the hosted effect: deploy the application and confirm one hosted investigation delivers a brief
-with the designed sections and no probability.
+*Remaining.* Only the hosted effect: deploy the application and confirm one hosted investigation
+delivers a brief with the designed sections and no probability.
 
 **Builds.** The final output seam, as pure functions the graph will call unchanged. The assessment
 shape becomes the designed field set once: `what_happened`, ordered `candidates` (statement, label,
