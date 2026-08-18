@@ -233,10 +233,10 @@ _default: OperationalRecords | None = None
 def default_operational_records() -> OperationalRecords:
     """The process-wide reader over the deployed container (lazy, built once).
 
-    The Cosmos imports are local so that importing this module needs neither the optional
-    `checkpoint` dependency group nor a credential; a test that injects its own container never
-    reaches this function. Keyless, like every other Cosmos client here: the Container App's
-    managed identity holds read on the RetailEase database and no write to weaken.
+    The Cosmos imports are local so that importing this module needs no credential; a test that
+    injects its own container never reaches this function. Keyless, like every other Cosmos client
+    here: the Container App's managed identity holds read on the RetailEase database and no write
+    to weaken.
     """
     global _default
     if _default is None:

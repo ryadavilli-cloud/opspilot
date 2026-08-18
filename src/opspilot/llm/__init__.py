@@ -1,7 +1,7 @@
-"""LLM seam — a provider-agnostic chat-model interface and its factory.
+"""The model seam: one chat-model contract, and the factory that answers it.
 
-The diagnosis core talks only to `ChatModel` (see `base.py`); vendors are resolved by
-`build_chat_model` (see `client.py`). Nothing here imports a vendor SDK at module load, so the lean
-runtime image and the CI core lane can import this package without the optional `llm` dependency
-group installed.
+Every role talks only to `ChatModel` (see `base.py`), and `build_chat_model` (see `client.py`)
+answers with the live Azure adapter or cassette replay. Nothing here imports a provider SDK at
+module load, so the lean runtime image and the CI lane import this package without the optional
+`llm` dependency group installed.
 """

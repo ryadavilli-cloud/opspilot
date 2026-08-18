@@ -1,8 +1,8 @@
 """The bounded query structure, the surface it may address, and its translation.
 
 The model does not emit query text. It emits a structure whose every part is drawn from the
-approved surface, and that structure is what validation checks and what execution translates
-(`system-design.md` §8.2). Nothing here accepts text from a caller: an unapproved field or an
+approved surface, and that structure is what validation checks and what execution translates.
+Nothing here accepts text from a caller: an unapproved field or an
 unsupported operation has no expressible form rather than being caught after the fact.
 
 Translation is the one place a query string exists, and it is assembled from this module's own

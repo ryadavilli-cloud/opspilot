@@ -31,7 +31,7 @@ from pydantic import BaseModel
 
 from opspilot import __version__, config
 from opspilot.assessment.brief import render
-from opspilot.config import ENVIRONMENT, RETRIEVAL_BACKEND, WORKFLOW_VERSION
+from opspilot.config import ENVIRONMENT, RETRIEVAL_BACKEND
 from opspilot.data.operational_records import (
     RECORD_KINDS,
     OperationalRecords,
@@ -166,7 +166,6 @@ class ReadinessResponse(BaseModel):
     status: Literal["ready", "not_ready"]
     checks: dict[str, str]
     retrieval_backend: str
-    workflow_version: str
     version: str
     errors: list[ReadinessError] | None = None
 
@@ -174,7 +173,6 @@ class ReadinessResponse(BaseModel):
 class VersionResponse(BaseModel):
     application: str = "opspilot"
     version: str
-    workflow_version: str
     environment: str
     retrieval_backend: str
 
@@ -213,7 +211,6 @@ def health() -> LivenessResponse:
 def version() -> VersionResponse:
     return VersionResponse(
         version=__version__,
-        workflow_version=WORKFLOW_VERSION,
         environment=ENVIRONMENT,
         retrieval_backend=RETRIEVAL_BACKEND,
     )
@@ -286,7 +283,6 @@ def ready(
         status="ready" if is_ready else "not_ready",
         checks=checks,
         retrieval_backend=backend,
-        workflow_version=WORKFLOW_VERSION,
         version=__version__,
         errors=errors or None,
     )

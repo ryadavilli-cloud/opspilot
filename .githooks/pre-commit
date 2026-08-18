@@ -70,15 +70,13 @@ if [ -n "$ruff_cmd" ]; then
     fi
 fi
 
-# Execution-plan vocabulary outside docs/ (code guidelines section 12). Same patterns and same
-# exempt list as the CI step, so this fails locally rather than after a push. The exempt modules
-# are superseded machinery scheduled for deletion; they take their comments with them, and the list
-# only ever shrinks. Decision identifiers are deliberately absent from the pattern: a decision is a
-# settled choice the code implements, not a position in a plan.
-vocab_exempt='^(src/opspilot/(api|graph|router|auth|investigations|cosmos_investigations|checkpoint|triage)\.py|src/opspilot/nodes/investigation\.py|tests/test_(api|investigations|investigations_api|auth|checkpointer|triage|triager|report_binding)\.py)$'
+# Execution-plan vocabulary outside docs/. The same pattern as the CI step, so this fails locally
+# rather than after a push, and with no exempt list: the modules it held are deleted, and they took
+# their comments with them. Decision identifiers are deliberately absent from the pattern: a
+# decision is a settled choice the code implements, not a position in a plan.
 vocab_pattern='\bStage [0-9]|\bPhase [0-9]|\bG-[0-9]{2}|\bslices? [0-9]+\.[0-9]'
 
-vocab=$(git ls-files | grep -vE '^docs/' | grep -vE "$vocab_exempt" \
+vocab=$(git ls-files | grep -vE '^docs/' \
     | xargs -r -d '\n' grep -nEH --binary-files=without-match "$vocab_pattern" 2>/dev/null || true)
 
 if [ -n "$vocab" ]; then

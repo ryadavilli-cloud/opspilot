@@ -90,7 +90,7 @@ def check_version(client: httpx.Client) -> VersionResponse:
     version = VersionResponse.model_validate(resp.json())
     print(
         f"[smoke] version: application={version.application} version={version.version} "
-        f"workflow_version={version.workflow_version} environment={version.environment}",
+        f"environment={version.environment}",
         flush=True,
     )
     _require(
