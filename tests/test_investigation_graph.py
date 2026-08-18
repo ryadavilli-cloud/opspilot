@@ -20,6 +20,7 @@ from typing import Any
 import pytest
 from fake_operational_records import corpus_records
 
+from opspilot import config
 from opspilot.api import initial_state
 from opspilot.assessment.contracts import Outcome
 from opspilot.investigation.graph import MODEL, RECORD, SERVICE, build_graph
@@ -65,7 +66,7 @@ class FailingService:
 
     tool_names = ("get_correlated_alerts", "query_logs")
 
-    def call(self, tool_name: str, **_: Any) -> Any:
+    def call(self, tool_name: str, remaining_s: float | None = None, /, **_: Any) -> Any:
         return error_result(
             tool_name, "unreachable", time.perf_counter(), ExecutionOutcome.UNAVAILABLE
         )
@@ -358,3 +359,47 @@ def test_an_investigation_that_establishes_nothing_is_inconclusive_and_still_sav
     assert final.get("failure") is None
     assert final["outcome"] is Outcome.INCONCLUSIVE
     assert record.get("inv-1") is not None, "an inconclusive investigation is still a result"
+
+
+# --- the run's deadline reaches the capability ---------------------------------------------------
+class _RecordingService:
+    """A registry that records the deadline each call was given, and answers nothing."""
+
+    tool_names = ("get_correlated_alerts",)
+
+    def __init__(self) -> None:
+        self.deadlines: list[float | None] = []
+
+    def call(self, tool_name: str, remaining_s: float | None = None, /, **_: Any) -> Any:
+        self.deadlines.append(remaining_s)
+        return error_result(
+            tool_name, "unreachable", time.perf_counter(), ExecutionOutcome.UNAVAILABLE
+        )
+
+
+def test_a_capability_call_carries_the_investigations_remaining_time(incident):
+    """The bound is one deadline over the whole run, so what reaches a source is what the run has
+    left, not a ceiling the source picked for itself."""
+    service = _RecordingService()
+    model = ScriptedModel(evidence_selection=[_action(), _finished()])
+
+    run(incident, model, service=service)
+
+    assert service.deadlines, "no capability was called"
+    for remaining in service.deadlines:
+        assert remaining is not None, "the call was made without the run's remaining time"
+        assert 0 < remaining <= config.INVESTIGATION_DEADLINE_SECONDS
+
+
+def test_a_run_with_almost_no_time_left_passes_almost_none_of_it_on(incident):
+    """What the ceiling alone cannot express: the call inherits how little is left, so it cannot
+    run on past the investigation that asked for it."""
+    service = _RecordingService()
+    model = ScriptedModel(evidence_selection=[_action(), _finished()])
+
+    def nearly_expired(state):
+        state.bounds.expires_at = time.monotonic() + 0.5
+
+    run(incident, model, service=service, prepare=nearly_expired)
+
+    assert service.deadlines and all(r is not None and r <= 0.5 for r in service.deadlines)

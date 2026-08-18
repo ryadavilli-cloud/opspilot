@@ -196,7 +196,11 @@ def gather(state: InvestigationState, config: RunnableConfig | None = None) -> d
             ),
         }
 
-    tool_result = deps[SERVICE].call(action.capability, **action.arguments)
+    # The investigation's remaining time travels with the call, so no capability outlives the
+    # run that asked for it. Positional, because everything after it is what the model asked.
+    tool_result = deps[SERVICE].call(
+        action.capability, state.bounds.remaining_s, **action.arguments
+    )
     admitted = admit(
         tool_result,
         evidence=state.evidence,

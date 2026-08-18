@@ -194,3 +194,82 @@ def test_the_prepared_edge_carries_both_its_partition_kind_and_its_own():
     edges = [doc for doc in corpus_documents() if doc["kind"] == "dependency"]
     assert edges
     assert all(doc["dependency_kind"] and doc["dependency_kind"] != "dependency" for doc in edges)
+
+
+# --- the investigation's remaining time bounds the call too --------------------------------------
+@pytest.mark.parametrize("name,arguments", CAPABILITY_CALLS, ids=CAPABILITY_NAMES)
+def test_a_call_takes_the_smaller_of_the_ceiling_and_the_remaining_time(bounded, name, arguments):
+    """Two bounds, and a call is subject to both. The ceiling keeps one source from hanging; the
+    remaining time keeps the sum of them inside the investigation that asked."""
+    service, container = bounded
+    remaining = DEADLINE / 3
+
+    service.call(name, remaining, **arguments)
+
+    assert container.timeouts, f"{name} reached the container without issuing a read"
+    assert all(timeout == remaining for timeout in container.timeouts)
+
+
+def test_the_ceiling_still_applies_when_the_investigation_has_longer_left(bounded):
+    """The remaining time is the other bound, not a replacement for the ceiling: an investigation
+    with minutes left must still not let one source hang for minutes."""
+    service, container = bounded
+
+    service.call("get_incident", DEADLINE * 100, incident_id="inc-004")
+
+    assert container.timeouts == [DEADLINE]
+
+
+def test_a_nearly_expired_investigation_cannot_start_a_full_length_call(bounded):
+    """The case the ceiling alone gets wrong. With a moment left, a call that took the whole
+    ceiling would outlive the run it belongs to and report into an investigation already over."""
+    service, container = bounded
+
+    service.call("get_incident", 0.05, incident_id="inc-004")
+
+    assert container.timeouts == [0.05]
+    assert all(timeout < DEADLINE for timeout in container.timeouts)
+
+
+def test_an_expired_investigation_leaves_no_time_to_spend(bounded):
+    """Not a negative deadline, and not the ceiling. Nothing remains, so nothing may be taken."""
+    service, container = bounded
+
+    service.call("get_incident", -5.0, incident_id="inc-004")
+
+    assert container.timeouts == [0.0]
+
+
+@pytest.mark.parametrize("name,arguments", CAPABILITY_CALLS, ids=CAPABILITY_NAMES)
+def test_no_capability_can_outlive_the_remaining_bound_it_was_given(bounded, name, arguments):
+    """Stated over every capability rather than one, because this is the property that has to hold
+    by construction: the bound is applied where the call is made, not per adapter."""
+    service, container = bounded
+    remaining = 1.25
+
+    service.call(name, remaining, **arguments)
+
+    assert all(timeout <= remaining for timeout in container.timeouts)
+
+
+def test_a_request_naming_the_remaining_time_cannot_widen_its_own_bound(bounded):
+    """The parameter is positional-only for exactly this reason. A model's arguments arrive as
+    keywords, so a named one here could be bound by an argument the model chose; kept out of the
+    keyword space it lands among the arguments instead, where the capability refuses it."""
+    service, container = bounded
+
+    result = service.call("get_incident", 0.05, incident_id="inc-004", remaining_s=3600.0)
+
+    assert result.outcome is ExecutionOutcome.REJECTED
+    assert container.timeouts == [], "the request was refused, so nothing should have executed"
+
+
+def test_the_service_holds_no_investigation_state_between_calls(bounded):
+    """One process-wide service serves every investigation, so a deadline stored on it would
+    belong to whichever run wrote it last. Passing it per call is what keeps runs independent."""
+    service, container = bounded
+
+    service.call("get_incident", 0.5, incident_id="inc-004")
+    service.call("get_incident", None, incident_id="inc-004")
+
+    assert container.timeouts == [0.5, DEADLINE]
