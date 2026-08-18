@@ -17,7 +17,6 @@ so no caller can widen a read surface through an argument.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from typing import Any
 
 from opspilot import config
@@ -218,50 +217,6 @@ class OperationalRecords:
         """
         text, parameters = translate(query)
         return self._query(text, parameters, deadline_s=deadline_s)
-
-    def kind_counts(self, *, deadline_s: float) -> dict[str, int]:
-        """One count per record kind, for the deployment-time preparation check. Absent preparation
-        must present as a deployment failure rather than as an empty answer at turn time, and a
-        container holding only some kinds would break the capabilities whose kind is missing."""
-        counts: dict[str, int] = {}
-        for kind in RECORD_KINDS:
-            rows = self._query(
-                "SELECT VALUE COUNT(1) FROM c WHERE c.kind = @kind",
-                [{"name": "@kind", "value": kind}],
-                deadline_s=deadline_s,
-            )
-            counts[kind] = int(rows[0]) if rows else 0
-        return counts
-
-
-@dataclass(frozen=True)
-class PreparationStatus:
-    """Which record kinds the container holds, and which it is missing.
-
-    Every kind is reported together rather than one failure at a time, so an operator reading a
-    failed readiness probe sees the whole shortfall in one response.
-    """
-
-    counts: dict[str, int]
-    missing: tuple[str, ...]
-
-    @property
-    def ok(self) -> bool:
-        return not self.missing
-
-
-def preparation_status(records: OperationalRecords, *, deadline_s: float) -> PreparationStatus:
-    """Whether corpus preparation has run against the container this application reads.
-
-    A kind holding zero records is missing, not empty: the capability that owns it could only ever
-    answer with nothing, which would read downstream as an authoritative absence rather than as an
-    unprepared deployment. Raises `SourceUnavailable` when the container cannot be reached, which
-    the readiness probe converts into a failed check rather than a ready one.
-    """
-    counts = records.kind_counts(deadline_s=deadline_s)
-    return PreparationStatus(
-        counts=counts, missing=tuple(kind for kind in RECORD_KINDS if not counts.get(kind))
-    )
 
 
 _default: OperationalRecords | None = None

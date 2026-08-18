@@ -65,15 +65,6 @@ def test_no_source_call_exceeds_the_deadline_it_was_given(bounded, name, argumen
     assert all(timeout <= DEADLINE for timeout in container.timeouts)
 
 
-def test_a_capability_that_issues_several_reads_bounds_every_one_of_them(bounded):
-    """The readiness count walks all six kinds in one call. Each read carries the bound; a loop
-    that carried it only on the first would pass every single-read assertion above."""
-    service, container = bounded
-    service.records.kind_counts(deadline_s=DEADLINE)
-    assert len(container.timeouts) == 6
-    assert all(timeout == DEADLINE for timeout in container.timeouts)
-
-
 def test_a_failed_read_still_carried_its_deadline():
     """A bound that only holds on the happy path is not a bound."""
     container = corpus_container(unreachable=True)

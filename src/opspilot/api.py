@@ -2,9 +2,9 @@
 
 Health is split three ways so an orchestrator can tell the states apart:
   - `/health/live`   the process is running, touching nothing else
-  - `/health/ready`  the application can actually investigate: the operational-records container
-                     holds every record kind, incident and log lookups answer, retrieval is
-                     initialized and matches the configured backend. 503 when not
+  - `/health/ready`  the revision can serve an investigation: the operational-records container
+                     answers a seeded lookup and retrieval came up as the configured backend.
+                     503 when not
   - `/version`       build and runtime metadata
 
 `POST /investigations` is the only investigative route. One live streaming request owns one
@@ -33,11 +33,8 @@ from opspilot import __version__, config
 from opspilot.assessment.brief import render
 from opspilot.config import ENVIRONMENT, RETRIEVAL_BACKEND
 from opspilot.data.operational_records import (
-    RECORD_KINDS,
     OperationalRecords,
-    PreparationStatus,
     default_operational_records,
-    preparation_status,
 )
 from opspilot.evidence.operations import EvidenceSet
 from opspilot.intake.contracts import from_predefined_incident
@@ -126,21 +123,6 @@ def get_operational_records() -> OperationalRecords:
             if _operational_records is None:
                 _operational_records = default_operational_records()
     return _operational_records
-
-
-def get_records_status(
-    records: OperationalRecords = Depends(get_operational_records),
-) -> PreparationStatus:
-    """Whether corpus preparation has run against the container this application reads.
-
-    Fails closed: a container that cannot answer reports every kind missing rather than raising,
-    because a dependency that raised would answer the probe with a 500 and lose the distinction
-    readiness exists to draw.
-    """
-    try:
-        return preparation_status(records, deadline_s=config.SOURCE_DEADLINE_SECONDS)
-    except Exception:  # noqa: BLE001 - readiness converts every failure into a failed check
-        return PreparationStatus(counts={}, missing=RECORD_KINDS)
 
 
 # --------------------------------------------------------------------------------------
@@ -232,11 +214,21 @@ def _safe_backend(svc: Any) -> str:
 
 
 @app.get("/health/ready")
-def ready(
-    response: Response,
-    svc: Any = Depends(get_service),
-    records: PreparationStatus = Depends(get_records_status),
-) -> ReadinessResponse:
+def ready(response: Response, svc: Any = Depends(get_service)) -> ReadinessResponse:
+    """Whether this revision can serve an investigation, in two cheap questions.
+
+    A readiness probe runs for the life of the revision, on a period far shorter than the work it
+    guards, so what it costs is paid continuously and what it holds open is held open the whole
+    time. It therefore asks the least that still distinguishes a revision that cannot work from one
+    that can: the operational source answers and is seeded, and retrieval came up as the backend
+    this build was configured for.
+
+    It deliberately does not embed a query, search the index, or count the corpus. Those exercise
+    the investigative path, which is what the deployment smoke run does once, against the revision,
+    with a whole investigation. Doing it here would repeat a model-serving call every few seconds
+    for as long as the revision lives, and would make a rate-limited embedding endpoint read as an
+    application that is not ready.
+    """
     checks: dict[str, str] = {}
     errors: list[ReadinessError] = []
     backend = _safe_backend(svc)
@@ -246,35 +238,14 @@ def ready(
         if not ok:
             errors.append(ReadinessError(component=name, code=code))
 
-    def repository_ok() -> bool:
-        # This check wants the seed incident actually present, so it reads completeness too: a
-        # reachable but unseeded container answers succeeded with empty, which is a true answer to
-        # the query and still not a ready deployment.
+    def records_ok() -> bool:
+        # One point read. Completeness is read too, because a reachable but unseeded container
+        # answers succeeded with empty, which is a true answer and still not a ready deployment.
         result = svc.get_incident(incident_id="inc-004")
         return bool(result.answered and result.completeness is Completeness.COMPLETE)
 
-    def logs_ok() -> bool:
-        # Readiness asks only whether the source answered. A window holding no logs is succeeded
-        # with empty, a healthy source reporting nothing rather than a failure.
-        return bool(
-            svc.query_logs(
-                service="checkout-api",
-                start_time="2026-06-28T10:00:00Z",
-                end_time="2026-06-28T11:00:00Z",
-            ).answered
-        )
-
-    def retrieval_ok() -> bool:
-        return bool(
-            backend != "unavailable"
-            and backend == RETRIEVAL_BACKEND
-            and svc.search_runbooks(query="payment timeout", k=1).answered
-        )
-
-    record("operational_records", _check(lambda: records.ok), "OPERATIONAL_RECORDS_INCOMPLETE")
-    record("repository", _check(repository_ok), "REPOSITORY_LOOKUP_FAILED")
-    record("logs", _check(logs_ok), "LOG_QUERY_FAILED")
-    record("retrieval", _check(retrieval_ok), "RETRIEVAL_INITIALIZATION_FAILED")
+    record("operational_records", _check(records_ok), "OPERATIONAL_RECORDS_UNAVAILABLE")
+    record("retrieval", _check(lambda: backend == RETRIEVAL_BACKEND), "RETRIEVAL_UNAVAILABLE")
 
     is_ready = all(state == "ok" for state in checks.values())
     if not is_ready:
