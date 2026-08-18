@@ -215,8 +215,8 @@ both backends stand behind it: the in-memory one narrowed to those two operation
 over the declared container keyed by `investigation_id` with a plain create. Both normalize through
 the stored document, so a record reads back with the same contents whichever is behind the seam and
 a second save is refused by either. `azure-cosmos` is a base dependency. The plural-turn
-persistence types are absent. Nothing calls `save` yet, which is what this step meant by
-unconnected. See `docs/status.md`.
+persistence types are absent. This step built the seam unconnected; the investigation run now
+writes through it before it delivers. See `docs/status.md`.
 
 **Builds.** The final persistence seam, unconnected to any runtime path yet. One
 `CompletedInvestigation` carrying what the design lists: identity, incident, objective, outcome and
@@ -257,7 +257,19 @@ base dependency, and the plural-turn persistence types are absent.
 
 ## H5. The three-agent graph and the runtime it replaces
 
-**State:** Not started.
+**State:** Partial.
+
+*Already present.* The graph, the three roles, the five bounds, deterministic authorization,
+grounding with one correction, the outcome rule, the failure categories, persist-before-deliver,
+and the streaming request under investigation-only vocabulary. Every module, route, setting,
+dependency, override, and test this step names for removal is absent, and the strict-override list
+is gone entirely rather than shortened.
+
+*Remaining.* Two of this step's own builds, each waiting on a capability it would have nothing to
+act on without: the one return is declared as an edge and never followed, because retrieval and the
+structured query are registered and not yet offered to the investigator, so no proposal names an
+evidence kind a further pass could supply. Then the hosted effect: the deployed revision predates
+this landing.
 
 **Builds.** The designed runtime, and the removal of the one it supersedes. One small compiled
 in-process graph over typed investigation state, no checkpointer: set objective, gather with

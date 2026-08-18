@@ -1,89 +1,72 @@
-"""S-1: activity projection is produced at the same instrumentation point as telemetry, from the
-same recorded facts, and can carry nothing telemetry does not also record (code-guidelines §11)."""
+"""Activity projection: one call, one span, one event, from the same stated facts.
+
+The reason this is one function rather than two calls a caller makes in sequence is that two calls
+drift. A feed entry telemetry cannot corroborate, or a span with no matching entry, is exactly the
+kind of gap that only shows up when someone is trying to explain a bad run after the fact.
+"""
 
 from __future__ import annotations
 
 from opspilot.obs import tracing
-from opspilot.stream.contracts import ActivityEvent
-from opspilot.stream.projection import ActivityProjector, emit
-from opspilot.turn.identity import start_turn
+from opspilot.stream.projection import emit
 
 
-def test_emit_produces_a_span_and_the_matching_activity_event(
-    span_exporter: tracing.InMemorySpanExporter,
-):
-    turn = start_turn(incident_id="inc-001")
-    projector = ActivityProjector()
-
-    event = emit(
-        "turn.phase_change",
-        turn,
-        projector,
-        phase="investigating",
-        action="gather evidence",
-        detail="Investigation started.",
+def _emit(sequence: int = 1, **overrides):
+    fields = dict(
+        phase="gathering",
+        action="query_logs",
+        detail="query_logs: succeeded, complete (3 admitted)",
+        capability="query_logs",
+        transport="direct",
+        outcome="succeeded",
+        references=["logs:checkout-api:evt-1"],
     )
+    fields.update(overrides)
+    return emit("investigation.capability", "inv-1", "inc-005", sequence=sequence, **fields)
 
-    assert isinstance(event, ActivityEvent)
-    assert event.phase == "investigating"
-    assert event.action == "gather evidence"
-    assert event.status == "ok"
+
+def test_one_call_produces_both_the_span_and_the_matching_event(span_exporter):
+    event = _emit()
+
+    span = next(s for s in span_exporter.spans if s.name == "investigation.capability")
+    assert span.attributes["investigation_id"] == "inv-1"
+    assert span.attributes["incident_id"] == "inc-005"
+    assert span.attributes["phase"] == event.phase
+    assert span.attributes["action"] == event.action
+    assert span.attributes["status"] == event.status
+
+
+def test_the_event_carries_what_the_compact_feed_consumes(span_exporter):
+    event = _emit()
+
     assert event.sequence == 1
-
-    sp = span_exporter.spans[0]
-    assert sp.trace_id == turn.turn_id
-    assert sp.attributes["turn_id"] == turn.turn_id
-    assert sp.attributes["investigation_id"] == turn.investigation_id
-    assert sp.attributes["phase"] == "investigating"
-    assert sp.attributes["action"] == "gather evidence"
+    assert event.capability == "query_logs"
+    assert event.transport == "direct"
+    assert event.outcome == "succeeded"
+    assert event.references == ["logs:checkout-api:evt-1"]
 
 
-def test_activity_projector_assigns_sequence_positions_in_order():
-    projector = ActivityProjector()
-    first = projector.project(phase="investigating", action="a", status="ok", detail="first")
-    second = projector.project(phase="investigating", action="b", status="ok", detail="second")
-    third = projector.project(phase="synthesizing", action="c", status="ok", detail="third")
-    assert (first.sequence, second.sequence, third.sequence) == (1, 2, 3)
+def test_the_span_is_correlated_by_the_investigation_alone(span_exporter):
+    """One identity on the wire and one in telemetry, so a run is queryable by the identifier the
+    client was given without joining anything first."""
+    _emit()
+
+    span = next(s for s in span_exporter.spans if s.name == "investigation.capability")
+    assert span.trace_id == "inv-1"
+    assert "turn_id" not in span.attributes
 
 
-def test_activity_event_carries_only_explicit_fields_no_stream_only_facts():
-    # The projection can never state more than what was explicitly recorded: there is no
-    # parameter through which arbitrary span attributes, prompts, or secrets could reach it.
-    projector = ActivityProjector()
-    event = projector.project(
-        phase="investigating", action="query metrics", status="ok", detail="Queried metrics."
-    )
-    dumped = event.model_dump()
-    assert set(dumped) == {
-        "event_type",
-        "sequence",
-        "phase",
-        "action",
-        "status",
-        "detail",
-        "capability",
-        "transport",
-        "outcome",
-        "references",
-    }
-    assert dumped["capability"] is None
-    assert dumped["references"] == []
+def test_an_error_status_travels_to_both(span_exporter):
+    event = _emit(status="error", detail="proposal refused", capability=None, transport=None)
+
+    span = next(s for s in span_exporter.spans if s.name == "investigation.capability")
+    assert event.status == "error"
+    assert span.attributes["status"] == "error"
 
 
-def test_emit_two_turns_get_independent_sequences(span_exporter: tracing.InMemorySpanExporter):
-    # Turn isolation: one projector per turn, never shared.
-    turn_a = start_turn(incident_id="inc-001")
-    turn_b = start_turn(incident_id="inc-002")
-    projector_a = ActivityProjector()
-    projector_b = ActivityProjector()
+def test_nesting_puts_the_activity_span_under_the_investigation(span_exporter):
+    with tracing.span("investigation", trace_id="inv-1"):
+        _emit()
 
-    event_a1 = emit("t", turn_a, projector_a, phase="p", action="a", detail="d")
-    event_b1 = emit("t", turn_b, projector_b, phase="p", action="a", detail="d")
-    event_a2 = emit("t", turn_a, projector_a, phase="p", action="a", detail="d")
-
-    assert event_a1.sequence == 1
-    assert event_b1.sequence == 1
-    assert event_a2.sequence == 2
-
-    trace_ids = {sp.trace_id for sp in span_exporter.spans}
-    assert trace_ids == {turn_a.turn_id, turn_b.turn_id}
+    by_name = {s.name: s for s in span_exporter.spans}
+    assert by_name["investigation.capability"].parent_span_id == by_name["investigation"].span_id

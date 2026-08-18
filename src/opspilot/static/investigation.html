@@ -99,13 +99,13 @@
 <body>
 <header>
   <h1>OpsPilot: Investigation</h1>
-  <p>Streams one turn from a predefined incident. No accepted investigation outcome exists yet;
-     this demonstrates the transport and activity feed only.</p>
+  <p>Select an incident and watch one investigation run: what each agent and capability did,
+     then the brief it delivered and the outcome it reached.</p>
 </header>
 
 <main>
   <section id="intake">
-    <h2>Start a turn</h2>
+    <h2>Start an investigation</h2>
     <select id="incident-select">
       <option value="inc-001">inc-001: Elevated checkout failures; payment authorizations timing out.</option>
       <option value="inc-002">inc-002: Inventory and catalog reads failing intermittently with 429s.</option>
@@ -125,7 +125,7 @@
 
   <section>
     <h2>Brief</h2>
-    <div id="brief" class="pending">No turn started yet.</div>
+    <div id="brief" class="pending">No investigation started yet.</div>
   </section>
 
   <section>
@@ -165,9 +165,8 @@
     return div.innerHTML;
   }
 
-  function renderDetails(turnId, investigationId) {
+  function renderDetails(investigationId) {
     var lines = [
-      "turn_id: " + turnId,
       "investigation_id: " + investigationId,
       "",
       "events:",
@@ -180,15 +179,19 @@
 
     if (event.event_type === "identity") {
       brief.textContent = "Investigating...";
-      renderDetails(event.turn_id, event.investigation_id);
+      renderDetails(event.investigation_id);
     } else if (event.event_type === "activity") {
       appendActivity(event);
-      renderDetails(rawEvents[0].turn_id, rawEvents[0].investigation_id);
-    } else if (event.event_type === "close") {
-      brief.textContent =
-        "Transport demonstration complete. No investigation outcome exists yet.";
+      renderDetails(rawEvents[0].investigation_id);
+    } else if (event.event_type === "terminal") {
+      // The brief becomes the dominant element the moment it arrives. A failed execution has no
+      // brief to show, so it says which category it ended under rather than leaving the region
+      // reading as though an investigation were still running.
+      brief.textContent = event.brief
+        ? event.brief.text
+        : "This investigation could not be completed: " + event.failure;
       brief.classList.remove("pending");
-      renderDetails(event.turn_id, rawEvents[0].investigation_id);
+      renderDetails(rawEvents[0].investigation_id);
     }
   }
 
@@ -200,12 +203,12 @@
     rawEvents = [];
   }
 
-  async function startTurn() {
+  async function startInvestigation() {
     startButton.disabled = true;
     resetView();
 
     try {
-      var response = await fetch("/turns", {
+      var response = await fetch("/investigations", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ incident_id: incidentSelect.value }),
@@ -213,7 +216,7 @@
 
       if (!response.ok) {
         var body = await response.json().catch(function () { return {}; });
-        brief.textContent = "Could not start a turn: " + (body.detail || response.status);
+        brief.textContent = "Could not start an investigation: " + (body.detail || response.status);
         brief.classList.remove("pending");
         return;
       }
@@ -242,7 +245,7 @@
     }
   }
 
-  startButton.addEventListener("click", startTurn);
+  startButton.addEventListener("click", startInvestigation);
 })();
 </script>
 </body>

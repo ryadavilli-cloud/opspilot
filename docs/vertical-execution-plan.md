@@ -145,17 +145,26 @@ four fields, and the named branches, models, and residue are absent.
 
 **State:** Partial.
 
-*Already present.* The evidence half of this slice: admission returns plain values and the evidence
-set carries observations, limitations, and the operations list keyed by `investigation_id`; the
-`alert:<service>:<alert_id>` form parses and resolves. The five admission wrapper classes and
-`turn_id` on the evidence set are absent. The operational adapters now take typed parameters rather
-than the request models this slice expected to leave in place; nothing this slice builds depends on
-which of the two they were. The persistence half is present too: `CompletedInvestigation` with the
-designed contents, the `save`/`get` seam, and the in-memory backend narrowed to it, all waiting for
-a caller.
+*Already present.* Everything this slice builds in the repository. The graph runs one authored
+incident end to end over typed state with its five bounds; the three roles propose and code
+authorizes, admits, grounds, corrects once, assigns the outcome, saves, and delivers; failed
+execution persists nothing and emits a sanitized category; the streaming request carries identity,
+activity, and one terminal event under investigation-only vocabulary, and the screen shows the
+brief when it arrives. Every module, route, setting, dependency, override, and test named below is
+absent. Two halves arrived before the runtime that uses them: admission returning plain values with
+the operations list keyed by `investigation_id` and the `alert:<service>:<alert_id>` form, and the
+completed-investigation record with its seam and backends, which the run now writes through before
+it delivers.
 
-*Remaining.* The graph, the three roles, the bounds, grounding, correction, outcome, failure rules,
-the save-before-deliver ordering that uses the seam, delivery, and every other removal named below.
+*Remaining.* The hosted effect. The deployed revision predates this landing, so no hosted
+investigation has run through the graph, and the proof this slice names is a property of a hosted
+run rather than of the tree.
+
+*Recorded against this slice's own text.* Two of its declared removals could not wait for the step
+that owned them: the scenario and single-agent evaluation gates drove the runtime this slice
+replaces, or replayed a cassette recorded through a provider the model seam no longer has, so
+neither could be re-recorded or run and both went here. The `llm/schema.py` response models went
+with the diagnosis path that imported them, as this slice's removal list already required.
 
 **Builds.** The designed runtime, narrowly: one authored incident (the fast change-time scenario,
 inc-005) investigated end to end by the final three-agent graph in the streaming request, with the

@@ -82,7 +82,32 @@ class UnresolvedQuestion(_Proposed):
 
 
 class AssessmentProposal(_Proposed):
-    """The assessment's shape as the model offers it: loose strings, plus the one routing field."""
+    """The assessment's shape as the model offers it: loose strings, plus the one routing field.
+
+    Three fields arrive in more than one encoding, and all three mean the same thing either way. A
+    model asked for one next check sometimes writes a list holding one; asked for actions it
+    sometimes writes plain sentences instead of objects; asked how this relates to prior
+    occurrences it sometimes writes several entries rather than a paragraph. Reading those as the
+    single shape they describe costs nothing and loses nothing, and refusal is meant for output
+    nothing can be made of, not for a model that chose a different but equivalent way to say it.
+    """
+
+    @model_validator(mode="before")
+    @classmethod
+    def _one_shape_per_field(cls, data: Any) -> Any:
+        if not isinstance(data, dict):
+            return data
+        shaped = dict(data)
+        for field in ("next_check", "history"):
+            value = shaped.get(field)
+            if isinstance(value, list):
+                shaped[field] = " ".join(_flatten(entry) for entry in value).strip()
+        actions = shaped.get("actions")
+        if isinstance(actions, list):
+            shaped["actions"] = [
+                {"action": action} if isinstance(action, str) else action for action in actions
+            ]
+        return shaped
 
     what_happened: str = ""
     what_happened_refs: list[str] = Field(default_factory=list)
@@ -95,6 +120,13 @@ class AssessmentProposal(_Proposed):
     history_refs: list[str] = Field(default_factory=list)
     knowledge_used: list[str] = Field(default_factory=list)
     unresolved_question: UnresolvedQuestion | None = None
+
+
+def _flatten(entry: Any) -> str:
+    """One entry of a field the model wrote as a list, as the sentence it stands for."""
+    if isinstance(entry, dict):
+        return " ".join(str(value) for value in entry.values() if value)
+    return str(entry)
 
 
 def parse_proposal(text: str) -> AssessmentProposal:

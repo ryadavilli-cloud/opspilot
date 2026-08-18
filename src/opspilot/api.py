@@ -1,21 +1,23 @@
-"""FastAPI surface — liveness, readiness, version, and the typed investigation endpoint.
+"""The HTTP surface: health, version, the screen, and one streaming investigation.
 
 Health is split three ways so an orchestrator can tell the states apart:
-  - `/health/live`  — the process is running (touches nothing else). Used for liveness probes.
-  - `/health/ready`  the app can actually investigate: the operational-records container holds
-    every record kind, incident + log lookups answer, retrieval initialized and matching the
-    configured backend. 503 when not.
-  - `/version`       — build/runtime metadata.
+  - `/health/live`   the process is running, touching nothing else
+  - `/health/ready`  the application can actually investigate: the operational-records container
+                     holds every record kind, incident and log lookups answer, retrieval is
+                     initialized and matches the configured backend. 503 when not
+  - `/version`       build and runtime metadata
 
-The investigation endpoint returns a typed contract that represents degraded and escalated
-execution honestly (it never fabricates a successful-looking report when retrieval was down) and
-surfaces the safety-guardrail result. Errors never expose stack traces, local paths, or secrets.
+`POST /investigations` is the only investigative route. One live streaming request owns one
+investigation: identity first, then activity as it happens, then exactly one terminal event
+carrying the brief or a sanitized failure category. There is no job, no polling, and no resumption.
+If the request disconnects the run is abandoned, which is safe precisely because the record is
+written before the terminal event or not at all.
+
+Errors never expose a stack trace, a path, or a secret.
 """
 
 from __future__ import annotations
 
-import hashlib
-import json
 import logging
 import threading
 from collections.abc import AsyncIterator
@@ -23,32 +25,13 @@ from pathlib import Path
 from typing import Any, Literal
 from uuid import uuid4
 
-from fastapi import BackgroundTasks, Depends, FastAPI, Header, HTTPException, Request, Response
+from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 from opspilot import __version__, config
 from opspilot.assessment.brief import render
-from opspilot.assessment.synthesis import UnusableProposal
-from opspilot.auth import (
-    ReviewerAuthenticator,
-    ReviewerAuthError,
-    ReviewerPrincipal,
-    build_reviewer_authenticator,
-    require_any_role,
-    require_role,
-)
-from opspilot.checkpoint import build_checkpointer
-from opspilot.composition import DiagnosisComposition, build_diagnosis
 from opspilot.config import ENVIRONMENT, RETRIEVAL_BACKEND, WORKFLOW_VERSION
-from opspilot.contracts import (
-    EscalationNotice,
-    GroundedRcaReport,
-    IncidentReport,
-    InvestigationResult,
-    KnowledgeBriefing,
-    PartialInvestigationReport,
-)
 from opspilot.data.operational_records import (
     RECORD_KINDS,
     OperationalRecords,
@@ -56,103 +39,50 @@ from opspilot.data.operational_records import (
     default_operational_records,
     preparation_status,
 )
-from opspilot.diagnosis.contracts import CausalClaim
-from opspilot.evidence.admission import admit
 from opspilot.evidence.operations import EvidenceSet
-from opspilot.graph import _initial_state, build_graph, invoke_auto_approving
 from opspilot.intake.contracts import from_predefined_incident
-from opspilot.investigations import (
-    CommittedDecision,
-    DecisionNotPendingError,
-    InvestigationRecord,
-    InvestigationRepository,
-    InvestigationStatus,
-    PublicationConflictError,
-    StaleReportError,
-)
+from opspilot.investigation.graph import MODEL, RECORD, SERVICE, build_graph
+from opspilot.investigation.state import Bounds, FailureCategory, InvestigationState
 from opspilot.obs import tracing
-from opspilot.repository import build_investigation_repository
-from opspilot.state import Intent
-from opspilot.stream.contracts import BriefEvent, IdentityEvent, StreamCloseMarker
-from opspilot.stream.projection import ActivityProjector, emit
+from opspilot.record.memory import InMemoryCompletedInvestigations
+from opspilot.stream.contracts import IdentityEvent, TerminalEvent
 from opspilot.tools.contracts import Completeness, IncidentRecord
-from opspilot.turn.identity import start_turn
-from opspilot.turn.synthesis_step import capability_event, evidence_plan, synthesize
 
 _log = logging.getLogger("opspilot.api")
 
-_UNIT_SEP = "\x1f"
-# The approver string `invoke_auto_approving` stamps on a sync-path auto-approval. It is a label
-# only — nothing branches on it. `_build_response` decides `kind` from the verified `auth_method`
-# instead (G-01), because a check that compared an approver *string* to this sentinel was exactly
-# what let any other string present itself as human review.
-_AUTO_APPROVER = "system:auto-approve"
-
 app = FastAPI(title="OpsPilot", version=__version__)
 
-# The operator console: a single self-contained, same-origin HTML page (inline CSS/JS, no external
-# requests, no build step) so an operator can drive an investigation without a separate frontend
-# deployment. Read once at import time — it's a packaged asset, not runtime-configurable data.
-_CONSOLE_HTML = (Path(__file__).parent / "static" / "console.html").read_text(encoding="utf-8")
-
-# The new one-screen client: a separate file and route, not a rewrite of console.html, so the old
-# runtime keeps a working UI until the cutover slice deletes both together. Same self-contained,
-# no-build-step approach; drives the streaming turn endpoint instead of the old polling API.
+# The one-screen client: a self-contained, same-origin page with no build step, read once at import
+# because it is a packaged asset rather than runtime-configurable data.
 _INVESTIGATION_HTML = (Path(__file__).parent / "static" / "investigation.html").read_text(
     encoding="utf-8"
 )
 
-# One durable checkpointer per process (selected by OPSPILOT_CHECKPOINTER; `none` by default),
-# compiled into one graph — every invocation must carry a `thread_id` so the checkpoint is
-# namespaced per investigation. `build_graph` upgrades a `None` checkpointer to an in-process
-# `MemorySaver()` internally — real HITL interrupts require *some* checkpointer to pause/resume at
-# all — but that fallback is non-durable: an `awaiting_approval` investigation does not survive a
-# process restart on it, which is why production sets `cosmos`.
-#
-# Built lazily, on first use, rather than at import. That is what makes the production `cosmos`
-# setting safe: constructing the Cosmos saver opens a client and provisions its container, so doing
-# it at import time would turn a transient Cosmos outage into a container crash-loop instead of a
-# failed request on an app that is otherwise up and answering /health/live. Same reasoning, and the
-# same shape, as `get_repository()` below.
-_graph = None
-
-# Every lazy singleton below is built under this lock (G-37). The old `if x is None: x = build()`
-# is a check-then-act race: two concurrent first requests both observe None and both construct.
-# That is not merely wasteful now that the stores are Cosmos-backed: it opens a second CosmosClient
-# and a second checkpointer against the same containers, and for the graph it means two compiled
-# graphs disagreeing about which saver they hold. Double-checked: the unlocked read is the fast path
-# (a plain attribute load, safe in CPython), the lock only serializes the construction itself.
+# Every lazy singleton below is built under this lock. `if x is None: x = build()` is a
+# check-then-act race: two concurrent first requests both observe None and both construct, which
+# for the graph would mean two compiled graphs and for the record two separate stores.
 _singleton_lock = threading.Lock()
 
+_graph: Any = None
+_tool_service: Any = None
+_model: Any = None
+_record: InMemoryCompletedInvestigations | None = None
+_operational_records: OperationalRecords | None = None
 
-def get_graph():
+
+def get_graph() -> Any:
+    """One compiled graph per process. Dependencies arrive per run on the configuration, so the
+    graph holds nothing belonging to any one investigation."""
     global _graph
     if _graph is None:
         with _singleton_lock:
             if _graph is None:
-                checkpointer = build_checkpointer()
-                if checkpointer is None:
-                    _log.warning(
-                        "OPSPILOT_CHECKPOINTER=none: hitl_gate interrupts pause on an "
-                        "in-process MemorySaver only, so an awaiting_approval "
-                        "investigation will not survive a restart. Set sqlite/cosmos."
-                    )
-                _graph = build_graph(checkpointer)
+                _graph = build_graph()
     return _graph
 
 
-# Composition root: one ToolService per process, injected via a FastAPI dependency so tests can
-# override it with a specific backend or a deliberately-broken service. Built lazily so importing
-# this module never pulls in a retrieval backend.
-_tool_service = None
-
-# One diagnosis implementation (planner + triager) per process, selected by OPSPILOT_IMPLEMENTATION
-# and injected into every graph invocation alongside the ToolService. Built lazily so importing this
-# module never constructs a ChatModel (single_agent) or touches an optional dependency.
-_diagnosis: DiagnosisComposition | None = None
-
-
-def get_service():
+def get_service() -> Any:
+    """One capability registry per process, injected so a test can supply its own backing."""
     global _tool_service
     if _tool_service is None:
         with _singleton_lock:
@@ -163,39 +93,33 @@ def get_service():
     return _tool_service
 
 
-_synthesis_model = None
-
-
-def get_synthesis_model():
-    """The chat model the synthesis task runs on. One per process, injected so a test can supply a
-    replay cassette or a fake without the endpoint knowing which."""
-    global _synthesis_model
-    if _synthesis_model is None:
+def get_model() -> Any:
+    """The chat model every task runs on. Built lazily so importing this module opens nothing."""
+    global _model
+    if _model is None:
         with _singleton_lock:
-            if _synthesis_model is None:
+            if _model is None:
                 from opspilot.llm.client import build_chat_model
 
-                _synthesis_model = build_chat_model()
-    return _synthesis_model
+                _model = build_chat_model()
+    return _model
 
 
-def get_diagnosis() -> DiagnosisComposition:
-    global _diagnosis
-    if _diagnosis is None:
+def get_record() -> InMemoryCompletedInvestigations:
+    global _record
+    if _record is None:
         with _singleton_lock:
-            if _diagnosis is None:
-                _diagnosis = build_diagnosis()
-    return _diagnosis
-
-
-# The read-only reader predefined intake resolves an incident_id against. Separate from the async
-# job store below: selecting a predefined incident is not evidence-gathering (the Engineer
-# Interaction Interface must not call operational capabilities), so this reads the container
-# directly rather than going through ToolService.
-_operational_records: OperationalRecords | None = None
+            if _record is None:
+                _record = InMemoryCompletedInvestigations()
+    return _record
 
 
 def get_operational_records() -> OperationalRecords:
+    """The read-only reader intake resolves an incident against.
+
+    Separate from the capability registry on purpose: selecting the incident is not evidence
+    gathering, and the interface must not reach an operational capability.
+    """
     global _operational_records
     if _operational_records is None:
         with _singleton_lock:
@@ -204,127 +128,26 @@ def get_operational_records() -> OperationalRecords:
     return _operational_records
 
 
-# One investigation repository per process (the async resource store), selected by
-# OPSPILOT_INVESTIGATION_REPOSITORY (`memory` by default; `cosmos` for durability across a restart /
-# redeploy / multiple replicas). Built lazily, once, so importing this module never touches Cosmos.
-# Overridable in tests via the FastAPI dependency.
-_repository: InvestigationRepository | None = None
-
-
-def get_repository() -> InvestigationRepository:
-    global _repository
-    if _repository is None:
-        with _singleton_lock:
-            if _repository is None:
-                _repository = build_investigation_repository()
-    return _repository
-
-
-# The reviewer authenticator (G-01), built lazily and once. Lazy for the same reason as the graph
-# and repository: a slow or briefly-unreachable Entra JWKS endpoint should fail the decision request
-# that needs it, not crash-loop the container. Overridable in tests via the FastAPI dependency —
-# which is the ONLY bypass that exists, and it exists inside the test process, not in the image.
-_authenticator: ReviewerAuthenticator | None = None
-
-
-def get_authenticator() -> ReviewerAuthenticator:
-    global _authenticator
-    if _authenticator is None:
-        with _singleton_lock:
-            if _authenticator is None:
-                _authenticator = build_reviewer_authenticator()
-    return _authenticator
-
-
-def _authenticated(
-    authorization: str | None, authenticator: ReviewerAuthenticator
-) -> ReviewerPrincipal:
-    """Turn the raw Authorization header into a verified principal, or an HTTP error.
-
-    Fail-closed: every path out of here is either a validated `ReviewerPrincipal` or an exception.
-    The client-facing detail stays coarse (see `ReviewerAuthError`) while the precise cause is
-    logged here, so operators can diagnose a rejected call without the endpoint becoming an oracle
-    for probing token validity.
-    """
-    try:
-        return authenticator.authenticate(authorization)
-    except ReviewerAuthError as exc:
-        _log.warning("authentication failed (status=%s): %s", exc.status_code, exc.reason)
-        raise HTTPException(status_code=exc.status_code, detail=exc.reason) from exc
-
-
-def require_reviewer(
-    authorization: str | None, authenticator: ReviewerAuthenticator
-) -> ReviewerPrincipal:
-    """Authenticate, then authorize for the decide (`ENTRA_APPROVER_ROLE`) role — the seam
-    `submit_decision` calls. 401 for an unproven identity, 403 for a proven one lacking the role."""
-    principal = _authenticated(authorization, authenticator)
-    try:
-        require_role(principal, config.ENTRA_APPROVER_ROLE)
-    except ReviewerAuthError as exc:
-        _log.warning("decide authorization failed (status=%s): %s", exc.status_code, exc.reason)
-        raise HTTPException(status_code=exc.status_code, detail=exc.reason) from exc
-    return principal
-
-
-def require_submitter(
-    authorization: str | None, authenticator: ReviewerAuthenticator
-) -> ReviewerPrincipal:
-    """Authenticate, then authorize for the submit (`ENTRA_SUBMIT_ROLE`) role — Stage 8's
-    pulled-forward ingress auth (G-03/G-57): closes the anonymous-submit exposure."""
-    principal = _authenticated(authorization, authenticator)
-    try:
-        require_role(principal, config.ENTRA_SUBMIT_ROLE)
-    except ReviewerAuthError as exc:
-        _log.warning("submit authorization failed (status=%s): %s", exc.status_code, exc.reason)
-        raise HTTPException(status_code=exc.status_code, detail=exc.reason) from exc
-    return principal
-
-
-def require_reader(
-    authorization: str | None, authenticator: ReviewerAuthenticator
-) -> ReviewerPrincipal:
-    """Authenticate, then authorize for ANY of read/submit/decide — reading an investigation is
-    open to whoever submitted it, whoever may decide on it, or a dedicated reader. Same ingress-auth
-    slice as `require_submitter`."""
-    principal = _authenticated(authorization, authenticator)
-    try:
-        read_roles = (config.ENTRA_READ_ROLE, config.ENTRA_SUBMIT_ROLE, config.ENTRA_APPROVER_ROLE)
-        require_any_role(principal, read_roles)
-    except ReviewerAuthError as exc:
-        _log.warning("read authorization failed (status=%s): %s", exc.status_code, exc.reason)
-        raise HTTPException(status_code=exc.status_code, detail=exc.reason) from exc
-    return principal
-
-
 def get_records_status(
     records: OperationalRecords = Depends(get_operational_records),
 ) -> PreparationStatus:
     """Whether corpus preparation has run against the container this application reads.
 
-    Fail closed: a container that cannot answer reports every kind missing rather than raising,
+    Fails closed: a container that cannot answer reports every kind missing rather than raising,
     because a dependency that raised would answer the probe with a 500 and lose the distinction
-    readiness exists to draw. Absent preparation must present as a deployment failure, so a probe
-    that cannot see the data is never ready.
+    readiness exists to draw.
     """
     try:
         return preparation_status(records, deadline_s=config.SOURCE_DEADLINE_SECONDS)
-    except Exception:  # noqa: BLE001, readiness converts every failure into a failed check
+    except Exception:  # noqa: BLE001 - readiness converts every failure into a failed check
         return PreparationStatus(counts={}, missing=RECORD_KINDS)
 
 
 # --------------------------------------------------------------------------------------
 # Contracts
 # --------------------------------------------------------------------------------------
-class Alert(BaseModel):
-    incident_id: str | None = None
-    severity: str | None = None
-    category: str | None = None
-    summary: str = ""
-
-
-class StartTurnRequest(BaseModel):
-    """Predefined intake: select one RetailEase incident to start a turn against."""
+class StartInvestigationRequest(BaseModel):
+    """Intake: select one authored incident to investigate."""
 
     incident_id: str
 
@@ -354,235 +177,68 @@ class VersionResponse(BaseModel):
     workflow_version: str
     environment: str
     retrieval_backend: str
-    # Diagnosis implementation the running process resolved to. `implementation` is the effective
-    # one; `requested_implementation` + `fallback_reason` make an explicit deterministic fallback
-    # visible (non-null reason ⇒ single_agent was asked for but its model could not be built).
-    implementation: str = "deterministic"
-    requested_implementation: str = "deterministic"
-    provider: str | None = None
-    model_id: str | None = None
-    fallback_reason: str | None = None
-
-
-class SafetyResponse(BaseModel):
-    passed: bool
-    violations: list[str] = Field(default_factory=list)
-
-
-class ApprovalResponse(BaseModel):
-    """How a decision was reached, labelled by *how the identity was proven* — never by comparing
-    the approver string to a sentinel, which is what previously let a forged `approver` present
-    itself as human review (G-01).
-
-    `service_principal` exists because the deployed smoke gate must drive the decision path, and it
-    authenticates as a workload. Code guidelines §15 forbids a workload identity standing in for a
-    reviewer, so it gets its own honest label rather than being folded into `human`.
-    """
-
-    kind: Literal["deterministic_auto_approval", "human", "service_principal"]
-    decision: str
-    # Method-qualified and subject-keyed (`entra_jwt:<oid>`), not a display name — the audit trail
-    # binds to the immutable object id, since display names are reassignable.
-    approver: str
-    # Present only for a token-backed decision: the verified tenant and the display name at the time
-    # of the decision. Display name is informational and must not be used for identity comparisons.
-    approver_display_name: str | None = None
-    approver_tenant_id: str | None = None
-
-
-class RuntimeMetadata(BaseModel):
-    retrieval_backend: str
-    workflow_version: str
-    application_version: str
-    # The diagnosis implementation that produced THIS report (single_agent or the deterministic
-    # floor), plus the model that backed it — so a consumer knows how the conclusion was reached.
-    implementation: str = "deterministic"
-    provider: str | None = None
-    model_id: str | None = None
-
-
-class InvestigationResponse(BaseModel):
-    incident_id: str
-    status: Literal["completed", "degraded", "escalated"]
-    report: IncidentReport | None
-    safety: SafetyResponse
-    approval: ApprovalResponse | None
-    runtime: RuntimeMetadata
-    # The typed outcome (G-49): a consumer reads `outcome.result_type` to tell a grounded RCA from
-    # a briefing or an escalation, instead of inferring it from prose. `report` is retained as the
-    # flattened legacy view that the console and smoke gate still read; it is the same object
-    # carried inside a `grounded_rca`/`partial` outcome, and is scheduled for removal once those
-    # two callers migrate (5f), rather than being dropped mid-flight here.
-    outcome: InvestigationResult | None = None
-    # A human-readable cause for a non-"completed" status — None when completed. Escalation carries
-    # the graph's own machine-readable reason (`escalate`'s state.error); degraded is synthesized
-    # here since the graph itself has no separate per-run degradation-reason field yet.
-    reason: str | None = None
-
-
-# --- async investigation resource --------------------------------------------------------------
-class AcceptedInvestigation(BaseModel):
-    """The 202 body: the minted id, its initial status, and where to poll for the result."""
-
-    investigation_id: str
-    status: InvestigationStatus
-    poll_url: str
-
-
-class InvestigationStatusResponse(BaseModel):
-    """The polled resource — status + the ordered transition history, and the full result once
-    terminal (`completed`/`degraded`/`escalated`); `error` is set instead on a `failed` run.
-    `pending_decision` carries the report/hash/hypothesis awaiting a human decision while
-    `status == "awaiting_approval"`."""
-
-    investigation_id: str
-    incident_id: str
-    status: InvestigationStatus
-    history: list[InvestigationStatus]
-    result: InvestigationResponse | None = None
-    error: str | None = None
-    pending_decision: dict[str, Any] | None = None
-
-
-class ConsoleAuthConfig(BaseModel):
-    """The public Entra parameters the operator console needs to run a sign-in flow.
-
-    All three are public by design — a browser-based public client has no secret to protect, and
-    these values appear in the authorize URL regardless. Nothing here grants access: the token the
-    flow produces is still validated server-side against Entra's keys, the configured audience, and
-    the approver role before any decision is accepted.
-    """
-
-    tenant_id: str
-    client_id: str
-    # The scope the console requests for this API — `<audience>/.default` yields a token whose `aud`
-    # matches what `EntraJwtAuthenticator` requires.
-    scope: str
-    # False when the deployment has no console client id configured, which the console renders as
-    # "decisions unavailable here" rather than showing buttons that cannot possibly work.
-    sign_in_available: bool
-
-
-class InvestigationDecision(BaseModel):
-    """A human's response to a paused `hitl_gate` interrupt, submitted via
-    `POST /investigations/{id}/decision`. `submitted_report_hash` must match the report the
-    decision was actually reviewed against — a mismatch (a concurrent edit/decision moved the
-    thread first) is rejected as stale rather than silently applied to a different report.
-
-    There is deliberately **no `approver` field** (G-01). The identity comes from the validated
-    Entra token on the request and nothing else; accepting a name here and cross-checking it would
-    leave a plausible-looking field that means nothing. `extra="forbid"` makes that explicit — a
-    client still sending `approver` gets a 422 rather than having it silently ignored, so an
-    integration built against the old shape fails loudly instead of appearing to still work.
-
-    `decision_id` is the client-minted idempotency key (G-32) and is **required**, on the same
-    reasoning: an optional idempotency key silently means nothing when omitted, which is exactly
-    the plausible-looking-field failure above. A reviewer double-clicking, or a client retrying a
-    timed-out POST, must not resume the graph twice.
-    """
-
-    model_config = {"extra": "forbid"}
-
-    decision_id: str = Field(min_length=1)
-    decision: Literal["approve", "edit", "request_more_evidence", "reject"]
-    submitted_report_hash: str
-    edits: dict[str, Any] | None = None
-
-    def fingerprint(self, principal: ReviewerPrincipal) -> str:
-        """An opaque digest of this decision plus the verified reviewer, stored alongside the
-        committed `decision_id` so a retry can be told from a *different* decision reusing the id.
-
-        The reviewer is part of it deliberately: another identity reusing someone's decision_id is
-        a conflict to surface, not a retry to replay. `edits` is canonicalized with sorted keys so
-        an equivalent body that serializes differently still reads as the same decision.
-        """
-        edits = json.dumps(self.edits or {}, sort_keys=True, separators=(",", ":"))
-        raw = _UNIT_SEP.join(
-            (self.decision, self.submitted_report_hash, edits, principal.audit_label())
-        )
-        return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
 
 # --------------------------------------------------------------------------------------
-# Operator console
+# Screen
 # --------------------------------------------------------------------------------------
 @app.get("/", include_in_schema=False)
 def root() -> RedirectResponse:
-    return RedirectResponse("/console")
-
-
-@app.get("/console", response_class=HTMLResponse, include_in_schema=False)
-def console() -> str:
-    """Same-origin operator console: submit an investigation, poll it, review the result, and — once
-    signed in — decide on a paused one. No admin surface, no historical view — intentionally narrow
-    (see docs/architecture.md §9)."""
-    return _CONSOLE_HTML
+    return RedirectResponse("/investigation")
 
 
 @app.get("/investigation", response_class=HTMLResponse, include_in_schema=False)
 def investigation() -> str:
-    """The new one-screen client: predefined intake, a compact live activity feed, the brief as
-    the dominant element, and one expandable details area. Drives POST /turns."""
+    """Intake, a compact live activity feed, the brief as the dominant element once it arrives,
+    and one expandable details area."""
     return _INVESTIGATION_HTML
 
 
-@app.get("/console/config", include_in_schema=False)
-def console_config() -> ConsoleAuthConfig:
-    """Sign-in parameters for the console, served rather than baked into the HTML so the page stays
-    a static, cacheable asset that is identical across deployments."""
-    client_id = config.ENTRA_CONSOLE_CLIENT_ID
-    audience = config.ENTRA_API_AUDIENCE
-    return ConsoleAuthConfig(
-        tenant_id=config.ENTRA_TENANT_ID,
-        client_id=client_id,
-        scope=f"{audience}/.default" if audience else "",
-        sign_in_available=bool(client_id and audience and config.ENTRA_TENANT_ID),
-    )
-
-
 # --------------------------------------------------------------------------------------
-# Health / version
+# Health and version
 # --------------------------------------------------------------------------------------
 @app.get("/health/live")
 def live() -> LivenessResponse:
-    """Liveness: the process is up. Touches no corpus, retrieval, tools, or external systems."""
+    """Liveness: the process is up. Touches no corpus, retrieval, capability, or external system."""
     return LivenessResponse(version=__version__)
 
 
 @app.get("/health")
 def health() -> LivenessResponse:
-    """Deprecated alias for /health/live — kept temporarily so existing probes don't break."""
+    """Deprecated alias for /health/live, kept so existing probes do not break."""
     return live()
 
 
 @app.get("/version")
-def version(diagnosis=Depends(get_diagnosis)) -> VersionResponse:
+def version() -> VersionResponse:
     return VersionResponse(
         version=__version__,
         workflow_version=WORKFLOW_VERSION,
         environment=ENVIRONMENT,
         retrieval_backend=RETRIEVAL_BACKEND,
-        implementation=diagnosis.implementation,
-        requested_implementation=diagnosis.requested,
-        provider=diagnosis.provider,
-        model_id=diagnosis.model_id,
-        fallback_reason=diagnosis.fallback_reason,
     )
 
 
-def _check(fn) -> bool:
-    """Run a readiness probe, treating any failure as a failed (never-raising) check."""
+def _check(fn: Any) -> bool:
+    """Run a readiness probe, treating any failure as a failed rather than a raising check."""
     try:
         return bool(fn())
-    except Exception:  # noqa: BLE001 — readiness converts every failure into a 'failed' check
+    except Exception:  # noqa: BLE001 - readiness converts every failure into a failed check
         return False
+
+
+def _safe_backend(svc: Any) -> str:
+    try:
+        return str(svc.retrieval_backend)
+    except Exception:  # noqa: BLE001
+        return "unavailable"
 
 
 @app.get("/health/ready")
 def ready(
     response: Response,
-    svc=Depends(get_service),
-    records=Depends(get_records_status),
+    svc: Any = Depends(get_service),
+    records: PreparationStatus = Depends(get_records_status),
 ) -> ReadinessResponse:
     checks: dict[str, str] = {}
     errors: list[ReadinessError] = []
@@ -594,23 +250,25 @@ def ready(
             errors.append(ReadinessError(component=name, code=code))
 
     def repository_ok() -> bool:
-        # This one check wants the seed incident actually present, so it reads the completeness
-        # too: a reachable but unseeded repository answers `succeeded` with `empty`, which is a
-        # true answer to the query and still not a ready repository.
+        # This check wants the seed incident actually present, so it reads completeness too: a
+        # reachable but unseeded container answers succeeded with empty, which is a true answer to
+        # the query and still not a ready deployment.
         result = svc.get_incident(incident_id="inc-004")
-        return result.answered and result.completeness is Completeness.COMPLETE
+        return bool(result.answered and result.completeness is Completeness.COMPLETE)
 
     def logs_ok() -> bool:
-        # Readiness asks only whether the source answered. A window holding no logs is
-        # `succeeded`/`empty`, which is a healthy source reporting nothing, not a failure.
-        return svc.query_logs(
-            service="checkout-api",
-            start_time="2026-06-28T10:00:00Z",
-            end_time="2026-06-28T11:00:00Z",
-        ).answered
+        # Readiness asks only whether the source answered. A window holding no logs is succeeded
+        # with empty, a healthy source reporting nothing rather than a failure.
+        return bool(
+            svc.query_logs(
+                service="checkout-api",
+                start_time="2026-06-28T10:00:00Z",
+                end_time="2026-06-28T11:00:00Z",
+            ).answered
+        )
 
     def retrieval_ok() -> bool:
-        return (
+        return bool(
             backend != "unavailable"
             and backend == RETRIEVAL_BACKEND
             and svc.search_runbooks(query="payment timeout", k=1).answered
@@ -635,679 +293,120 @@ def ready(
 
 
 # --------------------------------------------------------------------------------------
-# Streaming turn endpoint. Added beside the old routes, not a replacement: the old async job
-# surface below stays reachable until both are replaced together. One live streaming request owns
-# one turn: identities first, then activity as it happens, then the close marker last. The
-# assessment and brief here are the real ones, produced by the same functions the graph will call;
-# what is missing is everything around them, so the closing event stays a transport-ordering proof
-# rather than a delivered outcome, and nothing is grounded or persisted.
+# The investigation
 # --------------------------------------------------------------------------------------
-# The evidence path for a predefined incident. Deterministic and fixed: adaptive source selection
-# belongs to the Evidence Investigator, which does not exist yet, so this gathers a small standing
-# set rather than pretending to choose. It starts from correlated alerts because predefined intake
-# normalizes to an incident id with no affected service (the incident record names no service), so
-# the alerts are what identify the entities the remaining calls are scoped to.
-async def _predefined_turn_stream(
-    incident_id: str,
+def initial_state(investigation_id: str, incident: IncidentRecord) -> InvestigationState:
+    """The state one investigation starts from, with its bounds already set."""
+    return InvestigationState(
+        investigation_id=investigation_id,
+        incident=from_predefined_incident(incident),
+        bounds=Bounds.starting(
+            seconds=config.INVESTIGATION_DEADLINE_SECONDS,
+            capability_calls=config.CAPABILITY_CALL_CAP,
+            model_calls=config.MODEL_CALL_CAP,
+        ),
+        evidence=EvidenceSet(investigation_id=investigation_id),
+    )
+
+
+def _terminal(
+    investigation_id: str,
+    final: dict[str, Any] | None,
+    failure: FailureCategory | None = None,
+) -> TerminalEvent:
+    """The one event that ends the stream.
+
+    By the time this is built the record is already written, or the run failed and nothing was
+    written at all. A failure carries no brief: there is nothing grounded to carry.
+
+    The graph reports its state as a mapping of channel values, so this reads it as one rather than
+    reconstructing a state object whose only use would be to be taken apart again here.
+    """
+    reached = final or {}
+    ended_as: FailureCategory | None = failure or reached.get("failure")
+    assessment = reached.get("assessment")
+    if ended_as is None and assessment is not None:
+        return TerminalEvent(investigation_id=investigation_id, brief=render(assessment))
+    return TerminalEvent(
+        investigation_id=investigation_id,
+        failure=(ended_as or FailureCategory.INTERNAL_ERROR).value,
+    )
+
+
+async def investigation_stream(
     incident: IncidentRecord,
     disconnect: Request,
-    svc,
-    model,
+    svc: Any,
+    model: Any,
+    record: Any,
 ) -> AsyncIterator[str]:
-    # Async, not a plain generator: Starlette drives a sync generator's `next()` through a worker
-    # threadpool call per yield, and a contextvars token set before one yield cannot be reset after
-    # the next one if that resumes in a different worker thread. An async generator stays on the
-    # single request task throughout, so the span below can safely wrap every yield.
-    #
-    # `disconnect` (typed as Request; a lighter duck-typed fake is all a test needs) is the
-    # in-process cancellation signal: checked before doing each further unit of work, so a client
-    # that has left gets nothing more emitted. Alive only for this streaming request, not durable,
-    # not a job registry. Checked between units of work rather than during one: the only call that
-    # can be in flight is the synthesis request, and abandoning a run mid-call would leave nothing
-    # to clean up, since nothing here is persisted.
-    turn = start_turn(incident_id=incident_id)
-    context = from_predefined_incident(incident)
-    projector = ActivityProjector()
+    """One investigation, streamed as it runs.
 
-    with tracing.span("turn", trace_id=turn.turn_id, attributes=tracing.standard_attributes(turn)):
-        identity = IdentityEvent(turn_id=turn.turn_id, investigation_id=turn.investigation_id)
-        yield identity.model_dump_json() + "\n"
+    Async rather than a plain generator: Starlette drives a sync generator through a worker
+    threadpool call per yield, and a contextvars token set before one yield cannot be reset after
+    the next if that resumes on a different thread. An async generator stays on the single request
+    task, so the span below safely wraps every yield.
 
-        if await disconnect.is_disconnected():
-            return
+    `disconnect` is the in-process cancellation signal, checked between steps. A client that has
+    left gets nothing further, and because nothing is persisted until the graph's own save, an
+    abandoned run leaves nothing behind.
+    """
+    investigation_id = str(uuid4())
+    state = initial_state(investigation_id, incident)
 
-        started = emit(
-            "turn.investigating",
-            turn,
-            projector,
-            phase="investigating",
-            action="turn started",
-            detail=f"Investigation started for: {context.symptom}",
-        )
-        yield started.model_dump_json() + "\n"
+    with tracing.span(
+        "investigation",
+        trace_id=investigation_id,
+        attributes={
+            "investigation_id": investigation_id,
+            "incident_id": incident.incident_id,
+        },
+    ):
+        yield IdentityEvent(investigation_id=investigation_id).model_dump_json() + "\n"
 
-        if await disconnect.is_disconnected():
-            return
+        graph_config = {
+            "configurable": {MODEL: model, SERVICE: svc, RECORD: record},
+            # One visit per gathering step plus the fixed nodes either side, with room for the
+            # return edge. A run that would exceed this has already reached a bound.
+            "recursion_limit": 2 * (config.CAPABILITY_CALL_CAP + config.MODEL_CALL_CAP) + 10,
+        }
 
-        # --- gather, and admit ------------------------------------------------------------
-        evidence = EvidenceSet(investigation_id=turn.investigation_id)
-
-        alerts = svc.call("get_correlated_alerts", incident_id=incident_id)
-        admitted = admit(
-            alerts,
-            evidence=evidence,
-            question="which alerts correlate with this incident",
-            request_scope={"incident_id": incident_id},
-        )
-        yield (
-            capability_event(
-                turn,
-                projector,
-                "get_correlated_alerts",
-                alerts,
-                admitted=len(admitted),
-                references=[o.evidence_ref for o in admitted],
-            ).model_dump_json()
-            + "\n"
-        )
-
-        for capability, question, params in evidence_plan(context, alerts.results):
-            if await disconnect.is_disconnected():
-                return
-            result = svc.call(capability, **params)
-            admitted = admit(result, evidence=evidence, question=question, request_scope=params)
-            yield (
-                capability_event(
-                    turn,
-                    projector,
-                    capability,
-                    result,
-                    admitted=len(admitted),
-                    references=[o.evidence_ref for o in admitted],
-                ).model_dump_json()
-                + "\n"
-            )
-
-        if await disconnect.is_disconnected():
-            return
-
-        # --- one bounded synthesis call ---------------------------------------------------
-        # A proposal that cannot be admitted structurally ends the stream without a brief. There is
-        # no corrective call on this path and nothing degrades into a thinner assessment: publishing
-        # a brief the model never proposed is the outcome refusal exists to prevent.
+        sent = 0
+        final: dict[str, Any] | None = None
         try:
-            assessment = synthesize(model, context, evidence, f"Explain: {context.symptom}")
-        except UnusableProposal as exc:
+            for step in get_graph().stream(state, config=graph_config, stream_mode="values"):
+                final = step
+                events = step.get("events", [])
+                for event in events[sent:]:
+                    yield event.model_dump_json() + "\n"
+                sent = len(events)
+                if await disconnect.is_disconnected():
+                    return
+        except Exception:  # noqa: BLE001 - any unhandled fault becomes a sanitized failure
+            _log.exception("investigation %s failed", investigation_id)
             yield (
-                emit(
-                    "turn.synthesizing",
-                    turn,
-                    projector,
-                    phase="synthesizing",
-                    action="assessment refused",
-                    status="error",
-                    detail=f"The proposal could not be admitted: {exc}",
-                ).model_dump_json()
+                _terminal(investigation_id, None, FailureCategory.INTERNAL_ERROR).model_dump_json()
                 + "\n"
             )
-            yield StreamCloseMarker(turn_id=turn.turn_id).model_dump_json() + "\n"
             return
 
-        brief = render(assessment)
-        yield (
-            emit(
-                "turn.synthesizing",
-                turn,
-                projector,
-                phase="synthesizing",
-                action="assessment produced",
-                detail=(
-                    f"Assessment produced: {len(assessment.candidates)} candidate(s), "
-                    f"{len(assessment.established)} established, "
-                    f"{len(assessment.limitations)} limitation(s)."
-                ),
-                outcome=brief.outcome.value,
-            ).model_dump_json()
-            + "\n"
-        )
-
-        if await disconnect.is_disconnected():
-            return
-
-        # The brief renders that assessment and nothing else. Deliberately non-terminal: no
-        # grounding gate has run, so nothing is committed and nothing is persisted. The close
-        # marker below stays a transport marker.
-        yield BriefEvent(turn_id=turn.turn_id, brief=brief).model_dump_json() + "\n"
-
-        if await disconnect.is_disconnected():
-            return
-
-        yield StreamCloseMarker(turn_id=turn.turn_id).model_dump_json() + "\n"
+        yield _terminal(investigation_id, final).model_dump_json() + "\n"
 
 
-@app.post("/turns")
-def start_turn_endpoint(
-    body: StartTurnRequest,
+@app.post("/investigations")
+def start_investigation(
+    body: StartInvestigationRequest,
     request: Request,
     records: OperationalRecords = Depends(get_operational_records),
-    svc=Depends(get_service),
-    model=Depends(get_synthesis_model),
+    svc: Any = Depends(get_service),
+    model: Any = Depends(get_model),
+    record: Any = Depends(get_record),
 ) -> StreamingResponse:
+    """Start one investigation and stream it. 404 for an incident the corpus does not hold."""
     raw = records.incident(body.incident_id, deadline_s=config.SOURCE_DEADLINE_SECONDS)
     if raw is None:
         raise HTTPException(status_code=404, detail="Unknown incident_id.")
-    incident = IncidentRecord(**raw)
     return StreamingResponse(
-        _predefined_turn_stream(body.incident_id, incident, request, svc, model),
+        investigation_stream(IncidentRecord(**raw), request, svc, model, record),
         media_type="application/x-ndjson",
     )
-
-
-def _safe_backend(svc) -> str:
-    try:
-        return str(svc.retrieval_backend)
-    except Exception:  # noqa: BLE001
-        return "unavailable"
-
-
-# --------------------------------------------------------------------------------------
-# Investigation
-# --------------------------------------------------------------------------------------
-def _run_and_build(alert: dict, svc, diagnosis) -> InvestigationResponse:
-    """Run the graph for one alert to a genuinely terminal state — auto-approving any `hitl_gate`
-    pause along the way — and map it to the typed response. Used only by the synchronous
-    `/investigate` compatibility endpoint, which has always returned a complete result inline; the
-    async job API below must NOT auto-approve, so it does not call this."""
-    configurable: dict = {
-        "tool_service": svc,
-        "planner": diagnosis.planner,
-        "triager": diagnosis.triager,
-        "thread_id": f"investigate-{uuid4()}",
-    }
-    state = invoke_auto_approving(
-        get_graph(),
-        _initial_state(alert),
-        config={"configurable": configurable},
-        approver=_AUTO_APPROVER,
-    )
-    return _build_response(state, svc, diagnosis)
-
-
-def _build_outcome(
-    state: dict, report: IncidentReport | None, *, status: str, reason: str | None
-) -> InvestigationResult:
-    """Classify a terminal run into the typed result union (G-49).
-
-    The distinction that matters: only a run carrying an ADMITTED `CausalClaim` is a
-    `grounded_rca`. A completed run without one still has a report and passed the citation gate,
-    but nothing structured was verified, so it is `partial`. The deterministic floor lands here by
-    design. Calling it a grounded RCA would be the euphemism the union exists to prevent.
-    """
-    incident_id = str(state.get("incident_id", ""))
-    if status == "escalated":
-        return EscalationNotice(incident_id=incident_id, reason=reason or "escalated")
-
-    if report is None:
-        return PartialInvestigationReport(
-            incident_id=incident_id, summary="", reason=reason or "no report was produced"
-        )
-
-    if state.get("intent") == Intent.INFO_ONLY.value:
-        return KnowledgeBriefing(
-            incident_id=incident_id, answer=report.hypothesis, citations=list(report.citations)
-        )
-
-    causal_state = state.get("causal")
-    if causal_state is None:
-        return PartialInvestigationReport(
-            incident_id=incident_id,
-            summary=report.hypothesis,
-            evidence=list(report.evidence),
-            reason="no structured causal claim was admitted for this run",
-        )
-    return GroundedRcaReport(
-        report=report,
-        causal=CausalClaim.model_validate(causal_state),
-        report_claims=list(report.report_claims),
-    )
-
-
-def _build_response(state: dict, svc, diagnosis) -> InvestigationResponse:
-    """Map a genuinely terminal graph state to the typed response. Shared by the sync endpoint
-    (via `_run_and_build`) and the async job path (via `_advance`) — both must agree exactly."""
-    backend = _safe_backend(svc)
-
-    # Honest terminal status: an escalate carries a machine-readable error; a completed run whose
-    # retrieval was unavailable is degraded (partial evidence), never a normal-looking success.
-    reason: str | None = None
-    if state.get("error"):
-        status: Literal["completed", "degraded", "escalated"] = "escalated"
-        reason = str(state["error"])
-    elif backend == "unavailable":
-        status = "degraded"
-        reason = f"retrieval backend unavailable ({backend}); investigation ran on partial evidence"
-    else:
-        status = "completed"
-
-    report_dict = state.get("report")
-    report = IncidentReport.model_validate(report_dict) if report_dict else None
-
-    safety_state = state.get("safety") or {}
-    safety = SafetyResponse(
-        passed=bool(safety_state.get("passed", False)),
-        violations=list(safety_state.get("violations", [])),
-    )
-
-    approval = None
-    approval_state = state.get("approval")
-    if approval_state:
-        # `kind` mirrors the verified `auth_method` stamped by the decision endpoint — it is never
-        # inferred from the approver string (G-01). A decision with no `auth_method` at all can only
-        # have come from the deterministic sync path, which never proves an identity, so it falls
-        # back to the auto-approval label rather than to `human`: unknown provenance must degrade to
-        # the weakest claim, not the strongest.
-        method = approval_state.get("auth_method")
-        kind: Literal["deterministic_auto_approval", "human", "service_principal"]
-        if method == "entra_jwt":
-            kind = "human"
-        elif method == "service_principal":
-            kind = "service_principal"
-        else:
-            kind = "deterministic_auto_approval"
-        approval = ApprovalResponse(
-            kind=kind,
-            decision=str(approval_state.get("decision", "")),
-            approver=str(approval_state.get("approver", "")),
-            approver_display_name=approval_state.get("approver_display_name"),
-            approver_tenant_id=approval_state.get("approver_tenant_id"),
-        )
-
-    return InvestigationResponse(
-        incident_id=str(state.get("incident_id", "")),
-        status=status,
-        report=report,
-        safety=safety,
-        approval=approval,
-        reason=reason,
-        outcome=_build_outcome(state, report, status=status, reason=reason),
-        runtime=RuntimeMetadata(
-            retrieval_backend=backend,
-            workflow_version=WORKFLOW_VERSION,
-            application_version=__version__,
-            implementation=diagnosis.implementation,
-            provider=diagnosis.provider,
-            model_id=diagnosis.model_id,
-        ),
-    )
-
-
-def _idempotency_key(alert: Alert) -> str:
-    """(incident_id, summary, WORKFLOW_VERSION): a repeat POST for the same incident + summary
-    returns the existing investigation, not a duplicate run — but a workflow/model version bump
-    mints a fresh one instead of returning a run produced under the old version forever.
-    Deliberately NOT the same derivation as the graph state's own `idempotency_key` (`ingest()`,
-    unversioned) — that one identifies a re-entrant graph turn; this one an API resource."""
-    raw = _UNIT_SEP.join((alert.incident_id or "INC-STUB", alert.summary or "", WORKFLOW_VERSION))
-    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
-
-
-def _safe_error(exc: Exception) -> str:
-    """A sanitized, class-level reason — never a stack trace, path, or secret (like readiness)."""
-    return type(exc).__name__
-
-
-def _advance(investigation_id: str, run, *, repo: InvestigationRepository, svc, diagnosis) -> None:
-    """Run `run()` (an initial invoke or a decision resume) and record the outcome: a paused
-    `hitl_gate` interrupt becomes `awaiting_approval` with the pending report attached — NOT a
-    completed run — anything else genuinely terminal is mapped and recorded as usual. Shared by
-    the initial job and every decision-resume, so a real reviewer never has a paused run
-    misreported as `completed`, and an `edit` decision that re-interrupts is handled the same way
-    as the first pause.
-
-    A run that reached `finalize_report` carries a `publication_id` and is recorded through the
-    idempotent sink instead of a plain transition (G-58), so a re-executed terminal leg publishes
-    once. Runs that never published (escalated, rejected, failed) have no id and keep the ordinary
-    last-write-wins transition."""
-    try:
-        state = run()
-    except Exception as exc:  # noqa: BLE001 — any run fault becomes a recorded `failed`, not a crash
-        repo.transition(investigation_id, "failed", error=_safe_error(exc))
-        return
-    pending = state.get("__interrupt__")
-    if pending:
-        repo.transition(investigation_id, "awaiting_approval", pending_interrupt=pending[0].value)
-        return
-    response = _build_response(state, svc, diagnosis)
-    result = response.model_dump(mode="json")
-    publication_id = state.get("publication_id") or ""
-    if not publication_id:
-        repo.transition(investigation_id, response.status, result=result)
-        return
-    try:
-        _, created = repo.publish(
-            investigation_id,
-            publication_id=publication_id,
-            status=response.status,
-            result=result,
-        )
-    except PublicationConflictError:
-        # Fail closed and stay loud: the already-published record is left exactly as it is, since
-        # replacing the bytes an approval was bound to is the outcome the sink exists to prevent.
-        _log.exception("refused a conflicting publication for %s", investigation_id)
-        return
-    if not created:
-        _log.info(
-            "publication %s for %s already committed; second write suppressed",
-            publication_id,
-            investigation_id,
-        )
-
-
-def _configurable_for(investigation_id: str, *, svc, diagnosis) -> dict:
-    """The LangGraph `configurable` for one investigation — `thread_id` is the investigation's own
-    id, so the checkpoint namespace, the poll id, and `state.investigation_id` are one string."""
-    return {
-        "tool_service": svc,
-        "planner": diagnosis.planner,
-        "triager": diagnosis.triager,
-        "thread_id": investigation_id,
-    }
-
-
-def _resume_payload(decision: InvestigationDecision, principal: ReviewerPrincipal) -> dict:
-    """Build the `Command(resume=...)` payload for one decision.
-
-    Identity fields are taken from the verified principal and are not present in
-    `InvestigationDecision` at all, so there is no path — not even a buggy one — by which a
-    client-supplied name reaches the approval record (G-01). `hitl_gate` consumes exactly these
-    keys.
-    """
-    return {
-        "decision": decision.decision,
-        "submitted_report_hash": decision.submitted_report_hash,
-        "edits": decision.edits,
-        "approver": principal.audit_label(),
-        "approver_display_name": principal.display_name,
-        "approver_tenant_id": principal.tenant_id,
-        "auth_method": principal.auth_method,
-    }
-
-
-def _run_investigation_job(
-    investigation_id: str, alert: dict, *, repo: InvestigationRepository, svc, diagnosis
-) -> None:
-    """Background worker: drive a fresh investigation to its first terminal state or pause,
-    recording each transition."""
-    repo.transition(investigation_id, "running")
-    config = {"configurable": _configurable_for(investigation_id, svc=svc, diagnosis=diagnosis)}
-    initial = _initial_state(alert, investigation_id=investigation_id)
-    _advance(
-        investigation_id,
-        lambda: get_graph().invoke(initial, config=config),
-        repo=repo,
-        svc=svc,
-        diagnosis=diagnosis,
-    )
-
-
-def _resume_investigation_job(
-    investigation_id: str, decision: dict, *, repo: InvestigationRepository, svc, diagnosis
-) -> None:
-    """Background worker: resume a paused investigation with a human decision. An `edit` naturally
-    re-enters `awaiting_approval` with a NEW pending report (via `_advance`'s interrupt check) —
-    no special-casing needed here."""
-    from langgraph.types import Command
-
-    config = {"configurable": _configurable_for(investigation_id, svc=svc, diagnosis=diagnosis)}
-    _advance(
-        investigation_id,
-        lambda: get_graph().invoke(Command(resume=decision), config=config),
-        repo=repo,
-        svc=svc,
-        diagnosis=diagnosis,
-    )
-
-
-@app.post("/investigations", status_code=202)
-def create_investigation(
-    alert: Alert,
-    response: Response,
-    background: BackgroundTasks,
-    force_rerun: bool = False,
-    authorization: str | None = Header(default=None),
-    svc=Depends(get_service),
-    diagnosis=Depends(get_diagnosis),
-    repo: InvestigationRepository = Depends(get_repository),
-    authenticator: ReviewerAuthenticator = Depends(get_authenticator),
-) -> AcceptedInvestigation:
-    """The advertised contract: accept an investigation and run it in the background. Returns 202
-    immediately with the minted id + a polling URL, so a client never holds a request open for the
-    whole run. Idempotent on (incident_id, summary, workflow version): a repeat returns the existing
-    investigation, atomically — `repo.get_or_create` closes the race where two concurrent identical
-    POSTs could each see "not found" and both start a run. Pass `?force_rerun=true` to mint a fresh
-    investigation for the same key anyway (a reopened incident, new telemetry, an operator-requested
-    retry); the superseded investigation stays reachable by its own id, but a later non-forced POST
-    for the same key now returns the rerun instead of it.
-
-    401/403 for an unproven or unauthorized caller (Stage 8, G-03/G-57 — closes the public-ingress
-    exposure). 429 if dispatching this as a NEW background job would push the global or this
-    caller's concurrency count past its limit — a best-effort check (not a distributed lock),
-    sufficient to bound spend without new infrastructure. Checked only when a job would actually be
-    dispatched: an idempotent repeat starts no new job, so it is never rejected by this check."""
-    principal = require_submitter(authorization, authenticator)
-
-    idempotency_key = _idempotency_key(alert)
-    investigation_id = str(uuid4())
-    record, created = repo.get_or_create(
-        idempotency_key=idempotency_key,
-        investigation_id=investigation_id,
-        incident_id=alert.incident_id or "INC-STUB",
-        thread_id=investigation_id,
-        force_rerun=force_rerun,
-        submitted_by=principal.subject,
-    )
-    if created:
-        if repo.count_active() > config.MAX_CONCURRENT_INVESTIGATIONS_GLOBAL:
-            repo.transition(
-                record.investigation_id, "failed", error="global concurrency limit reached"
-            )
-            raise HTTPException(
-                status_code=429, detail="global investigation concurrency limit reached"
-            )
-        user_active = repo.count_active(subject=principal.subject)
-        if user_active > config.MAX_CONCURRENT_INVESTIGATIONS_PER_USER:
-            repo.transition(
-                record.investigation_id, "failed", error="per-user concurrency limit reached"
-            )
-            raise HTTPException(
-                status_code=429, detail="your concurrent investigation limit reached"
-            )
-
-        background.add_task(
-            _run_investigation_job,
-            record.investigation_id,
-            alert.model_dump(),
-            repo=repo,
-            svc=svc,
-            diagnosis=diagnosis,
-        )
-    response.headers["Location"] = f"/investigations/{record.investigation_id}"
-    return AcceptedInvestigation(
-        investigation_id=record.investigation_id,
-        status=record.status,
-        poll_url=f"/investigations/{record.investigation_id}",
-    )
-
-
-@app.post("/investigations/{investigation_id}/decision", status_code=202)
-def submit_decision(
-    investigation_id: str,
-    decision: InvestigationDecision,
-    background: BackgroundTasks,
-    authorization: str | None = Header(default=None),
-    svc=Depends(get_service),
-    diagnosis=Depends(get_diagnosis),
-    repo: InvestigationRepository = Depends(get_repository),
-    authenticator: ReviewerAuthenticator = Depends(get_authenticator),
-) -> AcceptedInvestigation:
-    """Submit a reviewer's decision on a paused investigation and resume it in the background.
-
-    401/403 for an unproven or unauthorized identity; 404 for an unknown id; 409 if the
-    investigation isn't currently `awaiting_approval` — all validated synchronously so a rejected
-    or wrong-status submission never silently no-ops in the background.
-
-    **Authentication runs first, before the record is even looked up.** Order matters: probing this
-    endpoint without a valid token must not reveal which investigation ids exist, so an anonymous
-    caller cannot tell 404 from 409 from a real pause.
-
-    Two more 409s, both G-32, and both leaving the run exactly as it was:
-
-    - `stale_report`: the decision was made against a report that is no longer the one awaiting
-      review (a concurrent edit or decision advanced the thread first). The response carries the
-      current hash so the client can re-review and resubmit, and the investigation **stays
-      `awaiting_approval`**. This replaces #36's behaviour, where a stale hash escalated the run:
-      losing a race is a concurrency conflict, not an investigation failure, and burning a human's
-      paused investigation over one is the wrong trade.
-    - `decision_conflict`: this `decision_id` was already committed with a *different* body.
-
-    A retry of an already-committed `decision_id` with the *same* body replays the stored response
-    verbatim (202) whatever the current status is, since a retry naturally arrives after the run
-    has moved on. The graph is never resumed twice for it.
-    """
-    principal = require_reviewer(authorization, authenticator)
-
-    record = repo.get(investigation_id)
-    if record is None:
-        raise HTTPException(status_code=404, detail="investigation not found")
-
-    response = AcceptedInvestigation(
-        investigation_id=investigation_id,
-        status="running",
-        poll_url=f"/investigations/{investigation_id}",
-    )
-    candidate = CommittedDecision(
-        decision_id=decision.decision_id,
-        fingerprint=decision.fingerprint(principal),
-        decision=decision.decision,
-        submitted_report_hash=decision.submitted_report_hash,
-        approver=principal.audit_label(),
-        response=response.model_dump(mode="json"),
-    )
-
-    # The commit point. Recording the decision and moving awaiting_approval -> running happen in
-    # ONE conditional write inside the repository, which also decides the replay/status/stale
-    # preconditions against the same state it commits against. Checking them out here first would
-    # be a check-then-act race that lets two concurrent decisions both reach the resume below.
-    try:
-        committed, created = repo.commit_decision(investigation_id, decision=candidate)
-    except StaleReportError as exc:
-        raise HTTPException(
-            status_code=409,
-            detail={
-                "error": "stale_report",
-                "message": "the report you decided on is no longer the one awaiting review",
-                "submitted_report_hash": decision.submitted_report_hash,
-                "current_report_hash": exc.current_report_hash,
-                "status": "awaiting_approval",
-            },
-        ) from exc
-    except DecisionNotPendingError as exc:
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
-
-    if not created:
-        if committed.fingerprint != candidate.fingerprint:
-            raise HTTPException(
-                status_code=409,
-                detail={
-                    "error": "decision_conflict",
-                    "message": "decision_id was already committed with a different decision",
-                    "decision_id": decision.decision_id,
-                },
-            )
-        # A genuine retry: replay the committed response, resume nothing.
-        _log.info(
-            "decision %s on %s replayed (decision_id=%s)",
-            committed.decision,
-            investigation_id,
-            committed.decision_id,
-        )
-        return AcceptedInvestigation.model_validate(committed.response)
-
-    _log.info(
-        "decision %s on %s by %s (kind=%s)",
-        decision.decision,
-        investigation_id,
-        principal.audit_label(),
-        principal.auth_method,
-    )
-
-    # The resume payload is assembled HERE, server-side, from the validated body plus the verified
-    # principal. The client contributes the decision and the hash it reviewed, never the identity.
-    background.add_task(
-        _resume_investigation_job,
-        investigation_id,
-        _resume_payload(decision, principal),
-        repo=repo,
-        svc=svc,
-        diagnosis=diagnosis,
-    )
-    return response
-
-
-@app.get("/investigations/{investigation_id}")
-def get_investigation(
-    investigation_id: str,
-    authorization: str | None = Header(default=None),
-    repo: InvestigationRepository = Depends(get_repository),
-    authenticator: ReviewerAuthenticator = Depends(get_authenticator),
-) -> InvestigationStatusResponse:
-    """Poll an investigation: 401/403 for an unproven or unauthorized caller (Stage 8, G-03/G-57 —
-    open to whoever submitted, may decide, or holds the dedicated read role); 404 for an unknown id;
-    otherwise the current status + ordered transition history, the full typed result once terminal,
-    and the pending report/hash awaiting a decision while paused (`status == "awaiting_approval"`).
-
-    Authentication runs first, before the record is looked up — same id-oracle reasoning as the
-    decision endpoint: an unauthenticated caller must not be able to tell a real id from a fake one
-    by the status code it gets back."""
-    require_reader(authorization, authenticator)
-
-    record: InvestigationRecord | None = repo.get(investigation_id)
-    if record is None:
-        raise HTTPException(status_code=404, detail="investigation not found")
-    result = InvestigationResponse.model_validate(record.result) if record.result else None
-    return InvestigationStatusResponse(
-        investigation_id=record.investigation_id,
-        incident_id=record.incident_id,
-        status=record.status,
-        history=record.history,
-        result=result,
-        pending_decision=record.pending_interrupt,
-        error=record.error,
-    )
-
-
-@app.post("/investigate")
-def investigate(
-    alert: Alert,
-    authorization: str | None = Header(default=None),
-    svc=Depends(get_service),
-    diagnosis=Depends(get_diagnosis),
-    authenticator: ReviewerAuthenticator = Depends(get_authenticator),
-) -> InvestigationResponse:
-    """Synchronous investigation — kept as a compatibility + test endpoint. The advertised contract
-    is the async resource API above (`POST /investigations` → 202, poll `GET /investigations/{id}`),
-    which doesn't hold a request open for the whole run. This endpoint runs the graph inline and
-    returns the full result directly.
-
-    401/403 for an unproven or unauthorized caller. This route carries the SAME submit role as
-    `POST /investigations` because it incurs the same Azure OpenAI spend, and it was the last
-    unauthenticated route on public ingress once #49 closed submit/read (G-03). It is deliberately
-    not given a weaker gate than the async path: a caller who cannot submit a job must not be able
-    to run the identical graph by choosing the older endpoint.
-
-    Note this route is auto-approving (`_run_and_build`), so the resulting approval is still
-    labelled `deterministic_auto_approval`: proving submit authority is not reviewer authority,
-    and authenticating here does not turn an auto-approval into human review.
-    """
-    require_submitter(authorization, authenticator)
-    return _run_and_build(alert.model_dump(), svc, diagnosis)

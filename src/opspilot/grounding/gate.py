@@ -116,11 +116,16 @@ def ground(
                 )
             )
 
-    disclosed = {text.strip() for text in assessment.limitations}
+    # A disclosure counts when it carries the recorded question verbatim, whether or not the
+    # analyst wrote anything alongside it. It reads the question back to the engineer either way,
+    # which is what being represented in the assessment means, and an analyst that appends why the
+    # question went unanswered has disclosed more rather than less. Containment of an exact
+    # recorded string keeps this a comparison rather than a judgment about prose.
+    disclosed = [text.strip() for text in assessment.limitations]
     issues.extend(
         Issue(UNDISCLOSED_LIMITATION, limitation.question)
         for limitation in limitations
-        if limitation.question.strip() not in disclosed
+        if not any(limitation.question.strip() in text for text in disclosed)
     )
 
     return issues

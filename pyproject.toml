@@ -6,7 +6,6 @@ readme = "README.md"
 requires-python = ">=3.12,<3.13"
 dependencies = [
     "langgraph>=0.2",
-    "langchain-core>=0.3",
     "pydantic>=2.7",
     "fastapi>=0.111",
     "uvicorn[standard]>=0.30",
@@ -16,15 +15,6 @@ dependencies = [
     # Lexical BM25 index — the deterministic runtime retrieval backend. Pure-Python and tiny;
     # unlike the dense/rerank ML stack (eval group) it ships in the runtime image.
     "rank-bm25>=0.2.2",
-    # Durable checkpointer, file-backed SQLite saver. Small (aiosqlite + stdlib sqlite3);
-    # the local/dev durable backend and what the CI resume gate runs against. The Cosmos prod saver
-    # is the optional `checkpoint` group, lazy-imported, so it stays out of the lean image by default.
-    "langgraph-checkpoint-sqlite>=2.0",
-    # Reviewer-identity token validation. A CORE dependency, deliberately not an
-    # optional group: the decision endpoint fails closed, so "the auth library isn't installed"
-    # must be impossible rather than a path that degrades to unauthenticated approval. `[crypto]`
-    # pulls in `cryptography` for the RS256 signature check Entra's tokens require.
-    "pyjwt[crypto]>=2.9",
     # Cosmos data-plane client. A base dependency because every Cosmos read the application makes
     # runs from the runtime image: the knowledge container, the operational records, and the
     # completed-investigation store. Keyless via the managed identity.
@@ -49,15 +39,6 @@ dev = [
 llm = [
     "openai>=1.40",
     "azure-identity>=1.17",
-]
-# Production durable Cosmos DB backends: the LangGraph checkpointer (first-party
-# langchain-azure-cosmosdb) and the async job API's InvestigationRepository
-# (CosmosInvestigationRepository, direct azure-cosmos — already a transitive dep of the former, made
-# explicit since it's now imported directly too). Both keyless via DefaultAzureCredential. Both
-# lazy-imported by their respective `cosmos` backend, kept out of the lean image until the Cosmos
-# deploy installs `--group checkpoint`.
-checkpoint = [
-    "langchain-azure-cosmosdb>=1.0",
 ]
 
 [build-system]
@@ -84,33 +65,6 @@ files = ["src/opspilot", "scripts"]
 mypy_path = "src"
 ignore_missing_imports = true
 strict = true
-
-# The superseded runtime: the LangGraph orchestration, its graph nodes and routers, the async job
-# API and its repositories, the checkpointer, the hand-rolled reviewer authorization, and the
-# triager. Every module here is scheduled for deletion, so annotating it would be work invested in
-# code on its way out. They are held at the pre-strict level instead, and only the strict checks
-# they actually trip are relaxed.
-#
-# This list only ever shrinks. A new module never joins it; a change that deletes a listed module
-# deletes its entry in the same commit.
-[[tool.mypy.overrides]]
-module = [
-    "opspilot.api",
-    "opspilot.auth",
-    "opspilot.checkpoint",
-    "opspilot.cosmos_investigations",
-    "opspilot.graph",
-    "opspilot.investigations",
-    "opspilot.nodes.investigation",
-    "opspilot.router",
-    "opspilot.triage",
-]
-disallow_untyped_defs = false
-disallow_incomplete_defs = false
-disallow_untyped_calls = false
-disallow_any_generics = false
-warn_return_any = false
-warn_unused_ignores = false
 
 [tool.pytest.ini_options]
 # `tests` is on the path so the shared container fake is imported by name rather than relying on

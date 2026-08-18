@@ -22,7 +22,6 @@ from opspilot.evidence.references import (
     ReferenceError,
     ReferenceResolver,
     ReferenceType,
-    entities_named,
     parse,
     reference_type_of,
     try_parse,
@@ -160,7 +159,6 @@ def test_an_absence_reference_names_no_entity():
     """The queried scope is carried by the admitted observation, not smuggled into the reference:
     a capability name is not a service, and treating it as one would put it into cause analysis."""
     assert parse("absence:get_deployments:op-0007").entities == ()
-    assert entities_named(["absence:get_deployments:op-0007"]) == set()
 
 
 # --- the aggregate form -------------------------------------------------------------------------
@@ -218,16 +216,6 @@ def test_a_naive_metric_timestamp_is_refused():
     wrong instant is worse than one that fails."""
     with pytest.raises(ReferenceError, match="UTC"):
         parse("metrics:checkout-api:http_5xx_rate@2026-05-12T14:30:00")
-
-
-# --- entity extraction ------------------------------------------------------------------------
-def test_entities_named_collects_services_and_ignores_knowledge():
-    found = entities_named(EVIDENCE_REFS + KNOWLEDGE_REFS)
-    assert found == {"payment-api", "checkout-api"}
-
-
-def test_entities_named_ignores_unparseable_entries():
-    assert entities_named(["logs:payment-api:evt-1", "garbage", ""]) == {"payment-api"}
 
 
 # --- resolution -------------------------------------------------------------------------------
