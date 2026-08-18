@@ -17,9 +17,14 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
+from opspilot.tools.contracts import ExecutionOutcome
+
 if TYPE_CHECKING:
+    # Only these two are deferred, and only because `evidence.admission` imports this module: the
+    # cycle is real, and the annotations are strings under the future import anyway. The execution
+    # outcome is imported outright because an operation persists, and a persisted shape's
+    # annotations have to resolve at runtime for the record that carries it to be built.
     from opspilot.evidence.admission import AdmittedObservation, Limitation
-    from opspilot.tools.contracts import ExecutionOutcome
 
 _OPERATION_PREFIX = "op-"
 

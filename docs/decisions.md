@@ -45,8 +45,8 @@ serves every model task, including the judge.
 ### D-003 Retrieval realization
 
 **Decision.** One retriever over the categorized Cosmos knowledge container: embed the question
-with the embedding deployment; vector search over the collection the question's shape selects or
-the named collection; a lexical term-overlap pass over the same category-filtered candidates;
+with the embedding deployment; vector search over the collection the capability names; a lexical
+term-overlap pass over the same category-filtered candidates;
 reciprocal-rank fusion of the two ranked lists; stable promotion of passages whose extracted
 identifiers match identifier-like terms in the question; truncation to a small passage budget.
 Passages carry text and reference. No model reranker.

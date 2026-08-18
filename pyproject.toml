@@ -25,6 +25,10 @@ dependencies = [
     # must be impossible rather than a path that degrades to unauthenticated approval. `[crypto]`
     # pulls in `cryptography` for the RS256 signature check Entra's tokens require.
     "pyjwt[crypto]>=2.9",
+    # Cosmos data-plane client. A base dependency because every Cosmos read the application makes
+    # runs from the runtime image: the knowledge container, the operational records, and the
+    # completed-investigation store. Keyless via the managed identity.
+    "azure-cosmos>=4.7",
 ]
 
 [dependency-groups]
@@ -54,7 +58,6 @@ llm = [
 # deploy installs `--group checkpoint`.
 checkpoint = [
     "langchain-azure-cosmosdb>=1.0",
-    "azure-cosmos>=4.7",
 ]
 
 [build-system]

@@ -56,18 +56,12 @@ def _dir_env(var: str, default: Path) -> Path:
 
 
 KB_DIR = _dir_env("OPSPILOT_KB_DIR", _REPO_ROOT / "data" / "kb")
-DISTRACTOR_DIR = _dir_env("OPSPILOT_DISTRACTOR_DIR", _REPO_ROOT / "data" / "distractors")
 
 # The one retrieval realization (D-003): Cosmos vector search + in-process lexical scoring, fused by
 # reciprocal rank fusion. Not env-selectable, since there is no alternative backend to choose
 # between: kept as a named constant only because `ToolService.retrieval_backend` reports it for
 # readiness diagnostics.
 RETRIEVAL_BACKEND = "cosmos"
-
-
-# DEPRECATED: superseded by D-005 (the primary chat deployment is the single offline judge).
-# No new consumer.
-JUDGE_MODEL = _env("OPSPILOT_JUDGE_MODEL", "gpt-4.1")
 
 
 # --------------------------------------------------------------------------------------
@@ -101,13 +95,6 @@ IMPLEMENTATION = _env("OPSPILOT_IMPLEMENTATION", "deterministic")
 
 
 # --------------------------------------------------------------------------------------
-# Reranking (unreachable: no caller builds `retrieval.reranker.Reranker`, see D-003)
-# --------------------------------------------------------------------------------------
-RERANKER_MODEL = "BAAI/bge-reranker-v2-m3"
-
-# Depth of the first-stage (hybrid) candidate set handed to the cross-encoder reranker.
-# Deeper = higher recall into the rerank stage at a linear cost in cross-encoder calls.
-RERANK_CANDIDATES = _env_int("OPSPILOT_RERANK_CANDIDATES", 30)
 
 
 # --------------------------------------------------------------------------------------
@@ -221,8 +208,6 @@ WORKFLOW_VERSION = "1.0"
 # Agentic loop controls (circuit breakers)
 # --------------------------------------------------------------------------------------
 MAX_DIAGNOSE_ITERS = _env_int("OPSPILOT_MAX_DIAGNOSE_ITERS", 5)
-# DEPRECATED: unenforced. Reserved for reuse as the capability-call cap once something enforces it.
-MAX_TOOL_CALLS = _env_int("OPSPILOT_MAX_TOOL_CALLS", 20)
 
 
 # --------------------------------------------------------------------------------------
