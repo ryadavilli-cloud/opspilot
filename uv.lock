@@ -821,6 +821,7 @@ name = "opspilot"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
+    { name = "azure-cosmos" },
     { name = "fastapi" },
     { name = "langchain-core" },
     { name = "langgraph" },
@@ -836,7 +837,6 @@ dependencies = [
 
 [package.dev-dependencies]
 checkpoint = [
-    { name = "azure-cosmos" },
     { name = "langchain-azure-cosmosdb" },
 ]
 data = [
@@ -856,6 +856,7 @@ llm = [
 
 [package.metadata]
 requires-dist = [
+    { name = "azure-cosmos", specifier = ">=4.7" },
     { name = "fastapi", specifier = ">=0.111" },
     { name = "langchain-core", specifier = ">=0.3" },
     { name = "langgraph", specifier = ">=0.2" },
@@ -870,10 +871,7 @@ requires-dist = [
 ]
 
 [package.metadata.requires-dev]
-checkpoint = [
-    { name = "azure-cosmos", specifier = ">=4.7" },
-    { name = "langchain-azure-cosmosdb", specifier = ">=1.0" },
-]
+checkpoint = [{ name = "langchain-azure-cosmosdb", specifier = ">=1.0" }]
 data = [
     { name = "numpy", specifier = ">=2.5.0" },
     { name = "pandas", specifier = ">=3.0.3" },

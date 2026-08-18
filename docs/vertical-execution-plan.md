@@ -150,10 +150,12 @@ set carries observations, limitations, and the operations list keyed by `investi
 `alert:<service>:<alert_id>` form parses and resolves. The five admission wrapper classes and
 `turn_id` on the evidence set are absent. The operational adapters now take typed parameters rather
 than the request models this slice expected to leave in place; nothing this slice builds depends on
-which of the two they were.
+which of the two they were. The persistence half is present too: `CompletedInvestigation` with the
+designed contents, the `save`/`get` seam, and the in-memory backend narrowed to it, all waiting for
+a caller.
 
 *Remaining.* The graph, the three roles, the bounds, grounding, correction, outcome, failure rules,
-persistence, delivery, and every other removal named below.
+the save-before-deliver ordering that uses the seam, delivery, and every other removal named below.
 
 **Builds.** The designed runtime, narrowly: one authored incident (the fast change-time scenario,
 inc-005) investigated end to end by the final three-agent graph in the streaming request, with the
@@ -402,7 +404,14 @@ exist, adapters take typed parameters, and the request models and superseded exp
 
 ## V7. Durable persistence and the question over the completed record
 
-**State:** Not started.
+**State:** Partial.
+
+*Already present.* The Cosmos implementation of the seam, over the declared container, keyed by
+`investigation_id`, one plain create per record, with the in-memory one still serving tests and
+both proven to store and return the same contents.
+
+*Remaining.* Selecting it for local and hosted runs, the read of a completed investigation by
+identifier as a request, the question over the record, and the question box on the screen.
 
 **Builds.** The Cosmos implementation of the repository seam over the `investigations` container,
 keyed by `investigation_id`, one plain create per record, selected for local and hosted runs while

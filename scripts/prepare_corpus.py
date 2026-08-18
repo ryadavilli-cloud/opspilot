@@ -300,9 +300,11 @@ def verify(expected_knowledge: int, expected_operational: int) -> int:
 
     def count(container: ContainerProxy, where: str = "") -> int:
         query = f"SELECT VALUE COUNT(1) FROM c {where}".strip()
-        # `SELECT VALUE COUNT(1)` yields exactly one integer; `int` states that rather than
-        # letting the container client's untyped row type escape into the return.
-        return int(list(container.query_items(query, enable_cross_partition_query=True))[0])
+        # `SELECT VALUE COUNT(1)` projects one scalar per row. The SDK types every row as a
+        # document mapping, which a VALUE projection is not, so the rows are named for what this
+        # query actually returns and the count is read as the number it is.
+        rows: list[Any] = list(container.query_items(query, enable_cross_partition_query=True))
+        return int(rows[0])
 
     failures: list[str] = []
 
