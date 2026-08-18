@@ -299,10 +299,15 @@ activity.
 
 **State:** Partial.
 
-*Already present.* The retrieval adapter in `tools/search.py` returns the retriever's passage shape
-unreshaped, and the fourth shape it used to convert into is absent.
+*Already present.* Retrieval's final behavior and every removal this slice names, as `status.md`
+records: stable exact-identifier promotion after fusion, truncation to the passage budget, one
+passage shape on the runtime path, a failed retrieval admitted as a limitation, and the reranker
+module, dependency, marker, and CI lane absent.
 
-*Remaining.* Everything else this slice builds and removes.
+*Remaining.* What makes retrieval *influence an investigation*: the Evidence Investigator proposing
+it inside the graph, passages reaching the agents as context and counting against the capability
+cap, knowledge references appearing in the assessment, and the demonstration on the
+postmortem-recurrence scenario. All of that needs the runtime this slice sits on.
 
 **Builds.** Retrieval as a registered capability inside the investigation, final in behavior: embed
 the question, vector search plus the in-process lexical pass over the same category-filtered

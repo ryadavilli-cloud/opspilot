@@ -12,11 +12,13 @@ repository contradicts it.
 
 ## 1. Baseline
 
-- **Inspected:** `main` at `45dbfe4` plus the model-seam landing, working tree, 2026-08-17.
+- **Inspected:** `main` at `e18e525` plus the retrieval landing, working tree, 2026-08-17.
 - **Toolchain:** `uv`; Python 3.12.
 - **Gates at this tree:** `ruff check` clean; `ruff format --check` clean repository-wide; `mypy`
-  strict clean over 82 source files; deterministic lane `pytest -q -m "not llm"`: **706 passed,
+  strict clean over 81 source files; deterministic lane `pytest -q -m "not llm"`: **714 passed,
   2 deselected, no xfails**; the pre-commit hook (lint, format, em-dash, plan-vocabulary) passes.
+  CI runs one lane: the heavier lane existed only to install the machine-learning dependency the
+  reranker needed, and went with it.
 - **The two deselected** are the only cases that call a live deployment; both are excluded from
   every CI lane, and the seam they exercise is covered deterministically by cassette replay.
 
@@ -34,7 +36,7 @@ anything, must still shrink.
 | Two-axis tool result | `tools/contracts.py` | Execution outcome and completeness as separate fields with one inline pairing rule that rejects a meaningless combination and content on a non-succeeded outcome | Nothing |
 | Reference grammar | `evidence/references.py` | One parser and one resolver over eleven prefixes; the prefix decides evidence versus knowledge; `absence:` makes an empty result citable and `query:` an aggregate, both resolving against what admission recorded; the resolver answers whether a reference names something real and nothing more | Nothing |
 | Evidence admission | `evidence/admission.py`, `evidence/operations.py` | Only a succeeded result becomes evidence; empty becomes a citable absence; an aggregate becomes an observation citable by its operation; partial stays marked; everything else becomes a limitation naming its question; the evidence set carries observations, limitations, and the operations list, keyed by `investigation_id` alone | Nothing |
-| Retrieval | `retrieval/retriever.py`, `retrieval/embeddings.py`, `data/knowledge_records.py` | Cosmos vector search over an Azure OpenAI query embedding, in-process BM25-style lexical pass over the same category-filtered candidates, reciprocal-rank fusion, section-level passages carrying their text; routing by question shape when no collection is named; the retrieval capabilities return that passage shape unreshaped | Deterministic identifier promotion after fusion does not exist yet; `Doc`/`Chunk` in `retrieval/corpus.py` still stand beside `Passage` |
+| Retrieval | `retrieval/retriever.py`, `retrieval/embeddings.py`, `data/knowledge_records.py` | Cosmos vector search over an Azure OpenAI query embedding, in-process BM25-style lexical pass over the same category-filtered candidates, reciprocal-rank fusion, then stable promotion of passages whose extracted identifiers the question names, then truncation to the passage budget; routing by question shape when no collection is named; one passage shape carrying text and reference, returned by the capabilities unreshaped; no model ranks at any stage | Nothing |
 | Corpus preparation | `scripts/prepare_corpus.py`, `retrieval/corpus.py`, `data/answer_key/topology.yaml` | Loads, chunks, embeds, and indexes the authored corpus into the containers the runtime reads, and verifies by read-back; runs under its own identity; the topology file is what preparation reads for entities | Nothing; `retrieval/corpus.py` and `topology.yaml` are reached only by preparation and stay for it |
 | Model seam | `llm/base.py`, `llm/client.py`, `llm/fake.py`, `llm/cassette.py`, `llm/prompts.py`, `llm/manifest.py` | One Azure adapter, one fake, cassette record and replay, prompt loading with versions. A call takes a task label and messages and nothing else; the result carries the task, the deployment that answered, the latency, and the token usage, for every call through every implementation. Authentication is keyless with no key setting, because the account has local authentication disabled | Nothing here; the planner and triage response models in `llm/schema.py` are retired by the legacy diagnosis path that imports them |
 | Assessment and brief | `assessment/contracts.py`, `assessment/brief.py` | The designed field set once: `what_happened` with its references, ordered `candidates` (statement, label, `established`, supporting, weakening), `unknowns`, `limitations`, `next_check`, `actions` (action, `now`, optional knowledge reference), `history`, `knowledge_used`; no shape re-checks support and none carries a number; the brief renders deterministically, states the outcome, presents co-causes as contributing causes, and never shows a probability | Nothing |
@@ -57,7 +59,6 @@ anything, must still shrink.
 | The investigation run | A linear generator in `api.py` gathers a fixed evidence plan (`turn/synthesis_step.py`), admits, synthesizes once, renders the brief, closes; an unusable proposal ends the stream without a brief | No graph, no objective step, no adaptive proposal or authorization, no return, no grounding call in the run, no correction, no persistence, no outcome assigned to a run. Until the gate runs there, a citation naming something the run never admitted reaches the rendered brief |
 | Grounding | The function exists and reports issues | Nothing calls it from the run; no correction call; no run assigns an outcome |
 | Persistence | Port and in-memory backend with delivery-after-save expressed once | No completed-investigation model; no Cosmos implementation; the `investigations` container is declared and empty; no runtime path writes |
-| Retrieval | As in section 2 | Identifier promotion; passage-budget-only truncation |
 | Screen | As in section 2 | A branch for the brief event (a rendered brief lands only in the details area); a question box |
 
 ---
@@ -117,12 +118,7 @@ template parameter and the `OPSPILOT_CONSOLE_CLIENT_ID` setting.
 `eval/harness.py`, `EvalTargets` and `TARGETS` in `config.py`, `tests/test_scenario_gate.py`,
 `tests/test_scaffold.py`; `eval/golden_incidents.json` and `eval/golden_retrieval.json` with the
 builder branches in `data/answer_key/build_goldens.py` that emit them and the sync assertions in
-`tests/test_answer_key.py` that read them; the `full` lane in `.github/workflows/deploy.yml`, which
-exists to install the eval group for the reranker.
-
-**Model reranker.** `retrieval/reranker.py`, `CrossEncoder`, `RERANKER_MODEL`,
-`RERANK_CANDIDATES`, the `reranker` pytest marker, `sentence-transformers` and its transitive
-`torch`, `transformers`, `scikit-learn`, `scipy` in the eval group. No caller anywhere.
+`tests/test_answer_key.py` that read them.
 
 **Plural-turn identity and persistence.** `turn_id` and `TurnIdentity` in `turn/identity.py`;
 `CompletedTurn`, `completed_turns()`, `turn()`, `CommitOutcome`, `CommitResult`,

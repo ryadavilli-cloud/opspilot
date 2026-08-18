@@ -1,8 +1,8 @@
 name: CI & Deploy
 
-# CI runs on every PR and every push to main. Deploy is gated: build-and-deploy `needs` both
-# CI lanes and runs only on push to main, so a red suite can never reach Azure. (`needs` can
-# only reference jobs in the same workflow file, hence CI and deploy live together here.)
+# CI runs on every PR and every push to main. Deploy is gated: build-and-deploy `needs` the CI
+# lane and runs only on push to main, so a red suite can never reach Azure. (`needs` can only
+# reference jobs in the same workflow file, hence CI and deploy live together here.)
 on:
   pull_request:
   push:
@@ -18,8 +18,9 @@ env:
   IMAGE_REPO: opspilot
 
 jobs:
-  # Fast lane: minimal runtime install. ML-gated tests skip (sentence-transformers absent),
-  # so this is a quick lint/type/contract sanity check on every PR.
+  # One lane. It installs what the application needs and runs the whole deterministic suite; there
+  # is no heavier lane behind it, because nothing in the tree needs a machine-learning dependency
+  # to be checked. Retrieval ranks deterministically and loads no local model.
   core:
     runs-on: ubuntu-latest
     steps:
@@ -60,25 +61,8 @@ jobs:
         # deterministically by the cassette/factory tests, which need no live model.
         run: uv run pytest -q -m "not llm"
 
-  # Full lane: installs the eval group in addition to core's, for whatever CI-gated coverage
-  # comes to depend on it. No currently-collected test is `reranker`-marked or needs the eval
-  # group's dependencies (retrieval no longer loads a local model, D-003), so this lane is
-  # presently redundant with `core`'s test selection; kept as the lane 3.2's retrieval
-  # measurement work lands against, rather than removed and re-added.
-  full:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v6
-      - uses: astral-sh/setup-uv@v9.0.0
-        with:
-          enable-cache: true
-      - name: Sync (dev + data + eval)
-        run: uv sync --group dev --group data --group eval
-      - name: Full suite (exclude the heavy reranker + live LLM)
-        run: uv run pytest -q -m "not reranker and not llm"
-
   build-and-deploy:
-    needs: [core, full]
+    needs: [core]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     steps:

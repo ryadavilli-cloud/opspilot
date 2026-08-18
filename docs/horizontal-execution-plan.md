@@ -93,10 +93,18 @@ values, adapters take typed parameters, and the named wrappers and superseded ex
 
 **State:** Partial.
 
-*Already present.* The retrieval adapter in `tools/search.py` returns the retriever's passage shape
-unreshaped, and the fourth shape it used to convert into is absent.
+*Already present.* Everything this step builds and every removal it names, as `status.md` records:
+stable promotion of passages whose extracted identifiers the question names, running over the whole
+fused list and followed by truncation to the passage budget; one passage shape on the runtime path,
+with corpus preparation's own shapes reaching nothing outside preparation; a retrieval that cannot
+execute admitted as a limitation and no passage, while a successful one produces knowledge rather
+than an operational observation. The reranker module, its dependency, the marker, and the CI lane
+that existed to install that dependency are absent.
 
-*Remaining.* Everything else this step builds and removes.
+*Remaining.* Only the hosted effect below, which the deployed surface cannot currently show: no
+route exposes retrieval results, so the ordering this step establishes is proven deterministically
+against the authored corpus rather than hosted. It becomes observable when the Evidence
+Investigator can propose retrieval inside an investigation.
 
 **Builds.** The final retrieval behavior over the knowledge container: embed the question, vector
 search plus the in-process lexical pass over the same category-filtered candidates, reciprocal-rank
