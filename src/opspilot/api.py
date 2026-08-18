@@ -347,6 +347,12 @@ async def investigation_stream(
     the next if that resumes on a different thread. An async generator stays on the single request
     task, so the span below safely wraps every yield.
 
+    The graph is driven by `astream` for the same reason it must be: the synchronous `stream`
+    iterates node functions on the caller's thread, which here is the event loop, so one
+    investigation would hold the loop for its whole run and the process could answer nothing else
+    while it lasted. `astream` runs those same sync nodes in a worker executor, leaving the loop
+    free between steps.
+
     `disconnect` is the in-process cancellation signal, checked between steps. A client that has
     left gets nothing further, and because nothing is persisted until the graph's own save, an
     abandoned run leaves nothing behind.
@@ -374,7 +380,7 @@ async def investigation_stream(
         sent = 0
         final: dict[str, Any] | None = None
         try:
-            for step in get_graph().stream(state, config=graph_config, stream_mode="values"):
+            async for step in get_graph().astream(state, config=graph_config, stream_mode="values"):
                 final = step
                 events = step.get("events", [])
                 for event in events[sent:]:
