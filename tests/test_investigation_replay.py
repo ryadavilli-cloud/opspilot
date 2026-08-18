@@ -25,7 +25,7 @@ from fastapi.testclient import TestClient
 from opspilot.api import app, get_model, get_operational_records, get_record, get_service
 from opspilot.evidence.references import try_parse
 from opspilot.llm.cassette import ReplayChatModel
-from opspilot.record.memory import InMemoryInvestigationRecord
+from opspilot.record.memory import InMemoryCompletedInvestigations
 from opspilot.tools.service import ToolService
 
 CASSETTE = Path(__file__).resolve().parents[1] / "eval" / "cassettes" / "investigation.json"
@@ -35,7 +35,7 @@ INCIDENT = "inc-005"
 
 
 @pytest.fixture
-def replayed() -> tuple[list[dict], InMemoryInvestigationRecord]:
+def replayed() -> tuple[list[dict], InMemoryCompletedInvestigations]:
     """The streamed events of one replayed investigation, and the record it wrote.
 
     Everything is built per test: the cassette is re-read, the corpus fake rebuilt, and the
@@ -44,7 +44,7 @@ def replayed() -> tuple[list[dict], InMemoryInvestigationRecord]:
     """
     model = ReplayChatModel(CASSETTE)
     records = corpus_records()
-    record = InMemoryInvestigationRecord()
+    record = InMemoryCompletedInvestigations()
     app.dependency_overrides[get_operational_records] = lambda: records
     app.dependency_overrides[get_service] = lambda: ToolService(records)
     app.dependency_overrides[get_model] = lambda: model

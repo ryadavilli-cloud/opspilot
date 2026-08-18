@@ -1,7 +1,8 @@
-"""Tests for the Cosmos-backed retrieval subsystem: passage-level results, category routing, dense
-and lexical fusion, exact-identifier promotion, the passage budget, and deadline propagation.
-Deterministic throughout: a fake container and a fake query embedder stand in for Cosmos and Azure
-OpenAI; nothing here reaches a live backend, and no model ranks anything at any stage.
+"""Tests for the Cosmos-backed retrieval subsystem: passage-level results, the collection and
+service filters, dense and lexical fusion, exact-identifier promotion, the passage budget, and
+deadline propagation. Every search names the collection it searches, because the retriever does not
+choose one. Deterministic throughout: a fake container and a fake query embedder stand in for Cosmos
+and Azure OpenAI; nothing here reaches a live backend, and no model ranks anything at any stage.
 """
 
 from __future__ import annotations
@@ -23,7 +24,6 @@ from opspilot.retrieval.retriever import (
     POSTMORTEM,
     RUNBOOK,
     Retriever,
-    route_category,
 )
 
 
@@ -217,19 +217,3 @@ def test_reciprocal_rank_fusion_promotes_the_passage_matched_by_both_signals():
     retriever = retriever_from(docs)
     hits = retriever.search("payment gateway timeout", k=2, collection=RUNBOOK, deadline_s=5.0)
     assert hits[0].reference == "runbook:alpha"
-
-
-def test_route_category_from_question_shape():
-    assert route_category("how do I roll back the last deployment?") == RUNBOOK
-    assert route_category("what services does payment-api depend on upstream?") == ARCHITECTURE
-    assert route_category("has this happened before, any similar past incident?") == POSTMORTEM
-
-
-def test_route_category_defaults_to_runbook_when_nothing_matches():
-    assert route_category("xyzzy quux plugh") == RUNBOOK
-
-
-def test_search_with_no_collection_named_routes_before_querying():
-    retriever = knowledge_retriever()
-    hits = retriever.search("how do I remediate cosmos db throttling?", k=3, deadline_s=5.0)
-    assert hits and all(h.category == RUNBOOK for h in hits)

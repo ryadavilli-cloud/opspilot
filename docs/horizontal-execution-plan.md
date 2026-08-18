@@ -208,17 +208,15 @@ contract layer, oversized models, filtering, and provider branches are absent.
 
 ## H4. Completed-investigation persistence foundation
 
-**State:** Partial.
+**State:** Complete.
 
-*Already present.* `CompletedInvestigation` carrying identity, incident, objective, outcome, why
-gathering stopped, the assessment, the brief, the observations, limitations, and operations list,
-the deployment, and the prompt versions; the `save`/`get` seam, where `save` raises rather than
-returning a status a caller could forget to read; the in-memory implementation narrowed to it, and
-`azure-cosmos` in the base dependencies. The plural-turn types the step names are absent. The
-retrieved passages the design lists are not a field: no capability produces one yet, and a field
-nothing can fill is a reserved one.
-
-*Remaining.* The Cosmos implementation over the `investigations` container.
+`CompletedInvestigation` carries the contents the design lists, the seam is `save` and `get`, and
+both backends stand behind it: the in-memory one narrowed to those two operations, and a Cosmos one
+over the declared container keyed by `investigation_id` with a plain create. Both normalize through
+the stored document, so a record reads back with the same contents whichever is behind the seam and
+a second save is refused by either. `azure-cosmos` is a base dependency. The plural-turn
+persistence types are absent. This step built the seam unconnected; the investigation run now
+writes through it before it delivers. See `docs/status.md`.
 
 **Builds.** The final persistence seam, unconnected to any runtime path yet. One
 `CompletedInvestigation` carrying what the design lists: identity, incident, objective, outcome and

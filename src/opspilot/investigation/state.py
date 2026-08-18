@@ -101,7 +101,7 @@ class InvestigationState:
     # Emitted as they happen; the streaming request drains what it has not yet sent.
     events: list[ActivityEvent] = field(default_factory=list)
     model_deployment: str = ""
-    prompt_versions: list[str] = field(default_factory=list)
+    prompt_versions: dict[str, str] = field(default_factory=dict)
 
     @property
     def capability_budget_left(self) -> bool:

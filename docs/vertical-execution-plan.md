@@ -151,9 +151,10 @@ authorizes, admits, grounds, corrects once, assigns the outcome, saves, and deli
 execution persists nothing and emits a sanitized category; the streaming request carries identity,
 activity, and one terminal event under investigation-only vocabulary, and the screen shows the
 brief when it arrives. Every module, route, setting, dependency, override, and test named below is
-absent. The evidence half arrived earlier: admission returns plain values, the evidence set carries
-the operations list keyed by `investigation_id`, and the `alert:<service>:<alert_id>` form parses
-and resolves.
+absent. Two halves arrived before the runtime that uses them: admission returning plain values with
+the operations list keyed by `investigation_id` and the `alert:<service>:<alert_id>` form, and the
+completed-investigation record with its seam and backends, which the run now writes through before
+it delivers.
 
 *Remaining.* The hosted effect. The deployed revision predates this landing, so no hosted
 investigation has run through the graph, and the proof this slice names is a property of a hosted
@@ -412,7 +413,14 @@ exist, adapters take typed parameters, and the request models and superseded exp
 
 ## V7. Durable persistence and the question over the completed record
 
-**State:** Not started.
+**State:** Partial.
+
+*Already present.* The Cosmos implementation of the seam, over the declared container, keyed by
+`investigation_id`, one plain create per record, with the in-memory one still serving tests and
+both proven to store and return the same contents.
+
+*Remaining.* Selecting it for local and hosted runs, the read of a completed investigation by
+identifier as a request, the question over the record, and the question box on the screen.
 
 **Builds.** The Cosmos implementation of the repository seam over the `investigations` container,
 keyed by `investigation_id`, one plain create per record, selected for local and hosted runs while

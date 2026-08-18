@@ -44,7 +44,7 @@ from opspilot.intake.contracts import from_predefined_incident
 from opspilot.investigation.graph import MODEL, RECORD, SERVICE, build_graph
 from opspilot.investigation.state import Bounds, FailureCategory, InvestigationState
 from opspilot.obs import tracing
-from opspilot.record.memory import InMemoryInvestigationRecord
+from opspilot.record.memory import InMemoryCompletedInvestigations
 from opspilot.stream.contracts import IdentityEvent, TerminalEvent
 from opspilot.tools.contracts import Completeness, IncidentRecord
 
@@ -66,7 +66,7 @@ _singleton_lock = threading.Lock()
 _graph: Any = None
 _tool_service: Any = None
 _model: Any = None
-_record: InMemoryInvestigationRecord | None = None
+_record: InMemoryCompletedInvestigations | None = None
 _operational_records: OperationalRecords | None = None
 
 
@@ -105,12 +105,12 @@ def get_model() -> Any:
     return _model
 
 
-def get_record() -> InMemoryInvestigationRecord:
+def get_record() -> InMemoryCompletedInvestigations:
     global _record
     if _record is None:
         with _singleton_lock:
             if _record is None:
-                _record = InMemoryInvestigationRecord()
+                _record = InMemoryCompletedInvestigations()
     return _record
 
 

@@ -12,12 +12,12 @@ repository contradicts it.
 
 ## 1. Baseline
 
-- **Inspected:** `main` at `a695b02` plus the investigation-runtime landing, working tree,
+- **Inspected:** `main` at `2a0fe7a` plus the investigation-runtime landing, working tree,
   2026-08-18.
 - **Toolchain:** `uv`; Python 3.12.
 - **Gates at this tree:** `ruff check` clean; `ruff format --check` clean repository-wide; `mypy`
-  strict clean over 58 source files with no override list; deterministic lane
-  `pytest -q -m "not llm"`: **456 passed, 1 deselected, no xfails**; the pre-commit hook (lint,
+  strict clean over 59 source files with no override list; deterministic lane
+  `pytest -q -m "not llm"`: **469 passed, 1 deselected, no xfails**; the pre-commit hook (lint,
   format, em-dash, plan-vocabulary) passes. CI runs one lane.
 - **The count fell** because the runtime this landing replaced took its tests with it. Every
   guarantee those tests protected either moved to the graph's own suite or described behavior the
@@ -39,7 +39,7 @@ anything, must still shrink.
 | Two-axis tool result | `tools/contracts.py` | Execution outcome and completeness as separate fields with one inline pairing rule that rejects a meaningless combination and content on a non-succeeded outcome | Nothing |
 | Reference grammar | `evidence/references.py` | One parser and one resolver over eleven prefixes; the prefix decides evidence versus knowledge; `absence:` makes an empty result citable and `query:` an aggregate, both resolving against what admission recorded; the resolver answers whether a reference names something real and nothing more | Nothing |
 | Evidence admission | `evidence/admission.py`, `evidence/operations.py` | Only a succeeded result becomes evidence; empty becomes a citable absence; an aggregate becomes an observation citable by its operation; partial stays marked; everything else becomes a limitation naming its question; the evidence set carries observations, limitations, and the operations list, keyed by `investigation_id` alone | Nothing |
-| Retrieval | `retrieval/retriever.py`, `retrieval/embeddings.py`, `data/knowledge_records.py` | Cosmos vector search over an Azure OpenAI query embedding, in-process BM25-style lexical pass over the same category-filtered candidates, reciprocal-rank fusion, then stable promotion of passages whose extracted identifiers the question names, then truncation to the passage budget; routing by question shape when no collection is named; one passage shape carrying text and reference, returned by the capabilities unreshaped; no model ranks at any stage | Nothing |
+| Retrieval | `retrieval/retriever.py`, `retrieval/embeddings.py`, `data/knowledge_records.py` | Cosmos vector search over an Azure OpenAI query embedding, in-process BM25-style lexical pass over the same category-filtered candidates, reciprocal-rank fusion, then stable promotion of passages whose extracted identifiers the question names, then truncation to the passage budget; the collection searched is the one the calling capability names, never inferred; one passage shape carrying text and reference, returned by the capabilities unreshaped; no model ranks at any stage | Nothing |
 | Corpus preparation | `scripts/prepare_corpus.py`, `retrieval/corpus.py`, `data/answer_key/topology.yaml` | Loads, chunks, embeds, and indexes the authored corpus into the containers the runtime reads, and verifies by read-back; runs under its own identity; the topology file is what preparation reads for entities | Nothing; `retrieval/corpus.py` and `topology.yaml` are reached only by preparation and stay for it |
 | Model seam | `llm/base.py`, `llm/client.py`, `llm/fake.py`, `llm/cassette.py`, `llm/prompts.py`, `llm/manifest.py` | One Azure adapter, one fake, cassette record and replay, prompt loading with versions. A call takes a task label and messages and nothing else; the result carries the task, the deployment that answered, the latency, and the token usage, for every call through every implementation. Authentication is keyless with no key setting, because the account has local authentication disabled | Nothing |
 | Assessment and brief | `assessment/contracts.py`, `assessment/brief.py` | The designed field set once: `what_happened` with its references, ordered `candidates` (statement, label, `established`, supporting, weakening), `unknowns`, `limitations`, `next_check`, `actions` (action, `now`, optional knowledge reference), `history`, `knowledge_used`; no shape re-checks support and none carries a number; the brief renders deterministically, states the outcome, presents co-causes as contributing causes, and never shows a probability | Nothing |
@@ -50,7 +50,7 @@ anything, must still shrink.
 | Investigation runtime | `investigation/state.py`, `investigation/agents.py`, `investigation/graph.py` | One compiled in-process graph over typed state with no checkpointer: set objective, gather with deterministic continuation, synthesize, ground, persist, deliver, and the return edge declared. Three model-directed roles that only ever propose. Five bounds set by code at objective time: deadline, capability-call cap, model-call cap, `correction_used`, `return_used`, with the model cap reserving what synthesis and its one correction still need. Authorization is a membership test on the registered set, the questions already put, and the calls already made by capability and arguments. Failure is a first-class path emitting a sanitized category and persisting nothing | The one return is declared and not yet followed; retrieval and the structured query are registered and not yet offered to the investigator |
 | Outcome assignment | `assessment/brief.py`, `investigation/graph.py` | One function derives the outcome from two facts the assessment already holds, and the run records it: inconclusive where nothing is established, partial where something is with a limitation recorded, complete where something is without one | Nothing |
 | Normalized incident context | `intake/contracts.py` | Typed and frozen: `incident_id` required, `scope` where the incident names one, `symptom`, `time_anchor`, and nothing answer-bearing or ticket-workflow shaped | Nothing |
-| Completed-investigation record | `record/completed.py`, `record/port.py`, `record/memory.py` | One frozen artifact per investigation carrying identity, incident, objective, outcome, why gathering stopped, the assessment, the brief, the observations, limitations, and operations list, the deployment, and the prompt versions; a `save`/`get` seam where `save` raises rather than returning a status a caller could forget to read; the in-memory backend refuses a second save of the same identifier | A Cosmos implementation of the same seam |
+| Completed-investigation record | `record/completed.py`, `record/port.py`, `record/memory.py`, `record/cosmos.py` | One `CompletedInvestigation` carrying identity, incident, objective, outcome and why gathering stopped, admitted observations, limitations, the operations list, retrieved passages with their text, the assessment, the brief, the telemetry correlation reference, and the model and prompt versions; one seam with `save` and `get`; in-memory and Cosmos backends that both normalize through the stored document, so a second save of the same identifier is refused and a read carries the same contents whichever is behind the seam; the run writes through it before it delivers | Nothing |
 | Authored expectations and fixture | `data/answer_key/golden_scenarios.yaml`, `benign_fixture.yaml`, `data/answer_key/scenarios.yaml`, `data/answer_key/build_goldens.py` | Seven authored records with all required parts; every required reference resolves in the corpus; the benign fixture is structurally invisible to scenario counting; the builder derives `golden_scenarios.yaml` from `scenarios.yaml` | The record shape may simplify to what evaluation reads; the builder's `golden_incidents.json` and `golden_retrieval.json` outputs go with numeric evaluation |
 | Deterministic replay | `eval/cassettes/investigation.json`, `eval/record_investigation.py` | One committed cassette holds every model call of one whole investigation, so the deterministic lane replays a real run rather than one scripted call; the recorder drives the real streaming request, so a recorded response can only be one the replay path would ask for, and refuses to run unless the endpoint and deployment are named; the recording is taken through the Azure adapter against the chat deployment the application calls, keyless as the signed-in identity, so it is evidence about the serving path the application actually takes; the manifest refuses a cassette recorded under a different deployment, reasoning effort, API version, or prompt version, and names the field that moved | Nothing |
 | Azure baseline | `infra/main.bicep`, `.github/workflows` | One Container App, ACR, one OpenAI account with one chat and one embedding deployment, one Cosmos account with the three containers, Log Analytics, scoped data-plane roles, OIDC deploy | Replicas 0-3 become 0-1; App Insights and built-in auth are absent |
@@ -61,8 +61,7 @@ anything, must still shrink.
 
 | Capability | What exists | What does not |
 | --- | --- | --- |
-| The investigation run | The whole path: objective, adaptive gathering under deterministic authorization, synthesis, grounding, one correction, outcome, save, deliver. One incident runs it end to end on a recorded real model | The one return is declared as an edge and never followed, because nothing proposes one yet; retrieval and the structured query are registered and not offered to the investigator, so a run reaches neither |
-| Persistence | The completed-investigation model, the `save`/`get` seam, and the in-memory backend the run writes through before it delivers | A Cosmos implementation; the `investigations` container is declared and empty |
+| The investigation run | The whole path: objective, adaptive gathering under deterministic authorization, synthesis, grounding, one correction, outcome, save, deliver. One incident runs it end to end on a recorded real model | The one return is declared as an edge and never followed, because nothing proposes one yet; retrieval and the structured query are registered and not offered to the investigator, so a run reaches neither, and no run carries a retrieved passage into its record |
 | Screen | Intake, the live feed, the brief as the dominant element on the terminal event, and one details area | A question box |
 | Capability deadline | The run holds one deadline and stops on it; each source call carries the configured per-source ceiling, and dispatch refuses a call that names its own | The remaining run time is not what each capability call carries, because the registry is a process singleton that owns its own ceiling |
 
@@ -117,12 +116,14 @@ retained for the compiled graph and is not a retirement target.
 
 ## 7. Deployment state
 
-Last live-inspected 2026-08-18, at a revision carrying the tree through the retrieval landing. That
-revision predates this one: it still serves the superseded runtime, so what is described here is
-what is deployed, not what the tree now builds. One Container App and image from the Bicep template
-through the OIDC workflow; replicas 0-3; one chat and one embedding deployment; no Application
-Insights; the three containers are declared. Readiness reports every check ok: operational records,
-repository, logs, retrieval.
+Last live-inspected 2026-08-18, at a revision carrying the tree through the retrieval landing.
+That revision predates this one: it still serves the superseded runtime, so what is described here
+is what is deployed, not what the tree now builds. One Container App and image from the Bicep
+template through the OIDC workflow; replicas 0-3; one chat and one embedding deployment; no
+Application Insights; the three containers are declared. Readiness reports every check ok:
+operational records, repository, logs, and retrieval, the last of which reaches the knowledge
+container through the promoting retriever. The deployment workflow, including its post-deploy smoke
+test, passes against that revision.
 
 One hosted investigation ran end to end against that revision. It admitted 79 observations across
 the alert, log, metric, and absence forms; every one parsed and every one is an evidence reference.

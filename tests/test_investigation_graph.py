@@ -25,8 +25,8 @@ from opspilot.assessment.contracts import Outcome
 from opspilot.investigation.graph import MODEL, RECORD, SERVICE, build_graph
 from opspilot.investigation.state import FailureCategory
 from opspilot.llm.base import ChatResult
-from opspilot.record.memory import InMemoryInvestigationRecord
-from opspilot.record.port import RecordSaveError
+from opspilot.record.memory import InMemoryCompletedInvestigations
+from opspilot.record.port import AlreadySaved
 from opspilot.tools.contracts import ExecutionOutcome, IncidentRecord
 from opspilot.tools.errors import error_result
 from opspilot.tools.service import ToolService
@@ -75,7 +75,7 @@ class RefusingRecord:
     """A record that cannot be written. A save that fails must not deliver anything."""
 
     def save(self, record: Any) -> None:
-        raise RecordSaveError("the store refused the write")
+        raise AlreadySaved(record.investigation_id)
 
     def get(self, investigation_id: str) -> Any:
         return None
@@ -128,7 +128,7 @@ def run(
     prepare: Any = None,
 ) -> tuple[dict[str, Any], Any]:
     """Drive one investigation to its end and return the final state and the record it used."""
-    record = record if record is not None else InMemoryInvestigationRecord()
+    record = record if record is not None else InMemoryCompletedInvestigations()
     state = initial_state("inv-1", incident)
     if prepare is not None:
         prepare(state)

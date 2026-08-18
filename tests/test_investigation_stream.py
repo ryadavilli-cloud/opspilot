@@ -27,7 +27,7 @@ from opspilot.api import (  # noqa: E402
 )
 from opspilot.config import SOURCE_DEADLINE_SECONDS  # noqa: E402
 from opspilot.llm.base import ChatResult  # noqa: E402
-from opspilot.record.memory import InMemoryInvestigationRecord  # noqa: E402
+from opspilot.record.memory import InMemoryCompletedInvestigations  # noqa: E402
 from opspilot.tools.contracts import IncidentRecord  # noqa: E402
 from opspilot.tools.service import ToolService  # noqa: E402
 
@@ -66,7 +66,7 @@ def _injected():
     app.dependency_overrides[get_operational_records] = lambda: RECORDS
     app.dependency_overrides[get_service] = lambda: ToolService(RECORDS)
     app.dependency_overrides[get_model] = _QuietModel
-    app.dependency_overrides[get_record] = InMemoryInvestigationRecord
+    app.dependency_overrides[get_record] = InMemoryCompletedInvestigations
     yield
     app.dependency_overrides.clear()
 
@@ -127,7 +127,7 @@ def _drive(disconnect_after: int) -> list[dict]:
                 _DisconnectAfter(disconnect_after),  # type: ignore[arg-type]
                 ToolService(RECORDS),
                 _QuietModel(),
-                InMemoryInvestigationRecord(),
+                InMemoryCompletedInvestigations(),
             )
         ]
 

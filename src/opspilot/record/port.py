@@ -1,17 +1,17 @@
-"""The record seam: save one completed investigation, read one back.
+"""The Investigation Record seam: save one completed investigation, read it back by identifier.
 
-The record is passive. It stores a completed artifact and answers reads. It routes no workflow,
-decides nothing, synthesizes nothing, validates no grounding, and is never a mid-run checkpoint.
-Nothing is written while an investigation is still running, so an abandoned run leaves nothing
-behind and no shell to clean up.
+The record is passive. It stores the completed artifact and answers reads. It routes no workflow,
+decides nothing, synthesizes nothing, validates no grounding, and is never a mid-turn checkpoint.
 
-Saving precedes delivery, and a failed save is a failed execution rather than a brief delivered
-without a record behind it. `save` raises instead of returning a status: an ordering rule expressed
-as a return value is one a caller can ignore by forgetting to read it, and delivering a brief whose
-record was never written is exactly the failure this seam exists to prevent.
+Two operations and no more. Nothing is written while an investigation is still running, so an
+interrupted run leaves nothing behind, and the investigation comes into existence with its one
+successful save rather than as a shell created in advance.
 
-A second save of the same identifier is refused. One investigation is one run and one record, so a
-repeat is a defect somewhere upstream, and overwriting would destroy the first account of it.
+A second save of the same identifier is refused rather than accepted. One completed record per
+investigation is an invariant, not a convention: a delivered brief is never edited and a terminal
+outcome is never reopened, so overwriting would quietly replace an account someone may already have
+read. The refusal raises, because a caller that ignores a returned status would otherwise carry on
+believing it had stored something.
 """
 
 from __future__ import annotations
@@ -21,18 +21,25 @@ from typing import Protocol
 from opspilot.record.completed import CompletedInvestigation
 
 
-class RecordSaveError(RuntimeError):
-    """A completed investigation could not be persisted. Carries a sanitized reason, so a
-    persistence problem is never indistinguishable from a grounding or model one."""
+class AlreadySaved(Exception):
+    """A completed investigation was saved twice under one identifier.
+
+    Raised by every backend, so the invariant reads the same whichever one is behind the seam.
+    """
+
+    def __init__(self, investigation_id: str) -> None:
+        super().__init__(f"investigation {investigation_id!r} is already saved")
+        self.investigation_id = investigation_id
 
 
-class InvestigationRecord(Protocol):
-    """Passive persistence. Every backend satisfies exactly this."""
+class CompletedInvestigationRepository(Protocol):
+    """Passive persistence. Every backend satisfies exactly this, and adding one changes nothing
+    about when a record may be written."""
 
     def save(self, record: CompletedInvestigation) -> None:
-        """Persist one completed investigation, or raise `RecordSaveError`."""
+        """Persist one completed investigation. Raises `AlreadySaved` if the identifier is taken."""
         ...
 
     def get(self, investigation_id: str) -> CompletedInvestigation | None:
-        """The completed investigation, or None where none was ever saved."""
+        """The saved investigation, or None where nothing was ever saved under that identifier."""
         ...

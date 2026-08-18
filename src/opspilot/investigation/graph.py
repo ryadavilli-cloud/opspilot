@@ -47,7 +47,7 @@ from opspilot.investigation.agents import (
 )
 from opspilot.investigation.state import FailureCategory, InvestigationState
 from opspilot.record.completed import CompletedInvestigation
-from opspilot.record.port import RecordSaveError
+from opspilot.record.port import AlreadySaved
 from opspilot.stream.projection import emit
 from opspilot.tools.service import PROPOSABLE_CAPABILITIES
 
@@ -102,10 +102,15 @@ def _activity(
 
 
 def _record_call(state: InvestigationState, result: Any) -> dict[str, Any]:
-    """What one model call adds to the run's account of itself."""
-    versions = state.prompt_versions
-    if result.prompt_version and result.prompt_version not in versions:
-        versions = [*versions, result.prompt_version]
+    """What one model call adds to the run's account of itself.
+
+    Prompt versions are kept by task rather than as a list, because which prompt asked is only
+    meaningful alongside what it was asking for: a later run comparing itself against this one
+    needs to know that the selection prompt moved, not merely that some prompt did.
+    """
+    versions = dict(state.prompt_versions)
+    if result.prompt_version:
+        versions[result.task] = result.prompt_version
     return {
         "model_calls_made": state.model_calls_made + 1,
         "model_deployment": result.deployment or state.model_deployment,
@@ -387,14 +392,15 @@ def persist(state: InvestigationState, config: RunnableConfig | None = None) -> 
         assessment=state.assessment,
         brief=brief,
         model_deployment=state.model_deployment,
-        observations=tuple(state.evidence.observations),
-        limitations=tuple(state.evidence.limitations),
-        operations=tuple(state.evidence.operations),
-        prompt_versions=tuple(state.prompt_versions),
+        trace_id=state.investigation_id,
+        observations=list(state.evidence.observations),
+        limitations=list(state.evidence.limitations),
+        operations=list(state.evidence.operations),
+        prompt_versions=dict(state.prompt_versions),
     )
     try:
         _deps(config)[RECORD].save(record)
-    except RecordSaveError as exc:
+    except AlreadySaved as exc:
         return _failed(state, FailureCategory.SAVE_FAILED, f"the record could not be saved: {exc}")
 
     return {

@@ -2,10 +2,10 @@
 
 Dense search (Cosmos vector search over the query embedding) and lexical search (an in-process
 term-overlap scorer, BM25-style, run over the same filtered candidates) are fused by reciprocal
-rank fusion. What a query names as its collection selects the categories searched; where it names
-none, routing selects from the question's shape. Passages the question names by an exact identifier
-are then promoted, and what survives the passage budget is returned as the matched passage itself,
-never a pointer.
+rank fusion. The collection to search is named by the capability that calls, never inferred here:
+choosing where to look is an investigative decision, and it belongs to the caller that made it.
+Passages the question names by an exact identifier are then promoted, and what survives the passage
+budget is returned as the matched passage itself, never a pointer.
 
 No local embedding model is loaded here, and no model ranks anything: the query vector comes from
 the same Azure OpenAI deployment corpus preparation used to embed every passage
@@ -28,12 +28,11 @@ from opspilot.data.knowledge_records import (
 from opspilot.retrieval.base import tokenize
 from opspilot.retrieval.embeddings import QueryEmbedder, default_query_embedder
 
-# The three routed logical collections. Fixed at three; a fourth would need its own accepted
-# collection.
+# The three logical collections a capability may name. Fixed at three; a fourth would need its own
+# accepted collection.
 RUNBOOK = "runbook"
 ARCHITECTURE = "architecture"
 POSTMORTEM = "postmortem"
-CATEGORIES = (RUNBOOK, ARCHITECTURE, POSTMORTEM)
 
 # Reciprocal rank fusion constant. 60 is the RRF paper's own default and the value the superseded
 # hybrid retriever already used; nothing in the accepted retrieval design asks for a different one.
@@ -43,58 +42,6 @@ _RRF_K = 60
 # value: passages are section-sized, and a budget is what keeps a prompt from filling with
 # near-misses. It is a ceiling, so a caller may ask for fewer but never for more.
 PASSAGE_BUDGET = 5
-
-# Deterministic collection routing from question shape: procedural questions favor runbooks,
-# structural questions favor service knowledge, and precedent questions favor prior incidents. A
-# question matching none of these defaults to runbooks, the most common investigative ask, rather
-# than searching every collection at once.
-_PROCEDURAL_HINTS = (
-    "how to",
-    "how do",
-    "runbook",
-    "remediate",
-    "remediation",
-    "restart",
-    "rollback",
-    "mitigat",
-    "steps to",
-    "procedure",
-    "fix ",
-)
-_STRUCTURAL_HINTS = (
-    "depend",
-    "architecture",
-    "topology",
-    "upstream",
-    "downstream",
-    "service map",
-    "integrat",
-    "owns",
-    "blast radius",
-)
-_PRECEDENT_HINTS = (
-    "similar incident",
-    "past incident",
-    "previous incident",
-    "before",
-    "history",
-    "precedent",
-    "recurr",
-    "last time",
-    "happened again",
-)
-
-
-def route_category(question: str) -> str:
-    """The single collection a question with no named collection routes to."""
-    text = question.lower()
-    scored = {
-        RUNBOOK: sum(1 for hint in _PROCEDURAL_HINTS if hint in text),
-        ARCHITECTURE: sum(1 for hint in _STRUCTURAL_HINTS if hint in text),
-        POSTMORTEM: sum(1 for hint in _PRECEDENT_HINTS if hint in text),
-    }
-    best = max(CATEGORIES, key=lambda category: scored[category])
-    return best if scored[best] > 0 else RUNBOOK
 
 
 @dataclass(frozen=True)
@@ -177,11 +124,13 @@ class Retriever:
         query: str,
         *,
         k: int,
-        collection: str | tuple[str, ...] | None = None,
+        collection: str | tuple[str, ...],
         services: tuple[str, ...] | None = None,
         deadline_s: float,
     ) -> list[Passage]:
-        categories = self._categories_for(query, collection)
+        # The collection is named by the capability that called, never inferred here. One name or
+        # several; the only normalization is that both arrive as a tuple.
+        categories = (collection,) if isinstance(collection, str) else tuple(collection)
 
         dense_rows = self._records.nearest(
             categories,
@@ -196,14 +145,6 @@ class Retriever:
         ranked = [row_id for row_id, _ in sorted(fused.items(), key=lambda item: -item[1])]
         chosen = _promote(ranked, rows_by_id, query)[: min(k, PASSAGE_BUDGET)]
         return [_to_passage(rows_by_id[row_id], fused[row_id]) for row_id in chosen]
-
-    @staticmethod
-    def _categories_for(query: str, collection: str | tuple[str, ...] | None) -> tuple[str, ...]:
-        if collection is None:
-            return (route_category(query),)
-        if isinstance(collection, str):
-            return (collection,)
-        return tuple(collection)
 
 
 def _fuse(

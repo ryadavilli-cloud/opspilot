@@ -17,7 +17,7 @@ not yet match the accepted design. See `docs/status.md` for the full reconciliat
 
 ```bash
 uv sync --group dev --group data                  # runtime + dev deps
-uv run pytest -m "not reranker and not llm" -q     # CI-gated test lane
+uv run pytest -m "not llm" -q                      # CI-gated test lane
 uv run uvicorn opspilot.api:app --reload           # serve the API (GET /health/live, /health/ready)
 ```
 

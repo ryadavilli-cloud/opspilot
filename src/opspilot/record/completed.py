@@ -1,48 +1,76 @@
 """The one artifact an investigation leaves behind.
 
-Written once, after the gate passes and before the terminal event, and read afterwards for the
-brief, the question, and evaluation. There is exactly one per investigation, and nothing reopens or
-revises it.
+Written once, after the investigation completes, and read afterwards for the brief, the question
+over the record, and evaluation. It is the only thing that outlives the run: ephemeral working
+state, the bounds, the proposals, and the working hypotheses are not here, because none of them is
+part of what the investigation found.
 
-What it carries is what someone has to be able to reconstruct later: what was asked, what was
-observed, what could not be, what was attempted, what the analyst concluded, what the engineer was
-shown, and which deployment and prompts produced it. What it deliberately does not carry is
-ephemeral working state: no bounds, no proposals, no working hypotheses. Those shaped the run
-without being findings, and persisting them would invite reading a discarded idea as a conclusion.
+This is a model rather than a plain shape because it persists, and it exists precisely in order to
+cross that boundary. What it composes stays as it is: admitted observations, limitations,
+operations, and passages are in-process shapes that no layer serializes on their own, so they stay
+frozen dataclasses and are validated and serialized here as fields. Making them models to match
+would be a pattern applied for its own sake.
 
-The operations list records the attempt, not the call: an identifier, the capability, and how it
-ended. Arguments and raw results stay out, because the record is an account of what the
-investigation did, not a transcript it could be replayed from.
-
-`investigation_id` is also the telemetry correlation reference. Spans are correlated by it alone,
-so a second field naming the same thing would be one more place for the two to disagree.
+The record is self-contained on purpose. Every reference an assessment cites is meant to resolve
+against the evidence and passages carried here, so a reader that holds the record needs nothing
+else to check a citation, and a question asked months later is answered from the same material the
+analyst had.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from pydantic import BaseModel, ConfigDict, Field
 
 from opspilot.assessment.contracts import Assessment, Brief, Outcome
 from opspilot.evidence.admission import AdmittedObservation, Limitation
 from opspilot.evidence.operations import Operation
+from opspilot.retrieval.retriever import Passage
 
 
-@dataclass(frozen=True)
-class CompletedInvestigation:
-    """One completed investigation. Frozen: a delivered brief is never edited."""
+class CompletedInvestigation(BaseModel):
+    """One investigation, as it finished.
+
+    `investigation_id` is the only identity, and it is the persistence key, the telemetry
+    correlation handle, and what a later question names.
+    """
+
+    model_config = ConfigDict(frozen=True)
 
     investigation_id: str
     incident_id: str
     objective: str
+
+    # What the run reached, and why it stopped gathering when it did. The outcome follows from the
+    # assessment and the limitations; the reason is what a reader needs to judge whether the
+    # investigation stopped because it was finished or because it ran out of room.
     outcome: Outcome
-    # Why gathering ended, in the caller's terms. Recorded because an investigation that stopped at
-    # a bound and one that stopped because the evidence was ready are different runs, and the
-    # outcome alone does not tell them apart.
     stopped_because: str
+
+    # The evidence set, whole: what was observed, what could not be established, and every call
+    # attempted. Failed operations stay, because an account of a run that hides its unanswered
+    # calls reads as more complete than the run was.
+    observations: list[AdmittedObservation] = Field(default_factory=list)
+    limitations: list[Limitation] = Field(default_factory=list)
+    operations: list[Operation] = Field(default_factory=list)
+
+    # The passages the run retrieved, with their text, so a knowledge citation resolves against the
+    # record rather than against a corpus that may have moved on.
+    passages: list[Passage] = Field(default_factory=list)
+
     assessment: Assessment
     brief: Brief
-    model_deployment: str
-    observations: tuple[AdmittedObservation, ...] = ()
-    limitations: tuple[Limitation, ...] = ()
-    operations: tuple[Operation, ...] = ()
-    prompt_versions: tuple[str, ...] = field(default_factory=tuple)
+
+    # How to find this run in telemetry, and what produced it. Version identity travels with the
+    # record because an evaluation comparing two runs has to know whether the model or the prompts
+    # moved underneath them.
+    trace_id: str = ""
+    model_deployment: str = ""
+    prompt_versions: dict[str, str] = Field(default_factory=dict)
+
+    @property
+    def evidence_refs(self) -> set[str]:
+        """Every reference this record can answer for: admitted observations and retrieved
+        passages. What a citation must resolve against, held in one place."""
+        return {observation.evidence_ref for observation in self.observations} | {
+            passage.reference for passage in self.passages
+        }

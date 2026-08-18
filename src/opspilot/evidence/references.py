@@ -228,20 +228,6 @@ def try_parse(raw: str) -> Reference | None:
         return None
 
 
-def entities_named(refs: object) -> set[str]:
-    """Every service or infra entity named by a collection of references.
-
-    Unparseable and knowledge references contribute nothing, which is the correct reading: a
-    document names no entity, so it can never supply one.
-    """
-    found: set[str] = set()
-    for ref in refs if isinstance(refs, (list, tuple, set, frozenset)) else []:
-        parsed = try_parse(str(ref))
-        if parsed is not None:
-            found.update(parsed.entities)
-    return found
-
-
 class ReferenceResolver:
     """Resolves references against the sources the capabilities already read.
 
