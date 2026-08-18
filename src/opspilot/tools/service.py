@@ -44,6 +44,60 @@ if TYPE_CHECKING:
 # The one parameter name a caller may never supply. It is a bound, not an argument.
 _DEADLINE_PARAMETER = "deadline_s"
 
+# The implementation behind each registered name. The registry below dispatches through the bound
+# methods, which take `**kwargs`; this holds the implementations themselves, because their typed
+# parameters are the contract and an agent proposing a call has to be told what that contract is.
+# A capability the Evidence Investigator cannot describe is one it can only guess at, and a guessed
+# argument is refused at the boundary, which spends a step and teaches it nothing.
+_IMPLEMENTATIONS: dict[str, Callable[..., Any]] = {
+    "get_incident": get_incident,
+    "get_correlated_alerts": get_correlated_alerts,
+    "get_deployments": get_deployments,
+    "query_logs": query_logs,
+    "get_metrics": get_metrics,
+    "get_service_dependencies": get_service_dependencies,
+    "search_runbooks": search_runbooks,
+    "search_past_incidents": search_past_incidents,
+    "structured_query": structured_query,
+}
+
+# What the service supplies itself, so neither appears as an argument anyone may state.
+_SUPPLIED_PARAMETERS = frozenset({"records", "retriever", _DEADLINE_PARAMETER})
+
+# What the Evidence Investigator may choose from. Every capability here is registered, but not
+# every registered capability is offered: retrieval becomes proposable when its passages join the
+# knowledge set and reach the agents as context, and the structured query when the model may
+# propose a structure for validation. Offering one before the run can use its result would spend a
+# step on something that could not inform the next choice.
+PROPOSABLE_CAPABILITIES: tuple[str, ...] = (
+    "get_incident",
+    "get_correlated_alerts",
+    "get_deployments",
+    "query_logs",
+    "get_metrics",
+    "get_service_dependencies",
+)
+
+
+def capability_arguments(name: str) -> str:
+    """One capability's arguments, as a caller must state them: required bare, optional bracketed.
+
+    Read from the implementation's own signature rather than a description kept beside it, so the
+    two cannot drift and a parameter change reaches the agent that has to satisfy it.
+    """
+    import inspect
+
+    implementation = _IMPLEMENTATIONS.get(name)
+    if implementation is None:
+        return ""
+    parts = []
+    for parameter in inspect.signature(implementation).parameters.values():
+        if parameter.name in _SUPPLIED_PARAMETERS or parameter.kind is parameter.VAR_KEYWORD:
+            continue
+        required = parameter.default is inspect.Parameter.empty
+        parts.append(parameter.name if required else f"[{parameter.name}]")
+    return ", ".join(parts)
+
 
 class ToolService:
     def __init__(

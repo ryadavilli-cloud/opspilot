@@ -9,13 +9,12 @@ import pytest
 from opspilot.llm.prompts import Prompt, get_prompt
 
 
-def test_registry_loads_seeded_planner_prompt():
-    prompt = get_prompt("diagnose_planner")  # highest version
+def test_registry_loads_a_seeded_prompt():
+    prompt = get_prompt("evidence_selection")  # highest version
     assert isinstance(prompt, Prompt)
-    assert prompt.name == "diagnose_planner"
-    assert "on-call SRE" in prompt.text
-    # versioning is append-only: v1 stays pinnable even after later versions land
-    assert get_prompt("diagnose_planner", version=1).version == "diagnose_planner.v1"
+    assert prompt.name == "evidence_selection"
+    assert "Evidence Investigator" in prompt.text
+    assert get_prompt("evidence_selection", version=1).version == "evidence_selection.v1"
 
 
 def test_latest_version_selected(tmp_path: Path):

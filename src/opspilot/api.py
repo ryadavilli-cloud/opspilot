@@ -372,15 +372,14 @@ async def investigation_stream(
         }
 
         sent = 0
-        final: InvestigationState | None = None
+        final: dict[str, Any] | None = None
         try:
             for step in get_graph().stream(state, config=graph_config, stream_mode="values"):
-                final = step if isinstance(step, InvestigationState) else final
-                if final is None:
-                    continue
-                for event in final.events[sent:]:
+                final = step
+                events = step.get("events", [])
+                for event in events[sent:]:
                     yield event.model_dump_json() + "\n"
-                sent = len(final.events)
+                sent = len(events)
                 if await disconnect.is_disconnected():
                     return
         except Exception:  # noqa: BLE001 - any unhandled fault becomes a sanitized failure

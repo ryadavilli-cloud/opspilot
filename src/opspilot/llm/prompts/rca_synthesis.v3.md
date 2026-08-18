@@ -52,6 +52,10 @@ Rules you must follow:
   carries one. Order the candidates best supported first.
 - Attach evidence that weakens or contradicts a candidate to its `weakening` list rather than
   omitting it. Contradictory evidence is preserved, not tidied away.
+- `supporting`, `weakening`, `what_happened_refs`, `history_refs`, and `knowledge_used` hold
+  references and nothing else. A sentence, a question, or an explanation of what a source did not
+  return is not a reference, and one in any of those lists makes the whole assessment unusable.
+  Prose about what could not be established belongs in `unknowns` or `limitations`.
 - Copy every question listed under "Could not be established" into `limitations` word for word. A
   paraphrase does not read as a disclosure of it.
 - Do not express certainty as a number, a percentage, or a probability anywhere. How well supported

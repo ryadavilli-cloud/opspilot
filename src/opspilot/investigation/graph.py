@@ -29,6 +29,7 @@ cause, and collapsing them would turn a broken run into a clean bill of health.
 # annotations turn it into a string it does not recognize, so it passes None instead and every
 # dependency silently goes missing.
 
+from dataclasses import replace
 from typing import Any
 
 from langchain_core.runnables import RunnableConfig
@@ -48,12 +49,18 @@ from opspilot.investigation.state import FailureCategory, InvestigationState
 from opspilot.record.completed import CompletedInvestigation
 from opspilot.record.port import RecordSaveError
 from opspilot.stream.projection import emit
+from opspilot.tools.service import PROPOSABLE_CAPABILITIES
 
 # What the graph needs from its caller, read off the run configuration rather than closed over, so
 # one compiled graph serves every investigation and no request shares another's dependencies.
 MODEL = "model"
 SERVICE = "service"
 RECORD = "record"
+
+# What gathering leaves unspent for the calls that must still happen: one synthesis, and the one
+# correction it may need. Without this the cap is not a cap on the run at all, only on gathering,
+# and an investigation that spent everything looking would have nothing left to say what it found.
+RESERVED_MODEL_CALLS = 2
 
 
 def _deps(config: RunnableConfig | None) -> dict[str, Any]:
@@ -154,7 +161,7 @@ def gather(state: InvestigationState, config: RunnableConfig | None = None) -> d
     deps = _deps(config)
     if state.bounds.expired:
         return {"stopped_because": "the deadline expired while gathering"}
-    if not state.model_budget_left:
+    if state.model_calls_made + RESERVED_MODEL_CALLS >= state.bounds.model_calls:
         return {"stopped_because": "the model-call cap is spent"}
 
     action, result = propose_action(
@@ -162,14 +169,14 @@ def gather(state: InvestigationState, config: RunnableConfig | None = None) -> d
         state.incident,
         state.objective,
         state.evidence,
-        deps[SERVICE].tool_names,
+        PROPOSABLE_CAPABILITIES,
     )
     update = _record_call(state, result)
 
     if action.is_finished:
         return {**update, "stopped_because": action.finished_because}
 
-    refusal = _refuse(state, action, deps[SERVICE].tool_names)
+    refusal = _refuse(state, action, PROPOSABLE_CAPABILITIES)
     if refusal:
         return {
             **update,
@@ -196,6 +203,7 @@ def gather(state: InvestigationState, config: RunnableConfig | None = None) -> d
         "evidence": state.evidence,
         "capability_calls_made": state.capability_calls_made + 1,
         "answered_questions": state.answered_questions | {action.question},
+        "executed_calls": state.executed_calls | {_call_signature(action)},
         "events": _activity(
             state,
             "investigation.capability",
@@ -212,12 +220,24 @@ def gather(state: InvestigationState, config: RunnableConfig | None = None) -> d
     }
 
 
+def _call_signature(action: Any) -> str:
+    """One call, as the thing that decides whether it has already been made.
+
+    The capability and its arguments, not the sentence wrapped around them: the same query asked
+    in different words is the same query, and its answer is already held.
+    """
+    arguments = ", ".join(f"{key}={value!r}" for key, value in sorted(action.arguments.items()))
+    return f"{action.capability}({arguments})"
+
+
 def _refuse(state: InvestigationState, action: Any, registered: tuple[str, ...]) -> str:
-    """The three deterministic authorization conditions, in the order they are cheapest to check."""
+    """The deterministic authorization conditions, in the order they are cheapest to check."""
     if action.capability not in registered:
         return f"{action.capability} is not a registered capability"
     if action.question in state.answered_questions:
         return f"the question {action.question!r} was already answered"
+    if _call_signature(action) in state.executed_calls:
+        return f"{_call_signature(action)} was already called and answered"
     if not state.capability_budget_left:
         return "the capability-call cap is spent"
     return ""
@@ -236,6 +256,12 @@ def synthesize_node(
     if state.bounds.expired:
         return _failed(
             state, FailureCategory.DEADLINE_EXPIRED, "the deadline expired before synthesis"
+        )
+    if not state.model_budget_left:
+        return _failed(
+            state,
+            FailureCategory.UNUSABLE_ASSESSMENT,
+            "the model-call cap was spent before an assessment could be proposed",
         )
 
     deps = _deps(config)
@@ -336,10 +362,12 @@ def ground(state: InvestigationState, config: RunnableConfig | None = None) -> d
     )
     if remaining:
         detail = "; ".join(str(issue) for issue in remaining)
-        return {
-            **corrected,
-            **_failed(state, FailureCategory.UNGROUNDED_ASSESSMENT, detail),
-        }
+        # The failure entry is appended to what the correction already emitted, not to what the
+        # state held before it. Rebuilding from the older list would drop the correction's own
+        # entry, and a feed that never showed the attempt would make the run look as though it
+        # failed without one.
+        spent = replace(state, events=corrected["events"])
+        return {**corrected, **_failed(spent, FailureCategory.UNGROUNDED_ASSESSMENT, detail)}
     return corrected
 
 

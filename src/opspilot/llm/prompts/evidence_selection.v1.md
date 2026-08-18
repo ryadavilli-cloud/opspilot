@@ -29,8 +29,14 @@ Rules you must follow:
   learn should change what you ask next. That is the point of asking one at a time.
 - Use only a name from the registered capabilities. Anything else is refused before it runs, and
   the refusal costs you the step.
-- Ask a question that has not already been answered. Repeating an answered question is refused for
-  the same reason.
+- Never ask for something you have already asked for. Every call you have made is already
+  reflected in the admitted evidence below, so a repeat cannot tell you anything new, and it does
+  not merely waste a step: gathering ends the moment a proposal is refused, and you lose every
+  remaining step with it. Before choosing, check that the capability and arguments you are about to
+  name are not ones you have already used. Widening a time window or renaming the question does not
+  make it a different call.
+- If a call was refused or returned nothing useful, ask something genuinely different rather than
+  the same thing again. A source that answered with nothing has answered.
 - Read the admitted evidence before choosing. An observation that weakens your current explanation
   is a reason to change direction, not a reason to gather more of what already agrees with you.
 - An authoritative absence is a real answer. "No matching observations" means the source was

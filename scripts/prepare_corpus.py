@@ -300,9 +300,12 @@ def verify(expected_knowledge: int, expected_operational: int) -> int:
 
     def count(container: ContainerProxy, where: str = "") -> int:
         query = f"SELECT VALUE COUNT(1) FROM c {where}".strip()
-        # `SELECT VALUE COUNT(1)` yields exactly one integer; `int` states that rather than
-        # letting the container client's untyped row type escape into the return.
-        return int(list(container.query_items(query, enable_cross_partition_query=True))[0])
+        # A VALUE projection yields one bare scalar, while the client types every row as a mapping
+        # because that is what an ordinary projection returns. The element type therefore depends
+        # on the query rather than on the client, which is what this annotation says; `int` then
+        # states the one thing this query does return.
+        rows: Iterable[Any] = container.query_items(query, enable_cross_partition_query=True)
+        return int(next(iter(rows)))
 
     failures: list[str] = []
 

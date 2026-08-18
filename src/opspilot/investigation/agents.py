@@ -20,7 +20,7 @@ end the run on a technicality.
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any
 
 from opspilot.assessment.contracts import Assessment
@@ -33,8 +33,9 @@ from opspilot.assessment.synthesis import (
 from opspilot.evidence.admission import AdmittedObservation
 from opspilot.evidence.operations import EvidenceSet
 from opspilot.llm.base import ChatMessage, ChatResult
-from opspilot.llm.prompts import get_prompt
+from opspilot.llm.prompts import Prompt, get_prompt
 from opspilot.tools.contracts import Completeness
+from opspilot.tools.service import capability_arguments
 
 OBJECTIVE_TASK = "investigation_objective"
 SELECTION_TASK = "evidence_selection"
@@ -58,6 +59,24 @@ class ProposedAction:
     @property
     def is_finished(self) -> bool:
         return not self.capability
+
+
+def _ask(model: Any, task: str, prompt: Prompt, user: str) -> ChatResult:
+    """One model call, with the prompt version it was made under stamped onto the result.
+
+    The seam returns which deployment answered and what the call cost; which prompt asked is the
+    caller's to know, because only the caller resolved it from the registry. Stamping it here is
+    what lets the completed record say what produced it, and a record that cannot name its prompt
+    version cannot be compared against a later run that changed it.
+    """
+    result: ChatResult = model.complete(
+        task,
+        [
+            ChatMessage(role="system", content=prompt.text),
+            ChatMessage(role="user", content=user),
+        ],
+    )
+    return replace(result, prompt_version=prompt.version)
 
 
 def _json_object(text: str) -> dict[str, Any]:
@@ -103,6 +122,22 @@ def _incident_lines(incident: Any) -> list[str]:
     return lines
 
 
+def _attempts(evidence: EvidenceSet) -> str:
+    """What has already been tried, and how each attempt ended.
+
+    Without this the investigator is blind to its own history whenever a call adds nothing: a
+    query whose every row was already admitted leaves the evidence digest unchanged, so the next
+    prompt is byte-identical to the last and the same choice looks equally good a second time. The
+    operations list is part of the evidence set for exactly this reason, and showing it is what
+    lets an agent move on rather than circle.
+    """
+    if not evidence.operations:
+        return "Calls already made: (none)"
+    lines = ["Calls already made (do not repeat any of these):"]
+    lines.extend(f"- {op.capability}: {op.outcome.value}" for op in evidence.operations)
+    return "\n".join(lines)
+
+
 def interpret_objective(model: Any, incident: Any) -> tuple[str, ChatResult]:
     """The Supervisor's one model call: what is this investigation trying to establish?
 
@@ -110,13 +145,7 @@ def interpret_objective(model: Any, incident: Any) -> tuple[str, ChatResult]:
     objective frames the work; it is not a finding, and nothing downstream rests on its wording.
     """
     prompt = get_prompt("investigation_objective")
-    result = model.complete(
-        OBJECTIVE_TASK,
-        [
-            ChatMessage(role="system", content=prompt.text),
-            ChatMessage(role="user", content="\n".join(_incident_lines(incident))),
-        ],
-    )
+    result = _ask(model, OBJECTIVE_TASK, prompt, "\n".join(_incident_lines(incident)))
     stated = str(_json_object(result.text).get("objective", "")).strip()
     return stated or f"Establish what caused: {incident.symptom}", result
 
@@ -135,18 +164,17 @@ def propose_action(
         [
             *_incident_lines(incident),
             f"Objective: {objective}",
-            f"Registered capabilities: {', '.join(capabilities)}",
+            "",
+            "Capabilities you may choose from, and the arguments each takes",
+            "(bracketed arguments are optional):",
+            *(f"- {name}({capability_arguments(name)})" for name in capabilities),
+            "",
+            _attempts(evidence),
             "",
             evidence_digest(evidence),
         ]
     )
-    result = model.complete(
-        SELECTION_TASK,
-        [
-            ChatMessage(role="system", content=prompt.text),
-            ChatMessage(role="user", content=user),
-        ],
-    )
+    result = _ask(model, SELECTION_TASK, prompt, user)
     payload = _json_object(result.text)
 
     capability = str(payload.get("capability", "")).strip()
@@ -181,16 +209,8 @@ def synthesize(
 ) -> tuple[Assessment, ChatResult]:
     """The RCA Analyst's one call. Raises `UnusableProposal` when nothing can be made of it."""
     prompt = get_prompt("rca_synthesis")
-    result = model.complete(
-        SYNTHESIS_TASK,
-        [
-            ChatMessage(role="system", content=prompt.text),
-            ChatMessage(
-                role="user",
-                content=_synthesis_user_message(incident, objective, evidence, stopped_because),
-            ),
-        ],
-    )
+    user = _synthesis_user_message(incident, objective, evidence, stopped_because)
+    result = _ask(model, SYNTHESIS_TASK, prompt, user)
     return admit_assessment(parse_proposal(result.text)), result
 
 
@@ -217,13 +237,7 @@ def correct(
             problem,
         ]
     )
-    result = model.complete(
-        CORRECTION_TASK,
-        [
-            ChatMessage(role="system", content=prompt.text),
-            ChatMessage(role="user", content=user),
-        ],
-    )
+    result = _ask(model, CORRECTION_TASK, prompt, user)
     return admit_assessment(parse_proposal(result.text)), result
 
 

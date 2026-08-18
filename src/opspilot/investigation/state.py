@@ -73,9 +73,15 @@ class Bounds:
 class InvestigationState:
     """One investigation, mid-flight.
 
-    `answered_questions` is what makes continuation decidable without judgment: the investigator
-    proposes a question, and whether it was already answered is a set membership test rather than
-    an opinion about similarity.
+    Two sets make continuation decidable without judgment. `answered_questions` holds the questions
+    already put, and `executed_calls` holds the calls already made, as capability and arguments.
+    Both are membership tests rather than opinions about similarity.
+
+    The second exists because the first is the model's own prose. Asked twice for the same data, an
+    investigator phrases the question differently each time and the run would spend a bound on a
+    query whose answer it already holds, since admission correctly declines to admit the same
+    observation twice. Same capability, same arguments, same answer: that is the same question
+    however it is worded.
     """
 
     investigation_id: str
@@ -84,6 +90,7 @@ class InvestigationState:
     evidence: EvidenceSet
     objective: str = ""
     answered_questions: set[str] = field(default_factory=set)
+    executed_calls: set[str] = field(default_factory=set)
     capability_calls_made: int = 0
     model_calls_made: int = 0
     assessment: Assessment | None = None
