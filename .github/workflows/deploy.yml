@@ -34,21 +34,21 @@ jobs:
         run: uv run ruff check .
       - name: Format check
         run: uv run ruff format --check .
-      - name: No plan vocabulary outside docs
-        # Stage, phase, gap, and slice identifiers name a sequence that docs/ owns. In code they go
-        # stale the moment the sequence moves, and they tell a reader nothing about what the code
-        # does or which contract it satisfies. Decision references (D-nnn) are excluded from this
-        # check on purpose: a decision is a settled choice the code implements, not a position in a
-        # plan.
+      - name: No plan or document vocabulary outside docs
+        # Stage, phase, gap, and slice identifiers name a sequence that docs/ owns, and a section
+        # number cites a place in a document rather than a reason. Both go stale the moment the
+        # document moves, and neither tells a reader what the code does or which contract it
+        # satisfies. Decision references (D-nnn) are excluded on purpose: a decision is a settled
+        # choice the code implements, not a position in a plan or a location in a file.
         #
         # There is no exempt list. It held modules scheduled for deletion, and they are deleted.
         run: |
-          pattern='\bStage [0-9]|\bPhase [0-9]|\bG-[0-9]{2}|\bslices? [0-9]+\.[0-9]'
+          pattern='\bStage [0-9]|\bPhase [0-9]|\bG-[0-9]{2}|\bslices? [0-9]+\.[0-9]|\.md.{0,3}§'
           matches=$(git ls-files | grep -vE '^docs/' \
             | xargs -r -d '\n' grep -nEH --binary-files=without-match "$pattern" || true)
           if [ -n "$matches" ]; then
             printf '%s\n' "$matches"
-            echo "::error::Plan vocabulary belongs in docs/. Say what the code does and which contract it satisfies."
+            echo "::error::Plan and document vocabulary belong in docs/. Say what the code does and which contract it satisfies."
             exit 1
           fi
       - name: Type-check

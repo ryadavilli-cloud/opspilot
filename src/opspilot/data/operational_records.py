@@ -3,7 +3,7 @@
 The container is hierarchically partitioned by `/kind` then `/service`, and holds six record kinds:
 `incident`, `alert`, `deployment`, `dependency`, `log`, and `metric_series`. Corpus preparation
 writes it as a setup identity; the application only ever reads it, and holds no write permission to
-weaken (`runtime-and-deployment.md` §10, `code-guidelines.md` §6).
+weaken.
 
 Every read is partition-scoped: `kind` is always supplied, and `service` wherever the capability
 knows it, so a query reads the partitions its capability owns rather than the whole container.
@@ -111,7 +111,7 @@ class OperationalRecords:
     ) -> list[Any]:
         """One read. `deadline_s` is the caller's remaining time and bounds this call; a source
         operation that outlives the turn that owns it is a bound violation even when its data is
-        correct (`code-guidelines.md` §7)."""
+        correct."""
         try:
             return list(
                 self._container.query_items(

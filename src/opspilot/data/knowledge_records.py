@@ -2,8 +2,7 @@
 
 The container is partitioned by `/category`, the field that carries the three routed logical
 collections (`runbook`, `architecture`, `postmortem`). Corpus preparation writes it as a setup
-identity; the application only ever reads it, and holds no write permission to weaken
-(`runtime-and-deployment.md` §10, `code-guidelines.md` §6).
+identity; the application only ever reads it, and holds no write permission to weaken.
 
 Every read names the categories it searches, so a query reads only the partitions its capability
 was given rather than the whole container. Query text here is authored and fixed. Values arrive
@@ -50,7 +49,7 @@ class KnowledgeRecords:
     ) -> list[Any]:
         """One read. `deadline_s` is the caller's remaining time and bounds this call; a source
         operation that outlives the turn that owns it is a bound violation even when its data is
-        correct (`code-guidelines.md` §7)."""
+        correct."""
         try:
             return list(
                 self._container.query_items(

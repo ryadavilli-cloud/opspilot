@@ -3,7 +3,7 @@
 #   1. ruff check, which includes the 100-char E501 limit configured in pyproject.toml
 #   2. em-dashes on lines this commit adds to Python files
 #   3. ruff format, over the whole tree
-#   4. execution-plan vocabulary outside docs/ (code guidelines section 12)
+#   4. plan and document vocabulary outside docs/
 #
 # Enable once per clone:
 #     git config core.hooksPath .githooks
@@ -70,17 +70,21 @@ if [ -n "$ruff_cmd" ]; then
     fi
 fi
 
-# Execution-plan vocabulary outside docs/. The same pattern as the CI step, so this fails locally
-# rather than after a push, and with no exempt list: the modules it held are deleted, and they took
-# their comments with them. Decision identifiers are deliberately absent from the pattern: a
-# decision is a settled choice the code implements, not a position in a plan.
-vocab_pattern='\bStage [0-9]|\bPhase [0-9]|\bG-[0-9]{2}|\bslices? [0-9]+\.[0-9]'
+# Plan and document vocabulary outside docs/. The same pattern as the CI step, so this fails
+# locally rather than after a push, and with no exempt list: the modules it held are deleted, and
+# they took their comments with them. Decision identifiers are deliberately absent from the
+# pattern: a decision is a settled choice the code implements, not a position in a plan or a
+# location in a file.
+# The section sign is written literally: this file is UTF-8, and grep -E has no escape for
+# it. It catches a design document cited by section, which names a place in a file rather
+# than a reason and goes stale the moment the file moves.
+vocab_pattern='\bStage [0-9]|\bPhase [0-9]|\bG-[0-9]{2}|\bslices? [0-9]+\.[0-9]|\.md.{0,3}§'
 
 vocab=$(git ls-files | grep -vE '^docs/' \
     | xargs -r -d '\n' grep -nEH --binary-files=without-match "$vocab_pattern" 2>/dev/null || true)
 
 if [ -n "$vocab" ]; then
-    echo "pre-commit: execution-plan vocabulary outside docs/:"
+    echo "pre-commit: plan or document vocabulary outside docs/:"
     printf '%s\n' "$vocab" | sed 's/^/    /'
     echo ""
     echo "pre-commit: say what the code does and which contract it satisfies instead."

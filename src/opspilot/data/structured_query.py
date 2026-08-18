@@ -91,7 +91,7 @@ APPROVED_SURFACE: Mapping[str, Mapping[str, FieldType]] = MappingProxyType(
 
 
 class PredicateOp(StrEnum):
-    """The supported predicate forms, and nothing else (`system-design.md` §8.2).
+    """The supported predicate forms, and nothing else.
 
     Equality and inequality, membership in a supplied set, a bounded range, and presence or
     absence. Membership is also how disjunction is expressed, which is why no OR group exists:
