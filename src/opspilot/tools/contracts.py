@@ -41,6 +41,16 @@ class RequestRejected(ValueError):
     """
 
 
+class SourceRowMismatch(Exception):
+    """A row the source returned that this capability could not build its record from.
+
+    Its own type because pydantic raises one error for two unrelated situations: an argument that
+    did not fit the capability's signature, and stored data that did not fit a record model. Only
+    the first is the caller's fault. Without the distinction a corpus defect reports as a rejected
+    request, which tells a model to change arguments that were never wrong.
+    """
+
+
 def to_utc(dt: datetime) -> datetime:
     """Normalize to tz-aware UTC so corpus (…Z) and caller-supplied times compare cleanly."""
     return dt if dt.tzinfo else dt.replace(tzinfo=UTC)

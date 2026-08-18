@@ -44,6 +44,43 @@ RECORD_KINDS = (
 )
 
 
+def unanswered_read(exc: BaseException) -> Exception:
+    """Which unanswered read this was: out of time, or unreachable.
+
+    Classified once, here, from the client's own exception types rather than from message text. The
+    builtin covers a socket or asyncio deadline; the Azure client raises its own types for a request
+    or response that ran out of time, and they do not derive from the builtin. Anything else was the
+    source failing to answer for some other reason, which is what unavailable means.
+
+    The provider's exception never travels further than this: only its class name does, and only so
+    a failure is diagnosable without a stack trace reaching the engineer.
+    """
+    if isinstance(exc, TimeoutError):
+        return SourceTimedOut(type(exc).__name__)
+    try:
+        from azure.core.exceptions import ServiceRequestTimeoutError, ServiceResponseTimeoutError
+    except ImportError:  # pragma: no cover - the client is a base dependency
+        return SourceUnavailable(type(exc).__name__)
+    if isinstance(exc, ServiceRequestTimeoutError | ServiceResponseTimeoutError):
+        return SourceTimedOut(type(exc).__name__)
+    return SourceUnavailable(type(exc).__name__)
+
+
+class SourceTimedOut(Exception):
+    """The read ran past the time it was given.
+
+    Told apart from an unreachable source because the two say different things to whoever reads
+    the investigation. A source that could not be reached may be down; a source that ran out of
+    time was reachable and answering, and the same question asked with more room, or over a
+    narrower scope, may well be answerable. Collapsing them would report a bounded run as a broken
+    dependency.
+
+    Distinct from `SourceUnavailable` rather than derived from it: they are two of the outcomes the
+    result contract already separates, and a subclass would let one be caught as the other by an
+    ordering mistake nothing would notice.
+    """
+
+
 class SourceUnavailable(Exception):
     """The source did not answer.
 
@@ -86,7 +123,7 @@ class OperationalRecords:
                 )
             )
         except Exception as exc:  # noqa: BLE001 - every container failure is one unanswered read
-            raise SourceUnavailable(type(exc).__name__) from exc
+            raise unanswered_read(exc) from exc
 
     def incident(self, incident_id: str, *, deadline_s: float) -> dict[str, Any] | None:
         rows = self._query(

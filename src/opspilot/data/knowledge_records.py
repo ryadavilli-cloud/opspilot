@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from opspilot.data.operational_records import SourceUnavailable
+from opspilot.data.operational_records import unanswered_read
 
 # Bound on the dense candidate set a single query returns, and on the lexical candidate set fetched
 # for in-process scoring. D-003 fixes the fused-candidate ceiling at 20; both first-stage reads stay
@@ -61,7 +61,7 @@ class KnowledgeRecords:
                 )
             )
         except Exception as exc:  # noqa: BLE001 - every container failure is one unanswered read
-            raise SourceUnavailable(type(exc).__name__) from exc
+            raise unanswered_read(exc) from exc
 
     def by_categories(
         self, categories: tuple[str, ...], services: tuple[str, ...] | None, *, deadline_s: float

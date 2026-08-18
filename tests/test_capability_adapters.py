@@ -273,3 +273,87 @@ def test_the_service_holds_no_investigation_state_between_calls(bounded):
     service.call("get_incident", None, incident_id="inc-004")
 
     assert container.timeouts == [0.5, DEADLINE]
+
+
+# --- every outcome the contract carries is reachable ---------------------------------------------
+def _malformed_container() -> FakeContainer:
+    """A source that answers, with a row this capability cannot build its record from."""
+    return FakeContainer([{"kind": "incident", "incident_id": "inc-004"}])
+
+
+def test_a_source_that_answers_succeeds():
+    service = ToolService(OperationalRecords(corpus_container()), deadline_s=DEADLINE)
+
+    result = service.call("get_incident", incident_id="inc-004")
+
+    assert result.outcome is ExecutionOutcome.SUCCEEDED
+
+
+def test_a_read_that_runs_past_its_deadline_times_out():
+    """The outcome the contract carries and admission words differently. A source that ran out of
+    time was reachable and answering, so reporting it as unavailable would describe a bounded run
+    as a broken dependency and send the reader after the wrong thing."""
+    container = corpus_container(times_out=True)
+    service = ToolService(OperationalRecords(container), deadline_s=DEADLINE)
+
+    result = service.call("get_incident", incident_id="inc-004")
+
+    assert result.outcome is ExecutionOutcome.TIMED_OUT
+    assert result.completeness is Completeness.NOT_APPLICABLE
+    assert result.error == "source timed out"
+
+
+def test_a_source_that_cannot_be_reached_is_unavailable():
+    container = corpus_container(unreachable=True)
+    service = ToolService(OperationalRecords(container), deadline_s=DEADLINE)
+
+    result = service.call("get_incident", incident_id="inc-004")
+
+    assert result.outcome is ExecutionOutcome.UNAVAILABLE
+
+
+def test_an_argument_the_capability_does_not_take_is_rejected():
+    service = ToolService(OperationalRecords(corpus_container()), deadline_s=DEADLINE)
+
+    result = service.call("get_incident", incident_id="inc-004", nonsense="x")
+
+    assert result.outcome is ExecutionOutcome.REJECTED
+
+
+def test_an_answer_that_does_not_fit_the_contract_is_a_failure():
+    """The outcome that means neither the request nor the source was at fault: the source answered,
+    and the answer could not be turned into the record this capability promises. Kept apart from
+    the two above so an engineer is not sent to check a healthy dependency."""
+    service = ToolService(OperationalRecords(_malformed_container()), deadline_s=DEADLINE)
+
+    result = service.call("get_incident", incident_id="inc-004")
+
+    assert result.outcome is ExecutionOutcome.FAILED
+
+
+def test_no_provider_detail_leaves_the_boundary():
+    """Whatever the client raised, what travels is this codebase's own words."""
+    for container in (corpus_container(times_out=True), corpus_container(unreachable=True)):
+        service = ToolService(OperationalRecords(container), deadline_s=DEADLINE)
+        result = service.call("get_incident", incident_id="inc-004")
+        assert result.error in {"source timed out", "source unavailable"}
+        assert "Traceback" not in (result.error or "")
+
+
+def test_every_execution_outcome_is_reachable():
+    """Stated as a set so an outcome cannot be added to the contract, given meaning by admission,
+    and left unreachable by every path that could produce it, which is what timed out was."""
+    reached = set()
+    for container, arguments in (
+        (corpus_container(), {"incident_id": "inc-004"}),
+        (corpus_container(times_out=True), {"incident_id": "inc-004"}),
+        (corpus_container(unreachable=True), {"incident_id": "inc-004"}),
+        (corpus_container(), {"incident_id": "inc-004", "nonsense": "x"}),
+    ):
+        service = ToolService(OperationalRecords(container), deadline_s=DEADLINE)
+        reached.add(service.call("get_incident", **arguments).outcome)
+
+    broken = ToolService(OperationalRecords(_malformed_container()), deadline_s=DEADLINE)
+    reached.add(broken.call("get_incident", incident_id="inc-004").outcome)
+
+    assert reached == set(ExecutionOutcome)
