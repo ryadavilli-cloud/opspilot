@@ -1,17 +1,20 @@
-"""The retrieval subsystem (D-003, `system-design.md` §8.3).
+"""The retrieval subsystem.
 
 Dense search (Cosmos vector search over the query embedding) and lexical search (an in-process
 term-overlap scorer, BM25-style, run over the same filtered candidates) are fused by reciprocal
 rank fusion. What a query names as its collection selects the categories searched; where it names
-none, routing selects from the question's shape. What returns is the matched passage itself, never
-a pointer.
+none, routing selects from the question's shape. Passages the question names by an exact identifier
+are then promoted, and what survives the passage budget is returned as the matched passage itself,
+never a pointer.
 
-No local embedding model is loaded here: the query vector comes from the same Azure OpenAI
-deployment corpus preparation used to embed every passage (`retrieval/embeddings.py`).
+No local embedding model is loaded here, and no model ranks anything: the query vector comes from
+the same Azure OpenAI deployment corpus preparation used to embed every passage
+(`retrieval/embeddings.py`), and every step after it is deterministic.
 """
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass
 from typing import Any
 
@@ -25,21 +28,26 @@ from opspilot.data.knowledge_records import (
 from opspilot.retrieval.base import tokenize
 from opspilot.retrieval.embeddings import QueryEmbedder, default_query_embedder
 
-# The three routed logical collections (D-003's storage row; `runtime-and-deployment.md` fixes the
-# container). Fixed at three; a fourth would need its own accepted collection.
+# The three routed logical collections. Fixed at three; a fourth would need its own accepted
+# collection.
 RUNBOOK = "runbook"
 ARCHITECTURE = "architecture"
 POSTMORTEM = "postmortem"
 CATEGORIES = (RUNBOOK, ARCHITECTURE, POSTMORTEM)
 
 # Reciprocal rank fusion constant. 60 is the RRF paper's own default and the value the superseded
-# hybrid retriever already used; nothing about D-003 asks for a different one.
+# hybrid retriever already used; nothing in the accepted retrieval design asks for a different one.
 _RRF_K = 60
 
-# Deterministic collection routing from question shape (FR-92, `system-design.md` §8.3): "procedural
-# questions favor runbooks, structural questions favor service knowledge, and precedent questions
-# favor prior incidents." A question matching none of these defaults to runbooks, the most common
-# investigative ask, rather than searching every collection at once.
+# How much retrieved text may reach an agent from one call. An engineering limit rather than a tuned
+# value: passages are section-sized, and a budget is what keeps a prompt from filling with
+# near-misses. It is a ceiling, so a caller may ask for fewer but never for more.
+PASSAGE_BUDGET = 5
+
+# Deterministic collection routing from question shape: procedural questions favor runbooks,
+# structural questions favor service knowledge, and precedent questions favor prior incidents. A
+# question matching none of these defaults to runbooks, the most common investigative ask, rather
+# than searching every collection at once.
 _PROCEDURAL_HINTS = (
     "how to",
     "how do",
@@ -91,8 +99,13 @@ def route_category(question: str) -> str:
 
 @dataclass(frozen=True)
 class Passage:
-    """One retrieved passage: the matched content itself, never a pointer to it
-    (`data-and-evidence.md` §9)."""
+    """One retrieved passage: the matched content itself, never a pointer to it.
+
+    The one shape a retrieval result travels in. Everything downstream of the retriever reads this
+    and nothing else, so a passage cannot arrive at an agent in one shape and at the knowledge set
+    in another. Corpus preparation has its own shapes for the documents it chunks; they stop at the
+    container and never appear on this path.
+    """
 
     reference: str  # the knowledge reference, e.g. "runbook:payment-timeout"
     category: str  # runbook | architecture | postmortem
@@ -100,6 +113,40 @@ class Passage:
     text: str  # the matched passage
     services: tuple[str, ...]
     score: float
+
+
+def _question_names(identifiers: Iterable[str], question: str) -> bool:
+    """Whether the question mentions an identifier this passage was found to carry.
+
+    Corpus preparation extracted those identifiers by looking for exactly these strings in the
+    passage text: service and infrastructure names, deploy identifiers, error codes. Matching them
+    back against the question the same way keeps one notion of "this names that" at both ends. A
+    second extractor reading identifiers out of the question would be a second notion, free to
+    drift from the one that wrote the field.
+    """
+    text = question.lower()
+    return any(identifier and identifier.lower() in text for identifier in identifiers)
+
+
+def _promote(ranked: list[str], rows: dict[str, dict[str, Any]], question: str) -> list[str]:
+    """Stable promotion: passages the question names by identifier first, the rest after, each
+    keeping the order fusion gave it.
+
+    This runs over the whole fused list rather than over the budget's worth of it, and truncation
+    comes after. That ordering is the point: an exact service name, error code, or deploy id is
+    worth trusting precisely where it would otherwise fall just below the cutoff, and promoting
+    within an already-truncated list could never rescue it.
+
+    Nothing here scores or re-ranks. A passage either carries an identifier the question names or
+    it does not, so the result is the same on every run over the same inputs.
+    """
+    named: list[str] = []
+    rest: list[str] = []
+    for row_id in ranked:
+        identifiers = rows[row_id].get("identifiers") or ()
+        target = named if _question_names(identifiers, question) else rest
+        target.append(row_id)
+    return named + rest
 
 
 def _to_passage(row: dict[str, Any], score: float) -> Passage:
@@ -146,8 +193,9 @@ class Retriever:
 
         rows_by_id = {row["id"]: row for row in (*dense_rows, *candidate_rows)}
         fused = _fuse(query, dense_rows, candidate_rows)
-        ranked = sorted(fused.items(), key=lambda item: -item[1])[:k]
-        return [_to_passage(rows_by_id[row_id], score) for row_id, score in ranked]
+        ranked = [row_id for row_id, _ in sorted(fused.items(), key=lambda item: -item[1])]
+        chosen = _promote(ranked, rows_by_id, query)[: min(k, PASSAGE_BUDGET)]
+        return [_to_passage(rows_by_id[row_id], fused[row_id]) for row_id in chosen]
 
     @staticmethod
     def _categories_for(query: str, collection: str | tuple[str, ...] | None) -> tuple[str, ...]:

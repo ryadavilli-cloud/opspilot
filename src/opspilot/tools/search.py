@@ -4,6 +4,14 @@ Return the uniform envelope carrying the retrieved passages themselves: each pas
 knowledge reference (e.g. `runbook:payment-timeout`, `postmortem:inc-001`), which doubles as the
 citation, and the matched text rather than a pointer to it. There is one passage shape, so nothing
 here reshapes what retrieval produced. No model call.
+
+Two capabilities rather than one, each naming a fixed collection: the difference between "how is
+this handled" and "has this happened before" is a real investigative choice, and it is the
+investigator's to make by picking a capability rather than by filling in an argument.
+
+What comes back is knowledge, not operational evidence. Admission never turns these passages into
+observations about the current incident, and a call that does not answer becomes a limitation like
+any other capability's.
 """
 
 from __future__ import annotations
@@ -12,11 +20,20 @@ from typing import Annotated
 
 from pydantic import Field
 
-from opspilot.retrieval.retriever import ARCHITECTURE, POSTMORTEM, RUNBOOK, Passage, Retriever
-from opspilot.tools.contracts import MAX_RESULTS, NonEmptyText
+from opspilot.retrieval.retriever import (
+    ARCHITECTURE,
+    PASSAGE_BUDGET,
+    POSTMORTEM,
+    RUNBOOK,
+    Passage,
+    Retriever,
+)
+from opspilot.tools.contracts import NonEmptyText
 from opspilot.tools.errors import validated
 
-_PassageCount = Annotated[int, Field(ge=1, le=MAX_RESULTS)]
+# A caller may narrow the budget but cannot widen it: asking for more passages than the budget
+# allows has no expressible form here rather than being accepted and quietly clipped.
+_PassageCount = Annotated[int, Field(ge=1, le=PASSAGE_BUDGET)]
 
 
 @validated
@@ -25,7 +42,7 @@ def search_runbooks(
     deadline_s: float,
     *,
     query: NonEmptyText,
-    k: _PassageCount = 5,
+    k: _PassageCount = PASSAGE_BUDGET,
     service: str | None = None,
 ) -> tuple[list[Passage], list[str]]:
     passages = retriever.search(
@@ -44,7 +61,7 @@ def search_past_incidents(
     deadline_s: float,
     *,
     query: NonEmptyText,
-    k: _PassageCount = 5,
+    k: _PassageCount = PASSAGE_BUDGET,
     service: str | None = None,
 ) -> tuple[list[Passage], list[str]]:
     passages = retriever.search(
