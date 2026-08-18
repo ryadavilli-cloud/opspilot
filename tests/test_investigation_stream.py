@@ -9,10 +9,11 @@ from __future__ import annotations
 
 import asyncio
 import json
+import threading
 
 import pytest
 
-pytest.importorskip("httpx")  # the test transport
+httpx = pytest.importorskip("httpx")  # the test transport
 
 from fake_operational_records import corpus_records  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
@@ -152,6 +153,70 @@ def test_concurrent_investigations_get_independent_identities_and_sequences():
     for events in (first, second):
         activity = [e for e in events if e["event_type"] == "activity"]
         assert activity[0]["sequence"] == 1  # no projector state leaked between runs
+
+
+# --- the run does not hold the process ----------------------------------------------------------
+# A run lasts minutes and the process must stay answerable throughout it: whatever else is asked of
+# it while an investigation is in flight has to be served, not queued behind the run. The two below
+# are what make this provable without a live service.
+_BLOCKED_SECONDS = 3.0
+
+
+class _BlockingModel:
+    """Blocks whichever thread the graph runs on, inside its first call, until released.
+
+    A `threading.Event.wait` rather than an awaitable sleep, deliberately: an awaitable sleep hands
+    the loop back on its own and would be served fine by a route that never freed it, so it would
+    prove nothing. This blocks the thread outright, which is the event loop itself unless the route
+    drives the graph off it. Bounded so that a regression fails the test rather than hanging it.
+    """
+
+    deployment = "fake"
+
+    def __init__(self) -> None:
+        self.entered = threading.Event()
+        self.released = threading.Event()
+
+    def complete(self, task, messages):
+        self.entered.set()
+        self.released.wait(timeout=_BLOCKED_SECONDS)
+        return ChatResult(text="{}", task=task, deployment=self.deployment)
+
+
+def test_the_process_answers_while_an_investigation_holds_a_model_call():
+    """Ordering rather than elapsed time, so the assertion is about the mechanism and not the
+    machine: the probe releases the model only once it has been answered, so a route that yields
+    the loop must answer first, and one that does not cannot answer until the whole run is over."""
+    model = _BlockingModel()
+    app.dependency_overrides[get_model] = lambda: model
+    answered: list[str] = []
+
+    async def go():
+        transport = httpx.ASGITransport(app=app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://probe") as client:
+
+            async def investigate() -> None:
+                await client.post("/investigations", json={"incident_id": "inc-005"})
+                answered.append("investigation")
+
+            async def probe():
+                loop = asyncio.get_running_loop()
+                await loop.run_in_executor(None, model.entered.wait, _BLOCKED_SECONDS)
+                response = await client.get("/health/live")
+                answered.append("health")
+                model.released.set()
+                return response
+
+            _, response = await asyncio.gather(investigate(), probe())
+            return response
+
+    response = asyncio.run(go())
+
+    assert model.entered.is_set(), "the run never reached a model call, so nothing was held"
+    assert response.status_code == 200
+    assert answered == ["health", "investigation"], (
+        "the run held the event loop: nothing else could be served until it finished"
+    )
 
 
 # --- the screen ---------------------------------------------------------------------------------
