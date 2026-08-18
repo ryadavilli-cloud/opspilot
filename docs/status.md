@@ -159,12 +159,14 @@ retirement target.
 
 ## 7. Deployment state
 
-Last live-inspected 2026-08-17, at revision `opspilot-api--0000074`, which carries the evidence
-contract and the assessment seam but predates the model-seam reduction. One
-Container App and image from the Bicep template; replicas 0-3; one chat and one embedding
-deployment; no Application Insights; hand-rolled three-role authorization fronts the superseded
-endpoints and `POST /turns` is unauthenticated; the three containers are declared. Readiness
-reports every check ok: operational records, repository, logs, retrieval.
+Last live-inspected 2026-08-18, carrying the tree through the retrieval landing: the deployed
+revision runs the evidence contract, the assessment seam, the reduced model seam, and the promoting
+retriever. One Container App and image from the Bicep template through the OIDC workflow; replicas
+0-3; one chat and one embedding deployment; no Application Insights; hand-rolled three-role
+authorization fronts the superseded endpoints and `POST /turns` is unauthenticated; the three
+containers are declared. Readiness reports every check ok: operational records, repository, logs,
+retrieval, the last of which reaches the knowledge container through the promoting retriever. The
+deployment workflow, including its post-deploy smoke test, passes.
 
 One hosted investigation ran end to end against that revision. It admitted 79 observations across
 the alert, log, metric, and absence forms; every one parsed and every one is an evidence
