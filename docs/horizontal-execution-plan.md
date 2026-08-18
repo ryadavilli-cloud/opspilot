@@ -91,19 +91,19 @@ values, adapters take typed parameters, and the named wrappers and superseded ex
 
 ## H2. Retrieval, final
 
-**State:** Partial.
+**State:** Complete.
 
-*Already present.* Everything this step builds and every removal it names, as `status.md` records:
-stable promotion of passages whose extracted identifiers the question names, running over the whole
-fused list and followed by truncation to the passage budget; one passage shape on the runtime path,
-with corpus preparation's own shapes reaching nothing outside preparation; a retrieval that cannot
+Everything this step builds and every removal it names holds, as `status.md` records: stable
+promotion of passages whose extracted identifiers the question names, running over the whole fused
+list and followed by truncation to the passage budget; one passage shape on the runtime path, with
+corpus preparation's own shapes reaching nothing outside preparation; a retrieval that cannot
 execute admitted as a limitation and no passage, while a successful one produces knowledge rather
 than an operational observation. The reranker module, its dependency, the marker, and the CI lane
 that existed to install that dependency are absent.
 
-*Remaining.* Only the hosted effect below, which the deployed surface cannot currently show: no
-route exposes retrieval results, so the ordering this step establishes is proven deterministically
-against the authored corpus rather than hosted. It becomes observable when the Evidence
+The deployed application runs this code and reaches the knowledge container through it. The
+ordering itself was proven against the authored corpus rather than hosted, because no route returns
+retrieval results for a hosted call to inspect; that becomes observable when the Evidence
 Investigator can propose retrieval inside an investigation.
 
 **Builds.** The final retrieval behavior over the knowledge container: embed the question, vector
