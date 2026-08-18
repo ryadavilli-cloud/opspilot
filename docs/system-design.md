@@ -121,7 +121,8 @@ never supplies the policy, and no API parameter reaches it.
 | Structured query | approved operational-records surface | governed query |
 | `get_deployments` over MCP | the same registered implementation | protocol exposure |
 
-Retrieval: embed the question, vector search plus a lexical pass over the selected collection,
+Retrieval: embed the question, vector search plus a lexical pass over the collection named by the
+capability,
 reciprocal-rank fusion, deterministic promotion of passages whose extracted identifiers match
 identifier-like terms in the question, a small passage budget. Passages carry their text and their
 reference. No model reranker.
