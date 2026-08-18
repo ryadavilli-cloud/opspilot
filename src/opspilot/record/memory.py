@@ -1,56 +1,34 @@
-"""The in-memory Investigation Record backend.
+"""The in-process record backend.
 
-This is the local and CI backend, and it stays that way. A durable backend replaces what sits
-behind the port, never the port, its commit semantics, or the ordering rule.
+The local and test backend, and it stays that way. A durable backend replaces what sits behind the
+seam, never the seam or the ordering rule that depends on it.
 
-It is deliberately strict about the two things the design makes invariant rather than incidental: a
-terminal turn is never reopened, so committing the same turn twice is refused rather than
-overwriting; and the investigation exists only once a turn has been committed into it, so nothing
-creates a shell in advance.
+Strict about the one thing the design makes invariant rather than incidental: an investigation is
+saved once, so a second save of the same identifier is refused rather than overwriting the first.
 """
 
 from __future__ import annotations
 
-from collections.abc import Sequence
-
-from opspilot.record.port import CommitResult, CompletedTurn
+from opspilot.record.completed import CompletedInvestigation
+from opspilot.record.port import RecordSaveError
 
 
 class InMemoryInvestigationRecord:
-    """One logical investigation record with subordinate completed turns, held in process.
+    """Completed investigations held in process, keyed by their identifier.
 
-    Ephemeral by construction, which matches what it is for: active-turn state is not durable, and
-    only completed turns are stored at all.
+    Ephemeral by construction, which matches what it is for: nothing is stored until an
+    investigation completes, and nothing survives the process.
     """
 
     def __init__(self) -> None:
-        self._turns: dict[str, dict[str, CompletedTurn]] = {}
+        self._records: dict[str, CompletedInvestigation] = {}
 
-    def commit(self, record: CompletedTurn) -> CommitResult:
-        investigation_id = record.investigation_id
-        turn_id = record.turn_id
+    def save(self, record: CompletedInvestigation) -> None:
+        if not record.investigation_id:
+            raise RecordSaveError("a completed investigation needs an identifier")
+        if record.investigation_id in self._records:
+            raise RecordSaveError(f"{record.investigation_id} is already saved")
+        self._records[record.investigation_id] = record
 
-        if not investigation_id or not turn_id:
-            return CommitResult.failed(
-                investigation_id, turn_id, "a completed turn needs both identities"
-            )
-
-        turns = self._turns.get(investigation_id)
-        if turns is not None and turn_id in turns:
-            # A terminal turn is never reopened and a delivered brief is never edited, so a second
-            # commit of the same turn is refused rather than silently replacing the first.
-            return CommitResult.failed(investigation_id, turn_id, "turn already committed")
-
-        # The investigation comes into existence here, on the first successful commit, and not
-        # before: a failed first execution must leave no shell behind.
-        self._turns.setdefault(investigation_id, {})[turn_id] = record
-        return CommitResult.committed(investigation_id, turn_id)
-
-    def completed_turns(self, investigation_id: str) -> Sequence[CompletedTurn]:
-        return tuple(self._turns.get(investigation_id, {}).values())
-
-    def turn(self, investigation_id: str, turn_id: str) -> CompletedTurn | None:
-        return self._turns.get(investigation_id, {}).get(turn_id)
-
-    def has_investigation(self, investigation_id: str) -> bool:
-        return investigation_id in self._turns
+    def get(self, investigation_id: str) -> CompletedInvestigation | None:
+        return self._records.get(investigation_id)

@@ -17,8 +17,6 @@ from __future__ import annotations
 
 import contextlib
 import contextvars
-import functools
-import inspect
 import json
 import time
 import uuid
@@ -103,11 +101,12 @@ _current_span: contextvars.ContextVar[str | None] = contextvars.ContextVar(
 _current_trace_id: contextvars.ContextVar[str] = contextvars.ContextVar(
     "opspilot_current_trace_id", default=""
 )
-# The correlation attributes every span emitted inside a turn must carry. Propagated down the call
-# tree so a nested primitive is attributed without its call site knowing the turn it belongs to:
-# `trace_id` alone would leave a child diagnosable only by first finding its root and reading the
-# identity off that, which is reassembly at read time rather than context attached at the boundary.
-_CORRELATION_KEYS = ("investigation_id", "turn_id")
+# The correlation attributes every span inside an investigation must carry. Propagated down the
+# call tree so a nested primitive is attributed without its call site knowing which investigation
+# it belongs to: `trace_id` alone would leave a child diagnosable only by first finding its root
+# and reading the identity off that, which is reassembly at read time rather than context attached
+# where the work entered the boundary.
+_CORRELATION_KEYS = ("investigation_id", "incident_id")
 _current_correlation: contextvars.ContextVar[dict[str, str] | None] = contextvars.ContextVar(
     "opspilot_current_correlation", default=None
 )
@@ -129,21 +128,6 @@ def get_exporter() -> SpanExporter:
 
 def _new_id() -> str:
     return uuid.uuid4().hex[:16]
-
-
-def standard_attributes(state: Any) -> dict[str, Any]:
-    """The run-level attributes every span carries. Primitive wrappers add their specifics
-    (tool_name/hashes/tokens/cost). Reads defensively so a partial state never breaks emission.
-
-    `turn_id`: the correlation id for one bounded evidence-gathering and synthesis cycle
-    (data-and-evidence.md §3), added once a turn model existed to carry it; reads as "" from any
-    object that does not carry one."""
-    return {
-        "investigation_id": getattr(state, "investigation_id", "") or "",
-        "incident_id": getattr(state, "incident_id", "") or "",
-        "workflow_version": getattr(state, "workflow_version", "") or "",
-        "turn_id": getattr(state, "turn_id", "") or "",
-    }
 
 
 @contextlib.contextmanager
@@ -191,30 +175,3 @@ def span(
         _current_trace_id.reset(trace_token)
         _current_correlation.reset(correlation_token)
         _exporter.export(sp)
-
-
-def traced_node(name: str, fn: Callable[..., dict[str, Any]]) -> Callable[..., dict[str, Any]]:
-    """Wrap a graph node so every dispatch emits a span under the run's `trace_id` — one wrapper for
-    all nodes, so a new node is traced with no per-site code.
-
-    LangGraph injects the `RunnableConfig` (which carries the per-run `ToolService` etc.) into nodes
-    that declare a `config` parameter, and it decides that by INSPECTING THE SIGNATURE. So the
-    wrapper preserves the wrapped node's signature (`functools.wraps` → `inspect.signature` follows
-    `__wrapped__`) and forwards `config` — otherwise LangGraph would not inject it and the node
-    falls back to a default service. The node's own return is untouched; a returned `error`/degraded
-    flag is reflected onto the span status."""
-    accepts_config = "config" in inspect.signature(fn).parameters
-
-    @functools.wraps(fn)
-    def wrapped(state: Any, config: Any = None) -> dict[str, Any]:
-        trace_id = getattr(state, "trace_id", "") or getattr(state, "investigation_id", "") or ""
-        attrs = {**standard_attributes(state), "node": name}
-        with span(f"node.{name}", trace_id=trace_id, attributes=attrs) as sp:
-            result = fn(state, config) if accepts_config else fn(state)
-            if isinstance(result, dict) and (result.get("error") or result.get("degraded")):
-                sp.status = "error"
-                if result.get("error"):
-                    sp.attributes["reason"] = result["error"]
-            return result
-
-    return wrapped

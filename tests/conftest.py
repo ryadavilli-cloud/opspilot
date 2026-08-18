@@ -67,18 +67,18 @@ def _no_deployed_container(monkeypatch: pytest.MonkeyPatch) -> None:
 def _no_live_model(monkeypatch: pytest.MonkeyPatch) -> None:
     """No test may fall through to a live model provider.
 
-    The synthesis dependency, the planner, the triager, and the composition root all reach
-    `build_chat_model()` with no provider, which resolves whatever `OPSPILOT_LLM_PROVIDER` names
-    and defaults to Azure. Construction takes no network, so a missing injection does not surface
-    until `.complete()` blocks on a connection that never resolves. That reads as a slow suite
-    rather than as a missing seam, and sends the next hour into the wrong investigation.
+    The model dependency reaches `build_chat_model()` with no provider, which resolves whatever
+    `OPSPILOT_LLM_PROVIDER` names and defaults to Azure. Construction takes no network, so a
+    missing injection does not surface until `.complete()` blocks on a connection that never
+    resolves. That reads as a slow suite rather than as a missing seam, and sends the next hour
+    into the wrong investigation.
 
-    Refusing the config-resolved call names the defect instead: the test did not inject a model.
-    A call naming its provider is left alone, because it is constructing a known type deliberately
+    Refusing the config-resolved call names the defect instead: the test did not inject a model. A
+    call naming its provider is left alone, because it is constructing a known type deliberately
     rather than reaching for whatever the environment happens to hold.
 
-    The resolved synthesis model is a process-wide singleton, so it is reset per test as well: one
-    test that obtained a model must not leave it installed for every test collected after it.
+    The resolved model is a process-wide singleton, so it is reset per test as well: one test that
+    obtained a model must not leave it installed for every test collected after it.
     """
     live = llm_client.build_chat_model
 
@@ -86,12 +86,12 @@ def _no_live_model(monkeypatch: pytest.MonkeyPatch) -> None:
         if provider is None:
             raise AssertionError(
                 "a test reached the config-resolved live model. Inject one: override "
-                "get_synthesis_model, pass model= to the planner or triager, or name a provider."
+                "get_model on the app, or name a provider."
             )
         return live(provider, **kwargs)
 
     monkeypatch.setattr(llm_client, "build_chat_model", _refuse)
-    monkeypatch.setattr(api, "_synthesis_model", None)
+    monkeypatch.setattr(api, "_model", None)
 
 
 @pytest.fixture

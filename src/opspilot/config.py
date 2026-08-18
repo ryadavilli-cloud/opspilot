@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -97,7 +96,6 @@ AZURE_OPENAI_DEPLOYMENT = _env("AZURE_OPENAI_DEPLOYMENT")
 # LLM planner + triager). The composition root builds and injects the selected pair; deterministic
 # stays an EXPLICIT fallback (surfaced in /version) when single_agent is requested but its model
 # cannot be built (optional `llm` deps absent, provider misconfigured, Azure endpoint unset).
-IMPLEMENTATION = _env("OPSPILOT_IMPLEMENTATION", "deterministic")
 
 
 # --------------------------------------------------------------------------------------
@@ -173,40 +171,21 @@ STRUCTURED_QUERY_MAX_LIMIT = _env_int("OPSPILOT_STRUCTURED_QUERY_MAX_LIMIT", 200
 
 
 # --------------------------------------------------------------------------------------
-# Reviewer / caller identity
+# Investigation bounds
 # --------------------------------------------------------------------------------------
-# Who is allowed to do what, and how that is proven. Tenant/audience/all three roles are required
-# before ANY of the three auth-gated endpoints will serve — `build_reviewer_authenticator()` raises
-# rather than defaulting, because every default here would weaken an access control. There is
-# deliberately no setting that disables authentication; see `auth.py`'s module docstring.
+# The three numeric bounds one investigation runs inside, set by code at objective time and never
+# widened by anything a model returns. They are read here and nowhere else, so no prompt reaches
+# them: a request cannot name its own deadline, and dispatch refuses one that tries.
 #
-# AZURE_TENANT_ID is the tenant whose issuer is trusted (exactly one, not a permissive set).
-# OPSPILOT_API_AUDIENCE is this API's own audience — the API app's application (client) id, which
-# is the `aud` claim Entra puts in the v2.0 tokens it issues for this API. It is what stops a token
-# minted for a different app in the same tenant from being replayed here. (The console requests the
-# scope `<audience>/.default` to obtain such a token.)
-# Each *_ROLE below is an app role a principal must carry to perform that one action; authentication
-# proves who, `auth.require_role`/`require_any_role` prove allowed-to-do-this-specific-thing.
-ENTRA_TENANT_ID = _env("AZURE_TENANT_ID")
-ENTRA_API_AUDIENCE = _env("OPSPILOT_API_AUDIENCE")
-ENTRA_APPROVER_ROLE = _env("OPSPILOT_APPROVER_ROLE", "Approver")
-ENTRA_SUBMIT_ROLE = _env("OPSPILOT_SUBMIT_ROLE", "Submitter")
-ENTRA_READ_ROLE = _env("OPSPILOT_READ_ROLE", "Reader")
-# The Entra app (client) id the operator console signs in with. Public, not a secret — it is
-# embedded in the served HTML so the browser can run the MSAL authorization-code + PKCE flow.
-ENTRA_CONSOLE_CLIENT_ID = _env("OPSPILOT_CONSOLE_CLIENT_ID")
-
-
-# --------------------------------------------------------------------------------------
-# Ingress admission control
-# --------------------------------------------------------------------------------------
-# A coarse cap on concurrently *running* investigations (queued/running/awaiting_approval — not yet
-# terminal), checked at submission time. Bounds unbounded Azure OpenAI spend from a single caller or
-# from aggregate traffic; it is deliberately a soft, best-effort check (count-then-create, not a
-# distributed lock) rather than a fuller admission-control system, sufficient to close the "anyone
-# can drive unlimited spend" hole without new infrastructure.
-MAX_CONCURRENT_INVESTIGATIONS_PER_USER = _env_int("OPSPILOT_MAX_CONCURRENT_PER_USER", 3)
-MAX_CONCURRENT_INVESTIGATIONS_GLOBAL = _env_int("OPSPILOT_MAX_CONCURRENT_GLOBAL", 20)
+# The deadline bounds the whole run rather than any single call. Generous enough for a reasoning
+# deployment to work through several gathering steps and a synthesis, short enough that an
+# abandoned run does not hold a streaming request open indefinitely.
+INVESTIGATION_DEADLINE_SECONDS = _env_float("OPSPILOT_INVESTIGATION_DEADLINE_SECONDS", 240.0)
+# Retrieval counts against this like any other call, so it bounds what one investigation may look
+# at in total rather than allowing so much per source.
+CAPABILITY_CALL_CAP = _env_int("OPSPILOT_CAPABILITY_CALL_CAP", 8)
+# Objective, one selection call per gathering step, synthesis, and at most one correction.
+MODEL_CALL_CAP = _env_int("OPSPILOT_MODEL_CALL_CAP", 14)
 
 
 # --------------------------------------------------------------------------------------
@@ -218,42 +197,6 @@ WORKFLOW_VERSION = "1.0"
 
 
 # --------------------------------------------------------------------------------------
-# Agentic loop controls (circuit breakers)
-# --------------------------------------------------------------------------------------
-MAX_DIAGNOSE_ITERS = _env_int("OPSPILOT_MAX_DIAGNOSE_ITERS", 5)
-# DEPRECATED: unenforced. Reserved for reuse as the capability-call cap once something enforces it.
-MAX_TOOL_CALLS = _env_int("OPSPILOT_MAX_TOOL_CALLS", 20)
-
-
-# --------------------------------------------------------------------------------------
-# Eval targets, defined up front, before any capability exists
-# DEPRECATED: consumed only by the scenario and single-agent gates being replaced; no new consumer.
-# --------------------------------------------------------------------------------------
-@dataclass(frozen=True)
-class EvalTargets:
-    # Retrieval
-    mrr_min: float = 0.80
-    precision_at_k: int = 5
-    # Routing
-    routing_accuracy_min: float = 0.95
-    # Faithfulness / generation
-    groundedness_min: float = 0.85
-    completeness_min: float = 0.75
-    answer_relevance_min: float = 0.80
-    # Correctness / quality
-    correctness_min: float = 0.80
-    actionability_min: float = 0.70  # G-Eval domain criterion
-    # Safety
-    pii_leak_rate_max: float = 0.0
-    # Performance
-    fast_path_p95_seconds: float = 3.0
-    full_investigation_p95_seconds: float = 45.0
-
-
-TARGETS = EvalTargets()
-
-
-# --------------------------------------------------------------------------------------
-# Runtime environment
+# Environment
 # --------------------------------------------------------------------------------------
 ENVIRONMENT = _env("OPSPILOT_ENV", "local")  # local | dev | prod

@@ -1,34 +1,38 @@
-"""The stream envelope: identities-first, activity entries, then a close marker.
+"""The stream envelope: identity first, activity as it happens, then one terminal event.
 
-`runtime-and-deployment.md` §2 fixes the ordering: the streaming request emits the investigation
-and turn identities as its first event, then activity as it happens. `system-design.md` §10.4 fixes
-the activity event's field set. This closing event is a transport-demonstration marker only, not a
-completed-turn outcome; accepted outcomes (complete/partial/inconclusive) do not exist yet.
+One `investigation_id` correlates everything, so there is one identity on the wire and one in
+telemetry. A client never assembles state from the activity feed: the brief arrives whole, in the
+terminal event, and that event is the only thing that ends the stream.
+
+The terminal event is either a delivery or a failure, never both and never neither. A stream that
+stopped without one was abandoned, which is a different thing from an investigation that finished,
+and the difference has to survive to the client.
 """
 
 from __future__ import annotations
 
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from opspilot.assessment.contracts import Brief
 
 
 class IdentityEvent(BaseModel):
-    """The stream's first event: the investigation and turn identities, and nothing else."""
+    """The stream's first event: which investigation this is, and nothing else."""
 
     model_config = ConfigDict(frozen=True)
 
     event_type: Literal["identity"] = "identity"
-    turn_id: str
     investigation_id: str
 
 
 class ActivityEvent(BaseModel):
-    """One activity entry, the exact field set `system-design.md` §10.4 fixes. Carries only what
-    the compact feed consumes, produced at the same instrumentation point as the telemetry span it
-    mirrors. Never carries a prompt, hidden reasoning, provider-shaped content, or a secret."""
+    """One activity entry: which agent or capability acted, what it did, and what it obtained.
+
+    Produced at the same instrumentation point as the telemetry span it mirrors, from the same
+    stated facts. Never carries a prompt, hidden reasoning, provider-shaped content, or a secret.
+    """
 
     model_config = ConfigDict(frozen=True)
 
@@ -44,28 +48,29 @@ class ActivityEvent(BaseModel):
     references: list[str] = Field(default_factory=list)
 
 
-class BriefEvent(BaseModel):
-    """The rendered brief, carried as its own event so the screen can replace the brief region
-    wholesale rather than assembling it from activity entries. Not a terminal outcome: no grounding
-    gate has run, so this is a rendered assessment and nothing is committed."""
+class TerminalEvent(BaseModel):
+    """How the investigation ended: the brief it delivered, or the category it failed under.
+
+    A failure carries no brief by construction. A failed execution persists nothing and concludes
+    nothing, so there is no brief for it to carry, and a shape that allowed one would invite
+    delivering something that was never grounded.
+    """
 
     model_config = ConfigDict(frozen=True)
 
-    event_type: Literal["brief"] = "brief"
-    turn_id: str
-    brief: Brief
+    event_type: Literal["terminal"] = "terminal"
+    investigation_id: str
+    brief: Brief | None = None
+    failure: str | None = None
 
-
-class StreamCloseMarker(BaseModel):
-    """The stream's closing event. A transport-ordering proof only, not a completed-turn outcome."""
-
-    model_config = ConfigDict(frozen=True)
-
-    event_type: Literal["close"] = "close"
-    turn_id: str
+    @model_validator(mode="after")
+    def _delivered_or_failed(self) -> TerminalEvent:
+        if (self.brief is None) == (self.failure is None):
+            raise ValueError("a terminal event carries either a brief or a failure category")
+        return self
 
 
 StreamEvent = Annotated[
-    IdentityEvent | ActivityEvent | BriefEvent | StreamCloseMarker,
+    IdentityEvent | ActivityEvent | TerminalEvent,
     Field(discriminator="event_type"),
 ]
