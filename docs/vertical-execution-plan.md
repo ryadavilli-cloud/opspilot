@@ -154,7 +154,11 @@ brief when it arrives. Every module, route, setting, dependency, override, and t
 absent. Two halves arrived before the runtime that uses them: admission returning plain values with
 the operations list keyed by `investigation_id` and the `alert:<service>:<alert_id>` form, and the
 completed-investigation record with its seam and backends, which the run now writes through before
-it delivers.
+it delivers. The dormant checkpoint and asynchronous-job configuration went with the runtime
+that read it: no setting, template parameter, or container environment entry can select a
+durable intermediate store, and none remains to be removed later. Every capability call now
+carries the run's own remaining time, bounded by the configured source ceiling, so no source
+read outlives the investigation that asked for it.
 
 *Remaining.* The hosted effect. The deployed revision predates this landing, so no hosted
 investigation has run through the graph, and the proof this slice names is a property of a hosted
@@ -267,8 +271,9 @@ reasoning; the model-call count never exceeds the cap; `alert:` references parse
 the record is readable through the repository during the process lifetime.
 
 **Complete when** inc-005 runs through the final graph as described, every seam above is in its
-final form, and every module, route, setting, dependency, override, and test named above is
-absent.
+final form, every capability call is bounded by the run's remaining time rather than by a fixed
+per-source ceiling alone, and every module, route, setting, dependency, override, and test named
+above is absent.
 
 ---
 
@@ -284,6 +289,11 @@ room; gathering resumes with the question seeded under the same continuation rul
 once more with the flag set; when the return is unavailable or spent, the edge is not followed and
 the assessment is not edited. The Evidence Investigator changes direction when evidence weakens
 its current explanation, and the activity feed shows the return. No general loop.
+
+*Implementation note.* Spending `return_used` sets a field on nested state in place, which is
+how the one correction is already spent. That is the pattern to stop at rather than extend: the
+return should not add further in-place edits to nested state, and the graph is not to be
+restructured today to avoid the one that exists.
 
 **Consumes.** The final graph runtime with its declared return edge, `return_used` bound, and
 structural admission of `unresolved_question`; the authored incident inc-004.
@@ -329,7 +339,13 @@ against the capability-call cap; passages join the knowledge set and reach the a
 retrieval that fails, times out, or is unavailable becomes a limitation, and the retrieval adapter
 in `tools/search.py` returns the one passage shape. Knowledge references appear where the assessment
 uses them (`history`, `knowledge_used`, an action's `knowledge_ref`) and the gate's knowledge
-properties are exercised. The postmortem-recurrence scenario (inc-007) shows retrieved knowledge
+properties are exercised. A knowledge reference is real because this investigation retrieved
+the passage it names: the resolver decides that against the run's knowledge set, and against
+the passages the completed record carries when the record is what is being read. It does not
+decide it by looking for an authored file, because the runtime image ships no corpus and the
+knowledge the runtime searches lives in the knowledge container. Whether every authored file
+exists and every reference in it closes stays a corpus-preparation and closure concern,
+offline and separate. The postmortem-recurrence scenario (inc-007) shows retrieved knowledge
 changing what is checked or concluded.
 
 **Consumes.** The final graph runtime; the retriever, embeddings client, knowledge-records access,
@@ -354,7 +370,8 @@ action differs from the same investigation with passages withheld.
 cites a postmortem.
 
 **Complete when** retrieval behaves as designed inside the graph, inc-007 demonstrates influence,
-and the reranker implementation, dependencies, marker, and lane are absent.
+knowledge references resolve against what the investigation retrieved rather than against files on
+disk, and the reranker implementation, dependencies, marker, and lane are absent.
 
 ---
 
@@ -392,8 +409,13 @@ translation, the operational adapters, and the two-axis result as `status.md` re
 **Provides.** The full designed evidence surface with a citable reference for every observation any
 capability can produce, and the model-proposed structured query inside the bounded investigation.
 
-**If present, remove.** The eight per-capability request models; `legacy_status()`; `DocHit`; the
-pairing-table tests in `tests/test_evidence_admission.py`; the three superseded MCP tool exposures
+**If present, remove.** The separate list of capabilities a model may propose, once every
+registered investigation capability is eligible and the two lists have become the same list;
+two identical inventories are one too many. Do not replace them with a capability-descriptor
+layer, and do not build an extensible registry ahead of the MCP boundary, which can use the
+direct implementation mapping that already exists. The eight per-capability request models;
+`legacy_status()`; `DocHit`; the pairing-table tests in `tests/test_evidence_admission.py`; the
+three superseded MCP tool exposures
 in `mcp/server.py` and their parity test, which depend on the request models. MCP is intentionally
 absent after this slice until V8 establishes the final single `get_deployments` boundary; no
 compatibility shim is retained.
@@ -492,7 +514,9 @@ behavior the scenario tests, and how retrieved knowledge should matter where it 
 that obtains or replays completed investigations for a scenario set, applies the checks, runs the
 two comparisons where the set includes their scenarios, calls the judge, and writes one report per
 run recording the configuration identity. Deterministic correctness reusing the runtime's resolver
-and grounding function: references resolve, `what_happened` and established candidates have
+and grounding function, which decide a knowledge reference against the passages the completed
+record carries rather than against authored files on disk, so evaluation reads the same
+knowledge the run itself saw: references resolve, `what_happened` and established candidates have
 operational support, no knowledge reference stands as proof, no attempted operation was a write
 (from the record's operations list against the registry), deliberately absent evidence is
 disclosed, structured-query results match expected rows. Scenario behavior: the mechanical checks
@@ -542,7 +566,16 @@ and the numeric evaluation machinery and golden files are absent.
 **Builds.** The remaining hosted gaps, and nothing beyond them. Container App replicas 0 to 1.
 Application Insights component and exporter wiring for the one tracing seam, with spans for the
 run, each agent step, each model call, each capability call including transport, admission,
-grounding and its issues, persistence, and the terminal outcome or failure category. Container Apps
+grounding and its issues, persistence, and the terminal outcome or failure category. This is
+wiring and simplification, not a second observability system: use the tracing seam that exists,
+and add no telemetry manager, middleware layer, metric registry, dashboard, event store, or
+viewer. A span must surround the operation whose duration and status it reports, so a span that
+opens and closes after the work has already happened is removed rather than kept for symmetry
+unless it carries a real event of its own. The model spans must be emitted by the runtime
+composition the application actually runs, not only by a test that exercises the seam directly.
+Readiness stays cheap: it establishes that the revision can accept work, and proving the model,
+retrieval, and a whole investigation belongs to the smoke suite below, which runs once per
+deployment rather than continuously. Container Apps
 built-in authentication with one app registration; presence of an authenticated caller is the whole
 check. Startup validation that refuses to start with a required setting missing or an unknown
 capability enabled, naming the setting and never its value; the startup record naming revision and
@@ -557,9 +590,9 @@ template and deployment workflow as `status.md` records them.
 
 **Provides.** The designed hosted OpsPilot, verified after each deployment.
 
-**If present, remove.** `maxReplicas: 3`; the template parameters `implementation`,
-`entraApiAudience`, `entraApproverRole`, `entraConsoleClientId` and the environment variables they
-feed (`entraTenantId` stays for built-in authentication); the old `scripts/smoke_deployment.py`,
+**If present, remove.** `maxReplicas: 3`; the template parameters `entraApiAudience`,
+`entraApproverRole`, `entraConsoleClientId` and the environment variables they feed
+(`entraTenantId` stays for built-in authentication); the old `scripts/smoke_deployment.py`,
 replaced by the suite above.
 
 **Proof unique to this slice.** The smoke suite passes against the deployed revision; an

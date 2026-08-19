@@ -90,7 +90,7 @@ def check_version(client: httpx.Client) -> VersionResponse:
     version = VersionResponse.model_validate(resp.json())
     print(
         f"[smoke] version: application={version.application} version={version.version} "
-        f"workflow_version={version.workflow_version} environment={version.environment}",
+        f"environment={version.environment}",
         flush=True,
     )
     _require(
@@ -181,7 +181,7 @@ def main(argv: list[str] | None = None) -> int:
             ready = wait_for_ready(
                 client, timeout_s=ready_timeout_s, poll_interval_s=poll_interval_s
             )
-            for check in ("operational_records", "repository", "logs", "retrieval"):
+            for check in ("operational_records", "retrieval"):
                 _require(
                     ready.checks.get(check) == "ok",
                     f"{check} check not ok: {ready.checks}",

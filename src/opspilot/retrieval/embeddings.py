@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from typing import Any, Protocol
 
-from opspilot.data.operational_records import SourceUnavailable
+from opspilot.data.operational_records import SourceUnavailable, unanswered_read
 
 
 class QueryEmbedder(Protocol):
@@ -53,7 +53,7 @@ class AzureQueryEmbedder:
                 model=self._deployment, input=[text], timeout=deadline_s
             )
         except Exception as exc:  # noqa: BLE001 - the deployment did not answer
-            raise SourceUnavailable(type(exc).__name__) from exc
+            raise unanswered_read(exc) from exc
         vector = list(response.data[0].embedding)
         if len(vector) != self._dimensions:
             raise SourceUnavailable("EmbeddingDimensionMismatch")

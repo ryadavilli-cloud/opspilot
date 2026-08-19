@@ -41,6 +41,22 @@ class RequestRejected(ValueError):
     """
 
 
+class CapabilityDefect(Exception):
+    """Something went wrong inside a capability after its arguments were accepted.
+
+    Its own type because pydantic raises one error for two unrelated situations: an argument that
+    did not fit the capability's signature, and a model built inside the body that did not
+    validate. Only the first is the caller's fault. Without the distinction a corrupt stored row
+    reports as a rejected request, which tells a model to change arguments that were never wrong.
+
+    It says where the failure happened, not what caused it. A row the source returned that would
+    not normalize and a coding mistake in this package both land here and both report as `failed`,
+    which is correct: neither is answerable by asking differently. Which one it was is in the
+    message, as the capability and the model that refused to validate, so a traceback is honest
+    about what it knows rather than naming a cause it did not establish.
+    """
+
+
 def to_utc(dt: datetime) -> datetime:
     """Normalize to tz-aware UTC so corpus (…Z) and caller-supplied times compare cleanly."""
     return dt if dt.tzinfo else dt.replace(tzinfo=UTC)

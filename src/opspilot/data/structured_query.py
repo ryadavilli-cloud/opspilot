@@ -1,8 +1,8 @@
 """The bounded query structure, the surface it may address, and its translation.
 
 The model does not emit query text. It emits a structure whose every part is drawn from the
-approved surface, and that structure is what validation checks and what execution translates
-(`system-design.md` §8.2). Nothing here accepts text from a caller: an unapproved field or an
+approved surface, and that structure is what validation checks and what execution translates.
+Nothing here accepts text from a caller: an unapproved field or an
 unsupported operation has no expressible form rather than being caught after the fact.
 
 Translation is the one place a query string exists, and it is assembled from this module's own
@@ -91,7 +91,7 @@ APPROVED_SURFACE: Mapping[str, Mapping[str, FieldType]] = MappingProxyType(
 
 
 class PredicateOp(StrEnum):
-    """The supported predicate forms, and nothing else (`system-design.md` §8.2).
+    """The supported predicate forms, and nothing else.
 
     Equality and inequality, membership in a supplied set, a bounded range, and presence or
     absence. Membership is also how disjunction is expressed, which is why no OR group exists:

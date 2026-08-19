@@ -85,12 +85,20 @@ class FakeContainer:
     """Enough of a Cosmos container to answer the authored queries.
 
     `unreachable=True` makes every read raise, which is how "the source did not answer" is told
-    apart from "the source answered with nothing".
+    apart from "the source answered with nothing". `times_out=True` makes it raise the deadline the
+    client would, which is a different unanswered read and reports as a different outcome.
     """
 
-    def __init__(self, documents: list[dict[str, Any]], *, unreachable: bool = False) -> None:
+    def __init__(
+        self,
+        documents: list[dict[str, Any]],
+        *,
+        unreachable: bool = False,
+        times_out: bool = False,
+    ) -> None:
         self.documents = documents
         self.unreachable = unreachable
+        self.times_out = times_out
         self.timeouts: list[float] = []
         self.queries: list[str] = []
         # Every field any document carries, plus the partition key. What is not here is a
@@ -109,6 +117,9 @@ class FakeContainer:
         # Recorded before the unreachable branch: a call that failed still carried a deadline, and
         # a bound that only holds on the happy path is not a bound.
         self.timeouts.append(timeout)  # type: ignore[arg-type]
+        if self.times_out:
+            # The builtin, which is what a socket or asyncio deadline raises.
+            raise TimeoutError("the read ran past its deadline")
         if self.unreachable:
             raise ContainerUnreachable("the container refused the connection")
 

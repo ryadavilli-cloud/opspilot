@@ -10,7 +10,10 @@ in the capability that queried it.
 `validated` is how a capability's typed parameters become its validation. The implementation
 declares what it takes; the decorator checks and coerces what a caller supplied against those
 annotations, and a mismatch, a missing argument, or an unknown one raises before the body runs. A
-capability therefore has no request model of its own: its parameter list is the contract.
+capability therefore has no request model of its own: its parameter list is the contract. Only
+that check can reject. Anything that goes wrong after it is `failed`, whether the stored row
+would not normalize or this package has a defect, because neither is answerable by asking
+differently.
 
 The completeness axis is assigned here too, and only for a successful run: capped results are
 `partial` because the unseen remainder could change the picture, no results at all is `empty`
@@ -19,17 +22,19 @@ because the source answered authoritatively with nothing, and everything else is
 
 from __future__ import annotations
 
+import functools
 import time
 from collections.abc import Callable
 from typing import Any
 
 from pydantic import ConfigDict, ValidationError, validate_call
 
-from opspilot.data.operational_records import SourceUnavailable
+from opspilot.data.operational_records import SourceTimedOut, SourceUnavailable
 from opspilot.data.structured_query import QueryRejected
 from opspilot.obs.tracing import span
 from opspilot.tools.contracts import (
     MAX_RESULTS,
+    CapabilityDefect,
     Completeness,
     ExecutionOutcome,
     RequestRejected,
@@ -37,10 +42,35 @@ from opspilot.tools.contracts import (
     ToolResult,
 )
 
-# The adapters' parameter validator. `arbitrary_types_allowed` covers the injected source, which is
-# a constructed collaborator rather than a caller argument; every other parameter is a value a
-# caller supplied and is checked against its annotation.
-validated = validate_call(config=ConfigDict(arbitrary_types_allowed=True))
+# `arbitrary_types_allowed` covers the injected source, which is a constructed collaborator rather
+# than a caller argument; every other parameter is a value a caller supplied and is checked against
+# its annotation.
+_check_arguments = validate_call(config=ConfigDict(arbitrary_types_allowed=True))
+
+
+def validated[**P, R](implementation: Callable[P, R]) -> Callable[P, R]:
+    """Turn a capability's typed parameters into its request validation.
+
+    It also fixes *where* a validation failure happened, which the exception type alone cannot say.
+    The arguments are checked before the body is entered, so anything pydantic raises once inside
+    is a failure of this capability rather than of the request, and is re-raised as that. Splitting
+    them by position rather than by inspecting the error keeps them apart structurally, and holds
+    for concurrent investigations because nothing is remembered between calls.
+
+    Where, not why: the body is where a stored row is normalized, and it is also where a mistake in
+    this package would surface. Both are `failed` and neither is the caller's to fix, so the type
+    does not choose between them. The message carries the capability and the model that refused, so
+    a reader can tell a corrupt row from a defect without the exception having asserted either.
+    """
+
+    @functools.wraps(implementation)
+    def body(*args: P.args, **kwargs: P.kwargs) -> R:
+        try:
+            return implementation(*args, **kwargs)
+        except ValidationError as exc:
+            raise CapabilityDefect(f"{implementation.__name__}: {exc.title}") from exc
+
+    return _check_arguments(body)
 
 
 def sanitize(exc: Exception) -> str:
@@ -116,11 +146,21 @@ def run_tool[T](
             # is. Reporting it as an empty success would answer a question that was never asked.
             # The message is this codebase's own text, never a provider's.
             return _fail(sp, tool_name, str(exc), started, ExecutionOutcome.REJECTED)
+        except SourceTimedOut:
+            # Reachable and answering, but not within the time this call was given. Distinct from
+            # unavailable because the same question asked over a narrower scope may still be
+            # answerable, which is not true of a source that is down.
+            return _fail(sp, tool_name, "source timed out", started, ExecutionOutcome.TIMED_OUT)
         except SourceUnavailable:
             # The source did not answer. Reported apart from `failed` so the question this
             # capability was asked stays open rather than reading as a defect in the code that
             # asked it. The provider's own message never travels with it.
             return _fail(sp, tool_name, "source unavailable", started, ExecutionOutcome.UNAVAILABLE)
+        except CapabilityDefect:
+            # The arguments were accepted and the capability could not produce its record anyway.
+            # Neither the request nor the source's availability was at fault, so it is something to
+            # fix here rather than something to ask differently.
+            return _fail(sp, tool_name, "internal tool error", started, ExecutionOutcome.FAILED)
         except Exception:  # noqa: BLE001 — no exception may cross the tool boundary
             return _fail(sp, tool_name, "internal tool error", started, ExecutionOutcome.FAILED)
 

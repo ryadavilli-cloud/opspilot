@@ -7,11 +7,10 @@ The accepted design — what the system is meant to become — lives in `docs/`.
 `docs/vertical-execution-plan.md` and `docs/horizontal-execution-plan.md` sequence the
 remaining work.
 
-The code in this repository currently implements an earlier architecture: a LangGraph
-pipeline with a human-in-the-loop approval gate, per-step durable checkpointing, and an
-asynchronous submit/poll job API. It runs end to end (deterministic and LLM-driven
-diagnosis paths, an operator console) and is deployed on Azure, but does
-not yet match the accepted design. See `docs/status.md` for the full reconciliation.
+The code in this repository runs one investigation as a single live request: a LangGraph
+graph in which three model-directed roles propose and deterministic code authorizes, admits,
+grounds, and persists. It is deployed on Azure. Parts of the accepted design are still to
+come. See `docs/status.md` for what is built and what is not.
 
 ## Quickstart (local)
 
@@ -24,10 +23,10 @@ uv run uvicorn opspilot.api:app --reload           # serve the API (GET /health/
 ## Layout
 
 ```
-src/opspilot/      # package: graph, nodes, tools, retrieval, diagnosis, guardrails, mcp, api, config
-eval/              # evaluation harness + committed baselines (retrieval + scenario scorecards)
+src/opspilot/      # package: investigation graph, tools, retrieval, evidence, assessment, api
+eval/              # the committed cassette and the recorder that produces it
 data/              # RetailEase synthetic corpus: answer key, telemetry, alerts/incidents, KB
 infra/             # Bicep IaC + GitHub Actions CD
-tests/             # deterministic safety-net + scenario regression gate
+tests/             # the deterministic suite
 docs/              # the accepted design, decisions, and implementation status/plan
 ```

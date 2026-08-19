@@ -1,7 +1,7 @@
 """The Investigation Record seam: save one completed investigation, read it back by identifier.
 
 The record is passive. It stores the completed artifact and answers reads. It routes no workflow,
-decides nothing, synthesizes nothing, validates no grounding, and is never a mid-turn checkpoint.
+decides nothing, synthesizes nothing, validates no grounding, and never holds a partial run.
 
 Two operations and no more. Nothing is written while an investigation is still running, so an
 interrupted run leaves nothing behind, and the investigation comes into existence with its one

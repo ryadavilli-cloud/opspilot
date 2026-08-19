@@ -123,45 +123,73 @@ class ToolService:
             name: getattr(self, name) for name in CAPABILITY_NAMES
         }
 
-    # --- deterministic capabilities (operational-records container) ---------------------------
-    def get_incident(self, **kwargs: Any) -> ToolResult[Any]:
-        return run_tool("get_incident", get_incident, self.records, self.deadline_s, **kwargs)
+    def _within(self, remaining_s: float | None) -> float:
+        """The deadline one call may take: the configured source ceiling, or the investigation's
+        remaining time where that is shorter.
 
-    def get_correlated_alerts(self, **kwargs: Any) -> ToolResult[Any]:
+        Two bounds, and a call is subject to both. The ceiling keeps any single source from hanging;
+        the remaining time keeps the sum of them inside the investigation, so a call started with
+        seconds left cannot run for the full ceiling and outlive the run that asked for it. Passed
+        in per call rather than held here, because this service is process-wide and a deadline
+        stored on it would belong to whichever investigation wrote it last.
+        """
+        if remaining_s is None:
+            return self.deadline_s
+        return max(0.0, min(self.deadline_s, remaining_s))
+
+    # --- deterministic capabilities (operational-records container) ---------------------------
+    def get_incident(self, remaining_s: float | None = None, /, **kwargs: Any) -> ToolResult[Any]:
+        return run_tool(
+            "get_incident", get_incident, self.records, self._within(remaining_s), **kwargs
+        )
+
+    def get_correlated_alerts(
+        self, remaining_s: float | None = None, /, **kwargs: Any
+    ) -> ToolResult[Any]:
         return run_tool(
             "get_correlated_alerts",
             get_correlated_alerts,
             self.records,
-            self.deadline_s,
+            self._within(remaining_s),
             **kwargs,
         )
 
-    def get_deployments(self, **kwargs: Any) -> ToolResult[Any]:
-        return run_tool("get_deployments", get_deployments, self.records, self.deadline_s, **kwargs)
+    def get_deployments(
+        self, remaining_s: float | None = None, /, **kwargs: Any
+    ) -> ToolResult[Any]:
+        return run_tool(
+            "get_deployments", get_deployments, self.records, self._within(remaining_s), **kwargs
+        )
 
-    def query_logs(self, **kwargs: Any) -> ToolResult[Any]:
-        return run_tool("query_logs", query_logs, self.records, self.deadline_s, **kwargs)
+    def query_logs(self, remaining_s: float | None = None, /, **kwargs: Any) -> ToolResult[Any]:
+        return run_tool("query_logs", query_logs, self.records, self._within(remaining_s), **kwargs)
 
-    def get_metrics(self, **kwargs: Any) -> ToolResult[Any]:
-        return run_tool("get_metrics", get_metrics, self.records, self.deadline_s, **kwargs)
+    def get_metrics(self, remaining_s: float | None = None, /, **kwargs: Any) -> ToolResult[Any]:
+        return run_tool(
+            "get_metrics", get_metrics, self.records, self._within(remaining_s), **kwargs
+        )
 
-    def get_service_dependencies(self, **kwargs: Any) -> ToolResult[Any]:
+    def get_service_dependencies(
+        self, remaining_s: float | None = None, /, **kwargs: Any
+    ) -> ToolResult[Any]:
         return run_tool(
             "get_service_dependencies",
             get_service_dependencies,
             self.records,
-            self.deadline_s,
+            self._within(remaining_s),
             **kwargs,
         )
 
-    def structured_query(self, **kwargs: Any) -> ToolResult[Any]:
+    def structured_query(
+        self, remaining_s: float | None = None, /, **kwargs: Any
+    ) -> ToolResult[Any]:
         # The grant is supplied here, alongside the deadline and for the same reason: both bound
         # what a request may reach, so neither is a value a request carries.
         return run_tool(
             "structured_query",
             structured_query,
             self.records,
-            self.deadline_s,
+            self._within(remaining_s),
             self.granted_collections,
             **kwargs,
         )
@@ -196,18 +224,28 @@ class ToolService:
         self._get_retriever()
         return self._retriever_error
 
-    def search_runbooks(self, **kwargs: Any) -> ToolResult[Any]:
+    def search_runbooks(
+        self, remaining_s: float | None = None, /, **kwargs: Any
+    ) -> ToolResult[Any]:
         retriever = self._get_retriever()
         if retriever is None:
             return self._unavailable("search_runbooks")
-        return run_tool("search_runbooks", search_runbooks, retriever, self.deadline_s, **kwargs)
+        return run_tool(
+            "search_runbooks", search_runbooks, retriever, self._within(remaining_s), **kwargs
+        )
 
-    def search_past_incidents(self, **kwargs: Any) -> ToolResult[Any]:
+    def search_past_incidents(
+        self, remaining_s: float | None = None, /, **kwargs: Any
+    ) -> ToolResult[Any]:
         retriever = self._get_retriever()
         if retriever is None:
             return self._unavailable("search_past_incidents")
         return run_tool(
-            "search_past_incidents", search_past_incidents, retriever, self.deadline_s, **kwargs
+            "search_past_incidents",
+            search_past_incidents,
+            retriever,
+            self._within(remaining_s),
+            **kwargs,
         )
 
     @staticmethod
@@ -223,8 +261,16 @@ class ToolService:
     def tool_names(self) -> tuple[str, ...]:
         return tuple(self._registry)
 
-    def call(self, tool_name: str, **kwargs: Any) -> ToolResult[Any]:
-        """Dispatch by name against the allowlist; an unknown name is a sanitized error."""
+    def call(
+        self, tool_name: str, remaining_s: float | None = None, /, **kwargs: Any
+    ) -> ToolResult[Any]:
+        """Dispatch by name against the allowlist; an unknown name is a sanitized error.
+
+        `remaining_s` is positional-only, and that is the whole defence: `kwargs` is what a model
+        asked for, so a named parameter here could be bound by an argument the model chose. Keeping
+        it out of the keyword space means a request naming it lands in `kwargs`, where it is refused
+        like any other argument the capability does not declare.
+        """
         fn = self._registry.get(tool_name)
         if fn is None:
             # Refused at the boundary before anything executed, which is `rejected` rather than a
@@ -245,4 +291,4 @@ class ToolService:
                 time.perf_counter(),
                 ExecutionOutcome.REJECTED,
             )
-        return fn(**kwargs)
+        return fn(remaining_s, **kwargs)

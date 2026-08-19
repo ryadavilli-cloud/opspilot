@@ -86,45 +86,14 @@ AZURE_OPENAI_ENDPOINT = _env("AZURE_OPENAI_ENDPOINT") or _env("AZURE_FOUNDRY_END
 AZURE_OPENAI_API_VERSION = _env("AZURE_OPENAI_API_VERSION", "2025-04-01-preview")
 AZURE_OPENAI_DEPLOYMENT = _env("AZURE_OPENAI_DEPLOYMENT")
 
-# Deployed diagnosis implementation: `deterministic` (the hand-tuned floor) or `single_agent` (the
-# LLM planner + triager). The composition root builds and injects the selected pair; deterministic
-# stays an EXPLICIT fallback (surfaced in /version) when single_agent is requested but its model
-# cannot be built (optional `llm` deps absent, provider misconfigured, Azure endpoint unset).
-
-
 # --------------------------------------------------------------------------------------
-
-
+# Cosmos
 # --------------------------------------------------------------------------------------
-# Durable checkpointer seam
-# --------------------------------------------------------------------------------------
-# Selects the LangGraph checkpointer the graph compiles with: `none` (stateless one-shot, the
-# default — no behavior change), `memory` (in-process, non-durable — tests), `sqlite` (file-backed,
-# durable across a process restart — local dev), or `cosmos` (Azure Cosmos DB, the production
-# durable store — keyless via managed identity). The factory validates it; unknown -> ValueError.
-CHECKPOINTER_BACKEND = _env("OPSPILOT_CHECKPOINTER", "none")
-# Local sqlite file for the `sqlite` backend. A real path (not :memory:) so it survives a restart.
-CHECKPOINTER_SQLITE_PATH = _env("OPSPILOT_CHECKPOINTER_SQLITE_PATH", ".opspilot/checkpoints.sqlite")
-# Azure Cosmos DB (`cosmos` backend). Keyless: no key setting — the saver falls back to
-# DefaultAzureCredential (the Container App's managed identity) when no key is provided.
+# The account and database holding the completed investigations the runtime writes. Keyless: no key
+# setting exists, and the client authenticates as the environment's identity.
 COSMOS_ENDPOINT = _env("AZURE_COSMOS_ENDPOINT")
 COSMOS_DATABASE = _env("AZURE_COSMOS_DATABASE", "opspilot")
-COSMOS_CHECKPOINT_CONTAINER = _env("AZURE_COSMOS_CHECKPOINT_CONTAINER", "checkpoints")
-
-
-# --------------------------------------------------------------------------------------
-# Durable investigation-repository seam
-# --------------------------------------------------------------------------------------
-# Selects the async job API's InvestigationRepository backend: `memory` (in-process, non-durable —
-# the default; loses every accepted/awaiting_approval record on a pod restart or scale-to-zero) or
-# `cosmos` (Azure Cosmos DB — the durable, production store, keyless via managed identity). Same
-# Cosmos account + database as the checkpointer above; two containers of its own. The factory
-# validates it; unknown -> ValueError.
-INVESTIGATION_REPOSITORY_BACKEND = _env("OPSPILOT_INVESTIGATION_REPOSITORY", "memory")
 COSMOS_INVESTIGATION_CONTAINER = _env("AZURE_COSMOS_INVESTIGATION_CONTAINER", "investigations")
-COSMOS_INVESTIGATION_INDEX_CONTAINER = _env(
-    "AZURE_COSMOS_INVESTIGATION_INDEX_CONTAINER", "investigation-index"
-)
 
 
 # --------------------------------------------------------------------------------------
@@ -173,14 +142,6 @@ INVESTIGATION_DEADLINE_SECONDS = _env_float("OPSPILOT_INVESTIGATION_DEADLINE_SEC
 CAPABILITY_CALL_CAP = _env_int("OPSPILOT_CAPABILITY_CALL_CAP", 8)
 # Objective, one selection call per gathering step, synthesis, and at most one correction.
 MODEL_CALL_CAP = _env_int("OPSPILOT_MODEL_CALL_CAP", 14)
-
-
-# --------------------------------------------------------------------------------------
-# Workflow / state versioning
-# --------------------------------------------------------------------------------------
-# Stamped into every investigation's state; a resuming graph checks this to route a stale
-# in-flight state to a compatible reader (matters once the durable checkpointer lands).
-WORKFLOW_VERSION = "1.0"
 
 
 # --------------------------------------------------------------------------------------

@@ -3,7 +3,7 @@
 The container is hierarchically partitioned by `/kind` then `/service`, and holds six record kinds:
 `incident`, `alert`, `deployment`, `dependency`, `log`, and `metric_series`. Corpus preparation
 writes it as a setup identity; the application only ever reads it, and holds no write permission to
-weaken (`runtime-and-deployment.md` §10, `code-guidelines.md` §6).
+weaken.
 
 Every read is partition-scoped: `kind` is always supplied, and `service` wherever the capability
 knows it, so a query reads the partitions its capability owns rather than the whole container.
@@ -17,7 +17,6 @@ so no caller can widen a read surface through an argument.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from typing import Any
 
 from opspilot import config
@@ -42,6 +41,43 @@ RECORD_KINDS = (
     _KIND_LOG,
     _KIND_METRIC_SERIES,
 )
+
+
+def unanswered_read(exc: BaseException) -> Exception:
+    """Which unanswered read this was: out of time, or unreachable.
+
+    Classified once, here, from the client's own exception types rather than from message text. The
+    builtin covers a socket or asyncio deadline; the Azure client raises its own types for a request
+    or response that ran out of time, and they do not derive from the builtin. Anything else was the
+    source failing to answer for some other reason, which is what unavailable means.
+
+    The provider's exception never travels further than this: only its class name does, and only so
+    a failure is diagnosable without a stack trace reaching the engineer.
+    """
+    if isinstance(exc, TimeoutError):
+        return SourceTimedOut(type(exc).__name__)
+    try:
+        from azure.core.exceptions import ServiceRequestTimeoutError, ServiceResponseTimeoutError
+    except ImportError:  # pragma: no cover - the client is a base dependency
+        return SourceUnavailable(type(exc).__name__)
+    if isinstance(exc, ServiceRequestTimeoutError | ServiceResponseTimeoutError):
+        return SourceTimedOut(type(exc).__name__)
+    return SourceUnavailable(type(exc).__name__)
+
+
+class SourceTimedOut(Exception):
+    """The read ran past the time it was given.
+
+    Told apart from an unreachable source because the two say different things to whoever reads
+    the investigation. A source that could not be reached may be down; a source that ran out of
+    time was reachable and answering, and the same question asked with more room, or over a
+    narrower scope, may well be answerable. Collapsing them would report a bounded run as a broken
+    dependency.
+
+    Distinct from `SourceUnavailable` rather than derived from it: they are two of the outcomes the
+    result contract already separates, and a subclass would let one be caught as the other by an
+    ordering mistake nothing would notice.
+    """
 
 
 class SourceUnavailable(Exception):
@@ -75,7 +111,7 @@ class OperationalRecords:
     ) -> list[Any]:
         """One read. `deadline_s` is the caller's remaining time and bounds this call; a source
         operation that outlives the turn that owns it is a bound violation even when its data is
-        correct (`code-guidelines.md` §7)."""
+        correct."""
         try:
             return list(
                 self._container.query_items(
@@ -86,7 +122,7 @@ class OperationalRecords:
                 )
             )
         except Exception as exc:  # noqa: BLE001 - every container failure is one unanswered read
-            raise SourceUnavailable(type(exc).__name__) from exc
+            raise unanswered_read(exc) from exc
 
     def incident(self, incident_id: str, *, deadline_s: float) -> dict[str, Any] | None:
         rows = self._query(
@@ -182,50 +218,6 @@ class OperationalRecords:
         text, parameters = translate(query)
         return self._query(text, parameters, deadline_s=deadline_s)
 
-    def kind_counts(self, *, deadline_s: float) -> dict[str, int]:
-        """One count per record kind, for the deployment-time preparation check. Absent preparation
-        must present as a deployment failure rather than as an empty answer at turn time, and a
-        container holding only some kinds would break the capabilities whose kind is missing."""
-        counts: dict[str, int] = {}
-        for kind in RECORD_KINDS:
-            rows = self._query(
-                "SELECT VALUE COUNT(1) FROM c WHERE c.kind = @kind",
-                [{"name": "@kind", "value": kind}],
-                deadline_s=deadline_s,
-            )
-            counts[kind] = int(rows[0]) if rows else 0
-        return counts
-
-
-@dataclass(frozen=True)
-class PreparationStatus:
-    """Which record kinds the container holds, and which it is missing.
-
-    Every kind is reported together rather than one failure at a time, so an operator reading a
-    failed readiness probe sees the whole shortfall in one response.
-    """
-
-    counts: dict[str, int]
-    missing: tuple[str, ...]
-
-    @property
-    def ok(self) -> bool:
-        return not self.missing
-
-
-def preparation_status(records: OperationalRecords, *, deadline_s: float) -> PreparationStatus:
-    """Whether corpus preparation has run against the container this application reads.
-
-    A kind holding zero records is missing, not empty: the capability that owns it could only ever
-    answer with nothing, which would read downstream as an authoritative absence rather than as an
-    unprepared deployment. Raises `SourceUnavailable` when the container cannot be reached, which
-    the readiness probe converts into a failed check rather than a ready one.
-    """
-    counts = records.kind_counts(deadline_s=deadline_s)
-    return PreparationStatus(
-        counts=counts, missing=tuple(kind for kind in RECORD_KINDS if not counts.get(kind))
-    )
-
 
 _default: OperationalRecords | None = None
 
@@ -233,10 +225,10 @@ _default: OperationalRecords | None = None
 def default_operational_records() -> OperationalRecords:
     """The process-wide reader over the deployed container (lazy, built once).
 
-    The Cosmos imports are local so that importing this module needs neither the optional
-    `checkpoint` dependency group nor a credential; a test that injects its own container never
-    reaches this function. Keyless, like every other Cosmos client here: the Container App's
-    managed identity holds read on the RetailEase database and no write to weaken.
+    The Cosmos imports are local so that importing this module needs no credential; a test that
+    injects its own container never reaches this function. Keyless, like every other Cosmos client
+    here: the Container App's managed identity holds read on the RetailEase database and no write
+    to weaken.
     """
     global _default
     if _default is None:
