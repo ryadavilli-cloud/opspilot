@@ -263,12 +263,23 @@ base dependency, and the plural-turn persistence types are absent.
 grounding with one correction, the outcome rule, the failure categories, persist-before-deliver,
 and the streaming request under investigation-only vocabulary. Every module, route, setting,
 dependency, override, and test this step names for removal is absent, and the strict-override list
-is gone entirely rather than shortened.
+is gone entirely rather than shortened. The dormant checkpoint and asynchronous-job
+configuration went with the runtime that read it: no setting, template parameter, or container
+environment entry can select a durable intermediate store. Evidence access carries the run's own
+remaining time, bounded by the configured source ceiling, so no source read outlives the
+investigation that asked for it.
 
 *Remaining.* Two of this step's own builds, each waiting on a capability it would have nothing to
 act on without: the one return is declared as an edge and never followed, because retrieval and the
 structured query are registered and not yet offered to the investigator, so no proposal names an
-evidence kind a further pass could supply. Then the hosted effect: the deployed revision predates
+evidence kind a further pass could supply. When retrieval does become proposable, a knowledge
+reference is real because this investigation retrieved the passage it names: the resolver decides
+that against the run's knowledge set, and against the passages the completed record carries when
+the record is what is being read. It does not decide it by looking for an authored file, because
+the runtime image ships no corpus and the knowledge the runtime searches lives in the knowledge
+container. Whether every authored file exists and every reference in it closes stays a
+corpus-preparation and closure concern, offline and separate. Then the hosted effect: the
+deployed revision predates
 this landing.
 
 **Builds.** The designed runtime, and the removal of the one it supersedes. One small compiled
@@ -280,7 +291,11 @@ bounds: deadline, capability-call cap (retrieval counts), model-call cap, `corre
 `return_used`. The Evidence Investigator proposes one registered capability with arguments and the
 question it expects answered, choosing from the incident, objective, admitted evidence, and
 retrieved knowledge; that includes proposing a bounded structured-query structure that code
-validates and translates. The Supervisor authorizes each proposal deterministically (registered,
+validates and translates. Once every registered investigation capability is eligible for
+proposal, the separate list of proposable capabilities is removed rather than maintained beside
+an identical one; it is not replaced by a capability-descriptor layer, and no extensible registry
+is built ahead of the MCP boundary, which can use the direct implementation mapping that already
+exists. The Supervisor authorizes each proposal deterministically (registered,
 question not already answered, cap and deadline have room), evidence access executes with the
 remaining deadline, admission runs, and gathering ends when the investigator reports ready or no
 useful permitted action, or a source the objective depends on is unavailable, or a bound is
@@ -354,8 +369,10 @@ never exceeds the cap.
 terminal brief; the record is readable through the repository afterwards.
 
 **Complete when** the graph runs the streaming request as designed with all three roles, bounds,
-return, grounding, correction, outcome, failure rules, and persist-before-deliver, and every module,
-route, setting, dependency, override, and test named above is absent.
+return, grounding, correction, outcome, failure rules, and persist-before-deliver, every evidence
+access is bounded by the run's remaining time rather than by a fixed per-source ceiling alone,
+knowledge references resolve against what the investigation retrieved rather than against files
+on disk, and every module, route, setting, dependency, override, and test named above is absent.
 
 ---
 
@@ -430,7 +447,9 @@ behavior the scenario tests, and how retrieved knowledge should matter where it 
 that obtains or replays completed investigations for a scenario set, applies the checks, runs the
 two comparisons where the set includes their scenarios, calls the judge, and writes one report per
 run recording the configuration identity. Deterministic correctness reusing the runtime's resolver
-and grounding function: references resolve, `what_happened` and established candidates have
+and grounding function, which decide a knowledge reference against the passages the completed
+record carries rather than against authored files on disk, so evaluation reads the same
+knowledge the run itself saw: references resolve, `what_happened` and established candidates have
 operational support, no knowledge reference stands as proof, no attempted operation was a write
 (from the record's operations list against the registry), deliberately absent evidence is
 disclosed, structured-query results match expected rows. Scenario behavior: the mechanical checks
@@ -480,8 +499,17 @@ and the numeric evaluation machinery and golden files are absent.
 **Builds.** The remaining hosted gaps, and nothing beyond them. Container App replicas 0 to 1.
 Application Insights component and exporter wiring for the one tracing seam, with spans for the
 run, each agent step, each model call, each capability call including transport, admission,
-grounding and its issues, persistence, and the terminal outcome or failure category. Container Apps
-built-in authentication with one app registration; presence of an authenticated caller is the whole
+grounding and its issues, persistence, and the terminal outcome or failure category. This is
+wiring and simplification, not a second observability system: use the tracing seam that exists,
+and add no telemetry manager, middleware layer, metric registry, dashboard, event store, or
+viewer. A span must surround the operation whose duration and status it reports, so a span that
+opens and closes after the work has already happened is removed rather than kept for symmetry
+unless it carries a real event of its own. The model spans must be emitted by the runtime
+composition the application actually runs, not only by a test that exercises the seam directly.
+Readiness stays cheap: it establishes that the revision can accept work, and proving the model,
+retrieval, and a whole investigation belongs to the smoke suite below, which runs once per
+deployment rather than continuously. Container Apps built-in authentication with one app
+registration; presence of an authenticated caller is the whole
 check. Startup validation that refuses to start with a required setting missing or an unknown
 capability enabled, naming the setting and never its value; the startup record naming revision and
 image tag; health and version as designed. Model access already keyless as the managed identity.
@@ -495,9 +523,9 @@ deployment workflow as `status.md` records them.
 
 **Provides.** The designed hosted OpsPilot, verified after each deployment.
 
-**If present, remove.** `maxReplicas: 3`; the template parameters `implementation`,
-`entraApiAudience`, `entraApproverRole`, `entraConsoleClientId` and the environment variables they
-feed (`entraTenantId` stays for built-in authentication); the old `scripts/smoke_deployment.py`,
+**If present, remove.** `maxReplicas: 3`; the template parameters `entraApiAudience`,
+`entraApproverRole`, `entraConsoleClientId` and the environment variables they feed
+(`entraTenantId` stays for built-in authentication); the old `scripts/smoke_deployment.py`,
 replaced by the suite above.
 
 **Proof unique to this step.** The smoke suite passes against the deployed revision; an

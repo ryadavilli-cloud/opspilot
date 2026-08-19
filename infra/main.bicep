@@ -48,7 +48,7 @@ param azureOpenAiApiVersion string = '2025-04-01-preview'
 @description('Create the Cognitive Services OpenAI User role assignment for the app identity. Set false when the deploy principal lacks RBAC-write (Owner / User Access Administrator) and the grant is bootstrapped imperatively — mirrors manageAcrPullRoleAssignment.')
 param manageOpenAiRoleAssignment bool = true
 
-@description('Cosmos DB account name: the durable store behind the LangGraph checkpointer and the async investigation repository. Must be globally unique; lowercase alphanumeric + hyphens.')
+@description('Cosmos DB account name: the durable store holding completed investigations and the RetailEase corpus the application reads. Must be globally unique; lowercase alphanumeric + hyphens.')
 param cosmosAccountName string = toLower('${namePrefix}-cosmos-${uniqueString(resourceGroup().id)}')
 
 @description('Create the Cosmos DB Built-in Data Contributor role assignment for the app identity. This is a Microsoft.DocumentDB data-plane role assignment (plain Contributor on the account is enough to create it), unlike the Microsoft.Authorization assignments above — kept as its own guard for symmetry and in case the deploy principal ever needs it bootstrapped imperatively instead.')
@@ -179,8 +179,8 @@ resource embeddingDeployment 'Microsoft.CognitiveServices/accounts/deployments@2
   }
 }
 
-// Azure Cosmos DB: the durable store behind both the LangGraph checkpointer and the async
-// investigation resource repository. Serverless: pay-per-request, no fixed base
+// Azure Cosmos DB: the durable store holding completed investigations and the RetailEase
+// corpus the application reads. Serverless: pay-per-request, no fixed base
 // cost at this app's traffic (unlike the ACR Basic tier above, this has none while idle). Keyless:
 // disableLocalAuth means the ONLY way in is an Entra token from the app's managed identity via the
 // data-plane role assignment below.
@@ -230,9 +230,8 @@ resource cosmosDb 'Microsoft.DocumentDB/databaseAccounts/sqlDatabases@2024-08-15
 //
 // The `checkpoints` and `investigation-index` containers were removed when the account was
 // recreated for vector search (2026-08-09). Both belonged to the rejected durable-pause and
-// idempotency-index machinery; the accepted design keeps active-turn state ephemeral and creates
-// the investigation at first completed-turn commit. The application no longer selects the Cosmos
-// checkpointer or the Cosmos investigation repository, so nothing recreates them at runtime.
+// idempotency-index machinery. The application holds a running investigation in memory and
+// writes it once, on completion, so no code path can recreate either container.
 //
 // TTL is ENABLED with no default expiry (-1) rather than left off. Off would mean a later TTL
 // change needs a container rebuild; -1 keeps items forever today while leaving a real TTL
@@ -421,13 +420,10 @@ resource app 'Microsoft.App/containerApps@2024-03-01' = {
               name: 'AZURE_OPENAI_API_VERSION'
               value: azureOpenAiApiVersion
             }
-            // Active-turn state is deliberately ephemeral. `OPSPILOT_CHECKPOINTER` and
-            // `OPSPILOT_INVESTIGATION_REPOSITORY` are no longer set here, so the application takes
-            // its own defaults (`none` and `memory`). Selecting the Cosmos checkpointer or the
-            // Cosmos investigation repository is what recreated the `checkpoints` and
-            // `investigation-index` containers at runtime through create-if-not-exists, which is
-            // why the settings go rather than only the containers. Durable persistence returns for
-            // completed turns only, over the `investigations` container declared above.
+            // A running investigation is deliberately ephemeral: it lives in the process that
+            // serves the request and is written once, on completion, over the `investigations`
+            // container declared above. There is no setting here that could select a durable
+            // intermediate store, because the application no longer has one to select.
             {
               name: 'AZURE_COSMOS_ENDPOINT'
               value: cosmos.properties.documentEndpoint
