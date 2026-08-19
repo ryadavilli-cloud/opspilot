@@ -413,6 +413,14 @@ def _record_digest(record: Any) -> str:
             "",
             "What remains unknown:",
             *(f"- {unknown}" for unknown in assessment.unknowns),
+            "",
+            # Stated as a plain list because this call is asked to cite exactly, and the lines
+            # above carry each reference alongside what it says. A reader told to quote a
+            # reference from those lines has to decide where the reference ends, and answers
+            # that quoted the whole line were refused for citing something the record does not
+            # carry, which was true of the string and false of the intent.
+            "The only references you may cite, each exactly as written here:",
+            *(f"- {reference}" for reference in sorted(record.evidence_refs)),
         ]
     )
     return "\n".join(line for line in lines if line is not None)

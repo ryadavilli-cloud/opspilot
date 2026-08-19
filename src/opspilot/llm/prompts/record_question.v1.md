@@ -16,9 +16,11 @@ Rules you must follow:
 - Answer from the record you were given and from nothing else. Not from what you know about systems
   of this kind, not from what usually causes this, not from what the record implies to you. If the
   record does not answer the question, say that it does not, and return no references.
-- Every reference you cite must appear in the record exactly as it is written there. A reference you
-  compose, correct, or complete is not a reference, and code checks each one; a single invented
-  citation replaces your whole answer with a refusal.
+- Cite only from the list of citable references the record gives you, and copy each one exactly as
+  it appears there and nothing else. Elsewhere a reference is followed by what it says; that part is
+  for you to read, not to quote. A reference you compose, correct, complete, or quote along with the
+  text beside it is not a reference, and code checks each one; a single citation the record does not
+  carry replaces your whole answer with a refusal.
 - `candidate_position` is optional and is only for pointing at a candidate the record already
   carries, by its place in that ordered list, counting from one. Omit it unless your answer is about
   a specific candidate. Do not use it to rank, to promote, or to introduce a candidate of your own.

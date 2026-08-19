@@ -242,3 +242,23 @@ def test_the_screen_carries_the_question_box_and_drives_the_question_route():
     assert 'id="question-input"' in page.text
     assert 'id="ask-button"' in page.text
     assert "/questions" in page.text
+
+
+# --- what the answering call is shown --------------------------------------------------------
+def test_the_record_digest_states_the_citable_references_on_their_own():
+    """The reason a hosted answer was refused before this existed.
+
+    Everywhere else a reference is rendered with what it says beside it, which is right for a
+    reader and wrong for one asked to quote exactly: it quoted the whole line, and the whole line
+    is not a reference the record carries. The citable set is stated plainly so there is nothing
+    to decide about where a reference ends.
+    """
+    from opspilot.investigation.agents import _record_digest
+
+    record = _record()
+    digest = _record_digest(record)
+
+    lines = digest.splitlines()
+    for reference in record.evidence_refs:
+        assert f"- {reference}" in lines, f"{reference} is not offered on a line of its own"
+    assert "The only references you may cite" in digest
