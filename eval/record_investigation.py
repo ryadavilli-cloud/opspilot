@@ -20,8 +20,12 @@ raises with the cassette named. Re-record after such a change, not before.
 Authentication is keyless: the adapter authenticates as the environment's identity, so a local
 run needs `az login` and an identity holding the data-plane role on the account.
 
-Run (spends one call; the `llm` group carries the SDK the adapter imports):
-  uv run --group llm python eval/record_turn_synthesis.py
+One cassette per recorded incident, named for it, because a cassette is evidence about one run
+and two incidents produce two different sets of messages.
+
+Run (spends one call per model call the run makes; the `llm` group carries the SDK the adapter
+imports):
+  uv run --group llm python eval/record_investigation.py inc-005
 """
 
 from __future__ import annotations
@@ -48,13 +52,27 @@ from opspilot.llm.cassette import RecordingChatModel  # noqa: E402
 from opspilot.llm.client import build_chat_model  # noqa: E402
 from opspilot.tools.service import ToolService  # noqa: E402
 
-# inc-005: a Redis eviction storm. Its authored answer key records no deployment anywhere in the
-# window, so the run exercises an authoritative absence as well as ordinary admitted evidence.
-INCIDENT = "inc-005"
-CASSETTE = REPO_ROOT / "eval" / "cassettes" / "investigation.json"
+# The incidents worth having a recording of, and why each one earns the model calls it costs.
+#   inc-005: a Redis eviction storm. Its authored answer key records no deployment anywhere in the
+#            window, so the run exercises an authoritative absence alongside ordinary evidence.
+#   inc-004: the ambiguous one. Its first pass cannot close, which is what gives analysis something
+#            real to send back for, so this is where the one return is observable on a real model.
+RECORDABLE = ("inc-005", "inc-004")
+DEFAULT_INCIDENT = "inc-005"
 
 
-def main() -> None:
+def cassette_for(incident: str) -> Path:
+    return REPO_ROOT / "eval" / "cassettes" / f"{incident}.json"
+
+
+def main(argv: list[str] | None = None) -> None:
+    argv = sys.argv[1:] if argv is None else argv
+    incident = argv[0] if argv else DEFAULT_INCIDENT
+    if incident not in RECORDABLE:
+        raise SystemExit(
+            f"{incident} is not one of the recorded incidents: {', '.join(RECORDABLE)}"
+        )
+    cassette = cassette_for(incident)
     # Refused rather than defaulted. Without these the adapter would fall back to the local
     # development model name, and the recording would certify a model and an endpoint the
     # application does not call while looking like a successful take.
@@ -65,12 +83,12 @@ def main() -> None:
             "never takes"
         )
 
-    CASSETTE.parent.mkdir(parents=True, exist_ok=True)
+    cassette.parent.mkdir(parents=True, exist_ok=True)
     # The provider is named rather than config-resolved: the deployed application reaches its
     # model through this adapter, so this is the one client whose responses are evidence about
     # what the deployment produces. Auth is keyless, as it is in the deployment; only the identity
     # differs.
-    model = RecordingChatModel(build_chat_model("azure"), CASSETTE)
+    model = RecordingChatModel(build_chat_model("azure"), cassette)
     records = corpus_records()
 
     app.dependency_overrides[get_operational_records] = lambda: records
@@ -79,7 +97,7 @@ def main() -> None:
     try:
         with (
             TestClient(app) as client,
-            client.stream("POST", "/investigations", json={"incident_id": INCIDENT}) as response,
+            client.stream("POST", "/investigations", json={"incident_id": incident}) as response,
         ):
             response.raise_for_status()
             events = [line for line in response.iter_lines() if line.strip()]
@@ -88,11 +106,11 @@ def main() -> None:
         app.dependency_overrides.pop(get_service, None)
         app.dependency_overrides.pop(get_model, None)
 
-    print(f"incident:     {INCIDENT}")
+    print(f"incident:     {incident}")
     print(f"deployment:   {model.deployment}")
     print(f"stream events: {len(events)}")
     print(f"model calls:  {len(model._interactions)}")
-    print(f"wrote {CASSETTE.relative_to(REPO_ROOT)}")
+    print(f"wrote {cassette.relative_to(REPO_ROOT)}")
 
 
 if __name__ == "__main__":

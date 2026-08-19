@@ -28,21 +28,22 @@ from opspilot.llm.cassette import ReplayChatModel
 from opspilot.record.memory import InMemoryCompletedInvestigations
 from opspilot.tools.service import ToolService
 
-CASSETTE = Path(__file__).resolve().parents[1] / "eval" / "cassettes" / "investigation.json"
 # The incident the cassette was recorded against. Replay keys off the messages, so a different one
 # would build different prompts and miss rather than quietly replay the wrong answer.
 INCIDENT = "inc-005"
+# The second recorded incident, taken in the same session against the same deployment.
+SECOND_INCIDENT = "inc-004"
 
 
-@pytest.fixture
-def replayed() -> tuple[list[dict], InMemoryCompletedInvestigations]:
-    """The streamed events of one replayed investigation, and the record it wrote.
+def _replay(incident: str) -> tuple[list[dict], InMemoryCompletedInvestigations]:
+    """Replay one recorded investigation and return its streamed events and the record it wrote.
 
-    Everything is built per test: the cassette is re-read, the corpus fake rebuilt, and the
+    Everything is built per call: the cassette is re-read, the corpus fake rebuilt, and the
     overrides installed and removed here rather than at import, so no sibling module's
     `dependency_overrides.clear()` can disarm them depending on collection order.
     """
-    model = ReplayChatModel(CASSETTE)
+    cassette = Path(__file__).resolve().parents[1] / "eval" / "cassettes" / f"{incident}.json"
+    model = ReplayChatModel(cassette)
     records = corpus_records()
     record = InMemoryCompletedInvestigations()
     app.dependency_overrides[get_operational_records] = lambda: records
@@ -51,12 +52,23 @@ def replayed() -> tuple[list[dict], InMemoryCompletedInvestigations]:
     app.dependency_overrides[get_record] = lambda: record
     try:
         with TestClient(app) as client:
-            with client.stream("POST", "/investigations", json={"incident_id": INCIDENT}) as resp:
+            with client.stream("POST", "/investigations", json={"incident_id": incident}) as resp:
                 assert resp.status_code == 200
                 events = [json.loads(line) for line in resp.iter_lines() if line.strip()]
         return events, record
     finally:
         app.dependency_overrides.clear()
+
+
+@pytest.fixture
+def replayed() -> tuple[list[dict], InMemoryCompletedInvestigations]:
+    return _replay(INCIDENT)
+
+
+@pytest.fixture
+def ambiguous() -> tuple[list[dict], InMemoryCompletedInvestigations]:
+    """The second recording. Its first pass was expected to be the one that could not close."""
+    return _replay(SECOND_INCIDENT)
 
 
 def _references_in(node: object) -> set[str]:
@@ -158,3 +170,60 @@ def test_the_stream_carries_no_prompt_or_hidden_reasoning(replayed):
     )
     assert "You are the" not in feed
     assert "Rules you must follow" not in feed
+
+
+# --- the one return, on responses a model really produced -----------------------------------------
+def test_a_real_model_asked_for_more_and_code_granted_it(replayed):
+    """The return is not a scripted arrangement. On this recording the analyst named something it
+    could not settle and the kind of evidence that would settle it; deterministic code checked the
+    bound, the vocabulary, and the budget, and sent gathering back for it.
+
+    Asserted on the feed rather than on internal state, because the return is a thing the engineer
+    watching the investigation is supposed to be able to see happen.
+    """
+    events, _ = replayed
+
+    returns = [e for e in events if e.get("action") == "returned to gathering"]
+    assert len(returns) == 1, f"expected exactly one return, saw {len(returns)}"
+
+    order = [e.get("action") for e in events]
+    assert order.index("returned to gathering") < len(order) - 1, "the return was the last thing"
+    assert order.count("assessment proposed") == 2, "synthesis did not run again after the return"
+    assert events[-1]["failure"] is None
+    assert events[-1]["brief"]["text"].strip()
+
+
+def test_the_return_did_not_widen_anything(replayed):
+    """A returned run is still a bounded run. The resumed gathering spends the same caps, so the
+    recording must not show more capability calls than the cap allows."""
+    events, record = replayed
+    from opspilot import config
+
+    saved = record.get(events[0]["investigation_id"])
+    assert saved is not None
+    assert len([e for e in events if e.get("capability")]) <= config.CAPABILITY_CALL_CAP
+
+
+def test_the_second_recording_also_reaches_a_brief_without_returning(ambiguous):
+    """Kept as taken rather than re-rolled. This incident was expected to be the one whose first
+    pass could not close, and on this deployment its analyst asked for nothing further and closed
+    on what it had. That is the honest counterpart to the recording above: the return is available
+    and conditional, not a stage every investigation passes through.
+    """
+    events, _ = ambiguous
+
+    assert events[-1]["event_type"] == "terminal"
+    assert events[-1]["failure"] is None
+    assert events[-1]["brief"]["text"].strip()
+    assert not [e for e in events if e.get("action") == "returned to gathering"]
+
+
+def test_every_reference_the_second_brief_carries_was_admitted_too(ambiguous):
+    """The grounding property holds on the second recording as well, so it is a property of the
+    run rather than of the one response that happened to be recorded first."""
+    events, _ = ambiguous
+
+    admitted = {ref for event in events for ref in event.get("references", [])}
+    assert admitted
+    for reference in _references_in(events[-1]["brief"]):
+        assert reference in admitted, f"{reference} reached the brief without being admitted"

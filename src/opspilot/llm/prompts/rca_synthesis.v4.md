@@ -31,7 +31,7 @@ Return a single JSON object and nothing else.
   "knowledge_used": ["knowledge references that informed this assessment"],
   "unresolved_question": {
     "question": "what remains unanswered",
-    "evidence_kind": "the kind of evidence that could answer it"
+    "evidence_kind": "one of the evidence kinds named in your material, written exactly"
   }
 }
 ```
@@ -70,5 +70,9 @@ Rules you must follow:
 - Where the evidence supports it, state affirmatively that no immediate action is required as an
   `actions` entry of its own with `now` set. Never leave that to be inferred from an empty list.
 - Omit `unresolved_question` unless something material remains unanswered. Where you include it,
-  state the same matter in `unknowns` as well, so the assessment stands on its own.
+  state the same matter in `unknowns` as well, so the assessment stands on its own. It is a
+  request, not a decision: naming one does not hold your assessment open, and the investigation
+  may or may not be sent back for it.
+- `evidence_kind` must be one of the kinds your material lists, copied exactly. A kind written any
+  other way names nothing that can be gone and got, so the question stands as an unknown instead.
 - Omit any field the evidence does not support rather than inventing content for it.

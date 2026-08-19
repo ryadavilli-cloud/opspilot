@@ -403,3 +403,205 @@ def test_a_run_with_almost_no_time_left_passes_almost_none_of_it_on(incident):
     run(incident, model, service=service, prepare=nearly_expired)
 
     assert service.deadlines and all(r is not None and r <= 0.5 for r in service.deadlines)
+
+
+# --- the one return ------------------------------------------------------------------------------
+# Analysis may ask for more, and only code decides whether it gets it. Each condition is stated
+# separately, because a return granted for the wrong reason and a return refused for the wrong
+# reason look identical from outside: both are one run that ended.
+LOGS = {"capability": "query_logs", "arguments": {"service": "checkout-api"}}
+RETURN_QUESTION = "what did checkout-api log at the onset"
+ASKED_IN_THE_FIRST_PASS = "which alerts correlate with this incident"
+
+
+class SeenModel(ScriptedModel):
+    """A scripted model that keeps what it was asked, for the one test about seeding."""
+
+    def __init__(self, **by_task: list[str]) -> None:
+        super().__init__(**by_task)
+        self.seen: list[tuple[str, str]] = []
+
+    def complete(self, task: str, messages: list[Any]) -> ChatResult:
+        self.seen.append((task, " ".join(str(m.content) for m in messages)))
+        return super().complete(task, messages)
+
+
+def _logs_action(question: str = RETURN_QUESTION) -> str:
+    return json.dumps({**LOGS, "question": question})
+
+
+def _asking(reference: str, *, kind: str = "log_event", question: str = RETURN_QUESTION) -> str:
+    """An assessment that grounds on its own and still names something it could not settle."""
+    return _assessment(unresolved_question={"question": question, "evidence_kind": kind}).replace(
+        "REF", reference
+    )
+
+
+@pytest.fixture
+def reference(incident, records) -> str:
+    """The reference admission assigns the alerts observation, learned by running for it.
+
+    The same two-pass shape the end-to-end tests use: an assessment can only ground on a reference
+    this run really admitted, and only the run knows what that is.
+    """
+    model = ScriptedModel(evidence_selection=[_action(), _finished()])
+    first, _ = run(incident, model, service=ToolService(records))
+    return _admitted_ref(first)
+
+
+def _returning(reference: str, *, model_class: type = ScriptedModel, **asking: Any) -> Any:
+    """Gather, ask for more, gather again, settle. The plan a return is supposed to produce."""
+    return model_class(
+        investigation_objective=['{"objective": "establish why checkout latency rose"}'],
+        evidence_selection=[_action(), _finished(), _logs_action(), _finished()],
+        rca_synthesis=[
+            _asking(reference, **asking),
+            _assessment().replace("REF", reference),
+        ],
+    )
+
+
+def test_analysis_can_send_the_investigation_back_to_gather_once(incident, records, reference):
+    """The designed feedback loop. The analyst names what it could not settle and the kind of
+    evidence that would settle it; the Supervisor authorizes, and gathering resumes."""
+    model = _returning(reference)
+
+    final, _ = run(incident, model, service=ToolService(records))
+
+    assert final["bounds"].return_used, "the return was never authorized"
+    assert model.count("rca_synthesis") == 2, "synthesis did not run again after the return"
+    assert "returned to gathering" in [e.action for e in final["events"]]
+    assert final.get("failure") is None
+
+
+def test_the_question_reaches_the_investigator(incident, records, reference):
+    """Seeded, not merely recorded. The point of a return is that gathering resumes on the thing
+    analysis could not settle, which means the investigator has to be told what that was."""
+    model = _returning(reference, model_class=SeenModel)
+
+    run(incident, model, service=ToolService(records))
+
+    selections = [text for task, text in model.seen if task == "evidence_selection"]
+    assert not any(RETURN_QUESTION in text for text in selections[:2]), (
+        "the question appeared before analysis had asked for it"
+    )
+    assert any(RETURN_QUESTION in text for text in selections[2:]), (
+        "gathering resumed without being told what it was resumed for"
+    )
+
+
+def test_the_return_happens_at_most_once(incident, records, reference):
+    """`return_used` is spent by the first return, so a second request is not granted however the
+    analyst words it. Without this the two roles could hand work back and forth until a bound
+    stopped them, which is the general loop the design does not have."""
+    model = ScriptedModel(
+        investigation_objective=['{"objective": "establish why checkout latency rose"}'],
+        evidence_selection=[_action(), _finished(), _logs_action(), _finished()],
+        # The second request is a fresh question with a kind a capability supplies, so every
+        # condition except the spent bound would authorize it. Only `return_used` can refuse this.
+        rca_synthesis=[
+            _asking(reference),
+            _asking(reference, question="and what did the metrics show at the onset"),
+        ],
+    )
+
+    final, _ = run(incident, model, service=ToolService(records))
+
+    assert final.get("failure") is None
+    assert model.count("rca_synthesis") == 2, "a second return re-entered gathering"
+
+
+def test_a_question_no_capability_can_answer_is_not_authorized(incident, records, reference):
+    """The evidence kind is a membership test against what the proposable capabilities supply. A
+    kind nothing produces cannot be gone and got, so the matter stands as an unknown rather than
+    spending a pass that could only come back empty."""
+    model = _returning(reference, kind="a signed statement from the vendor")
+
+    final, _ = run(incident, model, service=ToolService(records))
+
+    assert not final["bounds"].return_used
+    assert model.count("rca_synthesis") == 1
+    assert "returned to gathering" not in [e.action for e in final["events"]]
+
+
+def test_a_request_naming_no_evidence_kind_is_not_authorized(incident, records, reference):
+    """The field is optional and a half-filled one is not a request. Treating a blank kind as
+    permission would make the return the default rather than the exception."""
+    model = _returning(reference, kind="")
+
+    final, _ = run(incident, model, service=ToolService(records))
+
+    assert not final["bounds"].return_used
+
+
+def test_a_question_this_run_already_answered_is_not_authorized(incident, records, reference):
+    """The same membership test gathering itself uses. A return is a step like any other, so a
+    question this run already put does not become askable again by arriving from the analyst."""
+    model = _returning(reference, question=ASKED_IN_THE_FIRST_PASS)
+
+    final, _ = run(incident, model, service=ToolService(records))
+
+    assert not final["bounds"].return_used
+
+
+def test_a_return_is_refused_when_the_model_budget_cannot_afford_what_follows(
+    incident, records, reference
+):
+    """Costed before it is granted. A return needs a proposal, a second synthesis, and the
+    correction that synthesis may still need; granting one without room for all three would end a
+    run that already held a usable assessment as a failed execution instead."""
+    model = _returning(reference)
+
+    def nearly_spent(state):
+        state.bounds.model_calls = 4
+
+    final, _ = run(incident, model, service=ToolService(records), prepare=nearly_spent)
+
+    assert not final["bounds"].return_used
+    assert final.get("failure") is None, "refusing the return cost the run its assessment"
+
+
+def test_a_return_is_refused_when_the_capability_cap_is_spent(incident, records, reference):
+    """Resuming gathering with no capability call left would spend a model call reaching a
+    proposal that nothing could execute."""
+    model = _returning(reference)
+
+    def one_call_only(state):
+        state.bounds.capability_calls = 1
+
+    final, _ = run(incident, model, service=ToolService(records), prepare=one_call_only)
+
+    assert not final["bounds"].return_used
+
+
+def test_the_resumed_gathering_is_bounded_like_any_other(incident, records, reference):
+    """The return reopens gathering, not the bounds. What it asks for is spent from the same caps,
+    so a run that returns cannot make more calls than one that does not."""
+    model = _returning(reference)
+
+    final, _ = run(incident, model, service=ToolService(records))
+
+    assert final["capability_calls_made"] <= final["bounds"].capability_calls
+    assert final["model_calls_made"] <= final["bounds"].model_calls
+
+
+def test_the_question_does_not_outlive_the_step_it_was_seeded_into(incident, records, reference):
+    """Seeded, then spent. If the investigator proposes something else, the question is not
+    re-seeded on the next step, which would be a second return by another name."""
+    model = _returning(reference)
+
+    final, _ = run(incident, model, service=ToolService(records))
+
+    assert final["open_question"] == ""
+
+
+def test_a_refused_return_leaves_the_assessment_untouched(incident, records, reference):
+    """When the return is unavailable the edge is not followed and nothing is edited: the
+    assessment the analyst proposed is the one that is grounded and delivered."""
+    model = _returning(reference, kind="nothing any capability supplies")
+
+    final, _ = run(incident, model, service=ToolService(records))
+
+    assert final.get("failure") is None
+    assert final["assessment"].candidates
+    assert final["outcome"] is Outcome.COMPLETE
