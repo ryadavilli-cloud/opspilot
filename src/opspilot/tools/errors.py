@@ -11,8 +11,9 @@ in the capability that queried it.
 declares what it takes; the decorator checks and coerces what a caller supplied against those
 annotations, and a mismatch, a missing argument, or an unknown one raises before the body runs. A
 capability therefore has no request model of its own: its parameter list is the contract. Only
-that check can reject: a record the capability could not build from a row it read is a defect
-here, not a bad request.
+that check can reject. Anything that goes wrong after it is `failed`, whether the stored row
+would not normalize or this package has a defect, because neither is answerable by asking
+differently.
 
 The completeness axis is assigned here too, and only for a successful run: capped results are
 `partial` because the unseen remainder could change the picture, no results at all is `empty`
@@ -33,10 +34,10 @@ from opspilot.data.structured_query import QueryRejected
 from opspilot.obs.tracing import span
 from opspilot.tools.contracts import (
     MAX_RESULTS,
+    CapabilityDefect,
     Completeness,
     ExecutionOutcome,
     RequestRejected,
-    SourceRowMismatch,
     ToolMetadata,
     ToolResult,
 )
@@ -50,11 +51,16 @@ _check_arguments = validate_call(config=ConfigDict(arbitrary_types_allowed=True)
 def validated[**P, R](implementation: Callable[P, R]) -> Callable[P, R]:
     """Turn a capability's typed parameters into its request validation.
 
-    It also fixes where a validation failure came from, which the exception type alone cannot say.
+    It also fixes *where* a validation failure happened, which the exception type alone cannot say.
     The arguments are checked before the body is entered, so anything pydantic raises once inside
-    is about stored data rather than about the request, and is re-raised as such. Doing it here
-    rather than by inspecting the error keeps the two apart structurally, and holds for concurrent
-    investigations because nothing is remembered between calls.
+    is a failure of this capability rather than of the request, and is re-raised as that. Splitting
+    them by position rather than by inspecting the error keeps them apart structurally, and holds
+    for concurrent investigations because nothing is remembered between calls.
+
+    Where, not why: the body is where a stored row is normalized, and it is also where a mistake in
+    this package would surface. Both are `failed` and neither is the caller's to fix, so the type
+    does not choose between them. The message carries the capability and the model that refused, so
+    a reader can tell a corrupt row from a defect without the exception having asserted either.
     """
 
     @functools.wraps(implementation)
@@ -62,7 +68,7 @@ def validated[**P, R](implementation: Callable[P, R]) -> Callable[P, R]:
         try:
             return implementation(*args, **kwargs)
         except ValidationError as exc:
-            raise SourceRowMismatch(implementation.__name__) from exc
+            raise CapabilityDefect(f"{implementation.__name__}: {exc.title}") from exc
 
     return _check_arguments(body)
 
@@ -150,9 +156,10 @@ def run_tool[T](
             # capability was asked stays open rather than reading as a defect in the code that
             # asked it. The provider's own message never travels with it.
             return _fail(sp, tool_name, "source unavailable", started, ExecutionOutcome.UNAVAILABLE)
-        except SourceRowMismatch:
-            # The source answered and the row did not fit this capability's record. Neither the
-            # request nor the source's availability was at fault, so it is a defect to fix here.
+        except CapabilityDefect:
+            # The arguments were accepted and the capability could not produce its record anyway.
+            # Neither the request nor the source's availability was at fault, so it is something to
+            # fix here rather than something to ask differently.
             return _fail(sp, tool_name, "internal tool error", started, ExecutionOutcome.FAILED)
         except Exception:  # noqa: BLE001 — no exception may cross the tool boundary
             return _fail(sp, tool_name, "internal tool error", started, ExecutionOutcome.FAILED)

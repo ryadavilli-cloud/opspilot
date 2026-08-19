@@ -14,7 +14,8 @@ import pytest
 from fake_operational_records import FakeContainer, corpus_container, corpus_documents
 
 from opspilot.data.operational_records import OperationalRecords, SourceUnavailable
-from opspilot.tools.contracts import Completeness, ExecutionOutcome
+from opspilot.tools.contracts import CapabilityDefect, Completeness, ExecutionOutcome
+from opspilot.tools.incidents import get_incident
 from opspilot.tools.service import ToolService
 
 DEADLINE = 4.5
@@ -320,6 +321,18 @@ def test_an_answer_that_does_not_fit_the_contract_is_a_failure():
     result = service.call("get_incident", incident_id="inc-004")
 
     assert result.outcome is ExecutionOutcome.FAILED
+
+
+def test_a_failure_after_the_arguments_were_accepted_says_where_not_why():
+    """`failed` covers a row that would not normalize and a defect in this package alike, because
+    neither is answerable by asking differently. The type does not choose between them; the message
+    names the capability and the model that refused, so a traceback stays honest about what it
+    established. Asserted because a type that claimed corrupt source data for both would send
+    someone to inspect a corpus that was fine."""
+    with pytest.raises(CapabilityDefect) as raised:
+        get_incident(OperationalRecords(_malformed_container()), DEADLINE, incident_id="inc-004")
+
+    assert str(raised.value) == "get_incident: IncidentRecord"
 
 
 def test_no_provider_detail_leaves_the_boundary():

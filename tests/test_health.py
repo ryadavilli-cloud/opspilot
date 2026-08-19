@@ -73,13 +73,21 @@ def test_a_seeded_reachable_deployment_is_ready(client):
     assert body["errors"] is None
 
 
-def test_readiness_costs_one_read_and_no_retrieval(client, service):
-    """The reason this probe was narrowed. Embedding a query here would repeat a model-serving
-    call every few seconds for the life of the revision, and would report an application as not
-    ready when it was the embedding endpoint that was rate limited."""
+def test_readiness_never_reaches_the_investigative_path(client, service):
+    """The invariant this probe was narrowed to hold: cheap deterministic checks only, and nothing
+    that exercises end-to-end behavior. Embedding a query here would repeat a model-serving call
+    every few seconds for the life of the revision, and would report the application as not ready
+    when it was the embedding endpoint that was rate limited.
+
+    Stated as which capabilities must not be reached rather than as a call count. A later readiness
+    check may legitimately need a second cheap read; what it may never do is search, embed, or
+    invoke a model.
+    """
     client.get("/health/ready")
 
-    assert service.called == ["get_incident"]
+    assert "search_runbooks" not in service.called
+    assert "query_logs" not in service.called
+    assert service.called, "the probe read nothing at all, so it proves nothing about the source"
 
 
 def test_an_unreachable_source_is_not_ready(client):
