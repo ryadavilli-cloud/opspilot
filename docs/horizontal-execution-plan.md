@@ -103,8 +103,9 @@ that existed to install that dependency are absent.
 
 The deployed application runs this code and reaches the knowledge container through it. The
 ordering itself was proven against the authored corpus rather than hosted, because no route returns
-retrieval results for a hosted call to inspect; that becomes observable when the Evidence
-Investigator can propose retrieval inside an investigation.
+retrieval results for a hosted call to inspect. It is observable now that the Evidence Investigator
+proposes retrieval inside an investigation: a recorded run of the recurrence consults the runbooks
+and the assessment cites what it read.
 
 **Builds.** The final retrieval behavior over the knowledge container: embed the question, vector
 search plus the in-process lexical pass over the same category-filtered candidates, reciprocal-rank
@@ -277,6 +278,12 @@ need. It is demonstrated on a recorded real model rather than on a predicted inc
 which incident a model finds unsettled is the model's to decide. Spending `return_used` sets a
 field on nested state in place, as the one correction already does; that is the pattern to stop at
 rather than extend, and the graph is not to be restructured to avoid the one that exists.
+
+Each capability says what it answers, on itself, and the offering the investigator chooses from is
+rendered from that alongside the arguments it already carried. The investigator is told how many
+calls it has left, which the runtime always claimed it could see and could not: without it a run
+spent its budget as though calls were free and ended at the cap rather than when it had enough. The
+analyst is shown the passages the run retrieved, and names the guidance that shaped an action.
 
 Every registered capability is proposable, and the separate list of proposable ones is gone rather
 than maintained beside an identical inventory. Retrieved passages are held beside the evidence set,
