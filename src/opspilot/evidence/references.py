@@ -43,12 +43,10 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from enum import StrEnum
-from pathlib import Path
 from types import MappingProxyType
 from typing import Any
 
 from opspilot import config
-from opspilot.config import KB_DIR
 from opspilot.data.operational_records import OperationalRecords
 
 
@@ -85,10 +83,6 @@ RETIRED_PREFIXES: Mapping[str, str] = MappingProxyType({"past_incident": "postmo
 # contained nothing, the other an aggregate over a scope. Both resolve against what admission
 # recorded in this investigation rather than against a source.
 _OPERATION_BACKED = frozenset({"absence", "query"})
-
-_KNOWLEDGE_DIRS: Mapping[str, str] = MappingProxyType(
-    {"runbook": "runbooks", "architecture": "architecture", "postmortem": "postmortems"}
-)
 
 
 class ReferenceError(ValueError):
@@ -253,16 +247,17 @@ class ReferenceResolver:
     def __init__(
         self,
         records: OperationalRecords,
-        kb_dir: Path | str | None = None,
         *,
         deadline_s: float | None = None,
         observations: Iterable[Any] = (),
+        knowledge: Iterable[Any] = (),
     ) -> None:
         self._records = records
         # Indexed by the reference admission assigned. Duck-typed rather than importing the
         # admission contract, which imports this module.
         self._admitted: set[str] = {str(getattr(obs, "evidence_ref", "")) for obs in observations}
-        self._kb_dir = Path(kb_dir) if kb_dir is not None else KB_DIR
+        # The passages this investigation retrieved, indexed the same way and for the same reason.
+        self._knowledge: set[str] = {str(getattr(p, "reference", "")) for p in knowledge}
         self._deadline_s = deadline_s if deadline_s is not None else config.SOURCE_DEADLINE_SECONDS
         self._logs: dict[str, set[str]] = {}
         self._deploys: dict[str, set[str]] = {}
@@ -324,12 +319,17 @@ class ReferenceResolver:
         return False
 
     def _resolve_knowledge(self, ref: Reference) -> bool:
-        directory = self._kb_dir / _KNOWLEDGE_DIRS[ref.prefix]
-        identifier = ref.identifier or ""
-        if (directory / f"{identifier}.md").exists():
-            return True
-        # A postmortem is filed as `<incident_id>-<slug>.md`, so its reference resolves by prefix.
-        return bool(identifier and sorted(directory.glob(f"{identifier}-*.md")))
+        """Whether this investigation retrieved the passage the reference names.
+
+        A membership test over what the run actually retrieved, not a search for an authored file.
+        The two are different questions and only this one is answerable here: the knowledge the
+        runtime searches lives in the knowledge container, the runtime image ships no corpus, and a
+        reference is trustworthy because a retrieval in this run produced it rather than because a
+        document exists somewhere. Reading a completed record answers it the same way, from the
+        passages that record carries. Whether every authored file exists and every reference inside
+        it closes is a corpus-preparation question, offline and separate from any run.
+        """
+        return ref.raw in self._knowledge
 
     def resolves(self, raw: str | Reference) -> bool:
         """Whether a reference names something real. A malformed reference does not, by definition,

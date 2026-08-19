@@ -18,6 +18,7 @@ import time
 from typing import Any
 
 import pytest
+from fake_knowledge import knowledge_retriever
 from fake_operational_records import corpus_records
 
 from opspilot import config
@@ -28,6 +29,7 @@ from opspilot.investigation.state import FailureCategory
 from opspilot.llm.base import ChatResult
 from opspilot.record.memory import InMemoryCompletedInvestigations
 from opspilot.record.port import AlreadySaved
+from opspilot.retrieval.retriever import Passage
 from opspilot.tools.contracts import ExecutionOutcome, IncidentRecord
 from opspilot.tools.errors import error_result
 from opspilot.tools.service import ToolService
@@ -326,6 +328,84 @@ def test_a_deadline_that_expires_before_synthesis_is_a_failed_execution(incident
 
     assert final["failure"] is FailureCategory.DEADLINE_EXPIRED
     assert record.get("inv-1") is None
+
+
+# --- what retrieval is, once a run can reach it -------------------------------------------------
+_RUNBOOK_SEARCH = json.dumps(
+    {
+        "capability": "search_runbooks",
+        "arguments": {"query": "payment authorizations timing out"},
+        "question": "does a runbook describe this failure",
+    }
+)
+
+
+def _knowledge_service(records):
+    return ToolService(records, retriever_factory=knowledge_retriever)
+
+
+def test_a_retrieved_passage_joins_the_knowledge_set_and_never_the_evidence_set(incident, records):
+    """The separation the grounding gate depends on. A passage is what someone wrote down before
+    this incident, so no amount of retrieval can make it an observation about the system now."""
+    model = ScriptedModel(
+        evidence_selection=[_RUNBOOK_SEARCH, _finished()], rca_synthesis=[_assessment()]
+    )
+    final, _ = run(incident, model, service=_knowledge_service(records))
+
+    assert final["knowledge"], "the run retrieved nothing, so the assertion would be vacuous"
+    assert all(isinstance(passage, Passage) for passage in final["knowledge"])
+    assert final["evidence"].observations == []
+
+
+def test_a_retrieval_still_records_the_operation_it_attempted(incident, records):
+    """Its passages stay out of the evidence set; the call itself does not. The operations list is
+    every operation attempted, and it is what an account of the run is checked against."""
+    model = ScriptedModel(
+        evidence_selection=[_RUNBOOK_SEARCH, _finished()], rca_synthesis=[_assessment()]
+    )
+    final, _ = run(incident, model, service=_knowledge_service(records))
+
+    assert [op.capability for op in final["evidence"].operations] == ["search_runbooks"]
+    assert final["capability_calls_made"] == 1
+
+
+def test_a_retrieval_that_cannot_reach_its_source_becomes_a_limitation(incident, records):
+    """The other axis retrieval touches. A search that did not answer leaves its question open
+    rather than passing silently, which would read as knowledge consulted and found wanting."""
+    model = ScriptedModel(
+        evidence_selection=[_RUNBOOK_SEARCH, _finished()], rca_synthesis=[_assessment()]
+    )
+    service = ToolService(records, retriever_factory=lambda: knowledge_retriever(unreachable=True))
+    final, _ = run(incident, model, service=service)
+
+    assert final["knowledge"] == []
+    assert [lim.capability for lim in final["evidence"].limitations] == ["search_runbooks"]
+
+
+# --- two incidents, two paths -------------------------------------------------------------------
+def test_two_incidents_take_the_paths_their_investigators_chose(records):
+    """What a fixed evidence sequence could not do. The graph carries whichever path is proposed,
+    so two runs that propose differently execute differently and both still reach a terminal
+    record. The paths here are scripted because this is the deterministic lane: what is being
+    shown is that the runtime follows the proposal, not that a model varies."""
+    paths = {}
+    for incident_id, script in (
+        ("inc-005", [_action(), _finished()]),
+        ("inc-007", [_RUNBOOK_SEARCH, _action(), _finished()]),
+    ):
+        model = ScriptedModel(evidence_selection=script, rca_synthesis=[_assessment()])
+        record = InMemoryCompletedInvestigations()
+        final, _ = run(
+            IncidentRecord(**records.incident(incident_id, deadline_s=10)),
+            model,
+            service=_knowledge_service(records),
+            record=record,
+        )
+        paths[incident_id] = [op.capability for op in final["evidence"].operations]
+        assert final["outcome"] is not None or final["failure"] is not None
+
+    assert paths["inc-005"] != paths["inc-007"], f"the two runs executed the same path: {paths}"
+    assert paths["inc-005"] and paths["inc-007"]
 
 
 # --- the outcome follows the evidence, not the model --------------------------------------------

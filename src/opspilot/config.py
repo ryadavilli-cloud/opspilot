@@ -140,7 +140,11 @@ INVESTIGATION_DEADLINE_SECONDS = _env_float("OPSPILOT_INVESTIGATION_DEADLINE_SEC
 # Retrieval counts against this like any other call, so it bounds what one investigation may look
 # at in total rather than allowing so much per source.
 CAPABILITY_CALL_CAP = _env_int("OPSPILOT_CAPABILITY_CALL_CAP", 8)
-# Objective, one selection call per gathering step, synthesis, and at most one correction.
+# Objective, one selection call per gathering step, synthesis, and at most one correction. A
+# run that is sent back once spends more of all three: the resumed gathering makes further
+# selection calls, synthesis runs a second time, and that second assessment may still need the
+# correction. The reserve the graph holds back is what keeps those reachable, so this number is
+# the ceiling on everything a returned run costs rather than on a single pass.
 MODEL_CALL_CAP = _env_int("OPSPILOT_MODEL_CALL_CAP", 14)
 
 

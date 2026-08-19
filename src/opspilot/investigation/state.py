@@ -20,9 +20,11 @@ from dataclasses import dataclass, field
 from enum import StrEnum
 
 from opspilot.assessment.contracts import Assessment, Outcome
+from opspilot.assessment.synthesis import UnresolvedQuestion
 from opspilot.evidence.operations import EvidenceSet
 from opspilot.grounding.gate import Issue
 from opspilot.intake.contracts import NormalizedIncidentContext
+from opspilot.retrieval.retriever import Passage
 from opspilot.stream.contracts import ActivityEvent
 
 
@@ -82,18 +84,31 @@ class InvestigationState:
     query whose answer it already holds, since admission correctly declines to admit the same
     observation twice. Same capability, same arguments, same answer: that is the same question
     however it is worded.
+
+    `knowledge` sits beside `evidence` rather than inside it, and the separation is the point. A
+    passage is what someone wrote down before this incident; an observation is what a source
+    reported about it. Retrieval never passes through admission, so a passage cannot become an
+    observation, and holding the two apart is what lets the grounding gate refuse a knowledge
+    reference offered as current operational support. A retrieval still leaves its mark on the
+    evidence set, though, on the two axes that are about the call rather than its content: the
+    operation it attempted, and the limitation it becomes when it does not answer.
     """
 
     investigation_id: str
     incident: NormalizedIncidentContext
     bounds: Bounds
     evidence: EvidenceSet
+    knowledge: list[Passage] = field(default_factory=list)
     objective: str = ""
     answered_questions: set[str] = field(default_factory=set)
     executed_calls: set[str] = field(default_factory=set)
     capability_calls_made: int = 0
     model_calls_made: int = 0
     assessment: Assessment | None = None
+    # Routing metadata from the last synthesis, read only by the supervisor deciding the one
+    # return. It is never part of the assessment and never reaches the engineer.
+    unresolved: UnresolvedQuestion | None = None
+    pursuing: str = ""
     issues: list[Issue] = field(default_factory=list)
     outcome: Outcome | None = None
     stopped_because: str = ""
@@ -106,6 +121,11 @@ class InvestigationState:
     events: list[ActivityEvent] = field(default_factory=list)
     model_deployment: str = ""
     prompt_versions: dict[str, str] = field(default_factory=dict)
+
+    @property
+    def knowledge_refs(self) -> set[str]:
+        """What the run retrieved, as the gate reads it: knowledge, never operational support."""
+        return {passage.reference for passage in self.knowledge}
 
     @property
     def capability_budget_left(self) -> bool:

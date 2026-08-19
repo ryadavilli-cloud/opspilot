@@ -10,8 +10,10 @@ Only the model is live, and it is reached the way the deployed application reach
 Azure adapter, against the chat deployment the application calls. That is the point of the
 recording. A response taken through any other client would certify a serving path the application
 never takes, and two endpoints answering to the same model name are still two endpoints. The
-operational records come from the authored corpus fake, so nothing else here touches a deployed
-resource.
+operational records and the knowledge the run searches both come from the authored corpus, so
+nothing else here touches a deployed resource. Both are needed: a run recorded without a knowledge
+backend captures the investigator reaching for retrieval and being told it is unavailable, which is
+a recording of the wrong thing.
 
 The cassette is invalidated by any change to the synthesis prompt, the evidence digest, or the
 evidence plan, because each of those moves the messages. That is loud rather than silent: replay
@@ -38,6 +40,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 # recorded messages identical to the ones replay will look up.
 sys.path.insert(0, str(REPO_ROOT / "tests"))
 
+from fake_knowledge import knowledge_retriever  # noqa: E402
 from fake_operational_records import corpus_records  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 
@@ -92,7 +95,9 @@ def main(argv: list[str] | None = None) -> None:
     records = corpus_records()
 
     app.dependency_overrides[get_operational_records] = lambda: records
-    app.dependency_overrides[get_service] = lambda: ToolService(records)
+    app.dependency_overrides[get_service] = lambda: ToolService(
+        records, retriever_factory=knowledge_retriever
+    )
     app.dependency_overrides[get_model] = lambda: model
     try:
         with (

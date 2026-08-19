@@ -257,7 +257,7 @@ base dependency, and the plural-turn persistence types are absent.
 
 ## H5. The three-agent graph and the runtime it replaces
 
-**State:** Partial.
+**State:** Complete.
 
 *Already present.* The graph, the three roles, the five bounds, deterministic authorization,
 grounding with one correction, the outcome rule, the failure categories, persist-before-deliver,
@@ -278,15 +278,24 @@ which incident a model finds unsettled is the model's to decide. Spending `retur
 field on nested state in place, as the one correction already does; that is the pattern to stop at
 rather than extend, and the graph is not to be restructured to avoid the one that exists.
 
-*Remaining.* One of this step's own builds, waiting on a capability it would have nothing to act on
-without: retrieval and the structured query are registered and not yet offered to the investigator.
-When retrieval does become proposable, a knowledge reference is real because this investigation
-retrieved the passage it names: the resolver decides that against the run's knowledge set, and
-against the passages the completed record carries when the record is what is being read. It does
-not decide it by looking for an authored file, because the runtime image ships no corpus and the
-knowledge the runtime searches lives in the knowledge container. Whether every authored file exists
-and every reference in it closes stays a corpus-preparation and closure concern, offline and
-separate.
+Every registered capability is proposable, and the separate list of proposable ones is gone rather
+than maintained beside an identical inventory. Retrieved passages are held beside the evidence set,
+never inside it, and reach both roles as context, the gate as its second reference set, and the
+completed record. A knowledge reference is real because this investigation retrieved the passage it
+names: the resolver decides that against the run's knowledge set, and against the passages the
+completed record carries when the record is what is being read, never by looking for an authored
+file, because the runtime image ships no corpus and the knowledge the runtime searches lives in the
+knowledge container. Whether every authored file exists and every reference in it closes stays a
+corpus-preparation and closure concern, offline and separate.
+
+The hosted effect is taken. The revision built from this landing serves the designed runtime, and
+one investigation of inc-005 against it gathered, synthesized, grounded, saved, and delivered a
+brief with an inconclusive outcome and no failure. What that run also shows is that the
+investigator works down the offering rather than selecting from it: the capability cap is spent
+before analysis is reached, neither retrieval capability is proposed, and two calls are refused at
+the boundary rather than executed. That is a selection problem and not a bound to raise; it is
+recorded in `status.md` as one finding and it is the charter of the step that makes retrieval
+influential, not a remaining build here.
 
 **Builds.** The designed runtime, and the removal of the one it supersedes. One small compiled
 in-process graph over typed investigation state, no checkpointer: set objective, gather with
