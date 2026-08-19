@@ -278,8 +278,10 @@ that against the run's knowledge set, and against the passages the completed rec
 the record is what is being read. It does not decide it by looking for an authored file, because
 the runtime image ships no corpus and the knowledge the runtime searches lives in the knowledge
 container. Whether every authored file exists and every reference in it closes stays a
-corpus-preparation and closure concern, offline and separate. Then the hosted effect: the
-deployed revision predates
+corpus-preparation and closure concern, offline and separate. Spending `return_used` will set a
+field on nested state in place, which is how the one correction is already spent; that is the
+pattern to stop at rather than extend, and the graph is not to be restructured to avoid the one
+that exists. Then the hosted effect: the deployed revision predates
 this landing.
 
 **Builds.** The designed runtime, and the removal of the one it supersedes. One small compiled

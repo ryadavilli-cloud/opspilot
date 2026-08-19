@@ -290,6 +290,11 @@ once more with the flag set; when the return is unavailable or spent, the edge i
 the assessment is not edited. The Evidence Investigator changes direction when evidence weakens
 its current explanation, and the activity feed shows the return. No general loop.
 
+*Implementation note.* Spending `return_used` sets a field on nested state in place, which is
+how the one correction is already spent. That is the pattern to stop at rather than extend: the
+return should not add further in-place edits to nested state, and the graph is not to be
+restructured today to avoid the one that exists.
+
 **Consumes.** The final graph runtime with its declared return edge, `return_used` bound, and
 structural admission of `unresolved_question`; the authored incident inc-004.
 
