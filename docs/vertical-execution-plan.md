@@ -433,7 +433,9 @@ enumeration, and the configured ceiling, so what it is told is what validation e
 run chose it unprompted. The separate list of capabilities a model may propose is gone: every
 registered capability is now eligible, so the registry's own inventory is the only one.
 
-*Remaining.* The hosted proof.
+*Remaining.* The hosted proof. The capability is proposed on the deployed revision, so the path
+is exercised there, but the structure the model offered did not validate and was refused at the
+boundary; a hosted run whose governed query actually executes has not been taken.
 
 **Builds.** The governed structured query as a capability the Evidence Investigator can propose: the
 model proposes a bounded structure of predicates, projection, optional count, and limit over one

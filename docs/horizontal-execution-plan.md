@@ -257,7 +257,7 @@ base dependency, and the plural-turn persistence types are absent.
 
 ## H5. The three-agent graph and the runtime it replaces
 
-**State:** Partial.
+**State:** Complete.
 
 *Already present.* The graph, the three roles, the five bounds, deterministic authorization,
 grounding with one correction, the outcome rule, the failure categories, persist-before-deliver,
@@ -288,13 +288,14 @@ file, because the runtime image ships no corpus and the knowledge the runtime se
 knowledge container. Whether every authored file exists and every reference in it closes stays a
 corpus-preparation and closure concern, offline and separate.
 
-*Remaining.* The hosted effect alone. The deployed revision predates this landing, and the return
-proof taken on it describes a revision that offered six capabilities rather than nine; what a
-hosted run of this tree does with the wider offering has not been taken. `status.md` records why
-that matters: the recorded runs spend the capability cap working down the offering, so the analyst's
-request to return is declined for lack of room and neither retrieval capability is reached. That is
-a selection problem rather than a bound to raise, and it is the charter of the step that makes
-retrieval influential, not a remaining build here.
+The hosted effect is taken. The revision built from this landing serves the designed runtime, and
+one investigation of inc-005 against it gathered, synthesized, grounded, saved, and delivered a
+brief with an inconclusive outcome and no failure. What that run also shows is that the
+investigator works down the offering rather than selecting from it: the capability cap is spent
+before analysis is reached, neither retrieval capability is proposed, and two calls are refused at
+the boundary rather than executed. That is a selection problem and not a bound to raise; it is
+recorded in `status.md` as one finding and it is the charter of the step that makes retrieval
+influential, not a remaining build here.
 
 **Builds.** The designed runtime, and the removal of the one it supersedes. One small compiled
 in-process graph over typed investigation state, no checkpointer: set objective, gather with

@@ -118,7 +118,7 @@ retained for the compiled graph and is not a retirement target.
 
 ## 7. Deployment state
 
-Last live-inspected 2026-08-19, at the revision built from the hardening landing. One Container App
+Last live-inspected 2026-08-19, at the revision built from this landing. One Container App
 and image from the Bicep template through the OIDC workflow; replicas 0-3; one chat and one
 embedding deployment; no Application Insights; the three containers are declared. The deployment
 workflow, including its post-deploy smoke run, passes against that revision.
@@ -127,7 +127,7 @@ Readiness answers there in its narrowed form: two checks, `operational_records` 
 both ok, with the backend reported as the configured one. The two probes before it timed out at the
 client while the scaled-to-zero application started, which is cold start rather than a slow check.
 
-One hosted investigation ran end to end against that revision, through the graph: inc-005, eleven
+One hosted investigation ran end to end against that revision, through the graph: inc-005, fourteen
 activity events, one terminal event carrying a brief and no failure. Because a failed gate spends
 the one correction and then fails the execution, a delivered brief is a grounded brief; and because
 the save runs before delivery, the record existed before the terminal event. The run reported an
@@ -142,11 +142,21 @@ inc-005 against it gathered six times, synthesized, was sent back for one furthe
 synthesized again, grounded, saved, and delivered, with the return carried in the feed as its own
 entry between the two assessments. The run reported an inconclusive outcome and no failure.
 
-That proof does not describe this tree. Nine capabilities are now proposable, and on both
-re-recorded runs gathering spends the cap before analysis is reached, so the analyst asks and the
-Supervisor declines for lack of room. The mechanism is unchanged and is proven in the deterministic
-lane, where the path can be held still; what a hosted run of this tree will do is the model's to
-decide, and it has not been taken.
+That proof describes a narrower offering than the tree now carries, so this tree was deployed and
+run in turn. The revision built from this landing is healthy, readiness answers on its two checks
+with Cosmos behind them, and one investigation of inc-005 gathered eight times, synthesized once,
+grounded without an issue, saved, and delivered a brief with an inconclusive outcome and no
+failure. The mechanism the earlier proof demonstrated is unchanged and is proven in the
+deterministic lane, where the path can be held still.
+
+What the hosted run shows about selection is the same thing the recordings show, on the deployed
+revision and against the real corpus. Gathering spent the capability cap and the next proposal was
+refused for it, so analysis was reached with nothing left to send back for and no return occurred.
+Neither retrieval capability was proposed, so the run cited no knowledge at all. Two of the eight
+calls were refused at the boundary rather than executed, one of them the structured query, whose
+structure did not validate against the approved surface; the refusals cost calls the run then did
+not have. That is the offering being worked through rather than selected from, and it is recorded
+above as one finding with one owner.
 
 Whether any given hosted run returns is the model's to decide: the same incident recorded locally
 returned, and the incident the plan predicted would return did not. The smoke run therefore proves
