@@ -44,6 +44,7 @@ from opspilot.tools.service import capability_arguments, structured_query_surfac
 OBJECTIVE_TASK = "investigation_objective"
 SELECTION_TASK = "evidence_selection"
 CORRECTION_TASK = "assessment_correction"
+QUESTION_TASK = "record_question"
 
 # What a further pass could actually obtain: the evidence kinds supplied by the capabilities the
 # investigator may propose. Derived from the two facts that already decide it, so a capability
@@ -353,12 +354,110 @@ def correct(
     return admit_assessment(parse_proposal(result.text)), result
 
 
+# --- the question over a completed record -------------------------------------------------------
+# The investigation is over. This is the Supervisor reading a closed record back to the engineer
+# who asked about it, in one call whose only context is that record. It gathers nothing, creates
+# nothing, and reaches no tool; what keeps it from concluding anything new is the constrained
+# context, the instruction, the structured references, and refusal, never code judging prose.
+@dataclass(frozen=True)
+class RecordAnswer:
+    """What the Supervisor said about a record, before code has checked it.
+
+    `references` are the record's own, as the model wrote them. `candidate_position` is a place in
+    the assessment's ordered candidate list, counting from one, and is absent unless the answer is
+    about one particular candidate. Both are checked by the caller: a citation the record does not
+    carry, or a position it does not have, replaces the answer rather than being repaired.
+    """
+
+    answer: str
+    references: tuple[str, ...] = ()
+    candidate_position: int | None = None
+
+
+def _record_digest(record: Any) -> str:
+    """The completed record as the only thing the answer may rest on.
+
+    Rendered from what the record carries rather than summarized, because a summary would be a
+    second reading of the investigation and the point of this call is that there is only one.
+    """
+    assessment = record.assessment
+    lines = [
+        f"Investigation: {record.investigation_id} over incident {record.incident_id}",
+        f"Objective: {record.objective}",
+        f"Outcome: {record.outcome.value}",
+        f"Gathering ended because: {record.stopped_because}",
+        "",
+        f"What happened: {assessment.what_happened}",
+        f"  resting on: {', '.join(assessment.what_happened_refs) or '(nothing)'}",
+        "",
+        "Candidates, in the order the assessment carries them:",
+    ]
+    for position, candidate in enumerate(assessment.candidates, start=1):
+        established = "established" if candidate.established else "not established"
+        lines.append(
+            f"  {position}. [{candidate.label.value}, {established}] {candidate.statement}"
+        )
+        lines.append(f"     supported by: {', '.join(candidate.supporting) or '(nothing)'}")
+        if candidate.weakening:
+            lines.append(f"     weakened by: {', '.join(candidate.weakening)}")
+    lines.extend(
+        [
+            "",
+            "Admitted observations:",
+            *(_observation_line(obs) for obs in record.observations),
+            "",
+            "Could not be established:",
+            *(f"- {limitation}" for limitation in record.limitations),
+            "",
+            knowledge_digest(record.passages),
+            "",
+            "What remains unknown:",
+            *(f"- {unknown}" for unknown in assessment.unknowns),
+            "",
+            # Stated as a plain list because this call is asked to cite exactly, and the lines
+            # above carry each reference alongside what it says. A reader told to quote a
+            # reference from those lines has to decide where the reference ends, and answers
+            # that quoted the whole line were refused for citing something the record does not
+            # carry, which was true of the string and false of the intent.
+            "The only references you may cite, each exactly as written here:",
+            *(f"- {reference}" for reference in sorted(record.evidence_refs)),
+        ]
+    )
+    return "\n".join(line for line in lines if line is not None)
+
+
+def answer_question(model: Any, record: Any, question: str) -> tuple[RecordAnswer, ChatResult]:
+    """The Supervisor's one call over a finished investigation.
+
+    Returns what the model said, unchecked. Whether every reference it cited is one the record
+    carries, and whether any position it named exists, is the caller's to decide and not this
+    function's to repair.
+    """
+    prompt = get_prompt("record_question")
+    user = "\n".join([_record_digest(record), "", f"The engineer asks: {question}"])
+    result = _ask(model, QUESTION_TASK, prompt, user)
+    payload = _json_object(result.text)
+
+    position = payload.get("candidate_position")
+    references = payload.get("references")
+    return RecordAnswer(
+        answer=str(payload.get("answer", "")).strip(),
+        references=tuple(str(ref).strip() for ref in references if str(ref).strip())
+        if isinstance(references, list)
+        else (),
+        candidate_position=position if isinstance(position, int) else None,
+    ), result
+
+
 __all__ = [
     "CORRECTION_TASK",
     "OBJECTIVE_TASK",
     "SELECTION_TASK",
     "ProposedAction",
+    "QUESTION_TASK",
+    "RecordAnswer",
     "UnusableProposal",
+    "answer_question",
     "correct",
     "evidence_digest",
     "interpret_objective",

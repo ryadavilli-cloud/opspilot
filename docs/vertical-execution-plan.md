@@ -480,14 +480,17 @@ exist, adapters take typed parameters, and the request models and superseded exp
 
 ## V7. Durable persistence and the question over the completed record
 
-**State:** Partial.
+**State:** Complete.
 
 *Already present.* The Cosmos implementation of the seam, over the declared container, keyed by
 `investigation_id`, one plain create per record, with the in-memory one still serving tests and
 both proven to store and return the same contents.
 
-*Remaining.* Selecting it for local and hosted runs, the read of a completed investigation by
-identifier as a request, the question over the record, and the question box on the screen.
+It is selected for local and hosted runs, through the factory beside it and with no setting
+choosing between the two; a completed investigation now outlives the process and the revision that
+wrote it. The read of a completed investigation by identifier and the question over the record both
+exist as requests, with every citation checked against the record and any candidate position against
+its retained list, and the screen carries the question box.
 
 **Builds.** The Cosmos implementation of the repository seam over the `investigations` container,
 keyed by `investigation_id`, one plain create per record, selected for local and hosted runs while
