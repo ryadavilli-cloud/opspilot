@@ -12,7 +12,7 @@ repository contradicts it.
 
 ## 1. Baseline
 
-- **Inspected:** `main` at `63b8548` plus the return landing, working tree, 2026-08-19.
+- **Inspected:** `main` at `1f4caab`, working tree, 2026-08-19.
 - **Toolchain:** `uv`; Python 3.12.
 - **Gates at this tree:** `ruff check` clean; `ruff format --check` clean repository-wide; `mypy`
   strict clean over 59 source files with no override list; deterministic lane
@@ -137,8 +137,15 @@ inconclusive outcome, which is a result rather than a failure.
 template, so the container takes the default. Nothing keys off it today and no behavior is affected,
 but the hosted revision misreports which environment it is.
 
-The return has not been observed hosted. It is proven on a recorded real model in the deterministic
-suite, and the revision above was built before the return existed.
+The return is observed hosted. One investigation of inc-005 against the deployed revision gathered
+six times, synthesized, was sent back for one further capability call, synthesized again, grounded,
+saved, and delivered, with the return carried in the feed as its own entry between the two
+assessments. The run reported an inconclusive outcome and no failure.
+
+Whether any given hosted run returns is the model's to decide: the same incident recorded locally
+returned, and the incident the plan predicted would return did not. The smoke run therefore proves
+the envelope and the delivered brief, and does not assert a return, because a run that settles its
+question without asking for more is a correct run.
 
 ---
 
