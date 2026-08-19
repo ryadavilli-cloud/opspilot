@@ -278,15 +278,23 @@ which incident a model finds unsettled is the model's to decide. Spending `retur
 field on nested state in place, as the one correction already does; that is the pattern to stop at
 rather than extend, and the graph is not to be restructured to avoid the one that exists.
 
-*Remaining.* One of this step's own builds, waiting on a capability it would have nothing to act on
-without: retrieval and the structured query are registered and not yet offered to the investigator.
-When retrieval does become proposable, a knowledge reference is real because this investigation
-retrieved the passage it names: the resolver decides that against the run's knowledge set, and
-against the passages the completed record carries when the record is what is being read. It does
-not decide it by looking for an authored file, because the runtime image ships no corpus and the
-knowledge the runtime searches lives in the knowledge container. Whether every authored file exists
-and every reference in it closes stays a corpus-preparation and closure concern, offline and
-separate.
+Every registered capability is proposable, and the separate list of proposable ones is gone rather
+than maintained beside an identical inventory. Retrieved passages are held beside the evidence set,
+never inside it, and reach both roles as context, the gate as its second reference set, and the
+completed record. A knowledge reference is real because this investigation retrieved the passage it
+names: the resolver decides that against the run's knowledge set, and against the passages the
+completed record carries when the record is what is being read, never by looking for an authored
+file, because the runtime image ships no corpus and the knowledge the runtime searches lives in the
+knowledge container. Whether every authored file exists and every reference in it closes stays a
+corpus-preparation and closure concern, offline and separate.
+
+*Remaining.* The hosted effect alone. The deployed revision predates this landing, and the return
+proof taken on it describes a revision that offered six capabilities rather than nine; what a
+hosted run of this tree does with the wider offering has not been taken. `status.md` records why
+that matters: the recorded runs spend the capability cap working down the offering, so the analyst's
+request to return is declined for lack of room and neither retrieval capability is reached. That is
+a selection problem rather than a bound to raise, and it is the charter of the step that makes
+retrieval influential, not a remaining build here.
 
 **Builds.** The designed runtime, and the removal of the one it supersedes. One small compiled
 in-process graph over typed investigation state, no checkpointer: set objective, gather with

@@ -26,6 +26,7 @@ from opspilot.evidence.references import (
     reference_type_of,
     try_parse,
 )
+from opspilot.retrieval.retriever import Passage
 from opspilot.tools.contracts import Completeness, ExecutionOutcome, ToolMetadata, ToolResult
 
 EVIDENCE_REFS = [
@@ -231,13 +232,46 @@ def resolver() -> ReferenceResolver:
         "metrics:redis-cache:used_memory_pct@2026-06-22T11:35:00Z",
         "deps:checkout-api->redis-cache",
         "incident:inc-001",
-        "runbook:redis-cache-degradation",
-        "architecture:service-dependency-map",
-        "postmortem:inc-001",
     ],
 )
 def test_authored_references_resolve_against_the_real_corpus(resolver, raw):
     assert resolver.resolves(raw)
+
+
+# --- knowledge resolves against what the investigation retrieved --------------------------------
+# Operational references above are checked against the container that holds the records. A
+# knowledge reference is a different question with a different answer: it is real because this
+# investigation retrieved the passage it names.
+_RETRIEVED = Passage(
+    reference="runbook:redis-cache-degradation",
+    category="runbook",
+    title="Redis cache degradation",
+    text="Raise the memory ceiling and confirm eviction returns to zero.",
+    services=("redis-cache",),
+    score=0.031,
+)
+
+
+def test_a_knowledge_reference_resolves_when_this_run_retrieved_the_passage():
+    resolver = ReferenceResolver(corpus_records(), knowledge=[_RETRIEVED])
+    assert resolver.resolves("runbook:redis-cache-degradation")
+
+
+def test_a_knowledge_reference_this_run_never_retrieved_does_not_resolve():
+    """The property that makes a citation mean something. A run may only cite knowledge it
+    actually consulted, so naming a document it never retrieved resolves to nothing even when the
+    document is perfectly real."""
+    resolver = ReferenceResolver(corpus_records(), knowledge=[_RETRIEVED])
+    assert resolver.resolves("postmortem:inc-001") is False
+
+
+def test_an_authored_file_on_disk_is_not_what_makes_a_knowledge_reference_real():
+    """The corpus exists in this repository and the runtime image ships none of it, so resolution
+    cannot depend on a file being there. A resolver given no retrieved passages resolves no
+    knowledge reference, however many authored documents sit beside it."""
+    resolver = ReferenceResolver(corpus_records())
+    for raw in ("runbook:redis-cache-degradation", "architecture:service-dependency-map"):
+        assert resolver.resolves(raw) is False
 
 
 @pytest.mark.parametrize(

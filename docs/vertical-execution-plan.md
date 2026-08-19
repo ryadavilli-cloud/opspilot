@@ -353,10 +353,18 @@ records: stable exact-identifier promotion after fusion, truncation to the passa
 passage shape on the runtime path, a failed retrieval admitted as a limitation, and the reranker
 module, dependency, marker, and CI lane absent.
 
-*Remaining.* What makes retrieval *influence an investigation*: the Evidence Investigator proposing
-it inside the graph, passages reaching the agents as context and counting against the capability
-cap, knowledge references appearing in the assessment, and the demonstration on the
-postmortem-recurrence scenario. All of that needs the runtime this slice sits on.
+Retrieval is proposable inside the graph, its passages reach both roles as context and the
+completed record, each search counts against the capability cap like any other call, and a
+knowledge reference resolves against what the run retrieved rather than against a file on disk.
+
+*Remaining.* What makes retrieval *influence* an investigation, which is not the same as making it
+reachable. Neither recorded run consulted a runbook or a precedent, including on the
+postmortem-recurrence scenario: the investigator works down the offering and spends the capability
+cap before reaching the two retrieval entries at its end, as `status.md` records. So what remains is
+knowledge references appearing in an assessment because the run went looking for them, and the
+demonstration on the recurrence scenario. Both wait on selection behavior rather than on plumbing,
+and adding prompt text about passages without addressing the sweep would report success while it
+continues.
 
 **Builds.** Retrieval as a registered capability inside the investigation, final in behavior: embed
 the question, vector search plus the in-process lexical pass over the same category-filtered
@@ -417,8 +425,15 @@ models, `legacy_status()`, `DocHit`, the pairing-table tests, and the three supe
 exposures with their parity test are absent, and MCP is intentionally absent until the final
 boundary is built.
 
-*Remaining.* The structured query as a capability the Evidence Investigator proposes inside the
-bounded investigation, which needs the graph runtime; and the hosted proof.
+The structured query is proposable inside the bounded investigation. The model proposes the
+structure, deterministic code validates it against the approved surface and translates it, and a
+structure that does not fit is refused at the boundary in this codebase's own words rather than
+raising. What a caller must propose is rendered for it from the approved surface, the operator
+enumeration, and the configured ceiling, so what it is told is what validation enforces. A recorded
+run chose it unprompted. The separate list of capabilities a model may propose is gone: every
+registered capability is now eligible, so the registry's own inventory is the only one.
+
+*Remaining.* The hosted proof.
 
 **Builds.** The governed structured query as a capability the Evidence Investigator can propose: the
 model proposes a bounded structure of predicates, projection, optional count, and limit over one

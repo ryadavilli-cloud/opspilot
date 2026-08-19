@@ -19,11 +19,14 @@ import json
 from pathlib import Path
 
 import pytest
+from fake_knowledge import knowledge_retriever
 from fake_operational_records import corpus_records
 from fastapi.testclient import TestClient
 
+from opspilot import config
 from opspilot.api import app, get_model, get_operational_records, get_record, get_service
 from opspilot.evidence.references import try_parse
+from opspilot.investigation.agents import RETURNABLE_EVIDENCE_KINDS
 from opspilot.llm.cassette import ReplayChatModel
 from opspilot.record.memory import InMemoryCompletedInvestigations
 from opspilot.tools.service import ToolService
@@ -47,7 +50,9 @@ def _replay(incident: str) -> tuple[list[dict], InMemoryCompletedInvestigations]
     records = corpus_records()
     record = InMemoryCompletedInvestigations()
     app.dependency_overrides[get_operational_records] = lambda: records
-    app.dependency_overrides[get_service] = lambda: ToolService(records)
+    app.dependency_overrides[get_service] = lambda: ToolService(
+        records, retriever_factory=knowledge_retriever
+    )
     app.dependency_overrides[get_model] = lambda: model
     app.dependency_overrides[get_record] = lambda: record
     try:
@@ -69,6 +74,28 @@ def replayed() -> tuple[list[dict], InMemoryCompletedInvestigations]:
 def ambiguous() -> tuple[list[dict], InMemoryCompletedInvestigations]:
     """The second recording. Its first pass was expected to be the one that could not close."""
     return _replay(SECOND_INCIDENT)
+
+
+def _proposed_unresolved_question(incident: str) -> dict | None:
+    """What the analyst asked for at the end of gathering, read from the recorded response.
+
+    The feed carries a return that was granted and says nothing about one that was declined, which
+    is correct: nothing happened. So a test about the declining has to read the proposal, and the
+    cassette is where the model's own words are.
+    """
+    cassette = Path(__file__).resolve().parents[1] / "eval" / "cassettes" / f"{incident}.json"
+    document = json.loads(cassette.read_text(encoding="utf-8"))
+    interactions = document["interactions"] if isinstance(document, dict) else document
+    for entry in interactions:
+        if entry["request"]["task"] != "rca_synthesis":
+            continue
+        text = entry["response"].get("text", "")
+        try:
+            proposal = json.loads(text[text.index("{") : text.rindex("}") + 1])
+        except (ValueError, KeyError):
+            continue
+        return proposal.get("unresolved_question")
+    return None
 
 
 def _references_in(node: object) -> set[str]:
@@ -173,24 +200,41 @@ def test_the_stream_carries_no_prompt_or_hidden_reasoning(replayed):
 
 
 # --- the one return, on responses a model really produced -----------------------------------------
-def test_a_real_model_asked_for_more_and_code_granted_it(replayed):
-    """The return is not a scripted arrangement. On this recording the analyst named something it
-    could not settle and the kind of evidence that would settle it; deterministic code checked the
-    bound, the vocabulary, and the budget, and sent gathering back for it.
+def test_a_real_model_asked_for_more_and_code_declined_it_on_budget(replayed):
+    """The return authorized on three conjuncts, one of which this recording does not satisfy.
 
-    Asserted on the feed rather than on internal state, because the return is a thing the engineer
-    watching the investigation is supposed to be able to see happen.
+    The analyst named something it could not settle and the kind of evidence that would settle it,
+    in the vocabulary the Supervisor authorizes against. What it did not have was room: gathering
+    had spent the capability cap, so deterministic code declined and the assessment stood as
+    proposed. A refusal for lack of room is the condition operating, not failing, and the
+    unresolved matter is still carried to the engineer as an unknown rather than lost.
+
+    This is the harder half of the behaviour to get right. A run that never asks proves nothing
+    about the bound; this one asks, is refused, and delivers anyway.
     """
-    events, _ = replayed
+    events, record = replayed
 
-    returns = [e for e in events if e.get("action") == "returned to gathering"]
-    assert len(returns) == 1, f"expected exactly one return, saw {len(returns)}"
+    asked = _proposed_unresolved_question(INCIDENT)
+    assert asked is not None, "the analyst asked for nothing, so there was no bound to test"
+    assert asked["question"].strip()
+    assert asked["evidence_kind"] in RETURNABLE_EVIDENCE_KINDS, (
+        f"{asked['evidence_kind']} is not a kind any capability supplies, so the return would "
+        "have been declined on vocabulary rather than on budget"
+    )
 
-    order = [e.get("action") for e in events]
-    assert order.index("returned to gathering") < len(order) - 1, "the return was the last thing"
-    assert order.count("assessment proposed") == 2, "synthesis did not run again after the return"
+    spent = [event for event in events if event.get("capability")]
+    assert len(spent) == config.CAPABILITY_CALL_CAP, (
+        "the cap was not the binding constraint on this recording"
+    )
+
+    assert not [e for e in events if e.get("action") == "returned to gathering"]
+    assert [e.get("action") for e in events].count("assessment proposed") == 1
+
+    saved = record.get(events[0]["investigation_id"])
+    assert saved is not None, "a declined return must not cost the run its brief"
     assert events[-1]["failure"] is None
     assert events[-1]["brief"]["text"].strip()
+    assert saved.assessment.what_happened, "the declined return edited the assessment"
 
 
 def test_the_return_did_not_widen_anything(replayed):

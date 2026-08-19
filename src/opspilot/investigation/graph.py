@@ -49,8 +49,9 @@ from opspilot.investigation.agents import (
 from opspilot.investigation.state import FailureCategory, InvestigationState
 from opspilot.record.completed import CompletedInvestigation
 from opspilot.record.port import AlreadySaved
+from opspilot.retrieval.retriever import Passage
 from opspilot.stream.projection import emit
-from opspilot.tools.service import PROPOSABLE_CAPABILITIES
+from opspilot.tools import CAPABILITY_NAMES
 
 # What the graph needs from its caller, read off the run configuration rather than closed over, so
 # one compiled graph serves every investigation and no request shares another's dependencies.
@@ -181,7 +182,8 @@ def gather(state: InvestigationState, config: RunnableConfig | None = None) -> d
         state.incident,
         state.objective,
         state.evidence,
-        PROPOSABLE_CAPABILITIES,
+        state.knowledge,
+        CAPABILITY_NAMES,
         state.open_question,
     )
     # Spent on this proposal whatever came of it. A question the investigator declined to act on is
@@ -192,7 +194,7 @@ def gather(state: InvestigationState, config: RunnableConfig | None = None) -> d
     if action.is_finished:
         return {**update, "stopped_because": action.finished_because}
 
-    refusal = _refuse(state, action, PROPOSABLE_CAPABILITIES)
+    refusal = _refuse(state, action, CAPABILITY_NAMES)
     if refusal:
         return {
             **update,
@@ -218,9 +220,15 @@ def gather(state: InvestigationState, config: RunnableConfig | None = None) -> d
         question=action.question,
         request_scope=action.arguments,
     )
+    # Passages go to the knowledge set, never through admission: a document cannot observe the
+    # running system, so nothing retrieval returns may become an observation about this incident.
+    # The call itself still marks the evidence set, as an operation and as a limitation when it
+    # does not answer, because those are about the call rather than its content.
+    retrieved = [item for item in tool_result.results if isinstance(item, Passage)]
     return {
         **update,
         "evidence": state.evidence,
+        "knowledge": state.knowledge + retrieved,
         "capability_calls_made": state.capability_calls_made + 1,
         "answered_questions": state.answered_questions | {action.question},
         "executed_calls": state.executed_calls | {_call_signature(action)},
@@ -231,11 +239,13 @@ def gather(state: InvestigationState, config: RunnableConfig | None = None) -> d
             action=action.capability,
             detail=(
                 f"{action.capability}: {tool_result.outcome.value}, "
-                f"{tool_result.completeness.value} ({len(admitted)} admitted)"
+                f"{tool_result.completeness.value} "
+                f"({len(admitted)} admitted, {len(retrieved)} retrieved)"
             ),
             capability=action.capability,
             outcome=tool_result.outcome.value,
-            references=[obs.evidence_ref for obs in admitted],
+            references=[obs.evidence_ref for obs in admitted]
+            + [passage.reference for passage in retrieved],
         ),
     }
 
@@ -291,6 +301,7 @@ def synthesize_node(
             state.incident,
             state.objective,
             state.evidence,
+            state.knowledge,
             state.stopped_because,
             returned=state.bounds.return_used,
         )
@@ -375,6 +386,7 @@ def _spend_correction(
             state.incident,
             state.objective,
             state.evidence,
+            state.knowledge,
             state.stopped_because,
             problem,
         )
@@ -403,7 +415,7 @@ def ground(state: InvestigationState, config: RunnableConfig | None = None) -> d
     issues = run_gate(
         state.assessment,
         admitted_refs=set(state.evidence.admitted_refs),
-        knowledge_refs=set(),
+        knowledge_refs=state.knowledge_refs,
         limitations=state.evidence.limitations,
     )
     if not issues:
@@ -429,7 +441,7 @@ def ground(state: InvestigationState, config: RunnableConfig | None = None) -> d
     remaining = run_gate(
         corrected["assessment"],
         admitted_refs=set(state.evidence.admitted_refs),
-        knowledge_refs=set(),
+        knowledge_refs=state.knowledge_refs,
         limitations=state.evidence.limitations,
     )
     if remaining:
@@ -463,6 +475,7 @@ def persist(state: InvestigationState, config: RunnableConfig | None = None) -> 
         observations=list(state.evidence.observations),
         limitations=list(state.evidence.limitations),
         operations=list(state.evidence.operations),
+        passages=list(state.knowledge),
         prompt_versions=dict(state.prompt_versions),
     )
     try:

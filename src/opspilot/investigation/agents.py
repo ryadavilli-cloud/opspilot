@@ -20,6 +20,7 @@ end the run on a technicality.
 from __future__ import annotations
 
 import json
+from collections.abc import Sequence
 from dataclasses import dataclass, field, replace
 from typing import Any
 
@@ -35,8 +36,10 @@ from opspilot.evidence.admission import CAPABILITY_EVIDENCE_TYPES, AdmittedObser
 from opspilot.evidence.operations import EvidenceSet
 from opspilot.llm.base import ChatMessage, ChatResult
 from opspilot.llm.prompts import Prompt, get_prompt
+from opspilot.retrieval.retriever import Passage
+from opspilot.tools import CAPABILITY_NAMES
 from opspilot.tools.contracts import Completeness
-from opspilot.tools.service import PROPOSABLE_CAPABILITIES, capability_arguments
+from opspilot.tools.service import capability_arguments, structured_query_surface
 
 OBJECTIVE_TASK = "investigation_objective"
 SELECTION_TASK = "evidence_selection"
@@ -51,7 +54,7 @@ RETURNABLE_EVIDENCE_KINDS: tuple[str, ...] = tuple(
     sorted(
         {
             kind.value
-            for name in PROPOSABLE_CAPABILITIES
+            for name in CAPABILITY_NAMES
             if (kind := CAPABILITY_EVIDENCE_TYPES.get(name)) is not None
         }
     )
@@ -125,6 +128,26 @@ def evidence_digest(evidence: EvidenceSet) -> str:
     return "\n".join(lines)
 
 
+def knowledge_digest(knowledge: Sequence[Passage]) -> str:
+    """What the run retrieved, rendered so it can never be mistaken for what it observed.
+
+    Every line is labelled as knowledge, and the heading says what knowledge is for. A passage is
+    what someone wrote down before this incident happened, so it can explain a mechanism or point
+    at a precedent, and it cannot show that anything is true of the system right now. The grounding
+    gate refuses a knowledge reference offered as current operational support; saying so here gives
+    a role the chance to get that right rather than be corrected for it.
+    """
+    lines = ["Retrieved knowledge (background and precedent, not evidence about this incident):"]
+    if knowledge:
+        lines.extend(
+            f"- {passage.reference} [{passage.category}] {passage.title}: {passage.text}"
+            for passage in knowledge
+        )
+    else:
+        lines.append("- (nothing retrieved)")
+    return "\n".join(lines)
+
+
 def _observation_line(obs: AdmittedObservation) -> str:
     partial = " [partial]" if obs.completeness is Completeness.PARTIAL else ""
     return f"- {obs.evidence_ref} [{obs.evidence_type.value}]{partial} {obs.observation}"
@@ -166,11 +189,18 @@ def interpret_objective(model: Any, incident: Any) -> tuple[str, ChatResult]:
     return stated or f"Establish what caused: {incident.symptom}", result
 
 
+# The one capability whose request is a structure rather than flat arguments, so the one that needs
+# more than its signature stated. Named here so that withdrawing it from what is offered also
+# withdraws its description, rather than leaving a block explaining something no caller may propose.
+STRUCTURED_QUERY = "structured_query"
+
+
 def propose_action(
     model: Any,
     incident: Any,
     objective: str,
     evidence: EvidenceSet,
+    knowledge: Sequence[Passage],
     capabilities: tuple[str, ...],
     open_question: str = "",
 ) -> tuple[ProposedAction, ChatResult]:
@@ -205,10 +235,13 @@ def propose_action(
             "Capabilities you may choose from, and the arguments each takes",
             "(bracketed arguments are optional):",
             *(f"- {name}({capability_arguments(name)})" for name in capabilities),
+            *(["", structured_query_surface()] if STRUCTURED_QUERY in capabilities else []),
             "",
             _attempts(evidence),
             "",
             evidence_digest(evidence),
+            "",
+            knowledge_digest(knowledge),
         ]
     )
     result = _ask(model, SELECTION_TASK, prompt, user)
@@ -230,7 +263,13 @@ def propose_action(
 
 
 def _synthesis_user_message(
-    incident: Any, objective: str, evidence: EvidenceSet, why: str, *, returned: bool = False
+    incident: Any,
+    objective: str,
+    evidence: EvidenceSet,
+    knowledge: Sequence[Passage],
+    why: str,
+    *,
+    returned: bool = False,
 ) -> str:
     return "\n".join(
         [
@@ -262,6 +301,7 @@ def synthesize(
     incident: Any,
     objective: str,
     evidence: EvidenceSet,
+    knowledge: Sequence[Passage],
     stopped_because: str,
     *,
     returned: bool = False,
@@ -278,7 +318,7 @@ def synthesize(
     """
     prompt = get_prompt("rca_synthesis")
     user = _synthesis_user_message(
-        incident, objective, evidence, stopped_because, returned=returned
+        incident, objective, evidence, knowledge, stopped_because, returned=returned
     )
     result = _ask(model, SYNTHESIS_TASK, prompt, user)
     proposal = parse_proposal(result.text)
@@ -290,6 +330,7 @@ def correct(
     incident: Any,
     objective: str,
     evidence: EvidenceSet,
+    knowledge: Sequence[Passage],
     stopped_because: str,
     problem: str,
 ) -> tuple[Assessment, ChatResult]:
@@ -302,7 +343,7 @@ def correct(
     prompt = get_prompt("assessment_correction")
     user = "\n".join(
         [
-            _synthesis_user_message(incident, objective, evidence, stopped_because),
+            _synthesis_user_message(incident, objective, evidence, knowledge, stopped_because),
             "",
             "Your previous assessment could not be delivered:",
             problem,
@@ -321,6 +362,7 @@ __all__ = [
     "correct",
     "evidence_digest",
     "interpret_objective",
+    "knowledge_digest",
     "propose_action",
     "synthesize",
 ]

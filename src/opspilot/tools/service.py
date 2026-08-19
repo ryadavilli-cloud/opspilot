@@ -27,6 +27,7 @@ from typing import TYPE_CHECKING, Any
 
 from opspilot import config
 from opspilot.data.operational_records import OperationalRecords, default_operational_records
+from opspilot.data.structured_query import APPROVED_SURFACE, PredicateOp
 from opspilot.tools.alerts import get_correlated_alerts
 from opspilot.tools.contracts import ExecutionOutcome, ToolResult
 from opspilot.tools.dependencies import get_service_dependencies
@@ -62,21 +63,7 @@ _IMPLEMENTATIONS: dict[str, Callable[..., Any]] = {
 }
 
 # What the service supplies itself, so neither appears as an argument anyone may state.
-_SUPPLIED_PARAMETERS = frozenset({"records", "retriever", _DEADLINE_PARAMETER})
-
-# What the Evidence Investigator may choose from. Every capability here is registered, but not
-# every registered capability is offered: retrieval becomes proposable when its passages join the
-# knowledge set and reach the agents as context, and the structured query when the model may
-# propose a structure for validation. Offering one before the run can use its result would spend a
-# step on something that could not inform the next choice.
-PROPOSABLE_CAPABILITIES: tuple[str, ...] = (
-    "get_incident",
-    "get_correlated_alerts",
-    "get_deployments",
-    "query_logs",
-    "get_metrics",
-    "get_service_dependencies",
-)
+_SUPPLIED_PARAMETERS = frozenset({"records", "retriever", "granted", _DEADLINE_PARAMETER})
 
 
 def capability_arguments(name: str) -> str:
@@ -97,6 +84,58 @@ def capability_arguments(name: str) -> str:
         required = parameter.default is inspect.Parameter.empty
         parts.append(parameter.name if required else f"[{parameter.name}]")
     return ", ".join(parts)
+
+
+def structured_query_surface() -> str:
+    """The structure the structured query takes, for a caller that has to propose one.
+
+    Every other capability takes flat arguments its signature can state, so `capability_arguments`
+    is enough for them. This one takes a structure, and a caller told only that would have to guess
+    the collections, the field names, the operators, and the ceiling. Guessing produces a refusal,
+    which spends a call and teaches the caller nothing it could not have been told.
+
+    Nothing here is written down twice. The collections, fields, and types come out of the approved
+    surface, the operators out of their own enumeration, and the ceiling out of the configuration,
+    all at call time: adding a field changes what a caller is told without this function being
+    touched. The operand grouping mirrors the validator's own branches by naming the same enum
+    members it branches on, so an operator added later is listed automatically and described by the
+    same default the validator would apply to it.
+
+    The full approved surface is rendered rather than the narrower grant a run may hold. The grant
+    belongs to the service and is not in scope where a prompt is assembled, and reaching for it
+    from here would be the new seam this arrangement exists to avoid. A proposal against a
+    granted-out collection is refused by validation, which is where the grant is enforced anyway.
+    """
+    by_operand: dict[str, list[str]] = {}
+    for op in PredicateOp:
+        if op is PredicateOp.IN:
+            form = "values"
+        elif op is PredicateOp.BETWEEN:
+            form = "low and high"
+        elif op in (PredicateOp.PRESENT, PredicateOp.ABSENT):
+            form = "no operand"
+        else:
+            form = "value"
+        by_operand.setdefault(form, []).append(op.value)
+
+    lines = [
+        "structured_query takes a structure rather than flat arguments:",
+        "  collection: exactly one of " + ", ".join(sorted(APPROVED_SURFACE)),
+        "  predicates: a list of {field, op, and its operand}, combined with AND.",
+        *(
+            f"    {', '.join(ops)} {'take' if len(ops) > 1 else 'takes'} {form}."
+            for form, ops in by_operand.items()
+        ),
+        '  either projection (a list of field names) or aggregate: "count", never both.',
+        f"  limit: a positive integer, at most {config.STRUCTURED_QUERY_MAX_LIMIT}.",
+        "  Readable fields, by collection:",
+    ]
+    for collection in sorted(APPROVED_SURFACE):
+        stated = ", ".join(
+            f"{name} ({kind.value})" for name, kind in APPROVED_SURFACE[collection].items()
+        )
+        lines.append(f"    {collection}: {stated}")
+    return "\n".join(lines)
 
 
 class ToolService:
