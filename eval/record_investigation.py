@@ -60,7 +60,10 @@ from opspilot.tools.service import ToolService  # noqa: E402
 #            window, so the run exercises an authoritative absence alongside ordinary evidence.
 #   inc-004: the ambiguous one. Its first pass cannot close, which is what gives analysis something
 #            real to send back for, so this is where the one return is observable on a real model.
-RECORDABLE = ("inc-005", "inc-004")
+#   inc-007: a recurrence of an incident that already has a write-up. Whether retrieved knowledge
+#            changes what an investigation checks or concludes is answerable here and nowhere else
+#            in the corpus, because this is the only incident whose answer is already written down.
+RECORDABLE = ("inc-005", "inc-004", "inc-007")
 DEFAULT_INCIDENT = "inc-005"
 
 

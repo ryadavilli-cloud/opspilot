@@ -39,7 +39,11 @@ from opspilot.llm.prompts import Prompt, get_prompt
 from opspilot.retrieval.retriever import Passage
 from opspilot.tools import CAPABILITY_NAMES
 from opspilot.tools.contracts import Completeness
-from opspilot.tools.service import capability_arguments, structured_query_surface
+from opspilot.tools.service import (
+    capability_arguments,
+    capability_purpose,
+    structured_query_surface,
+)
 
 OBJECTIVE_TASK = "investigation_objective"
 SELECTION_TASK = "evidence_selection"
@@ -202,6 +206,7 @@ def propose_action(
     evidence: EvidenceSet,
     knowledge: Sequence[Passage],
     capabilities: tuple[str, ...],
+    calls_left: int,
     open_question: str = "",
 ) -> tuple[ProposedAction, ChatResult]:
     """The Evidence Investigator's one call per step: which capability, with what, to answer what.
@@ -215,6 +220,11 @@ def propose_action(
     rather than imposed: the investigator still proposes, and the Supervisor still authorizes under
     the same rules, so a question that turns out to need something already asked is refused like any
     other repeat rather than granted because analysis wanted it.
+
+    `calls_left` is the budget, stated. A role that cannot see what it has left cannot spend it
+    well: it behaves as though calls were free, works down whatever it was offered, and reaches the
+    end having asked everything once. Showing it widens nothing, because the count is code's and
+    authorization stays code's; it only lets the choice be made by someone who knows the cost.
     """
     prompt = get_prompt("evidence_selection")
     user = "\n".join(
@@ -232,10 +242,16 @@ def propose_action(
                 if open_question
                 else []
             ),
-            "Capabilities you may choose from, and the arguments each takes",
+            "Capabilities you may choose from, what each answers, and the arguments each takes",
             "(bracketed arguments are optional):",
-            *(f"- {name}({capability_arguments(name)})" for name in capabilities),
+            *(
+                f"- {name}({capability_arguments(name)}): {capability_purpose(name)}"
+                for name in capabilities
+            ),
             *(["", structured_query_surface()] if STRUCTURED_QUERY in capabilities else []),
+            "",
+            f"Calls you have left: {calls_left}. There are {len(capabilities)} capabilities, "
+            "so you cannot use them all. Spend what is left on what would change the conclusion.",
             "",
             _attempts(evidence),
             "",
@@ -292,6 +308,8 @@ def _synthesis_user_message(
                 ]
             ),
             evidence_digest(evidence),
+            "",
+            knowledge_digest(knowledge),
         ]
     )
 

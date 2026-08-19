@@ -49,13 +49,6 @@ def _env_flag(var: str, default: bool = False) -> bool:
     return value.lower() == "true" if value else default
 
 
-def _dir_env(var: str, default: Path) -> Path:
-    value = _env(var)
-    return Path(value) if value else default
-
-
-KB_DIR = _dir_env("OPSPILOT_KB_DIR", _REPO_ROOT / "data" / "kb")
-
 # The one retrieval realization (D-003): Cosmos vector search + in-process lexical scoring, fused by
 # reciprocal rank fusion. Not env-selectable, since there is no alternative backend to choose
 # between: kept as a named constant only because `ToolService.retrieval_backend` reports it for

@@ -14,7 +14,8 @@ def test_registry_loads_a_seeded_prompt():
     assert isinstance(prompt, Prompt)
     assert prompt.name == "evidence_selection"
     assert "Evidence Investigator" in prompt.text
-    assert get_prompt("evidence_selection", version=1).version == "evidence_selection.v1"
+    # Pinning an explicit version is exercised against a synthetic registry below, so nothing here
+    # names a version of a real prompt: a superseded prompt is deleted, and this would go with it.
 
 
 def test_latest_version_selected(tmp_path: Path):

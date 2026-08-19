@@ -86,6 +86,25 @@ def capability_arguments(name: str) -> str:
     return ", ".join(parts)
 
 
+def capability_purpose(name: str) -> str:
+    """One capability's purpose, as the caller choosing between them needs it.
+
+    Read from the implementation's own docstring, for the same reason the arguments are read from
+    its signature: the capability is the one thing that knows what it answers, and a description
+    kept beside it would be a second list to fall out of date. A capability that says nothing about
+    itself offers nothing here rather than a placeholder, because an empty line is honest and an
+    invented one is not.
+    """
+    implementation = _IMPLEMENTATIONS.get(name)
+    summary = (getattr(implementation, "__doc__", "") or "").strip()
+    if not summary:
+        return ""
+    # The first paragraph, rewrapped onto one line: a docstring wraps for the file it lives in and
+    # the offering is a single line per capability.
+    first = summary.split("\n\n")[0]
+    return " ".join(first.split())
+
+
 def structured_query_surface() -> str:
     """The structure the structured query takes, for a caller that has to propose one.
 

@@ -29,6 +29,7 @@ def get_incident(
     *,
     incident_id: NonEmptyText,
 ) -> tuple[list[dict[str, Any]], list[str]]:
+    """How one incident was reported: its service, severity, timing, and state."""
     raw = records.incident(incident_id, deadline_s=deadline_s)
     if raw is None:
         return [], []

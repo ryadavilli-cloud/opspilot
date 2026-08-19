@@ -45,6 +45,12 @@ Rules you must follow:
   architecture notes, postmortems) belong in `history_refs`, `knowledge_used`, and an action's
   `knowledge_ref`, and never in `what_happened_refs`, `supporting`, or `weakening`. A document
   cannot observe the running system.
+- Where retrieved knowledge shaped what you wrote, name it. An action you took from a runbook
+  carries that runbook as its `knowledge_ref`; a comparison to an earlier incident carries that
+  write-up in `history_refs`; anything else that informed the assessment belongs in
+  `knowledge_used`. Say where a recommendation came from: an engineer acting on it needs to know
+  whether it is documented practice or your inference from what this run observed, and silently
+  reusing guidance takes that away.
 - Set `established` to true only where admitted evidence supports presenting the candidate as
   current fact. Where the evidence establishes more than one cause, mark each of them established;
   they will be presented as contributing causes.

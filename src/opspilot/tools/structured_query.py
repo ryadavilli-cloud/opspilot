@@ -54,6 +54,7 @@ def structured_query(
     granted: frozenset[str],
     **structure: Any,
 ) -> tuple[list[Any], list[str]]:
+    """Ask the operational records a question of your own, as a structure this validates."""
     request = StructuredQuery(**structure)
     # Before execution, always. A structure that reaches the source and is refused there has
     # already spent the read this path exists to bound.

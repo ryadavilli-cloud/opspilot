@@ -184,6 +184,7 @@ def gather(state: InvestigationState, config: RunnableConfig | None = None) -> d
         state.evidence,
         state.knowledge,
         CAPABILITY_NAMES,
+        state.bounds.capability_calls - state.capability_calls_made,
         state.open_question,
     )
     # Spent on this proposal whatever came of it. A question the investigator declined to act on is

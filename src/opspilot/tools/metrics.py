@@ -27,6 +27,7 @@ def get_metrics(
     start_time: datetime | None = None,
     end_time: datetime | None = None,
 ) -> tuple[list[MetricSample], list[str]]:
+    """How a service or its infrastructure behaved: measured samples over time."""
     start = to_utc(start_time) if start_time else None
     end = to_utc(end_time) if end_time else None
     check_window(start, end)

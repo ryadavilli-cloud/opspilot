@@ -27,6 +27,7 @@ def get_correlated_alerts(
     start_time: datetime | None = None,
     end_time: datetime | None = None,
 ) -> tuple[list[AlertRecord], list[str]]:
+    """Which alerts fired around an incident, and on what."""
     start = to_utc(start_time) if start_time else None
     end = to_utc(end_time) if end_time else None
     check_window(start, end)

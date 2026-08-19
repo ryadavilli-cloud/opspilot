@@ -28,6 +28,7 @@ def query_logs(
     level: str | None = None,
     contains: str | None = None,
 ) -> tuple[list[LogRecord], list[str]]:
+    """What a service logged: the errors and messages it emitted over a window you name."""
     start = to_utc(start_time) if start_time else None
     end = to_utc(end_time) if end_time else None
     check_window(start, end)
