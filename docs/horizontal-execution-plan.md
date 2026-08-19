@@ -269,25 +269,24 @@ environment entry can select a durable intermediate store. Evidence access carri
 remaining time, bounded by the configured source ceiling, so no source read outlives the
 investigation that asked for it.
 
-*Remaining.* One of this step's own builds, waiting on a capability it would have nothing to act
-on without: retrieval and the structured query are registered and not yet offered to the
-investigator. The return is built and followed: the analyst names what it could not settle and the
-kind of evidence that would settle it, and the Supervisor grants a return only on an unspent bound,
-a kind a proposable capability supplies, a question this run has not already put, and a budget
-that
-affords what follows. It is demonstrated on a recorded real model rather than on a predicted
-incident: which incident a model finds unsettled is the model's to decide. When retrieval does
-become proposable, a knowledge
-reference is real because this investigation retrieved the passage it names: the resolver decides
-that against the run's knowledge set, and against the passages the completed record carries when
-the record is what is being read. It does not decide it by looking for an authored file, because
-the runtime image ships no corpus and the knowledge the runtime searches lives in the knowledge
-container. Whether every authored file exists and every reference in it closes stays a
-corpus-preparation and closure concern, offline and separate. Spending `return_used` will set a
-field on nested state in place, which is how the one correction is already spent; that is the
-pattern to stop at rather than extend, and the graph is not to be restructured to avoid the one
-that exists. Then the hosted effect: the deployed revision predates
-this landing.
+The return is built, followed, and observed hosted. The analyst names what it could not settle and
+the kind of evidence that would settle it; the Supervisor grants a return only on an unspent bound,
+a kind a proposable capability supplies, a question this run has not already put, and a budget that
+affords the resumed proposal, the second synthesis, and the correction that synthesis may still
+need. It is demonstrated on a recorded real model rather than on a predicted incident, because
+which incident a model finds unsettled is the model's to decide. Spending `return_used` sets a
+field on nested state in place, as the one correction already does; that is the pattern to stop at
+rather than extend, and the graph is not to be restructured to avoid the one that exists.
+
+*Remaining.* One of this step's own builds, waiting on a capability it would have nothing to act on
+without: retrieval and the structured query are registered and not yet offered to the investigator.
+When retrieval does become proposable, a knowledge reference is real because this investigation
+retrieved the passage it names: the resolver decides that against the run's knowledge set, and
+against the passages the completed record carries when the record is what is being read. It does
+not decide it by looking for an authored file, because the runtime image ships no corpus and the
+knowledge the runtime searches lives in the knowledge container. Whether every authored file exists
+and every reference in it closes stays a corpus-preparation and closure concern, offline and
+separate.
 
 **Builds.** The designed runtime, and the removal of the one it supersedes. One small compiled
 in-process graph over typed investigation state, no checkpointer: set objective, gather with

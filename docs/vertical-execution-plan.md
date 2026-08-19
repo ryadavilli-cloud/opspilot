@@ -281,7 +281,7 @@ above is absent.
 
 ## V4. The analysis-to-gathering return
 
-**State:** Partial.
+**State:** Complete.
 
 *Already present.* The return itself, and every condition that authorizes or refuses one. The
 analyst names what it could not settle and the kind of evidence that would settle it, from the
@@ -300,9 +300,13 @@ not the one predicted. The prediction is what was wrong, not the behavior: which
 model finds unsettled is a property of the model, so a plan naming one in advance is the thing to
 correct, not the run.
 
-*Remaining.* The hosted effect. The deployed revision was built before the return existed.
+*Hosted.* Done. On the deployed revision one investigation gathered six times, synthesized, was
+sent back for one more capability call, synthesized again, grounded, saved, and delivered. The feed
+carries the return as its own entry between the two assessments, which is what makes it something an
+engineer watching the run can see happen rather than an internal detail. See `status.md`.
 
-**Builds.** The one return, visible and demonstrable on the ambiguous scenario (inc-004). The
+**Builds.** The one return, visible in the feed and demonstrable on an incident whose first pass
+cannot close. The
 proposal's `unresolved_question` names what remains unanswered and what evidence kind could answer
 it; the same matter stands in `unknowns`. The Supervisor authorizes a return only when
 `return_used` is false, a registered capability supplies that evidence kind, and the bounds have
