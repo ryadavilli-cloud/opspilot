@@ -393,10 +393,14 @@ on disk, and every module, route, setting, dependency, override, and test named 
 
 ## H6. Interaction over the completed record
 
-**State:** Not started.
+**State:** Complete.
 
-**Builds.** The two ordinary requests over a completed investigation and the screen that uses
-them: read a completed investigation by identifier; ask a question, which the Interface receives
+**Builds.** Durable completed-investigation use, the two ordinary requests over it, and the screen
+that uses them. The application runtime uses the existing Cosmos implementation of the
+completed-investigation repository over the declared investigations container, through the factory
+beside it, while the in-memory implementation remains what tests inject; no setting selects between
+them, because a second way to be wrong about which store is live is worse than none. Then: read a
+completed investigation by identifier; ask a question, which the Interface receives
 and presents while the Supervisor answers it in one model call whose only context is the record,
 returning answer text, cited references, and optionally a candidate's position in the retained
 ordered list, with code checking that every cited reference exists in the record and any position
@@ -404,15 +408,17 @@ is valid, and the answer saying so when a check fails or the record cannot answe
 the question box beside the brief and details area. No evidence is gathered; no investigation is
 created.
 
-**Consumes.** The graph runtime writing completed investigations; the repository seam; the model
+**Consumes.** The graph runtime writing completed investigations; the repository seam and its
+existing Cosmos implementation; Cosmos access and the declared investigations container; the model
 seam; the streaming page with its brief branch.
 
 **Provides.** The question and read operations, and the complete engineer-facing screen.
 
 **If present, remove.** Nothing new; the console and its routes were removed with the runtime.
 
-**Proof unique to this step.** An answer citing a reference absent from the record is replaced by
-the refusal; a candidate position beyond the retained list is rejected; the question issues no
+**Proof unique to this step.** A completed investigation written by one application process can be
+read after that process is replaced; an answer citing a reference absent from the record is replaced
+by the refusal; a candidate position beyond the retained list is rejected; the question issues no
 capability call and creates no record; the read of an unknown identifier is a clean not-found.
 
 **Hosted effect: Application.** Deploy; ask a question about a hosted completed investigation and

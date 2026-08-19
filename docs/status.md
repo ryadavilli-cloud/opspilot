@@ -12,11 +12,11 @@ repository contradicts it.
 
 ## 1. Baseline
 
-- **Inspected:** `main` at `a765efe`, working tree, 2026-08-19.
+- **Inspected:** `main` at `fb85d31`, working tree, 2026-08-19.
 - **Toolchain:** `uv`; Python 3.12.
 - **Gates at this tree:** `ruff check` clean; `ruff format --check` clean repository-wide; `mypy`
   strict clean over 59 source files with no override list; deterministic lane
-  `pytest -q -m "not llm"`: **522 passed, 1 deselected, no xfails**; the pre-commit hook (lint,
+  `pytest -q -m "not llm"`: **537 passed, 1 deselected, no xfails**; the pre-commit hook (lint,
   format, em-dash, vocabulary) passes. CI runs one lane.
 - **The count rose** by the return's own cases: eleven scripted ones for the conditions that
   authorize or refuse it, each verified to fail when the condition it names is removed, and four
@@ -52,6 +52,7 @@ anything, must still shrink.
 | Completed-investigation record | `record/completed.py`, `record/port.py`, `record/memory.py`, `record/cosmos.py` | One `CompletedInvestigation` carrying identity, incident, objective, outcome and why gathering stopped, admitted observations, limitations, the operations list, retrieved passages with their text, the assessment, the brief, the telemetry correlation reference, and the model and prompt versions; one seam with `save` and `get`; in-memory and Cosmos backends that both normalize through the stored document, so a second save of the same identifier is refused and a read carries the same contents whichever is behind the seam; the run writes through it before it delivers | Nothing |
 | Authored expectations and fixture | `data/answer_key/golden_scenarios.yaml`, `benign_fixture.yaml`, `data/answer_key/scenarios.yaml`, `data/answer_key/build_goldens.py` | Seven authored records with all required parts; every required reference resolves in the corpus; the benign fixture is structurally invisible to scenario counting; the builder derives `golden_scenarios.yaml` from `scenarios.yaml` | The record shape may simplify to what evaluation reads; the builder's `golden_incidents.json` and `golden_retrieval.json` outputs go with numeric evaluation |
 | Deterministic replay | `eval/cassettes/inc-005.json`, `eval/cassettes/inc-004.json`, `eval/record_investigation.py` | Two committed cassettes, one per recorded incident, each holding every model call of one whole investigation, so the deterministic lane replays real runs rather than scripted calls; one of them is a run where the analyst asked for more and code granted it, and the other a run where it asked for nothing and closed on what it had; the recorder drives the real streaming request, so a recorded response can only be one the replay path would ask for, and refuses to run unless the endpoint and deployment are named; the recording is taken through the Azure adapter against the chat deployment the application calls, keyless as the signed-in identity, so it is evidence about the serving path the application actually takes; the manifest refuses a cassette recorded under a different deployment, reasoning effort, API version, or prompt version, and names the field that moved | Nothing |
+| Interaction over a completed record | `api.py`, `investigation/agents.py`, `llm/prompts/record_question.v1.md`, `static/investigation.html` | The application builds the Cosmos store through the factory that already existed, so a record outlives the process and the revision that wrote it; tests substitute through the dependency they already override and no setting chooses between the two. Two ordinary requests over a finished investigation: read one by identifier, and ask about one, which the Supervisor answers in a single call whose only context is that record and which returns the answer, the references it rests on, and optionally a candidate's place in the list the record carries. Code then checks every citation against the record and any position against that list, and a failure of either replaces the answer rather than trimming it. The digest states the citable references on their own lines, because a call asked to quote exactly cannot be left to decide where a reference ends. Nothing is gathered and no record is written; an identifier naming nothing is a clean absence on both requests. The screen gains the question box, shown once a terminal event carries a brief | Nothing |
 | Azure baseline | `infra/main.bicep`, `.github/workflows` | One Container App, ACR, one OpenAI account with one chat and one embedding deployment, one Cosmos account with the three containers, Log Analytics, scoped data-plane roles, OIDC deploy; readiness asks only that the operational source answer a seeded lookup and that retrieval came up as the configured backend, and the post-deploy smoke run is where a whole hosted investigation is proven | Replicas 0-3 become 0-1; App Insights and built-in auth are absent |
 
 ---
@@ -69,10 +70,6 @@ anything, must still shrink.
 
 Required by the governing design and not present in any form:
 
-- runtime selection of the Cosmos record backend: `record/cosmos.py` exists and is covered, and
-  the application still constructs the in-memory one, so a completed investigation does not
-  survive the process that produced it;
-- the question over a completed record;
 - any MCP exposure: the server that fronted three superseded tools is gone and nothing replaces it
   yet;
 - the evaluation runner, the two controlled comparisons and their harness seam, the judge, the
@@ -118,7 +115,7 @@ retained for the compiled graph and is not a retirement target.
 
 ## 7. Deployment state
 
-Last live-inspected 2026-08-19, at the revision built from this landing. One Container App
+Last live-inspected 2026-08-19, at the revision built from the interaction landing. One Container App
 and image from the Bicep template through the OIDC workflow; replicas 0-3; one chat and one
 embedding deployment; no Application Insights; the three containers are declared. The deployment
 workflow, including its post-deploy smoke run, passes against that revision.
@@ -132,6 +129,19 @@ activity events, one terminal event carrying a brief and no failure. Because a f
 the one correction and then fails the execution, a delivered brief is a grounded brief; and because
 the save runs before delivery, the record existed before the terminal event. The run reported an
 inconclusive outcome, which is a result rather than a failure.
+
+A completed investigation now outlives the process and the revision that wrote it. One record
+was written by one revision, then read back by a separate request against the revision that
+replaced it, and four questions about it were answered there: every citation each answer rested on
+resolved against that record, and two of them named a candidate by its place in the record's own
+list. Both requests answer a clean not-found for an identifier naming nothing.
+
+Getting there took a correction the deterministic lane could not have surfaced. The first hosted
+questions were refused every time, and correctly: the digest rendered each reference with what it
+says beside it, the model quoted the whole line, and the whole line is not a reference the record
+carries. The digest now states the citable references on their own lines and the prompt says the
+text beside a reference is to read rather than to quote. A test holds the digest to that shape,
+but only a real model asked the question that exposed it.
 
 `/version` on that revision reports `environment=local`. `OPSPILOT_ENV` is set nowhere in the
 template, so the container takes the default. Nothing keys off it today and no behavior is affected,
