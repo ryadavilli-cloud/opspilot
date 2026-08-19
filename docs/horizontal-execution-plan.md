@@ -269,10 +269,15 @@ environment entry can select a durable intermediate store. Evidence access carri
 remaining time, bounded by the configured source ceiling, so no source read outlives the
 investigation that asked for it.
 
-*Remaining.* Two of this step's own builds, each waiting on a capability it would have nothing to
-act on without: the one return is declared as an edge and never followed, because retrieval and the
-structured query are registered and not yet offered to the investigator, so no proposal names an
-evidence kind a further pass could supply. When retrieval does become proposable, a knowledge
+*Remaining.* One of this step's own builds, waiting on a capability it would have nothing to act
+on without: retrieval and the structured query are registered and not yet offered to the
+investigator. The return is built and followed: the analyst names what it could not settle and the
+kind of evidence that would settle it, and the Supervisor grants a return only on an unspent bound,
+a kind a proposable capability supplies, a question this run has not already put, and a budget
+that
+affords what follows. It is demonstrated on a recorded real model rather than on a predicted
+incident: which incident a model finds unsettled is the model's to decide. When retrieval does
+become proposable, a knowledge
 reference is real because this investigation retrieved the passage it names: the resolver decides
 that against the run's knowledge set, and against the passages the completed record carries when
 the record is what is being read. It does not decide it by looking for an authored file, because

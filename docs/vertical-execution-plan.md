@@ -143,7 +143,7 @@ four fields, and the named branches, models, and residue are absent.
 
 ## V3. One authored incident through the final graph
 
-**State:** Partial.
+**State:** Complete.
 
 *Already present.* Everything this slice builds in the repository. The graph runs one authored
 incident end to end over typed state with its five bounds; the three roles propose and code
@@ -160,9 +160,11 @@ durable intermediate store, and none remains to be removed later. Every capabili
 carries the run's own remaining time, bounded by the configured source ceiling, so no source
 read outlives the investigation that asked for it.
 
-*Remaining.* The hosted effect. The deployed revision predates this landing, so no hosted
-investigation has run through the graph, and the proof this slice names is a property of a hosted
-run rather than of the tree.
+*Hosted.* Done. inc-005 ran end to end through the graph on the deployed revision: eleven
+activity events, one terminal event carrying a brief, no failure. A delivered brief is a grounded
+one, because a gate that still reports issues after the one correction fails the execution instead;
+and the record existed before delivery, because the save runs first and a failed save is likewise a
+failed execution. See `status.md` for what was observed.
 
 *Recorded against this slice's own text.* Two of its declared removals could not wait for the step
 that owned them: the scenario and single-agent evaluation gates drove the runtime this slice
@@ -279,7 +281,26 @@ above is absent.
 
 ## V4. The analysis-to-gathering return
 
-**State:** Not started.
+**State:** Partial.
+
+*Already present.* The return itself, and every condition that authorizes or refuses one. The
+analyst names what it could not settle and the kind of evidence that would settle it, from the
+vocabulary the proposable capabilities supply; the Supervisor grants a return only on an unspent
+bound, a supplied kind, a question this run has not already put, and a budget that affords the
+resumed proposal, the second synthesis, and the correction that synthesis may still need. The
+question is seeded into the step that resumes gathering and spent there, the feed shows the return,
+and a refused return leaves the assessment untouched.
+
+*Recorded against this slice's own text.* This slice names inc-004 as the incident that
+demonstrates the return, on the reasoning that its first pass cannot close. Recorded against the
+deployed chat model, inc-004 asked for nothing further and closed on what it had, while inc-005 did
+ask and was granted a return. Both recordings are committed as taken rather than re-rolled until
+one matched, so the return is demonstrated on a real model and the scenario that demonstrates it is
+not the one predicted. The prediction is what was wrong, not the behavior: which incident a given
+model finds unsettled is a property of the model, so a plan naming one in advance is the thing to
+correct, not the run.
+
+*Remaining.* The hosted effect. The deployed revision was built before the return existed.
 
 **Builds.** The one return, visible and demonstrable on the ambiguous scenario (inc-004). The
 proposal's `unresolved_question` names what remains unanswered and what evidence kind could answer
@@ -303,16 +324,19 @@ redirection demonstrated on an incident whose first pass cannot close.
 
 **If present, remove.** Nothing new.
 
-**Proof unique to this slice.** On inc-004 the return occurs once, gathering resumes seeded with
-the question, and the second synthesis carries the answer or the unknown; a second
-`unresolved_question` after the return does not re-enter gathering; a question naming an evidence
-kind no capability supplies is not authorized and stands in `unknowns`; the capability and model
-caps still bound the resumed gathering.
+**Proof unique to this slice.** On a recorded real model the return occurs once, gathering
+resumes seeded with the question, and the second synthesis runs; a second `unresolved_question`
+after the return does not re-enter gathering; a question naming an evidence kind no capability
+supplies is not authorized and stands in `unknowns`; a question this run already answered is not
+authorized; a return the model budget cannot afford is refused rather than granted and failed on;
+the capability and model caps still bound the resumed gathering.
 
-**Hosted effect: Application.** Deploy; the hosted inc-004 stream shows the return in its
-activity.
+**Hosted effect: Application.** Deploy; a hosted stream shows the return in its activity. Which
+incident produces one is the model's to decide, so the proof is a hosted return rather than a hosted
+return on a named incident.
 
-**Complete when** the return behaves as designed and inc-004 demonstrates it.
+**Complete when** the return behaves as designed, a recorded real model demonstrates it, and it has
+been observed on a hosted run.
 
 ---
 
