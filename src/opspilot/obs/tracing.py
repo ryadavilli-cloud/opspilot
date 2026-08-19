@@ -139,10 +139,10 @@ def span(
     pass it explicitly only at the root (the node wrapper). Exported on exit, with `status`
     flipped to `error` if the body raised (the exception still propagates).
 
-    `investigation_id` and `turn_id` are inherited from the enclosing span the same way, so every
-    span emitted inside a turn carries them without its call site passing them. A span that names
-    either explicitly wins, and an empty value never propagates: an absent identity stays absent
-    rather than overwriting a real one further down."""
+    `investigation_id` is inherited from the enclosing span the same way, so every span emitted
+    inside a run carries it without its call site passing it. A span that names it explicitly
+    wins, and an empty value never propagates: an absent identity stays absent rather than
+    overwriting a real one further down."""
     resolved_trace = trace_id or _current_trace_id.get()
     inherited = _current_correlation.get() or {}
     merged = {**inherited, **(attributes or {})}

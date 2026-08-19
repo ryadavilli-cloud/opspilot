@@ -104,10 +104,9 @@ jobs:
             --query properties.outputs.appFqdn.value -o tsv)
           echo "app_fqdn=$FQDN" >> "$GITHUB_OUTPUT"
 
-      - name: Post-deploy smoke test (real investigation workflow)
-        # OPSPILOT_SMOKE_AUDIENCE flips the async smoke leg from "verified pause + unauthenticated
-        # rejection" to the full authenticated approve-resume, driven as the deploy service
-        # principal, which holds the Approver role in Entra.
-        env:
-          OPSPILOT_SMOKE_AUDIENCE: ${{ vars.ENTRA_API_AUDIENCE }}
+      - name: Post-deploy smoke test (one real investigation)
+        # Where end-to-end proof lives. Readiness only establishes that the revision can accept
+        # work; this drives a whole investigation against the deployed revision, so the model
+        # call, retrieval, and the delivered brief are exercised once per deploy rather than
+        # continuously by a probe.
         run: uv run python scripts/smoke_deployment.py "https://${{ steps.deploy.outputs.app_fqdn }}"

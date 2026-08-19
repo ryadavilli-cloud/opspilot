@@ -27,13 +27,6 @@ param manageAcrPullRoleAssignment bool = true
 @description('Include the container app `registries` block (ACR pull via the system identity). MUST be false on a fresh bootstrap: the AcrPull role does not exist/propagate yet, so a registries block races it and times the revision out (the bootstrap runs a public placeholder image instead). Steady-state CD passes TRUE — the role already exists, so the declarative deploy OWNS the registry binding. Without this, a no-registries declarative deploy nulls out the binding a separate `az containerapp registry set` configured, and the next fresh image fails to pull (401 ImagePullBackOff).')
 param configureAcrPull bool = false
 
-@description('Diagnosis implementation the deployed app runs: single_agent (the LLM planner + triager) or deterministic (the hand-tuned floor). Injected as OPSPILOT_IMPLEMENTATION.')
-@allowed([
-  'single_agent'
-  'deterministic'
-])
-param implementation string = 'single_agent'
-
 @description('Azure OpenAI account name. Must be globally unique; lowercase alphanumeric + hyphens.')
 param openAiAccountName string = toLower('${namePrefix}oai${uniqueString(resourceGroup().id)}')
 
@@ -413,10 +406,6 @@ resource app 'Microsoft.App/containerApps@2024-03-01' = {
           // absent, so the client authenticates keyless via this app's managed identity.
           env: [
             {
-              name: 'OPSPILOT_IMPLEMENTATION'
-              value: implementation
-            }
-            {
               name: 'OPSPILOT_LLM_PROVIDER'
               value: 'azure'
             }
@@ -651,4 +640,3 @@ output openAiEndpoint string = openai.properties.endpoint
 output openAiAccountName string = openai.name
 output cosmosAccountName string = cosmos.name
 output cosmosEndpoint string = cosmos.properties.documentEndpoint
-output implementation string = implementation
