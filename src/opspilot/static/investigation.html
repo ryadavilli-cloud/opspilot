@@ -83,6 +83,11 @@
 
   #brief { min-height: 2.5rem; }
   #brief.pending { color: var(--muted); }
+  #ask { display: flex; gap: 0.6rem; flex-wrap: wrap; align-items: center; }
+  #ask h2 { flex-basis: 100%; }
+  #question-input { flex: 1 1 20rem; padding: 0.4rem 0.5rem; }
+  #answer { flex-basis: 100%; min-height: 2.5rem; white-space: pre-wrap; }
+  #answer.pending { color: var(--muted); }
 
   details summary { cursor: pointer; color: var(--muted); font-size: 0.85rem; }
   details pre {
@@ -128,6 +133,14 @@
     <div id="brief" class="pending">No investigation started yet.</div>
   </section>
 
+  <section id="ask" hidden>
+    <h2>Ask about this investigation</h2>
+    <input id="question-input" type="text" placeholder="Ask a question about this record"
+           autocomplete="off" />
+    <button id="ask-button" type="button">Ask</button>
+    <div id="answer" class="pending">No question asked yet.</div>
+  </section>
+
   <section>
     <details>
       <summary>Details</summary>
@@ -143,6 +156,10 @@
   var startButton = document.getElementById("start-button");
   var incidentSelect = document.getElementById("incident-select");
   var feed = document.getElementById("feed");
+  var ask = document.getElementById("ask");
+  var questionInput = document.getElementById("question-input");
+  var askButton = document.getElementById("ask-button");
+  var answer = document.getElementById("answer");
   var brief = document.getElementById("brief");
   var detailsLog = document.getElementById("details-log");
 
@@ -191,11 +208,53 @@
         ? event.brief.text
         : "This investigation could not be completed: " + event.failure;
       brief.classList.remove("pending");
+      if (event.brief) {
+        ask.hidden = false;
+      }
       renderDetails(rawEvents[0].investigation_id);
     }
   }
 
+  async function askQuestion() {
+    var question = questionInput.value.trim();
+    if (!question || !rawEvents.length) {
+      return;
+    }
+    askButton.disabled = true;
+    answer.textContent = "Asking...";
+    answer.classList.add("pending");
+    try {
+      var response = await fetch(
+        "/investigations/" + encodeURIComponent(rawEvents[0].investigation_id) + "/questions",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ question: question })
+        }
+      );
+      if (!response.ok) {
+        answer.textContent = "The question could not be answered (" + response.status + ").";
+        return;
+      }
+      var body = await response.json();
+      // The citations are shown with the answer because they are what it rests on; a refusal
+      // carries none, and saying so is the whole point of it.
+      answer.textContent = body.references && body.references.length
+        ? body.answer + "\n\nCited: " + body.references.join(", ")
+        : body.answer;
+      answer.classList.remove("pending");
+    } catch (error) {
+      answer.textContent = "The question could not be sent: " + error;
+    } finally {
+      askButton.disabled = false;
+    }
+  }
+
   function resetView() {
+    ask.hidden = true;
+    answer.textContent = "No question asked yet.";
+    answer.classList.add("pending");
+    questionInput.value = "";
     feed.innerHTML = "";
     brief.textContent = "Investigating...";
     brief.classList.add("pending");
@@ -246,6 +305,12 @@
   }
 
   startButton.addEventListener("click", startInvestigation);
+  askButton.addEventListener("click", askQuestion);
+  questionInput.addEventListener("keydown", function (event) {
+    if (event.key === "Enter") {
+      askQuestion();
+    }
+  });
 })();
 </script>
 </body>
