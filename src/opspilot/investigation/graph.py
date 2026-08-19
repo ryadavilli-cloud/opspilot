@@ -39,6 +39,7 @@ from opspilot.assessment.brief import outcome_of, render
 from opspilot.evidence.admission import admit
 from opspilot.grounding.gate import ground as run_gate
 from opspilot.investigation.agents import (
+    RETURNABLE_EVIDENCE_KINDS,
     UnusableProposal,
     correct,
     interpret_objective,
@@ -78,17 +79,23 @@ def _activity(
     capability: str | None = None,
     outcome: str | None = None,
     references: list[str] | None = None,
+    after: list[Any] | None = None,
 ) -> list[Any]:
     """One activity entry appended to what the run has already emitted.
 
     Built at the same call as the telemetry span, from the same stated facts, so the feed and the
     trace cannot drift. Nothing here carries a prompt, a working hypothesis, or provider content.
+
+    `after` is the list to append to when a node emits a second entry, whose predecessor is
+    therefore not yet on the state. The sequence counts entries rather than nodes, so a step that
+    reports twice has to number the second from the first.
     """
+    emitted = state.events if after is None else after
     event = emit(
         name,
         state.investigation_id,
         state.incident.incident_id,
-        sequence=len(state.events) + 1,
+        sequence=len(emitted) + 1,
         phase=phase,
         action=action,
         status=status,
@@ -98,7 +105,7 @@ def _activity(
         outcome=outcome,
         references=references or [],
     )
-    return [*state.events, event]
+    return [*emitted, event]
 
 
 def _record_call(state: InvestigationState, result: Any) -> dict[str, Any]:
@@ -175,8 +182,12 @@ def gather(state: InvestigationState, config: RunnableConfig | None = None) -> d
         state.objective,
         state.evidence,
         PROPOSABLE_CAPABILITIES,
+        state.open_question,
     )
-    update = _record_call(state, result)
+    # Spent on this proposal whatever came of it. A question the investigator declined to act on is
+    # not carried forward to be asked again on the next step, which would be a second return in
+    # everything but name.
+    update = {**_record_call(state, result), "open_question": ""}
 
     if action.is_finished:
         return {**update, "stopped_because": action.finished_because}
@@ -275,13 +286,18 @@ def synthesize_node(
 
     deps = _deps(config)
     try:
-        assessment, result = synthesize(
-            deps[MODEL], state.incident, state.objective, state.evidence, state.stopped_because
+        assessment, unresolved, result = synthesize(
+            deps[MODEL],
+            state.incident,
+            state.objective,
+            state.evidence,
+            state.stopped_because,
+            returned=state.bounds.return_used,
         )
     except UnusableProposal as exc:
         return _spend_correction(state, deps[MODEL], str(exc), FailureCategory.UNUSABLE_ASSESSMENT)
 
-    return {
+    update = {
         **_record_call(state, result),
         "assessment": assessment,
         "events": _activity(
@@ -296,6 +312,53 @@ def synthesize_node(
             ),
         ),
     }
+
+    question = _authorized_return(state, unresolved)
+    if not question:
+        return update
+
+    state.bounds.return_used = True
+    return {
+        **update,
+        "open_question": question,
+        "events": _activity(
+            state,
+            "investigation.return",
+            phase="gathering",
+            action="returned to gathering",
+            detail=f"analysis could not settle this and asked for more: {question}",
+            after=update["events"],
+        ),
+    }
+
+
+def _authorized_return(state: InvestigationState, unresolved: Any) -> str:
+    """The question gathering resumes on, or nothing, decided entirely here.
+
+    Every condition is the Supervisor's, and each one is a membership test or a count rather than a
+    judgment about whether another pass would help. The analyst says what it could not answer; code
+    says whether this run may go and get it.
+
+    Costed before it is granted rather than discovered mid-pass: a return that resumes gathering
+    with no room for a proposal, a second synthesis, and the correction that synthesis may still
+    need would spend the model budget and end as a failed execution, which is a worse answer than
+    the assessment already in hand.
+    """
+    if state.bounds.return_used:
+        return ""
+    question = str(getattr(unresolved, "question", "")).strip()
+    kind = str(getattr(unresolved, "evidence_kind", "")).strip()
+    if not question or not kind:
+        return ""
+    if kind not in RETURNABLE_EVIDENCE_KINDS:
+        return ""
+    if question in state.answered_questions:
+        return ""
+    if not state.capability_budget_left or state.bounds.expired:
+        return ""
+    if state.model_calls_made + RESERVED_MODEL_CALLS + 1 >= state.bounds.model_calls:
+        return ""
+    return question
 
 
 def _spend_correction(
@@ -449,11 +512,15 @@ def _after_gather(state: InvestigationState) -> str:
 
 
 def _after_synthesis(state: InvestigationState) -> str:
-    """The return edge is declared here and is not followed yet: authorizing one costs a bound and
-    a question, and nothing proposes one until the slice that exercises it."""
+    """Back to gathering when a return was authorized, otherwise on to the gate.
+
+    Routing reads the decision rather than making it: `open_question` is set only by the node that
+    already checked the bound, the vocabulary, and the budget, so there is one place a return can be
+    granted and it is not this one.
+    """
     if state.failure:
         return END
-    return "ground"
+    return "gather" if state.open_question else "ground"
 
 
 def _after_ground(state: InvestigationState) -> str:

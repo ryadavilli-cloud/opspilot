@@ -97,6 +97,10 @@ class InvestigationState:
     issues: list[Issue] = field(default_factory=list)
     outcome: Outcome | None = None
     stopped_because: str = ""
+    # Set when analysis is sent back to gather, cleared by the step that acts on it. Its
+    # presence is what routes the one return, so it is the question in flight rather than a
+    # record that one was asked: `return_used` is what remembers that.
+    open_question: str = ""
     failure: FailureCategory | None = None
     # Emitted as they happen; the streaming request drains what it has not yet sent.
     events: list[ActivityEvent] = field(default_factory=list)

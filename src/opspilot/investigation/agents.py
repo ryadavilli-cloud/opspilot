@@ -26,20 +26,36 @@ from typing import Any
 from opspilot.assessment.contracts import Assessment
 from opspilot.assessment.synthesis import (
     SYNTHESIS_TASK,
+    UnresolvedQuestion,
     UnusableProposal,
     admit_assessment,
     parse_proposal,
 )
-from opspilot.evidence.admission import AdmittedObservation
+from opspilot.evidence.admission import CAPABILITY_EVIDENCE_TYPES, AdmittedObservation
 from opspilot.evidence.operations import EvidenceSet
 from opspilot.llm.base import ChatMessage, ChatResult
 from opspilot.llm.prompts import Prompt, get_prompt
 from opspilot.tools.contracts import Completeness
-from opspilot.tools.service import capability_arguments
+from opspilot.tools.service import PROPOSABLE_CAPABILITIES, capability_arguments
 
 OBJECTIVE_TASK = "investigation_objective"
 SELECTION_TASK = "evidence_selection"
 CORRECTION_TASK = "assessment_correction"
+
+# What a further pass could actually obtain: the evidence kinds supplied by the capabilities the
+# investigator may propose. Derived from the two facts that already decide it, so a capability
+# that becomes proposable brings its kind with it and no second list can fall behind. The
+# analyst is shown these and the Supervisor authorizes against them, so both sides of the return
+# read the same vocabulary and the decision stays a membership test.
+RETURNABLE_EVIDENCE_KINDS: tuple[str, ...] = tuple(
+    sorted(
+        {
+            kind.value
+            for name in PROPOSABLE_CAPABILITIES
+            if (kind := CAPABILITY_EVIDENCE_TYPES.get(name)) is not None
+        }
+    )
+)
 
 
 @dataclass(frozen=True)
@@ -151,13 +167,24 @@ def interpret_objective(model: Any, incident: Any) -> tuple[str, ChatResult]:
 
 
 def propose_action(
-    model: Any, incident: Any, objective: str, evidence: EvidenceSet, capabilities: tuple[str, ...]
+    model: Any,
+    incident: Any,
+    objective: str,
+    evidence: EvidenceSet,
+    capabilities: tuple[str, ...],
+    open_question: str = "",
 ) -> tuple[ProposedAction, ChatResult]:
     """The Evidence Investigator's one call per step: which capability, with what, to answer what.
 
     What it may choose from is stated rather than assumed: the registered capabilities, the
     incident, the objective, and what has been admitted so far. A proposal naming something else is
     refused by the Supervisor, not filtered here, so the refusal is visible in the feed.
+
+    `open_question` is set on the one step that resumes gathering after analysis returned. It is
+    what the analyst could not answer, handed back as the thing to go and answer. It is stated
+    rather than imposed: the investigator still proposes, and the Supervisor still authorizes under
+    the same rules, so a question that turns out to need something already asked is refused like any
+    other repeat rather than granted because analysis wanted it.
     """
     prompt = get_prompt("evidence_selection")
     user = "\n".join(
@@ -165,6 +192,16 @@ def propose_action(
             *_incident_lines(incident),
             f"Objective: {objective}",
             "",
+            *(
+                [
+                    "Analysis could not settle this and sent the investigation back for it. "
+                    "Answer it if a capability below can:",
+                    f"- {open_question}",
+                    "",
+                ]
+                if open_question
+                else []
+            ),
             "Capabilities you may choose from, and the arguments each takes",
             "(bracketed arguments are optional):",
             *(f"- {name}({capability_arguments(name)})" for name in capabilities),
@@ -192,26 +229,60 @@ def propose_action(
     ), result
 
 
-def _synthesis_user_message(incident: Any, objective: str, evidence: EvidenceSet, why: str) -> str:
+def _synthesis_user_message(
+    incident: Any, objective: str, evidence: EvidenceSet, why: str, *, returned: bool = False
+) -> str:
     return "\n".join(
         [
             f"Objective: {objective}",
             *_incident_lines(incident),
             f"Gathering ended because: {why}",
             "",
+            *(
+                [
+                    "This investigation has already been sent back to gather once, which is all it "
+                    "may do. Whatever remains unanswered now stands as an unknown.",
+                    "",
+                ]
+                if returned
+                else [
+                    "If something material remains unanswered and one of these kinds of evidence "
+                    "could answer it, say so in `unresolved_question` using the kind's own name:",
+                    *(f"- {kind}" for kind in RETURNABLE_EVIDENCE_KINDS),
+                    "",
+                ]
+            ),
             evidence_digest(evidence),
         ]
     )
 
 
 def synthesize(
-    model: Any, incident: Any, objective: str, evidence: EvidenceSet, stopped_because: str
-) -> tuple[Assessment, ChatResult]:
-    """The RCA Analyst's one call. Raises `UnusableProposal` when nothing can be made of it."""
+    model: Any,
+    incident: Any,
+    objective: str,
+    evidence: EvidenceSet,
+    stopped_because: str,
+    *,
+    returned: bool = False,
+) -> tuple[Assessment, UnresolvedQuestion | None, ChatResult]:
+    """The RCA Analyst's one call. Raises `UnusableProposal` when nothing can be made of it.
+
+    The routing field travels beside the assessment rather than inside it. It is what the analyst
+    could not settle, which is a fact about this run rather than a finding about the incident: the
+    assessment states the same matter in `unknowns` and stands whether or not anything acts on it.
+
+    `returned` says a return has already been spent, which the analyst is told because it changes
+    what an honest answer looks like: with no further pass available, an open question is an unknown
+    to report rather than work to request.
+    """
     prompt = get_prompt("rca_synthesis")
-    user = _synthesis_user_message(incident, objective, evidence, stopped_because)
+    user = _synthesis_user_message(
+        incident, objective, evidence, stopped_because, returned=returned
+    )
     result = _ask(model, SYNTHESIS_TASK, prompt, user)
-    return admit_assessment(parse_proposal(result.text)), result
+    proposal = parse_proposal(result.text)
+    return admit_assessment(proposal), proposal.unresolved_question, result
 
 
 def correct(
