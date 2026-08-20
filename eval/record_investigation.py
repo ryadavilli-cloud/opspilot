@@ -49,10 +49,12 @@ from opspilot.api import (  # noqa: E402
     app,
     get_model,
     get_operational_records,
+    get_record,
     get_service,
 )
 from opspilot.llm.cassette import RecordingChatModel  # noqa: E402
 from opspilot.llm.client import build_chat_model  # noqa: E402
+from opspilot.record.memory import InMemoryCompletedInvestigations  # noqa: E402
 from opspilot.tools.service import ToolService  # noqa: E402
 
 # The incidents worth having a recording of, and why each one earns the model calls it costs.
@@ -102,6 +104,10 @@ def main(argv: list[str] | None = None) -> None:
         records, retriever_factory=knowledge_retriever
     )
     app.dependency_overrides[get_model] = lambda: model
+    # The completed record is held in memory for the length of this run. A recording is
+    # evidence about what the model produced, and writing one into the deployed store would
+    # leave an investigation behind that no one asked for, on a store shared with real runs.
+    app.dependency_overrides[get_record] = InMemoryCompletedInvestigations
     try:
         with (
             TestClient(app) as client,
@@ -113,6 +119,7 @@ def main(argv: list[str] | None = None) -> None:
         app.dependency_overrides.pop(get_operational_records, None)
         app.dependency_overrides.pop(get_service, None)
         app.dependency_overrides.pop(get_model, None)
+        app.dependency_overrides.pop(get_record, None)
 
     print(f"incident:     {incident}")
     print(f"deployment:   {model.deployment}")

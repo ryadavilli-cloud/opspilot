@@ -120,6 +120,12 @@ def structured_query_surface() -> str:
     members it branches on, so an operator added later is listed automatically and described by the
     same default the validator would apply to it.
 
+    Each predicate form is written out as the object it must be rather than described in prose. A
+    description that named the operand generically invited a key called `operand`, and one that
+    listed which operator takes what invited the wrong one of the three: both were proposed, both
+    were refused for a key the structure does not have, and neither caller could have read the text
+    differently. Showing the shape costs the same line and cannot be read two ways.
+
     The full approved surface is rendered rather than the narrower grant a run may hold. The grant
     belongs to the service and is not in scope where a prompt is assembled, and reaching for it
     from here would be the new seam this arrangement exists to avoid. A proposal against a
@@ -128,23 +134,24 @@ def structured_query_surface() -> str:
     by_operand: dict[str, list[str]] = {}
     for op in PredicateOp:
         if op is PredicateOp.IN:
-            form = "values"
+            form = '"values": [<value>, ...]'
         elif op is PredicateOp.BETWEEN:
-            form = "low and high"
+            form = '"low": <value>, "high": <value>'
         elif op in (PredicateOp.PRESENT, PredicateOp.ABSENT):
-            form = "no operand"
+            form = ""
         else:
-            form = "value"
+            form = '"value": <value>'
         by_operand.setdefault(form, []).append(op.value)
 
     lines = [
         "structured_query takes a structure rather than flat arguments:",
         "  collection: exactly one of " + ", ".join(sorted(APPROVED_SURFACE)),
-        "  predicates: a list of {field, op, and its operand}, combined with AND.",
+        "  predicates: a list, combined with AND. Each one is written exactly as:",
         *(
-            f"    {', '.join(ops)} {'take' if len(ops) > 1 else 'takes'} {form}."
+            f'    {{"field": <name>, "op": "{" | ".join(ops)}"{", " + form if form else ""}}}'
             for form, ops in by_operand.items()
         ),
+        "    No other key is accepted, and the operator decides which of these it takes.",
         '  either projection (a list of field names) or aggregate: "count", never both.',
         f"  limit: a positive integer, at most {config.STRUCTURED_QUERY_MAX_LIMIT}.",
         "  Readable fields, by collection:",
