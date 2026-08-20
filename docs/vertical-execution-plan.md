@@ -661,7 +661,7 @@ and the numeric evaluation machinery and golden files are absent.
 
 ## V10. Hosted final posture
 
-**State:** Partial.
+**State:** Complete.
 
 *Already present.* Everything but authentication. Replicas 0 to 1. Application Insights over the
 workspace the application already logs to, with the exporter the deployed revision names actually
@@ -690,9 +690,21 @@ capability step happened without saying which, over what, or whether it answered
 instrumented and each emitted nothing, and a test asserting the component passed in every case;
 what none of them had was a test asserting the composition.
 
-*Remaining.* Container Apps built-in authentication. It is the one item that can make the
-deployment unreachable, its rollback is removing the configuration and deploying again, and
-everything above is verifiable while the application is still open, so it lands separately.
+*Authentication.* Done. The platform answers who may call before a request reaches the container,
+so the application holds no authentication code: the health paths are excluded because the probes
+carry no principal, and everything else is refused. Verified against the deployed revision: health
+answers, an API client is refused, and a browser is redirected to sign in at the multi-tenant
+endpoint. The client secret is read from a vault by the app's own identity, so it is in no template,
+parameter, or pipeline variable, and rotating it is a write to the vault.
+
+*Recorded against this slice's own text.* The step says an app registration and nothing more, and
+three things have to exist outside this repository before the configuration means anything: the
+registration, an app role assigned to the principal the workflow runs as, and the secret in the
+vault. The role is not authorization and nothing reads it. Entra will not issue a service principal
+a token for an API it has no granted permission on, and the alternative was discovering which way
+that resolves by failing a deployment. A person signing in holds no role. All three are recorded in
+the template beside the configuration that needs them, because an environment rebuilt from this
+repository alone will deploy and then refuse every caller until they exist.
 
 **Builds.** The remaining hosted gaps, and nothing beyond them. Container App replicas 0 to 1.
 Application Insights component and exporter wiring for the one tracing seam, with spans for the
@@ -737,3 +749,9 @@ workspace by investigation id returned the run, its model calls with task label 
 and its capability calls.
 
 **Complete when** the hosted composition matches the design and the smoke suite passes.
+
+*On the suite.* It is the checks rather than a file. `scripts/smoke_deployment.py` performs them and
+was extended rather than replaced, because it is the thing the workflow invokes and a file deleted
+and recreated under the same name is churn rather than a retirement. Two of the checks are steps
+beside it, where the tools they need already are: the protocol exposure is asserted against the
+built image, and the telemetry query against the workspace.

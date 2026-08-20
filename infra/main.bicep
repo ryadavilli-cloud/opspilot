@@ -626,6 +626,19 @@ resource authSecretRead 'Microsoft.Authorization/roleAssignments@2022-04-01' = i
 // the application holds no authentication code: presence of an authenticated caller is the whole
 // check, and every caller that passes it can do everything the application does.
 //
+// Three things this template cannot create, because they are Microsoft Graph or data-plane objects
+// rather than ARM resources. Each is made once, by hand, and an environment rebuilt from this file
+// alone will deploy and then refuse every caller until they exist:
+//
+//   1. the app registration `authClientId` names, with this app's callback as a redirect URI, an
+//      identifier URI of `api://<client-id>`, and an audience admitting the accounts it should;
+//   2. an app role on that registration, assigned to the principal the deployment workflow runs
+//      as. Entra needs a granted permission before it will issue that principal a token for this
+//      API; nothing here reads the role, and a person signing in holds none;
+//   3. the client secret, written into the vault under `authClientSecretName`. It expires, and
+//      when it does this configuration keeps deploying while every sign-in fails, which is why the
+//      smoke run authenticates rather than only checking health.
+//
 // The health paths are excluded because the probes are the platform's own and carry no principal.
 // Requiring authentication on them fails every probe, the revision never becomes healthy, and the
 // deployment fails on what reads as a broken application. What they disclose is that the source
@@ -654,8 +667,10 @@ resource auth 'Microsoft.App/containerApps/authConfigs@2024-03-01' = if (configu
           clientSecretSettingName: 'auth-client-secret'
           // Work and school accounts in any tenant, matching the registration's own audience. A
           // single-tenant issuer here would refuse every caller from anywhere else, which is the
-          // opposite of what the registration was created for.
-          openIdIssuer: 'https://login.microsoftonline.com/organizations/v2.0'
+          // opposite of what the registration was created for. The host comes from the deployment
+          // environment rather than being written down, so this is not a template that only works
+          // in one cloud.
+          openIdIssuer: '${environment().authentication.loginEndpoint}organizations/v2.0'
         }
         validation: {
           allowedAudiences: [

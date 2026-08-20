@@ -565,8 +565,15 @@ The step also asks startup to refuse an unknown capability enabled, and no setti
 capability here: the registry is the inventory. The same fault is checked where it does live, in
 settings whose value names a provider or exporter that does not exist.
 
-*Remaining.* Container Apps built-in authentication, which lands separately because it is the one
-item that can make the deployment unreachable.
+*Authentication.* Done, and verified against the deployed revision: the health paths answer
+because the platform's probes carry no principal, an API client is refused, and a browser is
+redirected to sign in. The secret is read from a vault by the app's own identity rather than passed
+through a deployment.
+
+Three things exist outside this repository and the template records them beside the configuration
+that needs them: the app registration, an app role assigned to the principal the workflow runs as,
+and the secret in the vault. The role is not authorization and nothing reads it; it exists because
+Entra will not issue a service principal a token for an API it has no granted permission on.
 
 **Builds.** The remaining hosted gaps, and nothing beyond them. Container App replicas 0 to 1.
 Application Insights component and exporter wiring for the one tracing seam, with spans for the
