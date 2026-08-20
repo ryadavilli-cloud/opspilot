@@ -425,7 +425,7 @@ files on disk, and the reranker implementation, dependencies, marker, and lane a
 
 ## V6. Governed structured query and the full evidence surface
 
-**State:** Partial.
+**State:** Complete.
 
 *Already present.* The whole evidence surface below the agents, and every removal this slice names.
 Rows carry the reference of the record they project, formed from identifying fields every
@@ -445,9 +445,25 @@ enumeration, and the configured ceiling, so what it is told is what validation e
 run chose it unprompted. The separate list of capabilities a model may propose is gone: every
 registered capability is now eligible, so the registry's own inventory is the only one.
 
-*Remaining.* The hosted proof. The capability is proposed on the deployed revision, so the path
-is exercised there, but the structure the model offered did not validate and was refused at the
-boundary; a hosted run whose governed query actually executes has not been taken.
+*Hosted.* Done. On the deployed revision a model proposed a governed query, validation accepted
+it, translation bound every value as a parameter, the real store answered, and the result was
+admitted with a reference that resolves. See `status.md`.
+
+*Recorded against this slice's own text.* Two things.
+
+The capability had never executed anywhere, not only hosted. Both recorded runs proposed one and
+both were refused before validation, for a key the structure does not have. What a caller was told
+described the predicate rather than showing it: a list of `{field, op, and its operand}`, with three
+different operand keys named beneath. One run wrote `operand` and the other put a range in `value`,
+and each was a fair reading. Each form is now rendered as the object it must be, still derived from
+the enumeration the validator branches on.
+
+The hosted result was an authoritative absence rather than rows: the window the model chose matched
+nothing, which is a true answer and a citable one. Whether a chosen window matches rows is the
+model's and the corpus's to settle, so the hosted proof is that the governed path executes and its
+result is admitted with a resolving reference. That a row carries the reference of the record it
+projects is held still in the deterministic lane, where the query can be written rather than
+proposed.
 
 **Builds.** The governed structured query as a capability the Evidence Investigator can propose: the
 model proposes a bounded structure of predicates, projection, optional count, and limit over one
@@ -482,8 +498,9 @@ approved surface is rejected before anything executes; a query row's reference r
 record; a count admits with a `query:` reference; an incident-record observation contains no cause
 or resolution field; the query executes read-only with every value bound as a parameter.
 
-**Hosted effect: Application.** Deploy; a hosted investigation that proposes a structured query
-admits its rows with resolving references.
+**Hosted effect: Application.** Done. Deployed and run: a hosted investigation proposed a
+structured query, it was governed and executed, and its result was admitted with a resolving
+reference.
 
 **Complete when** the query is proposable and governed as designed, all three added reference forms
 exist, adapters take typed parameters, and the request models and superseded exposures are absent.

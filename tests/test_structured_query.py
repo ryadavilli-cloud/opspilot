@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import pytest
 from fake_operational_records import CannedContainer
+from pydantic import ValidationError
 
 from opspilot import config
 from opspilot.data.operational_records import OperationalRecords
@@ -32,8 +33,8 @@ from opspilot.data.structured_query import (
     validate,
 )
 from opspilot.tools.contracts import Completeness, ExecutionOutcome
-from opspilot.tools.service import ToolService
-from opspilot.tools.structured_query import ROW_REFERENCES
+from opspilot.tools.service import ToolService, structured_query_surface
+from opspilot.tools.structured_query import ALL_COLLECTIONS, ROW_REFERENCES
 
 DEADLINE = 3.0
 
@@ -276,3 +277,52 @@ def test_the_capability_is_reachable_only_through_dispatch():
     service = _service(container)
     assert "structured_query" in service.tool_names
     assert service.call("structured_query", **_query().model_dump()).answered
+
+
+# --- what a caller is told is what validation accepts ---------------------------------------------
+def test_the_rendered_structure_names_every_operator_the_validator_knows():
+    """Rendered from the enumeration the validator branches on, so an operator added later is
+    described rather than silently unavailable to the caller expected to propose it."""
+    surface = structured_query_surface()
+
+    for op in PredicateOp:
+        assert op.value in surface, f"{op.value} is accepted and never offered"
+
+
+@pytest.mark.parametrize(
+    "predicate",
+    [
+        {"field": "service", "op": "eq", "value": "checkout-api"},
+        {"field": "service", "op": "in", "values": ["checkout-api", "payments-api"]},
+        {
+            "field": "fired_at",
+            "op": "between",
+            "low": "2026-06-22T11:00:00Z",
+            "high": "2026-06-22T12:00:00Z",
+        },
+        {"field": "service", "op": "present"},
+    ],
+    ids=["value", "values", "low-high", "no-operand"],
+)
+def test_a_predicate_written_as_rendered_is_accepted(predicate):
+    """The property that was missing. Both recorded runs proposed a structured query and both were
+    refused for a key the structure does not have: one wrote `operand`, the other put a range in
+    `value`. The description invited each of those and the validator was right to refuse them, so
+    what a caller is shown is now the object itself, and this holds the two together."""
+    query = StructuredQuery(
+        collection="alert", predicates=[predicate], projection=["alert_id"], limit=10
+    )
+
+    validate(query, ALL_COLLECTIONS)
+
+
+def test_a_predicate_carrying_an_operand_key_that_was_never_offered_is_refused():
+    """The other half: the shapes rendered are the only ones, so a caller inventing a key is
+    refused rather than quietly having it ignored."""
+    with pytest.raises(ValidationError):
+        StructuredQuery(
+            collection="alert",
+            predicates=[{"field": "fired_at", "op": "between", "operand": ["a", "b"]}],
+            projection=["alert_id"],
+            limit=10,
+        )
