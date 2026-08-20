@@ -4,7 +4,7 @@ These run against the shaped documents rather than a live container, so they are
 belong in CI. The live read-back after seeding is an Azure-assisted check and is never a CI gate.
 
 The preparation script is imported by path because nothing in the runtime may import it: it is an
-offline setup task, not a component. Same pattern the answer key's `build_goldens.py` already uses.
+offline setup task, not a component: it runs against a checkout, not in the deployed image.
 """
 
 from __future__ import annotations

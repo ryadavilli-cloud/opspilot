@@ -11,6 +11,7 @@ from __future__ import annotations
 import importlib.util
 from pathlib import Path
 
+import answer_key
 import yaml
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -25,8 +26,7 @@ def _load(name: str, rel: str):
     return mod
 
 
-build_goldens = _load("build_goldens", "data/answer_key/build_goldens.py")
-SCENARIOS = build_goldens.load_scenarios()
+SCENARIOS = answer_key.SCENARIOS
 
 RETRIEVAL_REFS = sorted({r for s in SCENARIOS for r in s["expected_retrieval"]})
 POSTMORTEM_REFS = sorted({s["expected_match"] for s in SCENARIOS if s.get("expected_match")})

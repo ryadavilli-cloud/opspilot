@@ -16,6 +16,8 @@ import re
 from datetime import timedelta
 from pathlib import Path
 
+import answer_key
+
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SYN = REPO_ROOT / "data" / "synthetic"
 ANSWER_KEY = REPO_ROOT / "data" / "answer_key"
@@ -30,14 +32,12 @@ def _load(name: str):
 
 
 _MODS = {
-    "build_goldens": "answer_key/build_goldens.py",
     "generate": "synthetic/generate.py",
 }
-build_goldens = _load("build_goldens")
 generate = _load("generate")
 
-TOPOLOGY = build_goldens.load_topology()
-SCENARIOS = build_goldens.load_scenarios()
+TOPOLOGY = answer_key.TOPOLOGY
+SCENARIOS = answer_key.SCENARIOS
 generate._SERVICES = {s["id"] for s in TOPOLOGY["services"]}
 
 METRICS = json.loads((SYN / "metrics.json").read_text(encoding="utf-8"))["series"]

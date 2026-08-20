@@ -15,6 +15,7 @@ import importlib.util
 from datetime import timedelta
 from pathlib import Path
 
+import answer_key
 import pytest
 from fake_operational_records import corpus_records
 
@@ -32,7 +33,7 @@ def _load(name: str, rel: str):
     return mod
 
 
-SCENARIOS = _load("build_goldens", "data/answer_key/build_goldens.py").load_scenarios()
+SCENARIOS = answer_key.SCENARIOS
 SVC = ToolService(corpus_records())
 
 DEPLOY_SCENARIOS = [
