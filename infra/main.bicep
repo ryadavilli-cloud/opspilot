@@ -81,17 +81,15 @@ param embeddingDimensions int = 1536
 @description('Object id of the principal that runs corpus preparation. Corpus preparation writes the RetailEase containers; the application never does, so this grant belongs to a different principal than the app identity. Empty (the default) creates no assignment, which is correct for an environment nobody seeds from.')
 param corpusSetupPrincipalId string = ''
 
-@description('Entra tenant id that issues reviewer tokens for the HITL decision endpoint. Injected as AZURE_TENANT_ID. Defaults to the deployment tenant; override only for a cross-tenant setup.')
+@description('Entra tenant the app identity belongs to, injected as AZURE_TENANT_ID. Defaults to the deployment tenant; override only for a cross-tenant setup.')
 param entraTenantId string = tenant().tenantId
 
-@description('This API\'s audience — the API app-registration\'s application (client) id GUID, which is the aud claim in the v2.0 tokens Entra issues for it (requestedAccessTokenVersion=2). The decision endpoint rejects any token whose aud does not match, so a token for another app cannot approve here. Empty until the app registration is bootstrapped (see the reviewer-identity ADR); while unset the decision endpoint returns 500 (fail-closed) rather than accepting unvalidated tokens.')
-param entraApiAudience string = ''
-
-@description('App role a principal must carry to approve (OPSPILOT_APPROVER_ROLE). Authentication proves who; this proves allowed-to-publish.')
-param entraApproverRole string = 'Approver'
-
-@description('Public Entra app (client) id the operator console signs in with (OPSPILOT_CONSOLE_CLIENT_ID). Not a secret — it is served to the browser. Empty disables the console\'s decision controls; the API still validates tokens from any other authenticated client.')
-param entraConsoleClientId string = ''
+@description('What this revision reports itself as, injected as OPSPILOT_ENV.')
+@allowed([
+  'dev'
+  'prod'
+])
+param runtimeEnvironment string = 'prod'
 
 var logAnalyticsName = '${namePrefix}-logs'
 var environmentName = '${namePrefix}-env'
@@ -459,26 +457,18 @@ resource app 'Microsoft.App/containerApps@2024-03-01' = {
               name: 'AZURE_OPENAI_EMBEDDING_DIMENSIONS'
               value: string(embeddingDimensions)
             }
-            // Reviewer identity for the HITL decision endpoint. The tenant + audience are
-            // what a reviewer token is validated against; the approver role is what it must carry
-            // to publish. These are configuration, not secrets — the app holds no client secret,
-            // because reviewers authenticate as themselves and the console is a public PKCE client.
-            // AZURE_OPENAI_API_KEY-style absence of any secret is deliberate and total here too.
+            // The tenant the app's identity belongs to. Read by the credential chain, and by
+            // built-in authentication when it is configured. Configuration rather than a secret.
             {
               name: 'AZURE_TENANT_ID'
               value: entraTenantId
             }
+            // Which environment this revision believes it is. Without it the deployed application
+            // reports itself as a local one, which is the sort of thing an operator reads once and
+            // then distrusts every other field beside it.
             {
-              name: 'OPSPILOT_API_AUDIENCE'
-              value: entraApiAudience
-            }
-            {
-              name: 'OPSPILOT_APPROVER_ROLE'
-              value: entraApproverRole
-            }
-            {
-              name: 'OPSPILOT_CONSOLE_CLIENT_ID'
-              value: entraConsoleClientId
+              name: 'OPSPILOT_ENV'
+              value: runtimeEnvironment
             }
           ]
           // Port is the app's actual listen port (Dockerfile EXPOSE 8000), independent of the
@@ -513,7 +503,9 @@ resource app 'Microsoft.App/containerApps@2024-03-01' = {
       ]
       scale: {
         minReplicas: minReplicas
-        maxReplicas: 3
+        // One. A run holds its whole investigation in the process serving the request, so a second
+        // replica cannot help that run and would only spread health and telemetry across two.
+        maxReplicas: 1
       }
     }
   }

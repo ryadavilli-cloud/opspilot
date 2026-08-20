@@ -98,6 +98,13 @@ def check_version(client: httpx.Client) -> VersionResponse:
         f"/version reports backend {version.retrieval_backend!r}, expected "
         f"{RETRIEVAL_BACKEND!r}; the deployed revision was built from different code",
     )
+    # A deployed revision calling itself local means the template stopped telling it otherwise. The
+    # value decides nothing at runtime, which is exactly why nothing else would ever notice.
+    _require(
+        version.environment != "local",
+        f"/version reports environment={version.environment!r}: a deployed revision is reporting "
+        "itself as a local one, so OPSPILOT_ENV is not reaching the container",
+    )
     return version
 
 

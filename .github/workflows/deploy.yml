@@ -113,8 +113,6 @@ jobs:
               containerImage="${{ vars.ACR_NAME }}.azurecr.io/$IMAGE_REPO:${{ github.sha }}" \
               manageAcrPullRoleAssignment=false \
               configureAcrPull=true \
-              entraApiAudience="${{ vars.ENTRA_API_AUDIENCE }}" \
-              entraConsoleClientId="${{ vars.ENTRA_CONSOLE_CLIENT_ID }}" \
             --query properties.outputs.appFqdn.value -o tsv)
           echo "app_fqdn=$FQDN" >> "$GITHUB_OUTPUT"
 
