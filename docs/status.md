@@ -12,12 +12,11 @@ repository contradicts it.
 
 ## 1. Baseline
 
-- **Inspected:** `main` at `e666866` plus the retrieval-influence landing, working tree,
-  2026-08-20.
+- **Inspected:** `main` at `491e0cd` plus the governed-query landing, working tree, 2026-08-20.
 - **Toolchain:** `uv`; Python 3.12.
 - **Gates at this tree:** `ruff check` clean; `ruff format --check` clean repository-wide; `mypy`
   strict clean over 59 source files with no override list; deterministic lane
-  `pytest -q -m "not llm"`: **557 passed, 1 deselected, no xfails**; the pre-commit hook (lint,
+  `pytest -q -m "not llm"`: **563 passed, 1 deselected, no xfails**; the pre-commit hook (lint,
   format, em-dash, vocabulary) passes. CI runs one lane.
 - **The count rose** by what the offering and the budget now carry, and by the recurrence
   recording: that every capability describes itself, that the investigator is told what it has
@@ -144,6 +143,14 @@ carries. The digest now states the citable references on their own lines and the
 text beside a reference is to read rather than to quote. A test holds the digest to that shape,
 but only a real model asked the question that exposed it.
 
+A hosted stream can end with the connection closed and no terminal event, which fails the
+deploy's smoke run on a revision that is otherwise healthy. Observed three times, once in CI. In the
+case examined the replacing revision logged no request at all for the run that failed, while
+readiness had answered moments earlier, so the investigation was begun against the revision being
+drained and cut when it went. A run started after the new revision is sole-active completes. This is
+recorded rather than fixed: it is the deploy sequence, not the application, and it belongs with the
+step that owns hosted posture.
+
 `/version` on that revision reports `environment=local`. `OPSPILOT_ENV` is set nowhere in the
 template, so the container takes the default. Nothing keys off it today and no behavior is affected,
 but the hosted revision misreports which environment it is.
@@ -158,6 +165,19 @@ offering described arguments and not purpose; the budget was never stated, so ca
 though free and a run ended at the cap rather than when it had enough; and the analyst was never
 shown the retrieved passages at all, so no amount of better selection could have produced a
 citation. That last one was plumbing.
+
+The governed structured query executes hosted. On the deployed revision one investigation of
+inc-004 proposed a structure, validation accepted it, translation bound every value as a parameter,
+and the real store answered with nothing, which admission recorded as an authoritative absence
+carrying a reference that resolves. Nothing about the path is untried now: the model proposes, code
+validates and translates, the store answers, and the answer is citable whether or not it has rows.
+
+Before this, the capability had never executed anywhere. Both recorded runs proposed one and both
+were refused for a key the structure does not have, because what a caller was told described the
+predicate instead of showing it. The corpus fake cannot answer a translated query either, since it
+matches parameters by the field they are named for and a translated one carries positional names,
+so the deterministic lane proves translation and outcome mapping directly and the executing path is
+proven against the store.
 
 Retrieval is reached hosted, and what it read is carried into the brief. On the revision built
 from this landing merged with main, one investigation of inc-007 gathered four times, chose
