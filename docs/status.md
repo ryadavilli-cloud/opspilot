@@ -167,6 +167,16 @@ probes carry no principal and requiring it there fails every probe. Verified on 
 revision: health answers, an API client is refused, a browser is redirected to sign in at the
 multi-tenant endpoint.
 
+Two settings in that configuration were found the hard way and are worth keeping written down,
+because the platform reports both failures identically and the container never sees the request.
+The accepted audiences must include the bare client id and not only the identifier URI, because a
+registration issuing v2 tokens puts the client id in the audience claim. And the issuer must be the
+`common` endpoint rather than `organizations`: both are multi-tenant, but the metadata
+`organizations` publishes declares its issuer as a template with the tenant left as a placeholder,
+which the platform does not substitute when validating a token presented directly. Either mistake
+answers a valid token with a server error rather than a refusal, which is the tell: the check
+failed, not the token.
+
 The one secret this system holds is the client secret that exchange needs. It lives in a Key Vault
 and is read at runtime by the app's own identity, so it is in no template, deployment parameter, or
 pipeline variable, and rotating it is a write to the vault. It expires 2027-08-20, and an expired

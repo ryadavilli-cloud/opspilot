@@ -674,12 +674,20 @@ resource auth 'Microsoft.App/containerApps/authConfigs@2024-03-01' = if (configu
         registration: {
           clientId: authClientId
           clientSecretSettingName: 'auth-client-secret'
-          // Work and school accounts in any tenant, matching the registration's own audience. A
-          // single-tenant issuer here would refuse every caller from anywhere else, which is the
-          // opposite of what the registration was created for. The host comes from the deployment
-          // environment rather than being written down, so this is not a template that only works
-          // in one cloud.
-          openIdIssuer: '${environment().authentication.loginEndpoint}organizations/v2.0'
+          // Any tenant, which is what the registration's own audience admits. `common` rather
+          // than `organizations`, and the difference is not cosmetic: both are multi-tenant, but
+          // the metadata `organizations` publishes declares its issuer as a template with the
+          // tenant left as a placeholder, and the platform does not substitute it when validating
+          // a token presented directly. A caller holding a perfectly good token is answered with
+          // a server error rather than a refusal, which is how it was found: the error says the
+          // check failed, not that the token did.
+          //
+          // Personal accounts are not admitted by the wider endpoint. The registration decides
+          // that, and it admits work and school accounts only, so `common` costs nothing here.
+          //
+          // The host comes from the deployment environment rather than being written down, so this
+          // is not a template that works in one cloud alone.
+          openIdIssuer: '${environment().authentication.loginEndpoint}common/v2.0'
         }
         validation: {
           // Both forms. A token requested for the identifier URI arrives carrying the bare client
