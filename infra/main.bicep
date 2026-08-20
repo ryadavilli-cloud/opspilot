@@ -470,6 +470,13 @@ resource app 'Microsoft.App/containerApps@2024-03-01' = {
               name: 'OPSPILOT_ENV'
               value: runtimeEnvironment
             }
+            // The image this revision was started from. The platform injects the revision name on
+            // its own but not the tag, and a process cannot read the tag it was started from, so
+            // the one place that knows it is the template that set it.
+            {
+              name: 'OPSPILOT_IMAGE'
+              value: containerImage
+            }
           ]
           // Port is the app's actual listen port (Dockerfile EXPOSE 8000), independent of the
           // bootstrap-only `targetPort` ingress override above — the real image always listens

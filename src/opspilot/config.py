@@ -146,3 +146,10 @@ MODEL_CALL_CAP = _env_int("OPSPILOT_MODEL_CALL_CAP", 14)
 # Environment
 # --------------------------------------------------------------------------------------
 ENVIRONMENT = _env("OPSPILOT_ENV", "local")  # local | dev | prod
+
+# What the platform says this process is. Container Apps injects the revision; the image tag is
+# injected by the template, because the platform does not offer it and a process cannot read the
+# tag it was started from. Both are empty anywhere but a deployment, and are identity for the
+# startup record rather than settings anything branches on.
+CONTAINER_APP_REVISION = _env("CONTAINER_APP_REVISION")
+CONTAINER_IMAGE = _env("OPSPILOT_IMAGE")

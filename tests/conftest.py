@@ -8,7 +8,7 @@ from typing import Any
 import pytest
 from fake_operational_records import FakeContainer, corpus_container
 
-from opspilot import api
+from opspilot import api, config
 from opspilot.data import knowledge_records, operational_records
 from opspilot.data.operational_records import OperationalRecords
 from opspilot.llm import client as llm_client
@@ -17,6 +17,24 @@ from opspilot.retrieval import embeddings as query_embeddings
 from opspilot.retrieval import retriever as retriever_module
 from opspilot.tools import service as tool_service_module
 from opspilot.tools.service import ToolService
+
+
+@pytest.fixture(autouse=True)
+def _configuration_the_app_will_start_on(monkeypatch: pytest.MonkeyPatch) -> None:
+    """No test may inherit whether this machine happens to be configured.
+
+    Startup refuses to serve on a setting that names something which does not exist, which is the
+    point of it. That check reads the same module a developer's `.env` writes into, so without this
+    the suite passes or fails on an untracked file: a stale provider name locally turns every
+    request-making test red, while CI, which has no `.env`, stays green. A gate that disagrees with
+    itself by machine is not a gate.
+
+    Pinned to what the deterministic lane actually uses. The refusing paths are asserted directly
+    in `test_startup.py`, against this module rather than against the environment.
+    """
+    monkeypatch.setattr(config, "LLM_PROVIDER", "replay")
+    monkeypatch.setattr(config, "TRACE_EXPORTER", "none")
+    monkeypatch.setattr(config, "ENVIRONMENT", "local")
 
 
 @pytest.fixture(autouse=True)

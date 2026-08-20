@@ -21,6 +21,7 @@ from __future__ import annotations
 import logging
 import threading
 from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Annotated, Any, Literal
 from uuid import uuid4
@@ -44,12 +45,36 @@ from opspilot.investigation.state import Bounds, FailureCategory, InvestigationS
 from opspilot.obs import tracing
 from opspilot.record.completed import CompletedInvestigation
 from opspilot.record.port import CompletedInvestigationRepository
+from opspilot.startup import configuration_problems, startup_record
 from opspilot.stream.contracts import IdentityEvent, TerminalEvent
 from opspilot.tools.contracts import Completeness, IncidentRecord
 
 _log = logging.getLogger("opspilot.api")
 
-app = FastAPI(title="OpsPilot", version=__version__)
+
+@asynccontextmanager
+async def _lifespan(_: FastAPI) -> AsyncIterator[None]:
+    """Check the configuration once, then say what this revision is.
+
+    A misconfigured deployment refuses to start rather than accepting a request it cannot serve.
+    The alternative is failing inside an investigation, where the same missing setting reads as an
+    unavailable source and sends whoever is looking to the wrong place entirely.
+
+    Local runs are exempt from the required-setting half by `configuration_problems` itself, so the
+    tests and a developer running against the corpus fake start as they always did. A setting whose
+    value names nothing that exists is refused everywhere, because that is a mistake in any
+    environment.
+    """
+    problems = configuration_problems()
+    if problems:
+        for problem in problems:
+            _log.error("configuration: %s", problem)
+        raise RuntimeError(f"refusing to start: {len(problems)} configuration problem(s); see log")
+    _log.info("startup: %s", startup_record())
+    yield
+
+
+app = FastAPI(title="OpsPilot", version=__version__, lifespan=_lifespan)
 
 # The one-screen client: a self-contained, same-origin page with no build step, read once at import
 # because it is a packaged asset rather than runtime-configurable data.
