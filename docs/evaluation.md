@@ -73,10 +73,9 @@ For each completed investigation, mechanically: every operational-support refere
 record's admitted evidence and every knowledge reference in its retrieved knowledge; `what_happened`
 and every established candidate have admitted operational support, and no knowledge reference
 stands as current operational proof; no operation attempted was a write, checked from the record's
-operations list against the registry; deliberately absent evidence appears as a disclosed
-limitation; and where the scenario used the structured query, its result matches the expected rows.
-These reuse the runtime's own reference resolver and grounding function rather than reimplementing
-them.
+operations list against the registry; and deliberately absent evidence is disclosed, as a recorded
+absence or as a limitation. These reuse the runtime's own reference resolver and grounding function
+rather than reimplementing them.
 
 ---
 
@@ -143,7 +142,8 @@ call the judge, and write one report. For the benign fixture the runner invokes 
 runner directly with the fixture's incident context; the fixture is not selectable in the product
 interface. The report is one document per run: per-scenario results with named failures, the two
 comparison results with what differed, judge categories, and usage figures. It records the
-configuration identity it ran under. Where the report lives is a convention, not a decision.
+configuration identity it ran under. Where the report lives, and which scenario is the fast one, are conventions rather than
+decisions.
 
 Cadence: the fast scenario on a meaningful change; the full set before a milestone. Both are
 advisory.

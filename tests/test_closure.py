@@ -93,10 +93,21 @@ def test_1_every_kb_doc_has_id_and_source():
 
 
 # --- closure question 2 -----------------------------------------------------------------------
+def _telemetry_refs(scenario) -> list[str]:
+    """Every authored reference into generated telemetry: the evidence a correct run must reach,
+    and the references whose ordinary reading rules a competing cause out. Nothing else asks for
+    the second kind, so a regeneration that moved a series would leave that judgement resting on a
+    reference to nothing."""
+    return [
+        *scenario["expected_evidence"],
+        *(e["reference"] for e in scenario["evaluation"].get("weakens_candidate", [])),
+    ]
+
+
 def test_2_every_evidence_ref_resolves_to_telemetry():
     unresolved = []
     for s in SCENARIOS:
-        for ref in s["expected_evidence"]:
+        for ref in _telemetry_refs(s):
             src, rest = ref.split(":", 1)
             if src == "metrics":
                 svc, tail = rest.split(":", 1)

@@ -170,6 +170,9 @@ EVALUATION_FIELDS = {
     "knowledge_should",
     "expected_recommendation",
 }
+# Stated only where a competing hypothesis is worth ruling out. Requiring it of all seven would
+# mean authoring one for scenarios that have none, which is an expectation nobody holds.
+OPTIONAL_EVALUATION_FIELDS = {"weakens_candidate"}
 
 
 def test_every_scenario_states_what_a_correct_investigation_looks_like():
@@ -178,7 +181,7 @@ def test_every_scenario_states_what_a_correct_investigation_looks_like():
         assert evaluation, f"{s['id']}: no evaluation expectation"
         missing = EVALUATION_FIELDS - evaluation.keys()
         assert not missing, f"{s['id']}: expectation missing {missing}"
-        extra = evaluation.keys() - EVALUATION_FIELDS
+        extra = evaluation.keys() - EVALUATION_FIELDS - OPTIONAL_EVALUATION_FIELDS
         assert not extra, f"{s['id']}: expectation carries unknown fields {extra}"
 
 
