@@ -83,7 +83,8 @@ class, or if a causal deploy's version is missing from `affected_versions`.
 
 Full closure, every evidence ref resolving to a generated telemetry row and every retrieval id to
 a real KB doc, is asserted by `tests/test_closure.py`. The test here guards the answer key's
-internal coherence and its sync with the goldens.
+internal coherence: its schema, reference grammar, topology references, and the expectation each
+scenario carries.
 
 ## Demo mapping
 

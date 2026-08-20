@@ -33,9 +33,6 @@ OPERATIONAL = prep.operational_documents()
 SCENARIOS = yaml.safe_load(
     (REPO_ROOT / "data" / "answer_key" / "scenarios.yaml").read_text(encoding="utf-8")
 )["scenarios"]
-GOLDEN = yaml.safe_load(
-    (REPO_ROOT / "data" / "answer_key" / "golden_scenarios.yaml").read_text(encoding="utf-8")
-)["golden_scenarios"]
 
 
 # --- chunking (D-003: one passage per section, no overlap; short documents stay whole) ---------
@@ -125,21 +122,22 @@ def test_identifiers_are_extracted_for_services_error_codes_and_deploy_ids():
     assert {i for i in every if i in ("429", "500", "503", "5xx")}, "no error code was extracted"
 
 
-def test_identifiers_the_golden_records_designate_are_extractable():
-    # The property that matters: an identifier a golden record names as required evidence must be
-    # findable in the prepared corpus. One that is not is a preparation gap, not a test to relax.
-    designated: set[str] = set()
-    for record in GOLDEN:
-        for group in record["required_evidence"]:
-            for ref in group.get("any_of", []) + group.get("all_of", []):
-                if ref.startswith("deploys:"):
-                    designated.add(ref.rsplit(":", 1)[1])
-    assert designated, "no golden record designates a deployment identifier"
+def test_identifiers_the_answer_key_designates_are_extractable():
+    # The property that matters: an identifier the answer key names as evidence a correct
+    # investigation reaches must be findable in the prepared corpus. One that is not is a
+    # preparation gap, not a test to relax.
+    designated = {
+        ref.rsplit(":", 1)[1]
+        for scenario in SCENARIOS
+        for ref in scenario["expected_evidence"]
+        if ref.startswith("deploys:")
+    }
+    assert designated, "no scenario designates a deployment identifier"
 
     extracted = {i for doc in KNOWLEDGE for i in doc["identifiers"] if i.startswith("dep-")}
     # Not every designated deploy id is discussed in prose, but the ones that are must extract.
     assert designated & extracted, (
-        "no golden-record deployment identifier survives extraction, so exact-identifier "
+        "no designated deployment identifier survives extraction, so exact-identifier "
         "matching cannot promote the passage that mentions it"
     )
 
