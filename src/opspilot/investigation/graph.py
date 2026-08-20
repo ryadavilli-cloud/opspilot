@@ -46,6 +46,7 @@ from opspilot.investigation.agents import (
     propose_action,
     synthesize,
 )
+from opspilot.investigation.harness import HARNESS, Harness, knowledge_for_prompts
 from opspilot.investigation.state import FailureCategory, InvestigationState
 from opspilot.record.completed import CompletedInvestigation
 from opspilot.record.port import AlreadySaved
@@ -67,6 +68,12 @@ RESERVED_MODEL_CALLS = 2
 
 def _deps(config: RunnableConfig | None) -> dict[str, Any]:
     return dict((config or {}).get("configurable", {}))
+
+
+def _harness(deps: dict[str, Any]) -> Harness | None:
+    """The offline harness, where one was given. Absent on every run the application makes."""
+    harness = deps.get(HARNESS)
+    return harness if isinstance(harness, Harness) else None
 
 
 def _activity(
@@ -181,12 +188,14 @@ def gather(state: InvestigationState, config: RunnableConfig | None = None) -> d
     if state.model_calls_made + RESERVED_MODEL_CALLS >= state.bounds.model_calls:
         return {"stopped_because": "the model-call cap is spent"}
 
-    action, result = propose_action(
+    harness = _harness(deps)
+    propose = harness.next_action if harness and harness.next_action else propose_action
+    action, result = propose(
         deps[MODEL],
         state.incident,
         state.objective,
         state.evidence,
-        state.knowledge,
+        knowledge_for_prompts(state.knowledge, harness),
         CAPABILITY_NAMES,
         state.bounds.capability_calls - state.capability_calls_made,
         state.open_question,
@@ -194,8 +203,9 @@ def gather(state: InvestigationState, config: RunnableConfig | None = None) -> d
     )
     # Spent on this proposal whatever came of it. A question the investigator declined to act on is
     # not carried forward to be asked again on the next step, which would be a second return in
-    # everything but name.
-    update = {**_record_call(state, result), "open_question": ""}
+    # everything but name. A substituted source makes no call, and a run must not account for one
+    # it did not make, so there is nothing to record when none was.
+    update = {**(_record_call(state, result) if result is not None else {}), "open_question": ""}
 
     if action.is_finished:
         return {**update, "stopped_because": action.finished_because}
@@ -307,13 +317,15 @@ def synthesize_node(
             state.incident,
             state.objective,
             state.evidence,
-            state.knowledge,
+            knowledge_for_prompts(state.knowledge, _harness(deps)),
             state.stopped_because,
             returned=state.bounds.return_used,
             deadline_s=state.bounds.remaining_s,
         )
     except UnusableProposal as exc:
-        return _spend_correction(state, deps[MODEL], str(exc), FailureCategory.UNUSABLE_ASSESSMENT)
+        return _spend_correction(
+            state, deps[MODEL], str(exc), FailureCategory.UNUSABLE_ASSESSMENT, _harness(deps)
+        )
 
     update = {
         **_record_call(state, result),
@@ -380,7 +392,11 @@ def _authorized_return(state: InvestigationState, unresolved: Any) -> str:
 
 
 def _spend_correction(
-    state: InvestigationState, model: Any, problem: str, category: FailureCategory
+    state: InvestigationState,
+    model: Any,
+    problem: str,
+    category: FailureCategory,
+    harness: Harness | None = None,
 ) -> dict[str, Any]:
     """The one corrective call, or the failure that follows when it is unavailable or spent."""
     if state.bounds.correction_used or not state.model_budget_left:
@@ -393,7 +409,7 @@ def _spend_correction(
             state.incident,
             state.objective,
             state.evidence,
-            state.knowledge,
+            knowledge_for_prompts(state.knowledge, harness),
             state.stopped_because,
             problem,
             state.bounds.remaining_s,
@@ -439,8 +455,9 @@ def ground(state: InvestigationState, config: RunnableConfig | None = None) -> d
         }
 
     problem = "; ".join(str(issue) for issue in issues)
+    deps = _deps(config)
     corrected = _spend_correction(
-        state, _deps(config)[MODEL], problem, FailureCategory.UNGROUNDED_ASSESSMENT
+        state, deps[MODEL], problem, FailureCategory.UNGROUNDED_ASSESSMENT, _harness(deps)
     )
     if corrected.get("failure") or corrected.get("assessment") is None:
         return corrected

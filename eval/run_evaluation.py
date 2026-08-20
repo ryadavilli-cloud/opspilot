@@ -28,9 +28,16 @@ sys.path.insert(0, str(REPO_ROOT / "tests"))
 sys.path.insert(0, str(REPO_ROOT / "eval"))
 
 from answer_key import FIXTURE, SCENARIOS  # noqa: E402
+from comparisons import (  # noqa: E402
+    ComparisonResult,
+    adaptive_value,
+    retrieval_influence,  # noqa: E402
+)
+from comparisons import not_evaluable as _not_evaluable  # noqa: E402
 from evaluation import Provenance, ScenarioResult, Source, evaluate  # noqa: E402
 from fake_knowledge import knowledge_retriever  # noqa: E402
 from fake_operational_records import corpus_documents, corpus_records  # noqa: E402
+from fixed_path import fixed_path  # noqa: E402
 from judge import (  # noqa: E402
     DIAGNOSIS_MATCH,
     QUALITIES,
@@ -42,6 +49,7 @@ from judge import (  # noqa: E402
 from opspilot import config  # noqa: E402
 from opspilot.api import initial_state  # noqa: E402
 from opspilot.investigation.graph import MODEL, RECORD, SERVICE, build_graph  # noqa: E402
+from opspilot.investigation.harness import HARNESS, Harness  # noqa: E402
 from opspilot.llm.cassette import ReplayChatModel  # noqa: E402
 from opspilot.llm.client import build_chat_model  # noqa: E402
 from opspilot.record.completed import CompletedInvestigation  # noqa: E402
@@ -90,7 +98,9 @@ def _fixture_incident() -> IncidentRecord:
     )
 
 
-def _run_investigation(incident: IncidentRecord, model: Any) -> CompletedInvestigation | None:
+def _run_investigation(
+    incident: IncidentRecord, model: Any, harness: Harness | None = None, run_id: str = "eval-1"
+) -> CompletedInvestigation | None:
     """One investigation through the real graph, and the record it wrote."""
     records = corpus_records()
     store = InMemoryCompletedInvestigations()
@@ -99,15 +109,15 @@ def _run_investigation(incident: IncidentRecord, model: Any) -> CompletedInvesti
     # Driven to completion for the record it writes; the streamed states are the runtime's own
     # business and the evaluation reads the persisted investigation rather than the run.
     for _ in build_graph().stream(
-        initial_state("eval-1", incident),
+        initial_state(run_id, incident),
         config={
-            "configurable": {MODEL: model, SERVICE: service, RECORD: store},
+            "configurable": {MODEL: model, SERVICE: service, RECORD: store, HARNESS: harness},
             "recursion_limit": 2 * (config.CAPABILITY_CALL_CAP + config.MODEL_CALL_CAP) + 10,
         },
         stream_mode="values",
     ):
         pass
-    return store.get("eval-1")
+    return store.get(run_id)
 
 
 def obtain(scenario_id: str, source: Source) -> CompletedInvestigation | None:
@@ -165,6 +175,92 @@ def judged(
         return Judged(scenario_id, note=f"the judge call did not complete: {error}")
 
 
+# Which scenario the adaptive comparison is tried on, in order. None is declared to satisfy it
+# until a run shows the difference, so the first that does is the one it is reported on and the
+# ones before it are reported as having shown none.
+ADAPTIVE_CANDIDATES = ("inc-004", "inc-006", "inc-007")
+RETRIEVAL_SCENARIO = "inc-007"
+
+LIVE = "run live against the configured deployment"
+
+
+def _live(incident: IncidentRecord, harness: Harness | None, run_id: str):
+    return _run_investigation(incident, build_chat_model("azure"), harness, run_id)
+
+
+def compare_adaptive(scenario: dict[str, Any]) -> ComparisonResult:
+    """The same scenario twice: as the investigator chooses, and over a fixed order.
+
+    Both conditions run live. The design forbids one recorded response answering both arms, and
+    running one arm from a recording and the other live would leave the two differing in how they
+    were obtained as well as in the variable, which is a second difference nobody asked for.
+    """
+    scenario_id = scenario["id"]
+    incident = _scenario_incident(scenario_id)
+    adaptive = _live(incident, None, f"adaptive-{scenario_id}")
+    fixed = _live(incident, Harness(next_action=fixed_path), f"fixed-{scenario_id}")
+    if adaptive is None or fixed is None:
+        return _not_evaluable("adaptive value", scenario_id, "a condition did not complete")
+
+    reported = incident.short_description
+    return adaptive_value(
+        scenario,
+        adaptive,
+        fixed,
+        Source(Provenance.OBTAINED, LIVE),
+        Source(Provenance.OBTAINED, LIVE),
+        judged(adaptive, scenario, reported),
+        judged(fixed, scenario, reported),
+    )
+
+
+def compare_retrieval_influence(scenario: dict[str, Any]) -> ComparisonResult:
+    """The same scenario twice, retrieval running in both, its passages reaching only one."""
+    scenario_id = scenario["id"]
+    incident = _scenario_incident(scenario_id)
+    shown = _live(incident, None, f"shown-{scenario_id}")
+    withheld = _live(incident, Harness(withhold_knowledge=True), f"withheld-{scenario_id}")
+    if shown is None or withheld is None:
+        return _not_evaluable("retrieval influence", scenario_id, "a condition did not complete")
+
+    return retrieval_influence(
+        scenario,
+        shown,
+        withheld,
+        Source(Provenance.OBTAINED, LIVE),
+        Source(Provenance.OBTAINED, LIVE),
+    )
+
+
+def run_comparisons(chosen: list[dict[str, Any]]) -> list[ComparisonResult]:
+    """Both comparisons, where the chosen set includes their scenarios.
+
+    The adaptive one walks its candidates and stops at the first that shows a difference, because
+    it is a falsification test rather than a benchmark: one scenario where the adaptive path did
+    better is the claim, and the candidates it passed over are reported as having shown none.
+    """
+    by_id = {scenario["id"]: scenario for scenario in chosen}
+    results: list[ComparisonResult] = []
+
+    if not config.AZURE_OPENAI_DEPLOYMENT:
+        return [
+            _not_evaluable(name, "", "no model deployment is configured to run either condition")
+            for name in ("adaptive value", "retrieval influence")
+        ]
+
+    for scenario_id in ADAPTIVE_CANDIDATES:
+        if scenario_id not in by_id:
+            continue
+        outcome = compare_adaptive(by_id[scenario_id])
+        results.append(outcome)
+        if outcome.differed:
+            break
+
+    if RETRIEVAL_SCENARIO in by_id:
+        results.append(compare_retrieval_influence(by_id[RETRIEVAL_SCENARIO]))
+    return results
+
+
 def configuration_identity() -> dict[str, str]:
     """What this run ran under. Two reports are only comparable where these agree."""
     return {
@@ -202,11 +298,36 @@ def _judge_lines(judgement: Judged | None) -> list[str]:
     return lines
 
 
+def _comparison_lines(comparisons: list[ComparisonResult] | None) -> list[str]:
+    """What each comparison found. A comparison that found nothing says so: this is falsification,
+    so a null result is a finding about the variable rather than a failure of the run."""
+    if not comparisons:
+        return []
+    lines = ["## Comparisons", ""]
+    for comparison in comparisons:
+        where = f" on {comparison.scenario_id}" if comparison.scenario_id else ""
+        lines.append(f"### {comparison.name}{where}")
+        lines.append("")
+        if not comparison.ran:
+            lines.extend([f"Not evaluable. {comparison.note}", ""])
+            continue
+        if comparison.differences:
+            lines.append("What differed:")
+            lines.extend(f"- **{d.dimension}**: {d.detail}" for d in comparison.differences)
+        else:
+            lines.append("Nothing differed between the two conditions.")
+        lines.append("")
+        if comparison.note:
+            lines.extend([f"_{comparison.note}_", ""])
+    return lines
+
+
 def render(
     results: list[ScenarioResult],
     identity: dict[str, str],
     taken_at: str,
     judgements: list[Judged] | None = None,
+    comparisons: list[ComparisonResult] | None = None,
 ) -> str:
     """One document per run: per-scenario results with named failures, and no total."""
     by_scenario = {j.scenario_id: j for j in judgements or []}
@@ -242,6 +363,7 @@ def render(
             lines.extend([f"_{note}_" for note in result.notes])
             lines.append("")
         lines.extend(_judge_lines(by_scenario.get(result.scenario_id)))
+    lines.extend(_comparison_lines(comparisons))
     ran = [r for r in results if r.ran]
     lines.extend(
         [
@@ -289,7 +411,8 @@ def main(argv: list[str] | None = None) -> None:
     taken_at = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
     REPORTS.mkdir(parents=True, exist_ok=True)
     path = REPORTS / f"{taken_at.replace(':', '')}.md"
-    report = render(results, configuration_identity(), taken_at, judgements)
+    comparisons = run_comparisons(chosen) if args.full else []
+    report = render(results, configuration_identity(), taken_at, judgements, comparisons)
     path.write_text(report, encoding="utf-8")
     print(f"wrote {path.relative_to(REPO_ROOT)}")
 
