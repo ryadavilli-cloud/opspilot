@@ -11,6 +11,8 @@ import importlib.util
 import json
 from pathlib import Path
 
+import answer_key
+
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SYN = REPO_ROOT / "data" / "synthetic"
 ANSWER_KEY = REPO_ROOT / "data" / "answer_key"
@@ -24,11 +26,10 @@ def _load(name: str, rel: str):
     return mod
 
 
-build_goldens = _load("build_goldens", "data/answer_key/build_goldens.py")
 gai = _load("generate_alerts_incidents", "data/synthetic/generate_alerts_incidents.py")
 
-TOPOLOGY = build_goldens.load_topology()
-SCENARIOS = build_goldens.load_scenarios()
+TOPOLOGY = answer_key.TOPOLOGY
+SCENARIOS = answer_key.SCENARIOS
 SERVICES = {s["id"] for s in TOPOLOGY["services"]}
 SCEN_BY_ID = {s["id"]: s for s in SCENARIOS}
 

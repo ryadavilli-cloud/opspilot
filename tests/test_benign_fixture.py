@@ -1,7 +1,12 @@
 """The benign/transient controlled fixture must resolve, and must stay structurally distinct
-from the seven authored incidents: no shared event id, no incident record, no scoreable
-expectation. A fixture that quietly drifted into looking like an eighth incident would defeat
-the reason it exists.
+from the seven authored incidents: no shared event id, no incident record, and none of the
+expectations that only an incident can have. A fixture that quietly drifted into looking like an
+eighth incident would defeat the reason it exists.
+
+It does carry an expectation of its own, because the evaluation checks that a run shown something
+which recovered on its own says so. That expectation holds only what applies to it: an accepted
+outcome and the requirement of an affirmative no-action-now answer, never an expected cause or
+evidence a correct run must reach, because it has neither.
 """
 
 from __future__ import annotations
@@ -9,15 +14,11 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-import yaml
+from answer_key import FIXTURE, SCENARIOS
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-ANSWER_KEY = REPO_ROOT / "data" / "answer_key"
 SYN = REPO_ROOT / "data" / "synthetic"
 
-_FIXTURE_TEXT = (ANSWER_KEY / "benign_fixture.yaml").read_text(encoding="utf-8")
-FIXTURE = yaml.safe_load(_FIXTURE_TEXT)["fixture"]
-SCENARIOS = yaml.safe_load((ANSWER_KEY / "scenarios.yaml").read_text(encoding="utf-8"))["scenarios"]
 LOGS = [json.loads(line) for line in (SYN / "logs.jsonl").read_text(encoding="utf-8").splitlines()]
 LOG_BY_EVENT = {r["event_id"]: r for r in LOGS}
 
@@ -29,11 +30,26 @@ SCENARIO_EVENT_IDS = {
 }
 
 
-def test_fixture_has_no_scoreable_expectation():
-    assert FIXTURE["expected_match"] is None
+def test_fixture_carries_none_of_the_expectations_only_an_incident_can_have():
     assert FIXTURE["expected_behavior"] == "no_investigation_warranted"
-    assert "expected_evidence" not in FIXTURE
-    assert "resolution" not in FIXTURE
+    for absent in ("expected_evidence", "expected_match", "expected_cause", "resolution"):
+        assert absent not in FIXTURE, f"fixture carries {absent}, which belongs to an incident"
+
+
+def test_fixture_expects_only_what_applies_to_it():
+    """The scenario shape would make the set uniform by inventing expectations it cannot have."""
+    assert set(FIXTURE["evaluation"]) == {
+        "accepted_outcomes",
+        "requires_no_immediate_action",
+        "behavior_tested",
+    }
+    assert FIXTURE["evaluation"]["requires_no_immediate_action"] is True
+
+
+def test_the_row_the_fixture_is_reported_from_is_one_of_its_own():
+    """The evaluation runs one of the four and derives the context from it, so a `reported_from`
+    naming anything else would evaluate a symptom this class does not represent."""
+    assert f"logs:catalog-api:{FIXTURE['reported_from']}" in FIXTURE["derived_from"]
 
 
 def test_derived_rows_resolve_and_carry_no_incident():

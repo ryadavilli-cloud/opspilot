@@ -66,9 +66,10 @@ ignore_missing_imports = true
 strict = true
 
 [tool.pytest.ini_options]
-# `tests` is on the path so the shared container fake is imported by name rather than relying on
-# pytest's rootdir insertion.
-pythonpath = ["src", "tests"]
+# `tests` is on the path so the shared container fake and the answer-key loader are imported by
+# name rather than relying on pytest's rootdir insertion, and `eval` so the evaluation's own tests
+# import it the same way the runner does.
+pythonpath = ["src", "tests", "eval"]
 testpaths = ["tests"]
 markers = [
     "llm: calls the live Azure OpenAI chat deployment; excluded from the CI gate lane with -m 'not llm'. Wiring is covered deterministically by cassette replay, which needs no live model.",

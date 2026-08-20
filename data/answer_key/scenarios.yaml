@@ -6,8 +6,8 @@
 #   * 2c alerts.json / incidents.json are the entry points and catalog for these scenarios.
 #   * 2d KB docs (runbooks/architecture/postmortems) are authored so that every
 #     `expected_retrieval` id below exists, and every historical postmortem matches its incident.
-#   * eval/golden_incidents.json + eval/golden_retrieval.json are PROJECTED from this file by
-#     build_goldens.py — do not hand-edit the JSON.
+#   * each scenario's `evaluation:` block states what a correct investigation of it looks like,
+#     which the offline evaluation reads.
 #
 # Ref grammar (see README.md). Evidence refs use the frozen Evidence.source set:
 #   logs:<service>:<event_id>            metrics:<service>:<metric>@<ts>
@@ -58,6 +58,25 @@ scenarios:
         - metrics:cosmos-db:ru_throttled_rate   # Cosmos throttling means the inc-002 pattern, not pool starvation
       affected_versions:
         - payment-api@2.4.1                     # the pool-config deploy (dep-20260512-01)
+    # What a correct investigation of this scenario looks like, for the offline
+    # evaluation. Authored: nothing here is derived from a model run.
+    evaluation:
+      acceptable_alternatives:
+        - >-
+          Cosmos DB connection exhaustion at payment-api stated as a connection-pool or
+          connection-limit problem rather than by its configuration change
+      absent_evidence: []
+      accepted_outcomes: [complete, partial]
+      behavior_tested: >-
+        A known failure mode with a clear upstream cause: the 5xx visible at checkout-api must be
+        attributed to payment-api rather than to the service where it surfaced.
+      knowledge_should: >-
+        Its runbook and the dependency map should inform the account; this scenario has a
+        postmortem of its own, so precedent may confirm the mechanism but must not stand as
+        evidence that it recurred.
+      expected_recommendation: >-
+        Restore payment-api's Cosmos connection pool capacity; a recommendation to change
+        checkout-api would follow the symptom rather than the cause.
 
   - id: inc-002
     title: Cosmos DB throttling cascading to reads
@@ -96,6 +115,29 @@ scenarios:
         - metrics:redis-cache:evicted_keys_rate  # an eviction storm points at the cache, not RU throttling
       affected_versions:
         - catalog-api@1.9.0                      # the bulk-import rollout (dep-20260528-01)
+    # What a correct investigation of this scenario looks like, for the offline
+    # evaluation. Authored: nothing here is derived from a model run.
+    evaluation:
+      acceptable_alternatives:
+        - >-
+          Cosmos DB throttling stated as RU exhaustion, provisioned-throughput limit, or 429s
+          against the shared account
+      absent_evidence:
+        - capability: get_deployments
+          why: >-
+            No deployment touched the impacted chain in this incident's window. A correct
+            investigation reports that the change history was checked and held nothing, rather
+            than leaving a deploy unexamined or asserting one.
+      accepted_outcomes: [complete, partial]
+      behavior_tested: >-
+        A shared-dependency ceiling reached by one consumer degrading several: the cause is the
+        store, not any one of the services showing errors.
+      knowledge_should: >-
+        The throttling runbook and the system overview should inform the account; the dependency
+        map should explain why several services degraded together.
+      expected_recommendation: >-
+        Raise or rebalance provisioned throughput, or reduce the read pressure causing it;
+        restarting a throttled consumer is not a fix.
 
   - id: inc-003
     title: Service Bus backlog; order notifications delayed
@@ -134,6 +176,24 @@ scenarios:
         - metrics:checkout-api:http_5xx_rate     # checkout impact contradicts "confined to async notifications"
       affected_versions:
         - notification-worker@3.1.0              # the crash-looping revision (dep-20260610-01)
+    # What a correct investigation of this scenario looks like, for the offline
+    # evaluation. Authored: nothing here is derived from a model run.
+    evaluation:
+      acceptable_alternatives:
+        - >-
+          A poison or undeserializable message stopping the consumer, stated as a crash loop, a
+          stalled consumer, or a failure to drain
+      absent_evidence: []
+      accepted_outcomes: [complete, partial]
+      behavior_tested: >-
+        A queue backlog whose cause is the consumer rather than the queue: growing depth is the
+        symptom, and the worker's restarts are what explain it.
+      knowledge_should: >-
+        The backlog runbook should inform the account. This is the incident inc-007 later recurs
+        from, so what is written here is the precedent that scenario depends on.
+      expected_recommendation: >-
+        Remove or dead-letter the poison message and drain the backlog; scaling the queue would
+        not restart consumption.
 
   # --------------------------------------------------------------------------------- novel
   - id: inc-004
@@ -168,9 +228,26 @@ scenarios:
       - runbook:payment-timeout
       - runbook:deployment-rollback
       - architecture:service-dependency-map
-    recommended_next_step: >-
-      Shed load / fail the payment-gateway path to a timeout-and-retry posture; do NOT roll back the
-      checkout-api deploy — evidence clears it.
+    # What a correct investigation of this scenario looks like, for the offline
+    # evaluation. Authored: nothing here is derived from a model run.
+    evaluation:
+      acceptable_alternatives:
+        - >-
+          Third-party payment-gateway latency or timeouts stated as an external dependency
+          failure, with the deploy explicitly cleared rather than unmentioned
+      absent_evidence: []
+      accepted_outcomes: [partial, inconclusive, complete]
+      behavior_tested: >-
+        Ambiguity handled honestly. A checkout-api deploy landed shortly before the errors and is
+        the obvious suspect; the evidence clears it, and the scenario tests whether the red
+        herring is examined and set aside rather than accepted because it is temporally close.
+      knowledge_should: >-
+        The rollback runbook may be consulted, and consulting it should lead to not rolling back:
+        the deploy is cleared by evidence.
+      expected_recommendation: >-
+        Address the payment-gateway path, by shedding load or failing it to a timeout-and-retry
+        posture. Recommending a rollback of the checkout-api deploy is wrong here, because the
+        evidence clears it.
 
   - id: inc-005
     title: Redis eviction storm degrading checkout latency
@@ -198,7 +275,27 @@ scenarios:
     expected_retrieval:
       - runbook:redis-cache-degradation
       - architecture:service-dependency-map
-    recommended_next_step: Scale Redis memory and tune the maxmemory eviction policy; add an eviction-rate alert.
+    # What a correct investigation of this scenario looks like, for the offline
+    # evaluation. Authored: nothing here is derived from a model run.
+    evaluation:
+      acceptable_alternatives:
+        - >-
+          Redis memory pressure stated as eviction, a maxmemory ceiling, or cache capacity loss
+          degrading checkout
+      absent_evidence:
+        - capability: get_deployments
+          why: >-
+            No deployment touched the impacted chain in this incident's window. The cause is
+            capacity rather than change, and a correct investigation says the change history was
+            checked and held nothing.
+      accepted_outcomes: [complete, partial, inconclusive]
+      behavior_tested: >-
+        A capacity cause with no change to blame: nothing was deployed, so an account that reaches
+        for a deploy has invented one.
+      knowledge_should: >-
+        The cache-degradation runbook should inform the account and the remedy.
+      expected_recommendation: >-
+        Raise the cache memory ceiling or tune eviction, and alert on eviction rate.
 
   - id: inc-006
     title: Inventory overselling from stale cache after deploy
@@ -235,7 +332,25 @@ scenarios:
       - runbook:deployment-rollback
       - runbook:redis-cache-degradation
       - architecture:service-dependency-map
-    recommended_next_step: Roll back the inventory-api deploy, flush stale stock keys, and reconcile reservations.
+    # What a correct investigation of this scenario looks like, for the offline
+    # evaluation. Authored: nothing here is derived from a model run.
+    evaluation:
+      acceptable_alternatives:
+        - >-
+          Stale cached stock after an inventory-api deploy dropped cache invalidation, stated as
+          two conditions combining rather than either alone
+      absent_evidence: []
+      accepted_outcomes: [partial, complete]
+      behavior_tested: >-
+        Multiple contributors recognized. Neither the deploy nor the cache behaviour is sufficient
+        alone, and an account naming only one has not explained the oversell.
+      knowledge_should: >-
+        The rollback and cache-degradation runbooks should both inform the account, because the
+        remedy involves the deploy and the stale keys together.
+      expected_recommendation: >-
+        Roll back the inventory-api deploy, flush the stale stock keys, and reconcile
+        reservations. A recommendation addressing only one of the two leaves the oversell
+        possible.
 
   # ---------------------------------------------------------------------------- recurrence
   - id: inc-007
@@ -271,7 +386,23 @@ scenarios:
       - postmortem:inc-003
       - runbook:service-bus-backlog
       - runbook:deployment-rollback
-    recommended_next_step: >-
-      Match against known error inc-003 and apply its verified resolution: roll the worker back,
-      dead-letter the poison message, reprocess the backlog — and actually ship the
-      poison-message-handling action item this time.
+    # What a correct investigation of this scenario looks like, for the offline
+    # evaluation. Authored: nothing here is derived from a model run.
+    evaluation:
+      acceptable_alternatives:
+        - >-
+          The same poison-message crash loop as inc-003, stated as a recurrence or as the
+          unshipped action item from it
+      absent_evidence: []
+      accepted_outcomes: [complete, partial]
+      behavior_tested: >-
+        Recurrence recognized from precedent. The signature matches an incident the corpus already
+        has a postmortem for, and this is the scenario where retrieved knowledge is expected to
+        change the investigation rather than decorate it.
+      knowledge_should: >-
+        inc-003's postmortem should be retrieved and should change the account: the recurrence is
+        named, and its verified resolution is what the recommendation rests on. This is the
+        scenario the retrieval-influence comparison runs on.
+      expected_recommendation: >-
+        Apply inc-003's verified resolution, and ship the poison-message handling that incident's
+        action items called for and which was never delivered.
