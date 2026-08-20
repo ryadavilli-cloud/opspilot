@@ -212,7 +212,21 @@ class VersionResponse(BaseModel):
 # --------------------------------------------------------------------------------------
 @app.get("/", include_in_schema=False)
 def root() -> RedirectResponse:
-    return RedirectResponse("/investigation")
+    """The way in, for a person who was given the address and nothing else.
+
+    Where the deployment is behind built-in authentication, this is the one path left open, and it
+    exists to hand a visitor to the sign-in the platform serves rather than to the screen, which
+    would answer them with a bare 401. Signing in returns them here and they arrive at the screen.
+    Someone already signed in passes straight through.
+
+    Locally there is no platform in front of this and nothing serves that path, so the screen is
+    where a visitor should go directly.
+    """
+    # Read from the module rather than a name bound at import, so what a process reports and what
+    # it does here cannot disagree.
+    if config.ENVIRONMENT == "local":
+        return RedirectResponse("/investigation")
+    return RedirectResponse("/.auth/login/aad?post_login_redirect_uri=%2Finvestigation")
 
 
 @app.get("/investigation", response_class=HTMLResponse, include_in_schema=False)
