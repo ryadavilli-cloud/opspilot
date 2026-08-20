@@ -70,6 +70,12 @@ async def _lifespan(_: FastAPI) -> AsyncIterator[None]:
         for problem in problems:
             _log.error("configuration: %s", problem)
         raise RuntimeError(f"refusing to start: {len(problems)} configuration problem(s); see log")
+
+    # Apply the exporter the configuration names. Without this the module keeps the one it was born
+    # with, which discards every span, and a revision configured for telemetry emits none while
+    # looking configured. The setting is validated above; this is what makes it mean anything.
+    tracing.configure_exporter()
+
     _log.info("startup: %s", startup_record())
     yield
 

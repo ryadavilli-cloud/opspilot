@@ -13,6 +13,7 @@ from fastapi.testclient import TestClient
 
 from opspilot import config
 from opspilot.api import app
+from opspilot.obs import tracing
 from opspilot.startup import configuration_problems, startup_record
 
 
@@ -125,3 +126,27 @@ def test_the_startup_record_leaves_unknown_identity_empty_rather_than_guessing(m
 
     assert record["revision"] == ""
     assert record["image"] == ""
+
+
+def test_the_configured_exporter_is_the_one_the_process_uses(monkeypatch):
+    """A setting nothing applies is not configuration. The module is born with the exporter that
+    discards every span, and nothing in the application had ever replaced it, so a revision set to
+    emit telemetry emitted none and read as configured while doing so."""
+    monkeypatch.setattr(config, "TRACE_EXPORTER", "memory")
+
+    with TestClient(app):
+        assert isinstance(tracing.get_exporter(), tracing.InMemorySpanExporter)
+
+
+def test_a_run_reaches_the_configured_exporter(monkeypatch):
+    """End to end through the seam rather than at it: something the application does has to arrive
+    in the exporter the configuration chose."""
+    monkeypatch.setattr(config, "TRACE_EXPORTER", "memory")
+
+    with TestClient(app) as client:
+        client.get("/health/live")
+        exporter = tracing.get_exporter()
+        assert isinstance(exporter, tracing.InMemorySpanExporter)
+        with tracing.span("probe", trace_id="t-1"):
+            pass
+        assert [s.name for s in exporter.spans] == ["probe"]

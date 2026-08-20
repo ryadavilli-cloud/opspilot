@@ -112,6 +112,22 @@ resource logs 'Microsoft.OperationalInsights/workspaces@2023-09-01' = {
   }
 }
 
+// Workspace-based, over the workspace above rather than beside it. The application's spans reach
+// that workspace already, as console output the environment forwards, so this is the lens over
+// telemetry that exists rather than a second sink to send it to twice. Nothing in the container
+// points at this component: the connection string is an output, for the step that adopts an
+// exporter speaking the ingestion protocol directly.
+resource insights 'Microsoft.Insights/components@2020-02-02' = {
+  name: '${namePrefix}-insights'
+  location: location
+  kind: 'web'
+  properties: {
+    Application_Type: 'web'
+    WorkspaceResourceId: logs.id
+    IngestionMode: 'LogAnalytics'
+  }
+}
+
 resource acr 'Microsoft.ContainerRegistry/registries@2023-07-01' = {
   name: acrName
   location: location
@@ -477,6 +493,13 @@ resource app 'Microsoft.App/containerApps@2024-03-01' = {
               name: 'OPSPILOT_IMAGE'
               value: containerImage
             }
+            // Spans go to stdout, which the environment forwards to the workspace, which is where
+            // a query by investigation id reads them. The default discards every span, so a
+            // revision left on it is instrumented and silent.
+            {
+              name: 'OPSPILOT_TRACE_EXPORTER'
+              value: 'stdout'
+            }
           ]
           // Port is the app's actual listen port (Dockerfile EXPOSE 8000), independent of the
           // bootstrap-only `targetPort` ingress override above — the real image always listens
@@ -635,3 +658,5 @@ output openAiEndpoint string = openai.properties.endpoint
 output openAiAccountName string = openai.name
 output cosmosAccountName string = cosmos.name
 output cosmosEndpoint string = cosmos.properties.documentEndpoint
+output appInsightsName string = insights.name
+output appInsightsConnectionString string = insights.properties.ConnectionString
