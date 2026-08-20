@@ -22,12 +22,12 @@ import logging
 import threading
 from collections.abc import AsyncIterator
 from pathlib import Path
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 from uuid import uuid4
 
 from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, StringConstraints
 
 from opspilot import __version__, config
 from opspilot.assessment.brief import render
@@ -38,10 +38,12 @@ from opspilot.data.operational_records import (
 )
 from opspilot.evidence.operations import EvidenceSet
 from opspilot.intake.contracts import from_predefined_incident
+from opspilot.investigation.agents import answer_question
 from opspilot.investigation.graph import MODEL, RECORD, SERVICE, build_graph
 from opspilot.investigation.state import Bounds, FailureCategory, InvestigationState
 from opspilot.obs import tracing
-from opspilot.record.memory import InMemoryCompletedInvestigations
+from opspilot.record.completed import CompletedInvestigation
+from opspilot.record.port import CompletedInvestigationRepository
 from opspilot.stream.contracts import IdentityEvent, TerminalEvent
 from opspilot.tools.contracts import Completeness, IncidentRecord
 
@@ -63,7 +65,7 @@ _singleton_lock = threading.Lock()
 _graph: Any = None
 _tool_service: Any = None
 _model: Any = None
-_record: InMemoryCompletedInvestigations | None = None
+_record: CompletedInvestigationRepository | None = None
 _operational_records: OperationalRecords | None = None
 
 
@@ -102,12 +104,27 @@ def get_model() -> Any:
     return _model
 
 
-def get_record() -> InMemoryCompletedInvestigations:
+def get_record() -> CompletedInvestigationRepository:
+    """Where a completed investigation is written, and read back from afterwards.
+
+    The deployed container, built once per process and lazily, so importing this module needs no
+    credential. It has to be the durable one: a question about a completed investigation is a
+    second request, and under more than one replica it can land on an instance that never ran the
+    investigation. A process-local store would not make that flaky, it would make it wrong, and a
+    hosted proof that passed would have passed by luck.
+
+    Substitution is the seam's purpose and stays where it already is: a test overrides this
+    dependency and never reaches the factory below. There is deliberately no setting choosing
+    between the two, because a second way to be wrong about which store is live is worse than none,
+    and readiness already reports which one answered.
+    """
     global _record
     if _record is None:
         with _singleton_lock:
             if _record is None:
-                _record = InMemoryCompletedInvestigations()
+                from opspilot.record.cosmos import default_completed_investigations
+
+                _record = default_completed_investigations()
     return _record
 
 
@@ -382,4 +399,97 @@ def start_investigation(
     return StreamingResponse(
         investigation_stream(IncidentRecord(**raw), request, svc, model, record),
         media_type="application/x-ndjson",
+    )
+
+
+# --------------------------------------------------------------------------------------
+# Interaction over a completed investigation
+# --------------------------------------------------------------------------------------
+# Two ordinary requests over something already finished. Neither gathers evidence and neither
+# creates an investigation: the record is closed, and reading it or asking about it does not
+# reopen it.
+
+
+class QuestionRequest(BaseModel):
+    # Stripped before the length check, so whitespace alone is refused here rather than
+    # spending a model call to discover there was no question.
+    question: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
+
+
+class AnswerResponse(BaseModel):
+    """What the engineer is told, after code has checked what the Supervisor said.
+
+    `references` are the record's own, and every one of them resolved against it. `refused` says
+    the answer is this code's rather than the model's, which happens when a citation named nothing
+    the record carries or a candidate position did not exist. Distinguishing the two matters: an
+    engineer reading a refusal should not mistake it for the record having answered.
+    """
+
+    investigation_id: str
+    answer: str
+    references: list[str] = []
+    candidate_position: int | None = None
+    refused: bool = False
+
+
+# What the engineer is told instead of an answer that cited something the record does not carry.
+# The answer is replaced rather than trimmed: an answer whose support has been removed is no longer
+# the answer the model gave, and presenting the remainder would be this code paraphrasing it.
+_UNSUPPORTED = (
+    "The answer could not be given from this record: it cited something the record does not "
+    "carry. Nothing has been inferred in its place."
+)
+
+
+@app.get("/investigations/{investigation_id}")
+def read_investigation(
+    investigation_id: str,
+    record: CompletedInvestigationRepository = Depends(get_record),
+) -> CompletedInvestigation:
+    """One completed investigation, as it was saved. 404 for an identifier that names none."""
+    saved = record.get(investigation_id)
+    if saved is None:
+        raise HTTPException(status_code=404, detail="Unknown investigation_id.")
+    return saved
+
+
+@app.post("/investigations/{investigation_id}/questions")
+def ask_about_investigation(
+    investigation_id: str,
+    body: QuestionRequest,
+    record: CompletedInvestigationRepository = Depends(get_record),
+    model: Any = Depends(get_model),
+) -> AnswerResponse:
+    """One question about one completed investigation, answered from that record alone.
+
+    The Supervisor answers; code decides whether what it said stands. Every reference it cited must
+    be one the record carries, and any candidate position must be a place in the assessment's
+    ordered list. A failure of either replaces the answer, because the property that nothing new is
+    concluded rests on the constrained context and structured references rather than on this code
+    reading prose and judging it.
+    """
+    saved = record.get(investigation_id)
+    if saved is None:
+        raise HTTPException(status_code=404, detail="Unknown investigation_id.")
+
+    proposed, _ = answer_question(model, saved, body.question)
+
+    carried = saved.evidence_refs
+    unsupported = [ref for ref in proposed.references if ref not in carried]
+    position = proposed.candidate_position
+    misplaced = position is not None and not (1 <= position <= len(saved.assessment.candidates))
+    if unsupported or misplaced:
+        _log.info(
+            "answer refused for %s: %d unresolved reference(s), position %s",
+            investigation_id,
+            len(unsupported),
+            position,
+        )
+        return AnswerResponse(investigation_id=investigation_id, answer=_UNSUPPORTED, refused=True)
+
+    return AnswerResponse(
+        investigation_id=investigation_id,
+        answer=proposed.answer,
+        references=list(proposed.references),
+        candidate_position=position,
     )
