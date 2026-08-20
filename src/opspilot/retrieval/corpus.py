@@ -1,10 +1,13 @@
 """Load and chunk the KB corpus (labeled docs) plus an optional distractor corpus.
 
 Chunking is section-level (by markdown header); each chunk carries its doc's id/kind/services and
-is prefixed with the doc title for context. Retrieval ranks chunks and aggregates to doc ids, which
-is what `golden_retrieval.json` labels. Paths are passed in explicitly — there are no module-level
-directory constants — so a runtime image points at `/app/data/kb` and never accidentally indexes
-distractors (`include_distractors` defaults to False; distractors are an evaluation-only device).
+is prefixed with the doc title for context. Retrieval ranks chunks and aggregates to doc ids.
+
+This is corpus preparation, which runs against a checkout rather than in the deployed image: the
+image ships no corpus and the application reads the knowledge it searches from Cosmos. Paths are
+passed in explicitly and there are no module-level directory constants, so a caller says which
+tree it is indexing and never accidentally indexes distractors (`include_distractors` defaults to
+False; distractors are an evaluation-only device).
 """
 
 from __future__ import annotations

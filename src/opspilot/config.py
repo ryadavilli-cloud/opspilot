@@ -15,10 +15,11 @@ load_dotenv()
 # --------------------------------------------------------------------------------------
 # Runtime asset paths + retrieval backend
 # --------------------------------------------------------------------------------------
-# Local-dev defaults resolve relative to the repo. PRODUCTION sets these explicitly via env
-# (the Docker image copies the corpus under /app/data and exports OPSPILOT_*_DIR): production
-# MUST NOT rely on the __file__ -> data relationship, which holds only while the source tree and
-# data tree share a layout. The repo-relative fallback below is a dev convenience only.
+# These resolve relative to the repository, and that is all they are for. The runtime image ships
+# no corpus: it copies the source and nothing else, and both the operational records and the
+# knowledge the application reads live in Cosmos. What still reads from disk here is offline work
+# that runs against a checkout, corpus preparation and the tests, so the __file__ -> data
+# relationship these rely on is one only a checkout has.
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 
 

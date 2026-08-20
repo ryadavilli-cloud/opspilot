@@ -149,7 +149,11 @@ def set_objective(
     if state.bounds.expired:
         return _failed(state, FailureCategory.DEADLINE_EXPIRED, "the deadline expired before work")
 
-    objective, result = interpret_objective(_deps(config)[MODEL], state.incident)
+    # The run's remaining time travels with the model call for the same reason it travels with
+    # a capability call: nothing an investigation started may still be running after it stopped.
+    objective, result = interpret_objective(
+        _deps(config)[MODEL], state.incident, state.bounds.remaining_s
+    )
     update = _record_call(state, result)
     return {
         **update,
@@ -186,6 +190,7 @@ def gather(state: InvestigationState, config: RunnableConfig | None = None) -> d
         CAPABILITY_NAMES,
         state.bounds.capability_calls - state.capability_calls_made,
         state.open_question,
+        state.bounds.remaining_s,
     )
     # Spent on this proposal whatever came of it. A question the investigator declined to act on is
     # not carried forward to be asked again on the next step, which would be a second return in
@@ -305,6 +310,7 @@ def synthesize_node(
             state.knowledge,
             state.stopped_because,
             returned=state.bounds.return_used,
+            deadline_s=state.bounds.remaining_s,
         )
     except UnusableProposal as exc:
         return _spend_correction(state, deps[MODEL], str(exc), FailureCategory.UNUSABLE_ASSESSMENT)
@@ -390,6 +396,7 @@ def _spend_correction(
             state.knowledge,
             state.stopped_because,
             problem,
+            state.bounds.remaining_s,
         )
     except UnusableProposal as exc:
         return _failed(state, category, f"the correction was also unusable: {exc}")

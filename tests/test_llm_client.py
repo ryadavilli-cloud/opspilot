@@ -23,7 +23,7 @@ TASK = "rca_synthesis"
 class FakeModel:
     deployment = "fake-1"
 
-    def complete(self, task, messages):
+    def complete(self, task, messages, deadline_s=None):
         return ChatResult(text="ok", task=task, deployment=self.deployment)
 
 

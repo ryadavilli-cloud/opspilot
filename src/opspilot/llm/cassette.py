@@ -100,7 +100,9 @@ class ReplayChatModel:
         self._manifest = recorded
         self._by_key = {i["key"]: i["response"] for i in data.get("interactions", [])}
 
-    def complete(self, task: str, messages: list[ChatMessage]) -> ChatResult:
+    def complete(
+        self, task: str, messages: list[ChatMessage], deadline_s: float | None = None
+    ) -> ChatResult:
         key = request_key(self._manifest, task, messages)
         try:
             return _result_from_dict(self._by_key[key])
@@ -123,8 +125,10 @@ class RecordingChatModel:
         # responses, so it must not be re-read per call and drift mid-recording.
         self._manifest = behaviour_manifest(deployment=self.deployment)
 
-    def complete(self, task: str, messages: list[ChatMessage]) -> ChatResult:
-        result = self._inner.complete(task, messages)
+    def complete(
+        self, task: str, messages: list[ChatMessage], deadline_s: float | None = None
+    ) -> ChatResult:
+        result = self._inner.complete(task, messages, deadline_s)
         self._interactions.append(
             {
                 "key": request_key(self._manifest, task, messages),

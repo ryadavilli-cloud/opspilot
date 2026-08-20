@@ -67,21 +67,30 @@ class AzureChatModel:
             )
         return self._client
 
-    def complete(self, task: str, messages: list[ChatMessage]) -> ChatResult:
+    def complete(
+        self, task: str, messages: list[ChatMessage], deadline_s: float | None = None
+    ) -> ChatResult:
         from opspilot.llm.base import ChatResult
 
         payload = [{"role": m.role, "content": m.content} for m in messages]
         client = self._ensure_client()
         started = time.perf_counter()
+        # What the run has left, handed to the request itself. Effort bounds how much a reasoning
+        # model thinks; only this bounds how long the caller waits, and without it a single call
+        # could outlast the investigation that made it and go on spending after it had stopped.
+        bound = {} if deadline_s is None else {"timeout": max(0.0, deadline_s)}
         if _is_reasoning_model(self.deployment):
             # Left unbounded, a reasoning model's hidden tokens make each call slow and expensive.
             # The configured effort keeps latency inside the request while staying thorough enough
             # to work through the whole evidence set.
             resp = client.chat.completions.create(
-                model=self.deployment, messages=payload, reasoning_effort=config.REASONING_EFFORT
+                model=self.deployment,
+                messages=payload,
+                reasoning_effort=config.REASONING_EFFORT,
+                **bound,
             )
         else:
-            resp = client.chat.completions.create(model=self.deployment, messages=payload)
+            resp = client.chat.completions.create(model=self.deployment, messages=payload, **bound)
         latency_ms = (time.perf_counter() - started) * 1000
         choice = resp.choices[0]
         usage = getattr(resp, "usage", None)
@@ -143,7 +152,9 @@ class TracedChatModel:
         self._inner = inner
         self.deployment = inner.deployment
 
-    def complete(self, task: str, messages: list[ChatMessage]) -> ChatResult:
+    def complete(
+        self, task: str, messages: list[ChatMessage], deadline_s: float | None = None
+    ) -> ChatResult:
         from opspilot.obs.tracing import span
 
         with span("model.complete", attributes={"task": task}) as sp:

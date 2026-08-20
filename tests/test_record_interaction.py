@@ -40,7 +40,9 @@ class _ScriptedSupervisor:
         self.payload = payload
         self.calls = 0
 
-    def complete(self, task: str, messages: list[Any]) -> ChatResult:
+    def complete(
+        self, task: str, messages: list[Any], deadline_s: float | None = None
+    ) -> ChatResult:
         self.calls += 1
         return ChatResult(text=json.dumps(self.payload), task=task, deployment=self.deployment)
 

@@ -32,7 +32,7 @@ class FakeModel:
     def __init__(self) -> None:
         self.calls = 0
 
-    def complete(self, task, messages):
+    def complete(self, task, messages, deadline_s=None):
         self.calls += 1
         return ChatResult(
             text=f"reply-{self.calls}", task=task, deployment=self.deployment, finish_reason="stop"

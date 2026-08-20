@@ -173,12 +173,34 @@ def test_a_caller_may_ask_for_fewer_than_the_budget():
     assert len(retriever.search(_QUESTION, k=2, collection=RUNBOOK, deadline_s=5.0)) == 2
 
 
-def test_deadline_propagates_to_the_container_and_the_embedder():
+def test_one_search_spends_one_deadline_across_its_internal_operations():
+    """A search embeds, then searches by vector, then reads candidates. Given the same duration
+    each, three sequential operations could take three times what the caller allowed while every
+    one of them honoured its own bound. The deadline is fixed once and spent down, so what a later
+    operation gets is what is actually left."""
     embedder = FakeQueryEmbedder()
     container = knowledge_container()
     retriever = Retriever(KnowledgeRecords(container), embedder)
+
     retriever.search("payment timeout", k=3, collection=RUNBOOK, deadline_s=7.5)
-    assert container.timeouts and all(t == 7.5 for t in container.timeouts)
+
+    assert container.timeouts, "the container was reached without a deadline"
+    assert all(0 < timeout <= 7.5 for timeout in container.timeouts)
+    assert container.timeouts == sorted(container.timeouts, reverse=True), (
+        f"a later operation was given more time than an earlier one: {container.timeouts}"
+    )
+
+
+def test_a_search_with_no_time_left_still_bounds_what_it_reaches():
+    """Nothing inside a search may treat an exhausted deadline as unbounded."""
+    embedder = FakeQueryEmbedder()
+    container = knowledge_container()
+    retriever = Retriever(KnowledgeRecords(container), embedder)
+
+    retriever.search("payment timeout", k=3, collection=RUNBOOK, deadline_s=0.0)
+
+    assert container.timeouts
+    assert all(timeout == 0.0 for timeout in container.timeouts)
 
 
 def test_reciprocal_rank_fusion_promotes_the_passage_matched_by_both_signals():

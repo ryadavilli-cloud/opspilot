@@ -51,7 +51,9 @@ class ScriptedModel:
         self._by_task = by_task
         self.calls: list[str] = []
 
-    def complete(self, task: str, messages: list[Any]) -> ChatResult:
+    def complete(
+        self, task: str, messages: list[Any], deadline_s: float | None = None
+    ) -> ChatResult:
         self.calls.append(task)
         queued = self._by_task.get(task)
         if not queued:
@@ -457,6 +459,50 @@ class _RecordingService:
         )
 
 
+class _RecordingModel(ScriptedModel):
+    """A scripted model that also remembers the bound each call was given."""
+
+    def __init__(self, **by_task: list[str]) -> None:
+        super().__init__(**by_task)
+        self.deadlines: list[float | None] = []
+
+    def complete(
+        self, task: str, messages: list[Any], deadline_s: float | None = None
+    ) -> ChatResult:
+        self.deadlines.append(deadline_s)
+        return super().complete(task, messages, deadline_s)
+
+
+def test_a_model_call_carries_the_investigations_remaining_time(incident, records):
+    """The other half of one deadline over the whole run. A capability that outlived the run was
+    the visible case; a model call that did is the same defect and harder to see, because it shows
+    up as a request still being paid for after the investigation that asked for it has stopped."""
+    model = _RecordingModel(evidence_selection=[_action(), _finished()])
+
+    run(incident, model, service=ToolService(records))
+
+    assert model.deadlines, "no model call was made"
+    for remaining in model.deadlines:
+        assert remaining is not None, "a role was asked without the run's remaining time"
+        assert 0 < remaining <= config.INVESTIGATION_DEADLINE_SECONDS
+
+
+def test_a_model_call_late_in_a_run_inherits_how_little_is_left(incident, records):
+    """What a fixed per-call ceiling could not express: the bound shrinks as the run spends it, so
+    the last call cannot run for as long as the first."""
+    model = _RecordingModel(evidence_selection=[_action(), _action(), _finished()])
+
+    def nearly_spent(state: Any) -> None:
+        state.bounds.expires_at = time.monotonic() + 2.0
+
+    run(incident, model, service=ToolService(records), prepare=nearly_spent)
+
+    assert model.deadlines
+    for remaining in model.deadlines:
+        assert remaining is not None
+        assert remaining <= 2.0, "a call was given more time than the run had left"
+
+
 def test_a_capability_call_carries_the_investigations_remaining_time(incident):
     """The bound is one deadline over the whole run, so what reaches a source is what the run has
     left, not a ceiling the source picked for itself."""
@@ -501,7 +547,9 @@ class SeenModel(ScriptedModel):
         super().__init__(**by_task)
         self.seen: list[tuple[str, str]] = []
 
-    def complete(self, task: str, messages: list[Any]) -> ChatResult:
+    def complete(
+        self, task: str, messages: list[Any], deadline_s: float | None = None
+    ) -> ChatResult:
         self.seen.append((task, " ".join(str(m.content) for m in messages)))
         return super().complete(task, messages)
 

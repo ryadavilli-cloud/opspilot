@@ -63,7 +63,7 @@ def test_model_span_captures_usage(span_exporter):
     class _Model:
         deployment = "gpt-5-mini"
 
-        def complete(self, task, messages):
+        def complete(self, task, messages, deadline_s=None):
             return ChatResult(
                 text="ok",
                 task=task,
