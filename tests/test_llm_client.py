@@ -15,7 +15,7 @@ import pytest
 
 from opspilot.llm.base import ChatMessage, ChatResult
 from opspilot.llm.cassette import RecordingChatModel
-from opspilot.llm.client import AzureChatModel, build_chat_model
+from opspilot.llm.client import AzureChatModel, TracedChatModel, build_chat_model
 
 TASK = "rca_synthesis"
 
@@ -35,12 +35,30 @@ def test_unknown_provider_raises():
             build_chat_model(provider)
 
 
+_A_REAL_CASSETTE = str(Path(__file__).resolve().parents[1] / "eval" / "cassettes" / "inc-005.json")
+
+
 def test_the_live_adapter_constructs_without_importing_a_provider_sdk():
     # Constructing must not require the optional `llm` group: the SDK is imported lazily on the
     # first real call, so this runs in the lean CI lane with nothing installed.
     model = build_chat_model("azure", deployment="gpt-5-mini")
-    assert isinstance(model, AzureChatModel)
+    assert isinstance(model._inner, AzureChatModel)
     assert model.deployment == "gpt-5-mini"
+
+
+@pytest.mark.parametrize(
+    "provider,kwargs",
+    [
+        ("azure", {"deployment": "gpt-5-mini"}),
+        ("replay", {"cassette": _A_REAL_CASSETTE}),
+    ],
+)
+def test_every_model_the_factory_builds_is_traced(provider, kwargs):
+    """The span belongs to the call, not to the adapter that remembered to emit one. It was on a
+    wrapper the factory never applied, so model calls were instrumented everywhere except in the
+    composition that actually runs: the tests constructed the wrapper directly and passed, and a
+    hosted trace carried the run and its capability calls and no model calls at all."""
+    assert isinstance(build_chat_model(provider, **kwargs), TracedChatModel)
 
 
 def test_replay_requires_cassette():

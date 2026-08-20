@@ -36,11 +36,24 @@ REQUEST_TIMEOUT_S = 10.0
 # One investigation is several model calls on a reasoning deployment, each slow. A short timeout
 # reads as a hang when it is really the client giving up mid-run.
 INVESTIGATION_TIMEOUT_S = 300.0
+# One model call rather than a whole run, but against a cold-started container and a reasoning
+# deployment, so not the ordinary request timeout either.
+QUESTION_TIMEOUT_S = 120.0
 MAX_POLL_INTERVAL_S = 20.0
 
 
 class SmokeTestFailure(RuntimeError):
     """Raised when a deployed instance fails the smoke-test contract."""
+
+
+def _publish(investigation_id: str) -> None:
+    """Hand the identifier to whatever runs after this, which is how the telemetry check knows
+    which run to look for. Silent outside a workflow, where there is nothing to hand it to."""
+    output = os.environ.get("GITHUB_OUTPUT")
+    if not output:
+        return
+    with open(output, "a", encoding="utf-8") as handle:
+        handle.write(f"investigation_id={investigation_id}\n")
 
 
 def _require(condition: bool, message: str) -> None:
@@ -98,11 +111,21 @@ def check_version(client: httpx.Client) -> VersionResponse:
         f"/version reports backend {version.retrieval_backend!r}, expected "
         f"{RETRIEVAL_BACKEND!r}; the deployed revision was built from different code",
     )
+    # A deployed revision calling itself local means the template stopped telling it otherwise. The
+    # value decides nothing at runtime, which is exactly why nothing else would ever notice.
+    _require(
+        version.environment != "local",
+        f"/version reports environment={version.environment!r}: a deployed revision is reporting "
+        "itself as a local one, so OPSPILOT_ENV is not reaching the container",
+    )
     return version
 
 
-def run_investigation(client: httpx.Client) -> None:
-    """Stream one investigation and hold the deployment to the envelope a client depends on."""
+def run_investigation(client: httpx.Client) -> str:
+    """Stream one investigation and hold the deployment to the envelope a client depends on.
+
+    Returns its identifier, because everything after this asks the deployment about the run it
+    just did rather than about one prepared for the occasion."""
     events: list[dict[str, Any]] = []
     with client.stream(
         "POST",
@@ -163,6 +186,108 @@ def run_investigation(client: httpx.Client) -> None:
         f"outcome={brief['outcome']} activity_events={len(activity)}",
         flush=True,
     )
+    return str(investigation_id)
+
+
+def read_back_the_record(client: httpx.Client, investigation_id: str) -> dict[str, Any]:
+    """The record outlives the request that made it, and carries what its citations rest on.
+
+    A brief whose references resolve only while the process that wrote them is alive is not a
+    record. This reads the investigation back through the same store any other reader would use,
+    and checks that every reference the brief carries is one the record itself holds.
+    """
+    resp = client.get(f"/investigations/{investigation_id}")
+    _require(
+        resp.status_code == 200,
+        f"reading back {investigation_id} returned HTTP {resp.status_code}: {resp.text[:300]}",
+    )
+    saved: dict[str, Any] = resp.json()
+
+    _require(saved.get("investigation_id") == investigation_id, "the record read back another run")
+    _require(bool(saved.get("brief")), "the record carries no brief")
+    _require(bool(saved.get("operations")), "the record accounts for nothing it attempted")
+
+    observed = {str(o.get("evidence_ref")) for o in saved.get("observations") or []}
+    retrieved = {str(p.get("reference")) for p in saved.get("passages") or []}
+    holds = observed | retrieved
+    _require(bool(holds), "the record holds no reference, so the check below would be vacuous")
+
+    cited = _cited_references(saved.get("assessment") or {})
+    missing = sorted(ref for ref in cited if ref not in holds)
+    _require(
+        not missing,
+        f"the record cites what it does not carry: {missing[:5]}; a reader holding this record "
+        "could not check those citations",
+    )
+
+    print(
+        f"[smoke] record: read back with {len(holds)} reference(s) it carries, "
+        f"{len(cited)} cited and all resolving",
+        flush=True,
+    )
+    return saved
+
+
+def _cited_references(assessment: dict[str, Any]) -> set[str]:
+    """Every reference the assessment states, from the fields that hold them.
+
+    Read from fields rather than from prose: the assessment carries its references in lists for
+    exactly this reason, and tokenizing the brief would invent a second grammar here.
+    """
+    cited: set[str] = set(assessment.get("what_happened_refs") or [])
+    cited |= set(assessment.get("history_refs") or [])
+    cited |= set(assessment.get("knowledge_used") or [])
+    for candidate in assessment.get("candidates") or []:
+        cited |= set(candidate.get("supporting") or [])
+        cited |= set(candidate.get("weakening") or [])
+    for action in assessment.get("actions") or []:
+        if action.get("knowledge_ref"):
+            cited.add(str(action["knowledge_ref"]))
+    return {ref for ref in cited if ref}
+
+
+def ask_about_the_record(client: httpx.Client, investigation_id: str) -> None:
+    """One question about the finished investigation, answered from that record alone.
+
+    What is proved here is that the route answers and that code checked what came back, not that
+    the answer is good: an answer whose citation named nothing the record holds is replaced, and a
+    replacement is still a valid response. Both outcomes are reported, and only a route that fails
+    to answer at all is a failure.
+    """
+    resp = client.post(
+        f"/investigations/{investigation_id}/questions",
+        json={"question": "What evidence supports the leading candidate?"},
+        timeout=QUESTION_TIMEOUT_S,
+    )
+    _require(
+        resp.status_code == 200,
+        f"asking about {investigation_id} returned HTTP {resp.status_code}: {resp.text[:300]}",
+    )
+    answer = resp.json()
+
+    _require(answer.get("investigation_id") == investigation_id, "the answer names another run")
+    _require(bool(str(answer.get("answer", "")).strip()), "the answer was empty")
+
+    print(
+        f"[smoke] question: answered with {len(answer.get('references') or [])} reference(s)"
+        f"{' (refused and replaced by code)' if answer.get('refused') else ''}",
+        flush=True,
+    )
+
+
+def an_unknown_investigation_is_a_clean_absence(client: httpx.Client) -> None:
+    """Both routes over a completed record answer for an identifier that names nothing, rather
+    than failing in a way that reads as the store being broken."""
+    unknown = "smoke-no-such-investigation"
+    read = client.get(f"/investigations/{unknown}")
+    _require(read.status_code == 404, f"reading an unknown record returned HTTP {read.status_code}")
+
+    asked = client.post(f"/investigations/{unknown}/questions", json={"question": "what happened?"})
+    _require(
+        asked.status_code == 404,
+        f"asking about an unknown record returned HTTP {asked.status_code}",
+    )
+    print("[smoke] absence: an unknown identifier is refused cleanly on both routes", flush=True)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -187,7 +312,11 @@ def main(argv: list[str] | None = None) -> int:
                     f"{check} check not ok: {ready.checks}",
                 )
             check_version(client)
-            run_investigation(client)
+            investigation_id = run_investigation(client)
+            read_back_the_record(client, investigation_id)
+            ask_about_the_record(client, investigation_id)
+            an_unknown_investigation_is_a_clean_absence(client)
+            _publish(investigation_id)
     except SmokeTestFailure as exc:
         print(f"[smoke] FAIL - {exc}", file=sys.stderr)
         return 1

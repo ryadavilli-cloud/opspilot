@@ -70,3 +70,58 @@ def test_nesting_puts_the_activity_span_under_the_investigation(span_exporter):
 
     by_name = {s.name: s for s in span_exporter.spans}
     assert by_name["investigation.capability"].parent_span_id == by_name["investigation"].span_id
+
+
+def test_the_span_carries_what_the_event_carries():
+    """Both are built here from the same facts, so a span given fewer of them is a drift of its
+    own. The capability, the transport it arrived on, and how it ended are what a hosted trace is
+    queried by, and they were reaching the client's feed while the telemetry got neither."""
+    exporter = tracing.InMemorySpanExporter()
+    previous = tracing.get_exporter()
+    tracing.configure_exporter(exporter)
+    try:
+        event = emit(
+            "investigation.capability",
+            "inv-1",
+            "inc-005",
+            sequence=1,
+            phase="gathering",
+            action="query_logs",
+            detail="query_logs: succeeded",
+            capability="query_logs",
+            transport="direct",
+            outcome="succeeded",
+            references=["logs:checkout-api:1", "logs:checkout-api:2"],
+        )
+    finally:
+        tracing.configure_exporter(previous)
+
+    span = exporter.spans[-1]
+    assert span.attributes["capability"] == event.capability == "query_logs"
+    assert span.attributes["transport"] == event.transport == "direct"
+    assert span.attributes["outcome"] == event.outcome == "succeeded"
+    assert span.attributes["reference_count"] == "2"
+
+
+def test_an_attribute_nothing_supplied_is_absent_rather_than_empty():
+    """A query has to tell an entry that had no transport from one whose transport was lost."""
+    exporter = tracing.InMemorySpanExporter()
+    previous = tracing.get_exporter()
+    tracing.configure_exporter(exporter)
+    try:
+        emit(
+            "investigation.objective",
+            "inv-1",
+            "inc-005",
+            sequence=1,
+            phase="objective",
+            action="objective set",
+            detail="establish why latency rose",
+        )
+    finally:
+        tracing.configure_exporter(previous)
+
+    attributes = exporter.spans[-1].attributes
+    assert "transport" not in attributes
+    assert "capability" not in attributes
+    assert "outcome" not in attributes

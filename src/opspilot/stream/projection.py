@@ -33,17 +33,30 @@ def emit(
     references: list[str] | None = None,
 ) -> ActivityEvent:
     """Record one instrumentation fact as both a telemetry span and its matching activity event."""
-    with tracing.span(
-        name,
-        trace_id=investigation_id,
-        attributes={
-            "investigation_id": investigation_id,
-            "incident_id": incident_id,
-            "phase": phase,
-            "action": action,
-            "status": status,
-        },
-    ):
+    # The span carries what the event carries. Both are built here from the same stated facts so
+    # they cannot drift, and a span given fewer of them than the event is a drift of its own: the
+    # capability, the transport it arrived on, and how it ended are the attributes a hosted trace
+    # is queried by, and they were reaching the client's feed and not the telemetry.
+    #
+    # An attribute nothing supplied is left off rather than recorded as empty, so a query can tell
+    # an entry that had no transport from one whose transport was lost.
+    attributes = {
+        "investigation_id": investigation_id,
+        "incident_id": incident_id,
+        "phase": phase,
+        "action": action,
+        "status": status,
+    }
+    if capability:
+        attributes["capability"] = capability
+    if transport:
+        attributes["transport"] = transport
+    if outcome:
+        attributes["outcome"] = outcome
+    if references:
+        attributes["reference_count"] = str(len(references))
+
+    with tracing.span(name, trace_id=investigation_id, attributes=attributes):
         pass
     return ActivityEvent(
         sequence=sequence,
