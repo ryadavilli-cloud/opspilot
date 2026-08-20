@@ -113,6 +113,9 @@ jobs:
               containerImage="${{ vars.ACR_NAME }}.azurecr.io/$IMAGE_REPO:${{ github.sha }}" \
               manageAcrPullRoleAssignment=false \
               configureAcrPull=true \
+              manageKeyVaultRoleAssignment=false \
+              configureAuth=true \
+              authClientId="${{ vars.AUTH_CLIENT_ID }}" \
             --query properties.outputs.appFqdn.value -o tsv)
           echo "app_fqdn=$FQDN" >> "$GITHUB_OUTPUT"
 
@@ -123,6 +126,11 @@ jobs:
         # back, and asks a question about it, so the model call, retrieval, the delivered brief,
         # and the store that outlives the request are exercised once per deploy rather than
         # continuously by a probe.
+        env:
+          # The audience a token must carry, which is the registration's identifier URI. Set
+          # here rather than defaulted in the script: a smoke run against a deployment with no
+          # authentication is a real thing to want, and its absence is how that is said.
+          OPSPILOT_AUTH_AUDIENCE: api://${{ vars.AUTH_CLIENT_ID }}
         run: uv run python scripts/smoke_deployment.py "https://${{ steps.deploy.outputs.app_fqdn }}"
 
       - name: The run's telemetry is queryable by investigation id
