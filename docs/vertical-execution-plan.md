@@ -661,7 +661,38 @@ and the numeric evaluation machinery and golden files are absent.
 
 ## V10. Hosted final posture
 
-**State:** Not started.
+**State:** Partial.
+
+*Already present.* Everything but authentication. Replicas 0 to 1. Application Insights over the
+workspace the application already logs to, with the exporter the deployed revision names actually
+installed at startup. Startup validation that refuses to serve on a required setting left unset or
+a setting whose value names something that does not exist, reporting the setting and never its
+value, and a startup line naming the revision and the image. The smoke run drives an investigation,
+reads the record back and checks its citations resolve against what the record itself carries, asks
+a question about it, and holds both routes to a clean absence for an identifier naming nothing; a
+following step queries the workspace for that run's spans by investigation id.
+
+*Recorded against this slice's own text.* Two things.
+
+The step asks startup to refuse an unknown capability enabled, and there is no setting that enables
+a capability: the registry is the inventory, and the separate list of proposable ones was deleted
+when it became identical to it. Nothing was invented to satisfy the clause. What is checked instead
+is the same fault in the settings that do exist, a value naming a provider or an exporter that has
+no implementation, which is where that class of mistake actually lives here.
+
+Four things were instrumented, configured, and silent, each found by asking what a hosted trace
+would contain rather than by any test. The wrapper emitting a span per model call was defined,
+tested, and never applied by the factory. The environment the revision reports was never set, so a
+deployed revision called itself local. The exporter the configuration named was never installed,
+because nothing called the function that installs it. And the activity projection accepted the
+capability, the transport, and the outcome and put none of them on the span, so a trace could say a
+capability step happened without saying which, over what, or whether it answered. Each was
+instrumented and each emitted nothing, and a test asserting the component passed in every case;
+what none of them had was a test asserting the composition.
+
+*Remaining.* Container Apps built-in authentication. It is the one item that can make the
+deployment unreachable, its rollback is removing the configuration and deploying again, and
+everything above is verifiable while the application is still open, so it lands separately.
 
 **Builds.** The remaining hosted gaps, and nothing beyond them. Container App replicas 0 to 1.
 Application Insights component and exporter wiring for the one tracing seam, with spans for the
@@ -700,5 +731,9 @@ unauthenticated request is refused; a span query by `investigation_id` in Applic
 returns the run, its model calls with task label and usage, and its capability calls with transport.
 
 **Hosted effect: Infrastructure.** Deploy the template and application; run the smoke suite.
+Done for everything but authentication: the template deployed, the revision reports the environment
+it runs in, the smoke run read a record back and asked a question of it, and a query of the
+workspace by investigation id returned the run, its model calls with task label and token usage,
+and its capability calls.
 
 **Complete when** the hosted composition matches the design and the smoke suite passes.

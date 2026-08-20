@@ -12,11 +12,11 @@ repository contradicts it.
 
 ## 1. Baseline
 
-- **Inspected:** `main` at `491e0cd` plus the governed-query landing, working tree, 2026-08-20.
+- **Inspected:** `main` at `1a1a8a3` plus the hosted-posture landing, working tree, 2026-08-20.
 - **Toolchain:** `uv`; Python 3.12.
 - **Gates at this tree:** `ruff check` clean; `ruff format --check` clean repository-wide; `mypy`
   strict clean over 61 source files with no override list; deterministic lane
-  `pytest -q -m "not llm"`: **566 passed, 1 deselected, no xfails**; the pre-commit hook (lint,
+  `pytest -q -m "not llm"`: **618 passed, 1 deselected, no xfails**; the pre-commit hook (lint,
   format, em-dash, vocabulary) passes. CI runs one lane.
 - **The count rose** by what the offering and the budget now carry, and by the recurrence
   recording: that every capability describes itself, that the investigator is told what it has
@@ -55,7 +55,7 @@ anything, must still shrink.
 | Deterministic replay | `eval/cassettes/inc-005.json`, `eval/cassettes/inc-004.json`, `eval/cassettes/inc-007.json`, `eval/record_investigation.py` | Three committed cassettes, one per recorded incident, each holding every model call of one whole investigation, so the deterministic lane replays real runs rather than scripted calls; one is a run where the analyst asked for more and code granted it, one where it asked for nothing and closed on what it had, and one where the investigator consulted written knowledge and the assessment cited it; the recorder drives the real streaming request, so a recorded response can only be one the replay path would ask for, and refuses to run unless the endpoint and deployment are named; the recording is taken through the Azure adapter against the chat deployment the application calls, keyless as the signed-in identity, so it is evidence about the serving path the application actually takes; the manifest refuses a cassette recorded under a different deployment, reasoning effort, API version, or prompt version, and names the field that moved | Nothing |
 | Interaction over a completed record | `api.py`, `investigation/agents.py`, `llm/prompts/record_question.v1.md`, `static/investigation.html` | The application builds the Cosmos store through the factory that already existed, so a record outlives the process and the revision that wrote it; tests substitute through the dependency they already override and no setting chooses between the two. Two ordinary requests over a finished investigation: read one by identifier, and ask about one, which the Supervisor answers in a single call whose only context is that record and which returns the answer, the references it rests on, and optionally a candidate's place in the list the record carries. Code then checks every citation against the record and any position against that list, and a failure of either replaces the answer rather than trimming it. The digest states the citable references on their own lines, because a call asked to quote exactly cannot be left to decide where a reference ends. Nothing is gathered and no record is written; an identifier naming nothing is a clean absence on both requests. The screen gains the question box, shown once a terminal event carries a brief | Nothing |
 | One capability over MCP | `mcp/server.py` | `get_deployments` additionally served by an in-process stdio server on the official SDK, dispatching to the same registered capability and returning the envelope it produced without reshaping it. One tool and no other, so every other capability is unreachable through the boundary by construction rather than by a check; a write-shaped or unknown request has nowhere to arrive. The exposure records `transport: mcp` on its span where the investigation records `direct` for the same capability. The server starts and describes itself without a backing store, so the built image can be asked what it offers; the registry is built on the first call that needs one. Nothing starts this in the application, readiness does not probe it, and no HTTP route fronts it | Nothing |
-| Azure baseline | `infra/main.bicep`, `.github/workflows` | One Container App, ACR, one OpenAI account with one chat and one embedding deployment, one Cosmos account with the three containers, Log Analytics, scoped data-plane roles, OIDC deploy; readiness asks only that the operational source answer a seeded lookup and that retrieval came up as the configured backend, and the post-deploy smoke run is where a whole hosted investigation is proven | Replicas 0-3 become 0-1; App Insights and built-in auth are absent |
+| Azure baseline | `infra/main.bicep`, `.github/workflows` | One Container App, ACR, one OpenAI account with one chat and one embedding deployment, one Cosmos account with the three containers, Log Analytics and a workspace-based Application Insights over it, scoped data-plane roles, OIDC deploy; one replica; readiness asks only that the operational source answer a seeded lookup and that retrieval came up as the configured backend, and the post-deploy smoke run is where a hosted investigation, the record read back, and a question over it are proven, followed by a query of the workspace for that run's spans | Built-in authentication is absent |
 
 ---
 
@@ -72,8 +72,8 @@ anything, must still shrink.
 Required by the governing design and not present in any form:
 
 - the two controlled comparisons and their evaluation-only injection seam, and the judge;
-- Application Insights and the exporter wiring; Container Apps built-in authentication; the
-  startup and configuration-validation records.
+- Container Apps built-in authentication. It is the only route-facing gap left: the streaming
+  route still starts work for anyone who reaches it.
 
 ---
 
@@ -143,6 +143,23 @@ says beside it, the model quoted the whole line, and the whole line is not a ref
 carries. The digest now states the citable references on their own lines and the prompt says the
 text beside a reference is to read rather than to quote. A test holds the digest to that shape,
 but only a real model asked the question that exposed it.
+
+Telemetry has a sink. Application Insights sits over the workspace the environment already
+forwards console output to, the deployed revision names the exporter that writes spans there, and
+startup installs it: a query of the workspace by investigation id returns the run, eleven model
+calls with their task labels and token usage, one span per capability call with its outcome and
+transport, admission, grounding, persistence, and delivery. Verified against the deployed revision.
+
+Four things were instrumented, configured, and silent until this landing, and none of them was
+visible to the suite. The wrapper that traces model calls was never applied by the factory. The
+environment the revision reports was never set. The exporter the configuration named was never
+installed. The activity projection dropped the capability, transport, and outcome before the span.
+Each had a test that passed by constructing the component directly; what none had was a test that
+the composition uses it.
+
+A deployed revision refuses to start on a required setting left unset, or on a setting naming a
+provider or exporter that does not exist, and says which setting rather than what it held. Local
+runs are exempt from the first, because the stand-ins are what local means.
 
 A hosted stream can end with the connection closed and no terminal event, which fails the
 deploy's smoke run on a revision that is otherwise healthy. Observed three times, once in CI. In the
