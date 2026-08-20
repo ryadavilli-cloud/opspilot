@@ -25,7 +25,7 @@ from fastapi.testclient import TestClient
 
 from opspilot import config
 from opspilot.api import app, get_model, get_operational_records, get_record, get_service
-from opspilot.evidence.references import try_parse
+from opspilot.evidence.references import ReferenceType, try_parse
 from opspilot.investigation.agents import RETURNABLE_EVIDENCE_KINDS
 from opspilot.llm.cassette import ReplayChatModel
 from opspilot.record.memory import InMemoryCompletedInvestigations
@@ -36,6 +36,9 @@ from opspilot.tools.service import ToolService
 INCIDENT = "inc-005"
 # The second recorded incident, taken in the same session against the same deployment.
 SECOND_INCIDENT = "inc-004"
+# The recurrence. The only incident in the corpus whose answer was already written down, so it
+# is the only one where retrieved knowledge changing the investigation is observable at all.
+RECURRENCE = "inc-007"
 
 
 def _replay(incident: str) -> tuple[list[dict], InMemoryCompletedInvestigations]:
@@ -71,6 +74,12 @@ def replayed() -> tuple[list[dict], InMemoryCompletedInvestigations]:
 
 
 @pytest.fixture
+def recurrence() -> tuple[list[dict], InMemoryCompletedInvestigations]:
+    """An incident the system has had before, whose write-up is in the knowledge container."""
+    return _replay(RECURRENCE)
+
+
+@pytest.fixture
 def ambiguous() -> tuple[list[dict], InMemoryCompletedInvestigations]:
     """The second recording. Its first pass was expected to be the one that could not close."""
     return _replay(SECOND_INCIDENT)
@@ -98,9 +107,21 @@ def _proposed_unresolved_question(incident: str) -> dict | None:
     return None
 
 
+def _is_knowledge(reference: str) -> bool:
+    parsed = try_parse(reference)
+    return parsed is not None and parsed.reference_type is ReferenceType.KNOWLEDGE
+
+
 def _references_in(node: object) -> set[str]:
     """Every reference anywhere in a structure, decided by the one parser rather than by a shape
-    guess here. A second heuristic would be a second definition, and prose contains colons."""
+    guess here. A second heuristic would be a second definition, and prose contains colons.
+
+    Surrounding punctuation is stripped before parsing. The brief renders references inside prose,
+    where a citation can end up in brackets or before a comma, and the grammar does not restrict
+    what a knowledge identifier may contain, so `(runbook:x)` would otherwise parse as a reference
+    named `x)`. Nothing downstream tokenizes prose this way; the assessment carries its references
+    in fields, which is what the gate reads.
+    """
     found: set[str] = set()
 
     def walk(value: object) -> None:
@@ -112,8 +133,9 @@ def _references_in(node: object) -> set[str]:
                 walk(item)
         elif isinstance(value, str):
             for token in value.split():
-                if try_parse(token) is not None:
-                    found.add(token)
+                cleaned = token.strip("()[],.;\"'")
+                if try_parse(cleaned) is not None:
+                    found.add(cleaned)
 
     walk(node)
     return found
@@ -140,16 +162,26 @@ def test_the_model_chose_its_own_evidence_path(replayed):
     assert len(set(capabilities)) >= 3, f"the path never varied: {capabilities}"
 
 
-def test_every_reference_the_brief_carries_was_admitted_by_this_investigation(replayed):
+def test_every_reference_the_brief_carries_came_from_this_investigation(replayed):
     """The property the gate exists for, on a real response. The model cited what it chose to
-    cite; only what this run observed may reach the engineer."""
+    cite; only what this run obtained may reach the engineer.
+
+    Split the way the gate splits, because the two halves are obtained differently and mean
+    different things: an evidence reference had to be admitted from a source that observed this
+    incident, and a knowledge reference had to be retrieved by this run. Checking both against one
+    set would either reject every legitimate citation of a runbook or accept an invented one.
+    """
     events, record = replayed
 
     admitted = {ref for event in events for ref in event.get("references", [])}
+    saved = record.get(events[0]["investigation_id"])
+    assert saved is not None
+    retrieved = {passage.reference for passage in saved.passages}
     assert admitted, "the investigation admitted nothing, so the assertion would be vacuous"
 
     for reference in _references_in(events[-1]["brief"]):
-        assert reference in admitted, f"{reference} reached the brief without being admitted"
+        expected = retrieved if _is_knowledge(reference) else admitted
+        assert reference in expected, f"{reference} reached the brief without being obtained"
 
 
 def test_the_record_exists_before_the_brief_is_delivered(replayed):
@@ -271,3 +303,71 @@ def test_every_reference_the_second_brief_carries_was_admitted_too(ambiguous):
     assert admitted
     for reference in _references_in(events[-1]["brief"]):
         assert reference in admitted, f"{reference} reached the brief without being admitted"
+
+
+# --- retrieval influences the investigation ------------------------------------------------------
+def test_the_investigator_reached_for_written_knowledge(recurrence):
+    """Chosen, not scripted. Retrieval is one entry among nine in the offering and nothing
+    privileges it; on this recording the investigator decided that reading what was written down
+    beat spending another call guessing."""
+    events, _ = recurrence
+
+    searched = [e for e in events if (e.get("capability") or "").startswith("search_")]
+    assert searched, "the run never consulted written knowledge"
+
+
+def test_what_it_retrieved_reached_the_assessment(recurrence):
+    """The property this step exists for. Retrieval that no role acts on is a call that happened,
+    not an influence: the assessment has to carry what the run read."""
+    events, record = recurrence
+    saved = record.get(events[0]["investigation_id"])
+
+    assert saved is not None
+    assert saved.passages, "the record carries no retrieved passage"
+
+    assessment = saved.assessment
+    cited = set(assessment.knowledge_used) | set(assessment.history_refs)
+    cited |= {action.knowledge_ref for action in assessment.actions if action.knowledge_ref}
+    assert cited, "the run retrieved knowledge and the assessment cited none of it"
+
+
+def test_every_citation_names_something_this_run_retrieved(recurrence):
+    """Attribution has to be checkable. A knowledge reference is real because this investigation
+    retrieved the passage it names, so the record holds everything needed to check the brief."""
+    events, record = recurrence
+    saved = record.get(events[0]["investigation_id"])
+
+    assert saved is not None
+    retrieved = {passage.reference for passage in saved.passages}
+    assessment = saved.assessment
+    cited = set(assessment.knowledge_used) | set(assessment.history_refs)
+    cited |= {action.knowledge_ref for action in assessment.actions if action.knowledge_ref}
+
+    assert cited <= retrieved, f"cited without retrieving: {sorted(cited - retrieved)}"
+
+
+def test_written_knowledge_never_stands_as_current_proof(recurrence):
+    """The separation the gate enforces, on a real response. A document describes how the system
+    is meant to behave; only a source that observed this incident can say how it did behave."""
+    events, record = recurrence
+    saved = record.get(events[0]["investigation_id"])
+
+    assert saved is not None
+    retrieved = {passage.reference for passage in saved.passages}
+    assessment = saved.assessment
+
+    supporting = set(assessment.what_happened_refs)
+    for candidate in assessment.candidates:
+        supporting |= set(candidate.supporting) | set(candidate.weakening)
+
+    assert not (supporting & retrieved), (
+        "a retrieved document was offered as proof of this incident"
+    )
+
+
+def test_the_recurrence_still_delivers_a_grounded_brief(recurrence):
+    events, _ = recurrence
+
+    assert events[-1]["event_type"] == "terminal"
+    assert events[-1]["failure"] is None
+    assert events[-1]["brief"]["text"].strip()

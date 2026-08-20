@@ -346,7 +346,7 @@ been observed on a hosted run.
 
 ## V5. Retrieval materially influences the investigation
 
-**State:** Partial.
+**State:** Complete.
 
 *Already present.* Retrieval's final behavior and every removal this slice names, as `status.md`
 records: stable exact-identifier promotion after fusion, truncation to the passage budget, one
@@ -357,14 +357,24 @@ Retrieval is proposable inside the graph, its passages reach both roles as conte
 completed record, each search counts against the capability cap like any other call, and a
 knowledge reference resolves against what the run retrieved rather than against a file on disk.
 
-*Remaining.* What makes retrieval *influence* an investigation, which is not the same as making it
-reachable. Neither recorded run consulted a runbook or a precedent, including on the
-postmortem-recurrence scenario: the investigator works down the offering and spends the capability
-cap before reaching the two retrieval entries at its end, as `status.md` records. So what remains is
-knowledge references appearing in an assessment because the run went looking for them, and the
-demonstration on the recurrence scenario. Both wait on selection behavior rather than on plumbing,
-and adding prompt text about passages without addressing the sweep would report success while it
-continues.
+Retrieval is also reached and acted on. On the recurrence the investigator consults the runbooks of
+its own choosing and the assessment carries four knowledge references, two of them behind actions,
+while none of them stands as proof of what this incident did.
+
+*Recorded against this slice's own text.* This slice expects the hosted brief to cite a
+postmortem. On the deployed revision the investigator chose `search_runbooks` and the brief cited a
+runbook and an architecture note: written knowledge, retrieved by this run, carried into the
+assessment, and not the kind of document the text named. The prediction is the part that was wrong,
+for the same reason the return step already records about naming an incident in advance.
+
+Retrieval going unreached was read as selection behavior alone. Three things caused it and
+only one was selection. The offering named each capability's
+arguments and never what it answered, so a role choosing between nine had their names to go on. The
+budget was invisible, though the runtime already claimed the investigator chose under bounds it
+could see, so calls were spent as though they were free. And the analyst was never shown the
+passages: they were threaded into the synthesis call and the message never rendered them, so every
+knowledge field would have stayed empty however well retrieval was chosen. The last of those was
+plumbing, and it would have made any amount of prompt work look ineffective.
 
 **Builds.** Retrieval as a registered capability inside the investigation, final in behavior: embed
 the question, vector search plus the in-process lexical pass over the same category-filtered
@@ -402,12 +412,14 @@ and no passage; a knowledge reference offered as current operational support is 
 on inc-007 a capability proposed, the leading candidate or its label, an interpretation, or an
 action differs from the same investigation with passages withheld.
 
-**Hosted effect: Application.** Deploy; the hosted inc-007 stream shows retrieval and a brief that
-cites a postmortem.
+**Hosted effect: Application.** Done. Deployed and run: the hosted inc-007 stream shows the
+investigator choosing retrieval, and a brief citing what it read. Which written record answers a
+given incident is the retriever's and the model's to settle, so the proof is a brief resting on
+retrieved knowledge rather than on a named kind of document.
 
-**Complete when** retrieval behaves as designed inside the graph, inc-007 demonstrates influence,
-knowledge references resolve against what the investigation retrieved rather than against files on
-disk, and the reranker implementation, dependencies, marker, and lane are absent.
+**Complete when** retrieval behaves as designed inside the graph, a recorded run demonstrates
+influence, knowledge references resolve against what the investigation retrieved rather than against
+files on disk, and the reranker implementation, dependencies, marker, and lane are absent.
 
 ---
 

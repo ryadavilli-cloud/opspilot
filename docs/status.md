@@ -12,15 +12,17 @@ repository contradicts it.
 
 ## 1. Baseline
 
-- **Inspected:** `main` at `fb85d31`, working tree, 2026-08-19.
+- **Inspected:** `main` at `e666866` plus the retrieval-influence landing, working tree,
+  2026-08-20.
 - **Toolchain:** `uv`; Python 3.12.
 - **Gates at this tree:** `ruff check` clean; `ruff format --check` clean repository-wide; `mypy`
   strict clean over 59 source files with no override list; deterministic lane
-  `pytest -q -m "not llm"`: **537 passed, 1 deselected, no xfails**; the pre-commit hook (lint,
+  `pytest -q -m "not llm"`: **547 passed, 1 deselected, no xfails**; the pre-commit hook (lint,
   format, em-dash, vocabulary) passes. CI runs one lane.
-- **The count rose** by the return's own cases: eleven scripted ones for the conditions that
-  authorize or refuse it, each verified to fail when the condition it names is removed, and four
-  replayed ones over the two recordings.
+- **The count rose** by what the offering and the budget now carry, and by the recurrence
+  recording: that every capability describes itself, that the investigator is told what it has
+  left to spend, that the analyst is shown the knowledge the run retrieved, and five replayed
+  cases over a run that consulted written knowledge and cited it.
 - **The one deselected** is the only case that calls a live deployment; it is excluded from every
   CI lane, and the seam it exercises is covered deterministically by cassette replay.
 
@@ -42,7 +44,7 @@ anything, must still shrink.
 | Corpus preparation | `scripts/prepare_corpus.py`, `retrieval/corpus.py`, `data/answer_key/topology.yaml` | Loads, chunks, embeds, and indexes the authored corpus into the containers the runtime reads, and verifies by read-back; runs under its own identity; the topology file is what preparation reads for entities | Nothing; `retrieval/corpus.py` and `topology.yaml` are reached only by preparation and stay for it |
 | Model seam | `llm/base.py`, `llm/client.py`, `llm/fake.py`, `llm/cassette.py`, `llm/prompts.py`, `llm/manifest.py` | One Azure adapter, one fake, cassette record and replay, prompt loading with versions. A call takes a task label and messages and nothing else; the result carries the task, the deployment that answered, the latency, and the token usage, for every call through every implementation. Authentication is keyless with no key setting, because the account has local authentication disabled | Nothing |
 | Assessment and brief | `assessment/contracts.py`, `assessment/brief.py` | The designed field set once: `what_happened` with its references, ordered `candidates` (statement, label, `established`, supporting, weakening), `unknowns`, `limitations`, `next_check`, `actions` (action, `now`, optional knowledge reference), `history`, `knowledge_used`; no shape re-checks support and none carries a number; the brief renders deterministically, states the outcome, presents co-causes as contributing causes, and never shows a probability | Nothing |
-| Synthesis | `assessment/synthesis.py`, `llm/prompts/rca_synthesis.v4.md` | One task-labelled call proposes; admission is structural only, so no candidate is removed, no `established` is derived, and no action is discarded; an unreadable response, a label outside the vocabulary, or a string no reference grammar could produce is refused as unusable rather than degraded; a `null` written for an optional field reads as absent, because that is what JSON means by it and what the field's default already says; the one routing field travels beside the assessment rather than inside it, and names an evidence kind from the vocabulary the proposable capabilities supply | Nothing |
+| Synthesis | `assessment/synthesis.py`, `llm/prompts/rca_synthesis.v5.md` | One task-labelled call proposes; admission is structural only, so no candidate is removed, no `established` is derived, and no action is discarded; an unreadable response, a label outside the vocabulary, or a string no reference grammar could produce is refused as unusable rather than degraded; a `null` written for an optional field reads as absent, because that is what JSON means by it and what the field's default already says; the one routing field travels beside the assessment rather than inside it, and names an evidence kind from the vocabulary the proposable capabilities supply; the analyst is shown the passages the run retrieved and must name the guidance that shaped an action, so a recommendation says whether it is documented practice or inference from what this run observed | Nothing |
 | Grounding | `grounding/gate.py` | One deterministic function returning zero or more issues over the assessment, the admitted references, the retrieved knowledge references, and the recorded limitations: operational support resolves in this run, knowledge resolves in what was retrieved, knowledge never stands as current proof, `what_happened` and every established candidate rest on admitted evidence, every recorded limitation is disclosed | Nothing |
 | Telemetry seam and projection | `obs/tracing.py`, `stream/projection.py`, `stream/contracts.py` | One seam with contextvar-nested spans and a swappable exporter; the activity event is built at the same call as the span it mirrors, from the same stated facts, so the two cannot drift; correlation is by `investigation_id` and `incident_id` alone; the sequence comes from what the run has already emitted rather than a counter held beside it | Nothing |
 | Streaming transport and screen | `POST /investigations`, `static/investigation.html` | One streaming request owns one investigation: identity first, activity as it happens, then exactly one terminal event carrying the brief or a sanitized failure category, never both and never neither; a client that disconnects is sent nothing further, and nothing was persisted before the graph's own save; the page shows intake, the feed, the brief as the dominant element once the terminal event arrives, and one details area | A question box |
@@ -51,7 +53,7 @@ anything, must still shrink.
 | Normalized incident context | `intake/contracts.py` | Typed and frozen: `incident_id` required, `scope` where the incident names one, `symptom`, `time_anchor`, and nothing answer-bearing or ticket-workflow shaped | Nothing |
 | Completed-investigation record | `record/completed.py`, `record/port.py`, `record/memory.py`, `record/cosmos.py` | One `CompletedInvestigation` carrying identity, incident, objective, outcome and why gathering stopped, admitted observations, limitations, the operations list, retrieved passages with their text, the assessment, the brief, the telemetry correlation reference, and the model and prompt versions; one seam with `save` and `get`; in-memory and Cosmos backends that both normalize through the stored document, so a second save of the same identifier is refused and a read carries the same contents whichever is behind the seam; the run writes through it before it delivers | Nothing |
 | Authored expectations and fixture | `data/answer_key/golden_scenarios.yaml`, `benign_fixture.yaml`, `data/answer_key/scenarios.yaml`, `data/answer_key/build_goldens.py` | Seven authored records with all required parts; every required reference resolves in the corpus; the benign fixture is structurally invisible to scenario counting; the builder derives `golden_scenarios.yaml` from `scenarios.yaml` | The record shape may simplify to what evaluation reads; the builder's `golden_incidents.json` and `golden_retrieval.json` outputs go with numeric evaluation |
-| Deterministic replay | `eval/cassettes/inc-005.json`, `eval/cassettes/inc-004.json`, `eval/record_investigation.py` | Two committed cassettes, one per recorded incident, each holding every model call of one whole investigation, so the deterministic lane replays real runs rather than scripted calls; one of them is a run where the analyst asked for more and code granted it, and the other a run where it asked for nothing and closed on what it had; the recorder drives the real streaming request, so a recorded response can only be one the replay path would ask for, and refuses to run unless the endpoint and deployment are named; the recording is taken through the Azure adapter against the chat deployment the application calls, keyless as the signed-in identity, so it is evidence about the serving path the application actually takes; the manifest refuses a cassette recorded under a different deployment, reasoning effort, API version, or prompt version, and names the field that moved | Nothing |
+| Deterministic replay | `eval/cassettes/inc-005.json`, `eval/cassettes/inc-004.json`, `eval/cassettes/inc-007.json`, `eval/record_investigation.py` | Three committed cassettes, one per recorded incident, each holding every model call of one whole investigation, so the deterministic lane replays real runs rather than scripted calls; one is a run where the analyst asked for more and code granted it, one where it asked for nothing and closed on what it had, and one where the investigator consulted written knowledge and the assessment cited it; the recorder drives the real streaming request, so a recorded response can only be one the replay path would ask for, and refuses to run unless the endpoint and deployment are named; the recording is taken through the Azure adapter against the chat deployment the application calls, keyless as the signed-in identity, so it is evidence about the serving path the application actually takes; the manifest refuses a cassette recorded under a different deployment, reasoning effort, API version, or prompt version, and names the field that moved | Nothing |
 | Interaction over a completed record | `api.py`, `investigation/agents.py`, `llm/prompts/record_question.v1.md`, `static/investigation.html` | The application builds the Cosmos store through the factory that already existed, so a record outlives the process and the revision that wrote it; tests substitute through the dependency they already override and no setting chooses between the two. Two ordinary requests over a finished investigation: read one by identifier, and ask about one, which the Supervisor answers in a single call whose only context is that record and which returns the answer, the references it rests on, and optionally a candidate's place in the list the record carries. Code then checks every citation against the record and any position against that list, and a failure of either replaces the answer rather than trimming it. The digest states the citable references on their own lines, because a call asked to quote exactly cannot be left to decide where a reference ends. Nothing is gathered and no record is written; an identifier naming nothing is a clean absence on both requests. The screen gains the question box, shown once a terminal event carries a brief | Nothing |
 | Azure baseline | `infra/main.bicep`, `.github/workflows` | One Container App, ACR, one OpenAI account with one chat and one embedding deployment, one Cosmos account with the three containers, Log Analytics, scoped data-plane roles, OIDC deploy; readiness asks only that the operational source answer a seeded lookup and that retrieval came up as the configured backend, and the post-deploy smoke run is where a whole hosted investigation is proven | Replicas 0-3 become 0-1; App Insights and built-in auth are absent |
 
@@ -61,7 +63,6 @@ anything, must still shrink.
 
 | Capability | What exists | What does not |
 | --- | --- | --- |
-| The investigation run | The whole path: objective, adaptive gathering under deterministic authorization, synthesis, the one return where analysis asks for more and code grants it, grounding, one correction, outcome, save, deliver. Two incidents run it end to end on recorded real models | Retrieval and the structured query are registered and not offered to the investigator, so a run reaches neither, and no run carries a retrieved passage into its record |
 | Screen | Intake, the live feed, the brief as the dominant element on the terminal event, and one details area | A question box |
 
 ---
@@ -115,10 +116,11 @@ retained for the compiled graph and is not a retirement target.
 
 ## 7. Deployment state
 
-Last live-inspected 2026-08-19, at the revision built from the interaction landing. One Container App
-and image from the Bicep template through the OIDC workflow; replicas 0-3; one chat and one
-embedding deployment; no Application Insights; the three containers are declared. The deployment
-workflow, including its post-deploy smoke run, passes against that revision.
+Last live-inspected 2026-08-20. One Container App and image from the Bicep template; replicas 0-3;
+one chat and one embedding deployment; no Application Insights; the three containers are declared.
+The deployment workflow, including its post-deploy smoke run, passes on merge to main; the revision
+running now was built and deployed from this branch directly, to prove its hosted effect before the
+merge rather than after, with the previous image kept for rollback.
 
 Readiness answers there in its narrowed form: two checks, `operational_records` and `retrieval`,
 both ok, with the backend reported as the configured one. The two probes before it timed out at the
@@ -146,6 +148,30 @@ but only a real model asked the question that exposed it.
 `/version` on that revision reports `environment=local`. `OPSPILOT_ENV` is set nowhere in the
 template, so the container takes the default. Nothing keys off it today and no behavior is affected,
 but the hosted revision misreports which environment it is.
+
+Retrieval is reached because the investigator chooses it, not because anything privileges it: it is
+one entry among nine and nothing orders them. On the recurrence it consulted the runbooks and the
+assessment cited four passages, two of them behind actions. On the ambiguous incident it consulted
+none and closed on what it had, which is the same conditionality the return has.
+
+The recordings also settled why retrieval had gone unreached, and only part of it was selection. The
+offering described arguments and not purpose; the budget was never stated, so calls were spent as
+though free and a run ended at the cap rather than when it had enough; and the analyst was never
+shown the retrieved passages at all, so no amount of better selection could have produced a
+citation. That last one was plumbing.
+
+Retrieval is reached hosted, and what it read is carried into the brief. On the revision built
+from this landing merged with main, one investigation of inc-007 gathered four times, chose
+`search_runbooks` of its own accord as one entry among nine, gathered twice more, synthesized, was
+sent back once, synthesized again, grounded, saved, and delivered. Its brief rests partly on
+`runbook:service-bus-backlog` and `architecture:service-dependency-map`, and it reported a partial
+outcome. The return and retrieval both appear in the same run, which is the first hosted evidence
+that neither excludes the other.
+
+A hosted run before that one, on the same tree, chose no retrieval at all and spent its first
+assessment on the correction. Both are recorded because both are true: what a model reaches for is
+its own to decide, and a step is proven by the behavior being available and correct rather than by
+every run exhibiting it.
 
 The return was observed hosted on a revision that offered six capabilities. One investigation of
 inc-005 against it gathered six times, synthesized, was sent back for one further capability call,

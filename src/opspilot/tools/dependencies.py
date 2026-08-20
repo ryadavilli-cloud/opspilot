@@ -44,6 +44,7 @@ def get_service_dependencies(
     service: str | None = None,  # None -> the whole graph
     direction: Literal["upstream", "downstream", "both"] = "both",
 ) -> tuple[list[DependencyEdge], list[str]]:
+    """What a service depends on and what depends on it: where a fault could travel."""
     recs: list[DependencyEdge] = []
     for raw in records.edges(deadline_s=deadline_s):
         try:

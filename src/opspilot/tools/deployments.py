@@ -36,6 +36,7 @@ def get_deployments(
     start_time: datetime,
     end_time: datetime,
 ) -> tuple[list[DeploymentRecord], list[str]]:
+    """What was released to a service in a window: the answer to what changed."""
     start, end = to_utc(start_time), to_utc(end_time)
     check_window(start, end, max_days=MAX_WINDOW_DAYS)
 

@@ -685,3 +685,66 @@ def test_a_refused_return_leaves_the_assessment_untouched(incident, records, ref
     assert final.get("failure") is None
     assert final["assessment"].candidates
     assert final["outcome"] is Outcome.COMPLETE
+
+
+# --- what the roles are told they may use ---------------------------------------------------------
+def test_every_capability_says_what_it_answers():
+    """The offering is how a role chooses. A capability that describes only its arguments tells the
+    caller how to call it, and nothing about when it would help, which is what is being asked."""
+    from opspilot.tools.service import _IMPLEMENTATIONS, capability_purpose
+
+    missing = [name for name in _IMPLEMENTATIONS if not capability_purpose(name)]
+    assert not missing, f"these capabilities describe nothing: {missing}"
+
+
+def test_a_capability_purpose_is_read_from_the_capability():
+    """Derived, not listed beside the registry. A description kept somewhere else is a second
+    source of truth and goes stale the first time a capability changes."""
+    from opspilot.tools.service import _IMPLEMENTATIONS, capability_purpose
+
+    for name, implementation in _IMPLEMENTATIONS.items():
+        first = " ".join((implementation.__doc__ or "").strip().split("\n\n")[0].split())
+        assert capability_purpose(name) == first
+
+
+def test_a_capability_that_says_nothing_offers_nothing():
+    """An empty line is honest; an invented one is not."""
+    from opspilot.tools.service import capability_purpose
+
+    assert capability_purpose("no_such_capability") == ""
+
+
+def test_the_investigator_is_told_what_it_has_left_to_spend(incident, records):
+    """A role that cannot see its budget cannot spend it well: it behaves as though calls were
+    free, works down whatever it was offered, and reaches the end having asked everything once.
+    The count is code's and authorization stays code's, so showing it widens nothing."""
+    model = SeenModel(evidence_selection=[_action(), _finished()])
+
+    run(incident, model, service=ToolService(records))
+
+    first = next(text for task, text in model.seen if task == "evidence_selection")
+    assert "Calls you have left:" in first
+
+
+def test_the_analyst_is_shown_the_knowledge_the_run_retrieved(incident, records):
+    """The analyst cites what it was given. Passing the passages to it and never rendering them
+    would leave every knowledge field empty for a reason no test could see: the run would retrieve,
+    the record would carry the passages, and the assessment would silently cite none of them."""
+    passage = Passage(
+        reference="runbook:payment-timeout",
+        title="Payment timeout",
+        text="Check the upstream pool before restarting anything.",
+        category="runbook",
+        services=(),
+        score=1.0,
+    )
+    model = SeenModel(evidence_selection=[_action(), _finished()])
+
+    def with_knowledge(state):
+        state.knowledge.append(passage)
+
+    run(incident, model, service=ToolService(records), prepare=with_knowledge)
+
+    synthesis = next(text for task, text in model.seen if task == "rca_synthesis")
+    assert passage.reference in synthesis
+    assert passage.text in synthesis

@@ -45,6 +45,8 @@ def search_runbooks(
     k: _PassageCount = PASSAGE_BUDGET,
     service: str | None = None,
 ) -> tuple[list[Passage], list[str]]:
+    """Runbooks and architecture notes: how this system is meant to work, and what to check when
+    it does not. Use it when you do not yet know where to look."""
     passages = retriever.search(
         query,
         k=k,
@@ -64,6 +66,8 @@ def search_past_incidents(
     k: _PassageCount = PASSAGE_BUDGET,
     service: str | None = None,
 ) -> tuple[list[Passage], list[str]]:
+    """Write-ups of incidents that already happened: what was wrong then, and what settled it.
+    Use it when this looks like something the system has done before."""
     passages = retriever.search(
         query,
         k=k,
