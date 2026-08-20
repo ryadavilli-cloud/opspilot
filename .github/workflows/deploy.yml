@@ -117,8 +117,36 @@ jobs:
           echo "app_fqdn=$FQDN" >> "$GITHUB_OUTPUT"
 
       - name: Post-deploy smoke test (one real investigation)
+        id: smoke
         # Where end-to-end proof lives. Readiness only establishes that the revision can accept
-        # work; this drives a whole investigation against the deployed revision, so the model
-        # call, retrieval, and the delivered brief are exercised once per deploy rather than
+        # work; this drives a whole investigation against the deployed revision, reads the record
+        # back, and asks a question about it, so the model call, retrieval, the delivered brief,
+        # and the store that outlives the request are exercised once per deploy rather than
         # continuously by a probe.
         run: uv run python scripts/smoke_deployment.py "https://${{ steps.deploy.outputs.app_fqdn }}"
+
+      - name: The run's telemetry is queryable by investigation id
+        # Kept out of the smoke script, which speaks only HTTP to the application. This asks the
+        # workspace instead, where `az` is already authenticated and where the spans arrive as
+        # console output the environment forwards.
+        #
+        # The wait is ingestion latency rather than slack: the spans are written when the run ends
+        # and become queryable a minute or two later, so a check that asked once would fail on
+        # timing and teach nothing.
+        run: |
+          WORKSPACE=$(az monitor log-analytics workspace show             --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}"             --workspace-name "opspilot-logs" --query customerId -o tsv)
+          RUN_ID="${{ steps.smoke.outputs.investigation_id }}"
+          echo "[telemetry] looking for spans of $RUN_ID"
+          QUERY="ContainerAppConsoleLogs_CL | where TimeGenerated > ago(30m) | where Log_s has '$RUN_ID' | project Log_s"
+          for attempt in 1 2 3 4 5 6; do
+            FOUND=$(az monitor log-analytics query --workspace "$WORKSPACE" --analytics-query "$QUERY" -o tsv 2>/dev/null | wc -l)
+            echo "[telemetry] attempt $attempt: $FOUND line(s)"
+            if [ "$FOUND" -gt 0 ]; then
+              az monitor log-analytics query --workspace "$WORKSPACE" --analytics-query "$QUERY" -o tsv                 | grep -o '"span": "[a-z._]*"' | sort | uniq -c
+              echo "[telemetry] PASS - the run is queryable by investigation id"
+              exit 0
+            fi
+            sleep 30
+          done
+          echo "::error::no span carrying $RUN_ID reached the workspace within three minutes"
+          exit 1
