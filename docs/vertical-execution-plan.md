@@ -589,7 +589,23 @@ and no other tool is exposed.
 
 ## V9. Evaluation
 
-**State:** Not started.
+**State:** Partial. The deterministic half exists and the runner around it: the correctness and
+scenario-behavior checks, each proven by mutation rather than by reading its wiring, and one runner
+that replays a scenario with a recording, obtains the benign fixture live, names anything else as
+not run, and writes one report per run recording its configuration identity. The authored
+expectations now carry what an evaluation reads of them, and the benign fixture carries only what
+applies to a non-incident. The numeric machinery and the golden output files are absent, and with
+them the builder that emitted them; the loaders six test modules had been reaching through that
+builder moved to the tests' own directory, which is smaller than what this step described and does
+the same job. Still to build: the two controlled comparisons and the evaluation-only injection seam
+they need, and the judge. See `status.md`.
+
+Two things this landing found, both for the author rather than for the next implementation step.
+The deterministic list names a check on structured-query results matching expected rows, which
+cannot be written as stated: nothing authored says which rows a query should return, and no run
+records the query that produced an aggregate. And the same expectations are now stated in two
+authored files under different names, `scenarios.yaml` and `golden_scenarios.yaml`, which the judge
+will have to read one of.
 
 **Builds.** The offline evaluation capability over completed investigations, kept small. The
 authored expectation shape simplified to what the runner reads (expected cause, acceptable

@@ -77,6 +77,9 @@ eval_runs/
 eval_results/
 # Dated live-run outputs (D-009). Fixtures and reference reports under eval/ stay committed.
 eval/runs/
+# One evaluation report per run. Advisory and dated, so committing every one is churn; a
+# milestone result worth keeping is promoted deliberately rather than by default.
+eval/reports/
 scorecards/
 
 # ── IaC / build artifacts ──────────────────────────────────────

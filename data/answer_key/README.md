@@ -1,25 +1,20 @@
 # RetailEase answer key
 
-The source of truth for OpsPilot's incident corpus. Everything else in `data/` and the eval
-golden sets is **derived from or validated against** these two files:
+The source of truth for OpsPilot's incident corpus. Everything else in `data/` is **derived from
+or validated against** these files:
 
 | File | What it is |
 | --- | --- |
 | `topology.yaml` | The RetailEase service/infra/external graph and its dependency edges — the spine. |
 | `scenarios.yaml` | Seven incident scenarios authored as structured specs, the labels. |
-| `build_goldens.py` | Deterministic projection of the above into `eval/golden_*.json`. |
+| `benign_fixture.yaml` | The benign-or-transient case the seven do not contain. Evaluation corpus, not an eighth incident. |
 
-```
-topology + scenarios  ──build_goldens.py──▶  eval/golden_incidents.json
-   (hand-authored)                           eval/golden_retrieval.json   (generated)
-```
+Each scenario also carries an `evaluation:` block: what a correct investigation of it looks like,
+which the offline evaluation reads. Those expectations are authored, never derived from a run.
 
-The golden JSON is **generated, never hand-edited.** `tests/test_answer_key.py` regenerates it
-in memory and fails if the committed files drift. After editing the answer key, run:
-
-```
-python data/answer_key/build_goldens.py
-```
+Nothing is projected out of this directory. The generators under `data/synthetic/` read these files
+to produce telemetry, alerts, and incidents; the tests read them to check that what was generated
+still matches what was authored.
 
 ## The reference grammar (cross-phase contract)
 

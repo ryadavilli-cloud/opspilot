@@ -1,9 +1,9 @@
 # Controlled non-incident fixture: the benign / transient scenario class.
 #
-# This is NOT an eighth authored incident and is never loaded by `build_goldens.py` or
-# `data/answer_key/scenarios.yaml`'s consumers (`load_scenarios()` reads scenarios.yaml
-# specifically, not a directory glob, so this file is structurally invisible to scenario
-# counting, golden projection, and evaluation scoring).
+# This is NOT an eighth authored incident. Nothing that reads the scenarios reads this file:
+# the loader names scenarios.yaml specifically rather than globbing the directory, so the
+# fixture is structurally invisible to scenario counting. The evaluation runs it deliberately,
+# by name, and never as one of the seven.
 #
 # Derived from the four ambient sub-threshold events already generated as noise
 # (`data/synthetic/generate.py` AMBIENT_EVENTS, ids amb-01..amb-04). Every one of them
@@ -31,6 +31,21 @@ fixture:
     - logs:notification-worker:amb-02   # one transient worker restart
     - logs:redis-cache:amb-03           # brief eviction blip, recovered
     - logs:payment-api:amb-04           # single payment-gateway retry, recovered
+  # The row an engineer reported. An investigation starts from one reported symptom, so the
+  # evaluation runs one of these four and the other three stand as the rest of the class. This one
+  # because it is the furthest from any authored incident in its own service, and because the same
+  # failure mode has a real past incident (inc-002) for a run to find and correctly decline to
+  # match. The reported symptom, service, and time come from the log row itself; naming it here
+  # rather than restating it keeps the generated corpus the only place that data lives.
+  reported_from: amb-01
   expected_behavior: no_investigation_warranted
-  expected_intent: none
-  expected_match: null
+  # What a correct run of this looks like. Only what applies: there is no cause to name and no
+  # causal evidence to reach, so neither is expected of it.
+  evaluation:
+    accepted_outcomes: [inconclusive]
+    requires_no_immediate_action: true
+    behavior_tested: >-
+      Restraint. Four unrelated sub-threshold events, each resembling a real failure mode at an
+      intensity that recovered on its own. A correct run settles no cause and says so, and says
+      affirmatively that nothing needs doing now; producing an empty brief is not the same answer
+      and inventing a cause is the failure this exists to catch.

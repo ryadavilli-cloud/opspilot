@@ -1,30 +1,28 @@
 """Consistency gate for the RetailEase answer key.
 
-Scoped to the answer key's *internal* coherence and its agreement with the committed golden
-sets. The full cross-corpus closure check (every evidence ref resolves to a generated telemetry
-row; every retrieval id exists as a KB doc) belongs to `test_closure.py`. This guards the spine:
-schema, ref grammar, topology references,
-intent/match invariants, and goldens-in-sync.
+Scoped to the answer key's *internal* coherence. The full cross-corpus closure check (every
+evidence ref resolves to a generated telemetry row; every retrieval id exists as a KB doc) belongs
+to `test_closure.py`. This guards the spine: schema, ref grammar, topology references,
+intent and match invariants, and the evaluation expectation each scenario carries.
 """
 
 from __future__ import annotations
 
-import importlib.util
-import json
 import re
 from pathlib import Path
+
+import yaml
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 ANSWER_KEY_DIR = REPO_ROOT / "data" / "answer_key"
 
-# Import build_goldens.py by path (it lives under data/, not on the package path).
-_spec = importlib.util.spec_from_file_location("build_goldens", ANSWER_KEY_DIR / "build_goldens.py")
-assert _spec and _spec.loader
-build_goldens = importlib.util.module_from_spec(_spec)
-_spec.loader.exec_module(build_goldens)
 
-TOPOLOGY = build_goldens.load_topology()
-SCENARIOS = build_goldens.load_scenarios()
+def _authored(name: str):
+    return yaml.safe_load((ANSWER_KEY_DIR / name).read_text(encoding="utf-8"))
+
+
+TOPOLOGY = _authored("topology.yaml")
+SCENARIOS = _authored("scenarios.yaml")["scenarios"]
 
 SERVICES = {s["id"] for s in TOPOLOGY["services"]}
 INFRA = {i["id"] for i in TOPOLOGY["infra"]}
@@ -160,15 +158,106 @@ def test_retrieval_ids_follow_namespaces():
                 assert ident in HISTORICAL_IDS, f"{s['id']}: no historical incident {ident}"
 
 
-def test_committed_goldens_match_projection():
-    """Drift gate: the committed JSON must equal a fresh projection of the answer key."""
-    fresh_incidents = build_goldens.build_incident_goldens(SCENARIOS)
-    fresh_retrieval = build_goldens.build_retrieval_goldens(SCENARIOS)
-    committed_incidents = json.loads(
-        build_goldens.GOLDEN_INCIDENTS_PATH.read_text(encoding="utf-8")
-    )
-    committed_retrieval = json.loads(
-        build_goldens.GOLDEN_RETRIEVAL_PATH.read_text(encoding="utf-8")
-    )
-    assert committed_incidents == fresh_incidents, "golden_incidents.json stale — rerun builder"
-    assert committed_retrieval == fresh_retrieval, "golden_retrieval.json stale — rerun builder"
+# --- what a correct investigation looks like ------------------------------------------------------
+# The evaluation expectation, held to its shape here so the runner can read it without guarding
+# every field. What each expectation means is authored; that all seven state one is structural.
+ACCEPTED_OUTCOMES = {"complete", "partial", "inconclusive"}
+EVALUATION_FIELDS = {
+    "acceptable_alternatives",
+    "absent_evidence",
+    "accepted_outcomes",
+    "behavior_tested",
+    "knowledge_should",
+    "expected_recommendation",
+}
+
+
+def test_every_scenario_states_what_a_correct_investigation_looks_like():
+    for s in SCENARIOS:
+        evaluation = s.get("evaluation")
+        assert evaluation, f"{s['id']}: no evaluation expectation"
+        missing = EVALUATION_FIELDS - evaluation.keys()
+        assert not missing, f"{s['id']}: expectation missing {missing}"
+        extra = evaluation.keys() - EVALUATION_FIELDS
+        assert not extra, f"{s['id']}: expectation carries unknown fields {extra}"
+
+
+def test_accepted_outcomes_are_outcomes_the_runtime_can_reach():
+    """An expectation naming an outcome the runtime never produces could not be met by a correct
+    run, and would read as the scenario failing rather than as the expectation being wrong."""
+    for s in SCENARIOS:
+        accepted = s["evaluation"]["accepted_outcomes"]
+        assert accepted, f"{s['id']}: accepts no outcome"
+        unknown = set(accepted) - ACCEPTED_OUTCOMES
+        assert not unknown, f"{s['id']}: accepts {unknown}, which no run can report"
+
+
+def test_expectation_prose_is_stated_rather_than_left_empty():
+    """Each of these is read by the judge or by a person; an empty one is an expectation nobody
+    authored rather than one that does not apply."""
+    for s in SCENARIOS:
+        evaluation = s["evaluation"]
+        for field in ("behavior_tested", "knowledge_should", "expected_recommendation"):
+            assert evaluation[field].strip(), f"{s['id']}: {field} is empty"
+        assert evaluation["acceptable_alternatives"], f"{s['id']}: no acceptable alternative stated"
+
+
+def test_a_declared_absence_names_a_capability_the_registry_holds():
+    """The absence is checked by asking a capability, so the expectation has to name one that
+    exists. An empty list is the ordinary case and is not a gap."""
+    from opspilot.tools import CAPABILITY_NAMES
+
+    for s in SCENARIOS:
+        for absence in s["evaluation"]["absent_evidence"]:
+            assert absence["capability"] in CAPABILITY_NAMES, (
+                f"{s['id']}: declares an absence of {absence['capability']}, "
+                "which is not a capability"
+            )
+            assert absence["why"].strip(), (
+                f"{s['id']}: absence stated without saying why it matters"
+            )
+
+
+def test_a_declared_absence_is_actually_absent_from_the_corpus():
+    """The check that stops a regeneration quietly filling a gap a scenario depends on.
+
+    inc-002 and inc-005 are authored so that nothing was deployed: their cause is a ceiling and a
+    capacity limit, and an account reaching for a deploy has invented one. That only holds while
+    the corpus really contains no such row, and the corpus is generated. Asked here through the
+    same capability an investigation would use, over the window it would use.
+
+    The outcome matters as much as the emptiness. A source that answers and holds nothing is an
+    authoritative absence, which is evidence; a source that cannot answer is a limitation, which is
+    not. A regeneration that made this capability unavailable would leave the list empty and the
+    scenario meaningless, so both are asserted.
+    """
+    from datetime import datetime, timedelta
+
+    from fake_operational_records import corpus_records
+
+    from opspilot.tools.contracts import Completeness, ExecutionOutcome
+    from opspilot.tools.service import ToolService
+
+    service = ToolService(corpus_records())
+    declared = [(s, a) for s in SCENARIOS for a in s["evaluation"]["absent_evidence"]]
+    assert declared, "no scenario declares an absence, so this proves nothing"
+
+    for scenario, absence in declared:
+        raw = scenario["occurred_at"]
+        at = raw if isinstance(raw, datetime) else datetime.fromisoformat(str(raw))
+        result = service.call(
+            absence["capability"],
+            None,
+            services=scenario["impacted_chain"],
+            start_time=(at - timedelta(hours=12)).isoformat().replace("+00:00", "Z"),
+            end_time=(at + timedelta(hours=12)).isoformat().replace("+00:00", "Z"),
+        )
+        assert result.outcome is ExecutionOutcome.SUCCEEDED, (
+            f"{scenario['id']}: {absence['capability']} could not answer, so its silence is a "
+            "limitation rather than the authoritative absence the scenario is authored around"
+        )
+        assert result.completeness is Completeness.EMPTY, (
+            f"{scenario['id']}: the corpus now holds {len(result.results)} row(s) for "
+            f"{absence['capability']}, which the scenario is authored to have none of: "
+            f"{result.evidence_refs}"
+        )

@@ -22,6 +22,7 @@ import json
 import re
 from pathlib import Path
 
+import answer_key
 import yaml
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -38,9 +39,8 @@ def _load(name: str, rel: str):
     return mod
 
 
-build_goldens = _load("build_goldens", "data/answer_key/build_goldens.py")
-TOPOLOGY = build_goldens.load_topology()
-SCENARIOS = build_goldens.load_scenarios()
+TOPOLOGY = answer_key.TOPOLOGY
+SCENARIOS = answer_key.SCENARIOS
 
 SERVICES = {s["id"] for s in TOPOLOGY["services"]}
 INFRA = {i["id"] for i in TOPOLOGY["infra"]}
