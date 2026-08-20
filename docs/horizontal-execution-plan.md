@@ -546,7 +546,26 @@ and the numeric evaluation machinery and golden files are absent.
 
 ## H9. Hosted final posture
 
-**State:** Not started.
+**State:** Partial.
+
+*Already present.* Everything but authentication: replicas 0 to 1, Application Insights over the
+workspace the application already logs to with the exporter installed at startup, startup
+validation that refuses a required setting left unset or a value naming something with no
+implementation, a startup line naming the revision and image, and a smoke run that reads the record
+back, asks a question of it, and is followed by a query of the workspace for that run's spans.
+
+Four things were instrumented, configured, and silent: the wrapper that traces model calls was
+never applied by the factory, the environment the revision reports was never set, the exporter the
+configuration named was never installed, and the activity projection dropped the capability,
+transport, and outcome before the span. Each had a passing test over the component; none had one
+over the composition.
+
+The step also asks startup to refuse an unknown capability enabled, and no setting enables a
+capability here: the registry is the inventory. The same fault is checked where it does live, in
+settings whose value names a provider or exporter that does not exist.
+
+*Remaining.* Container Apps built-in authentication, which lands separately because it is the one
+item that can make the deployment unreachable.
 
 **Builds.** The remaining hosted gaps, and nothing beyond them. Container App replicas 0 to 1.
 Application Insights component and exporter wiring for the one tracing seam, with spans for the
