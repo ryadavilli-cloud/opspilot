@@ -116,10 +116,11 @@ retained for the compiled graph and is not a retirement target.
 
 ## 7. Deployment state
 
-Last live-inspected 2026-08-19, at the revision built from the interaction landing. One Container App
-and image from the Bicep template through the OIDC workflow; replicas 0-3; one chat and one
-embedding deployment; no Application Insights; the three containers are declared. The deployment
-workflow, including its post-deploy smoke run, passes against that revision.
+Last live-inspected 2026-08-20. One Container App and image from the Bicep template; replicas 0-3;
+one chat and one embedding deployment; no Application Insights; the three containers are declared.
+The deployment workflow, including its post-deploy smoke run, passes on merge to main; the revision
+running now was built and deployed from this branch directly, to prove its hosted effect before the
+merge rather than after, with the previous image kept for rollback.
 
 Readiness answers there in its narrowed form: two checks, `operational_records` and `retrieval`,
 both ok, with the backend reported as the configured one. The two probes before it timed out at the
@@ -159,9 +160,18 @@ though free and a run ended at the cap rather than when it had enough; and the a
 shown the retrieved passages at all, so no amount of better selection could have produced a
 citation. That last one was plumbing.
 
-The retrieval-influence landing has not been deployed. What it changes is what the roles are told
-and what the analyst is shown, which the deterministic lane holds still and a hosted run would not
-show more clearly.
+Retrieval is reached hosted, and what it read is carried into the brief. On the revision built
+from this landing merged with main, one investigation of inc-007 gathered four times, chose
+`search_runbooks` of its own accord as one entry among nine, gathered twice more, synthesized, was
+sent back once, synthesized again, grounded, saved, and delivered. Its brief rests partly on
+`runbook:service-bus-backlog` and `architecture:service-dependency-map`, and it reported a partial
+outcome. The return and retrieval both appear in the same run, which is the first hosted evidence
+that neither excludes the other.
+
+A hosted run before that one, on the same tree, chose no retrieval at all and spent its first
+assessment on the correction. Both are recorded because both are true: what a model reaches for is
+its own to decide, and a step is proven by the behavior being available and correct rather than by
+every run exhibiting it.
 
 The return was observed hosted on a revision that offered six capabilities. One investigation of
 inc-005 against it gathered six times, synthesized, was sent back for one further capability call,

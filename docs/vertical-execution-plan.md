@@ -346,7 +346,7 @@ been observed on a hosted run.
 
 ## V5. Retrieval materially influences the investigation
 
-**State:** Partial.
+**State:** Complete.
 
 *Already present.* Retrieval's final behavior and every removal this slice names, as `status.md`
 records: stable exact-identifier promotion after fusion, truncation to the passage budget, one
@@ -361,8 +361,14 @@ Retrieval is also reached and acted on. On the recurrence the investigator consu
 its own choosing and the assessment carries four knowledge references, two of them behind actions,
 while none of them stands as proof of what this incident did.
 
-*Recorded against this slice's own text.* Retrieval going unreached was read as selection behavior
-alone. Three things caused it and only one was selection. The offering named each capability's
+*Recorded against this slice's own text.* This slice expects the hosted brief to cite a
+postmortem. On the deployed revision the investigator chose `search_runbooks` and the brief cited a
+runbook and an architecture note: written knowledge, retrieved by this run, carried into the
+assessment, and not the kind of document the text named. The prediction is the part that was wrong,
+for the same reason the return step already records about naming an incident in advance.
+
+Retrieval going unreached was read as selection behavior alone. Three things caused it and
+only one was selection. The offering named each capability's
 arguments and never what it answered, so a role choosing between nine had their names to go on. The
 budget was invisible, though the runtime already claimed the investigator chose under bounds it
 could see, so calls were spent as though they were free. And the analyst was never shown the
@@ -406,8 +412,10 @@ and no passage; a knowledge reference offered as current operational support is 
 on inc-007 a capability proposed, the leading candidate or its label, an interpretation, or an
 action differs from the same investigation with passages withheld.
 
-**Hosted effect: Application.** Deploy; the hosted inc-007 stream shows retrieval and a brief that
-cites a postmortem.
+**Hosted effect: Application.** Done. Deployed and run: the hosted inc-007 stream shows the
+investigator choosing retrieval, and a brief citing what it read. Which written record answers a
+given incident is the retriever's and the model's to settle, so the proof is a brief resting on
+retrieved knowledge rather than on a named kind of document.
 
 **Complete when** retrieval behaves as designed inside the graph, a recorded run demonstrates
 influence, knowledge references resolve against what the investigation retrieved rather than against
