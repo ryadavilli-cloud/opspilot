@@ -598,7 +598,15 @@ applies to a non-incident. The numeric machinery and the golden output files are
 them the builder that emitted them; the loaders six test modules had been reaching through that
 builder moved to the tests' own directory, which is smaller than what this step described and does
 the same job. Still to build: the two controlled comparisons and the evaluation-only injection seam
-they need, and the judge. See `status.md`.
+they need. See `status.md`.
+
+The judge exists and runs after the deterministic checks, on the runtime's chat deployment with one
+authored rubric, returning a category for each of the four qualities and the semantic diagnosis
+match. Its rubric sits outside the runtime prompt registry, so nothing in the application can reach
+it and adding it did not move the versions the cassette manifest pins. It is reported beside the
+deterministic results and cannot reach them: a scenario result has no field a category could be
+written into. The report records which deployment judged, which is the same one the runtime uses
+today and would not be if that ever changed.
 
 The expectation shape is now one file. `golden_scenarios.yaml` and its tests are absent: the file
 was authored against a document section that no longer describes it and cited two artifacts this
