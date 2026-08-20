@@ -82,6 +82,20 @@ jobs:
       - name: Build image in ACR
         run: az acr build --registry "${{ vars.ACR_NAME }}" --image "$IMAGE_REPO:${{ github.sha }}" .
 
+      # Before the image is deployed anywhere. The protocol itself is proven in the test suite;
+      # what only the image can answer is whether it ships what serving the protocol needs, and a
+      # dependency moved into a development group would leave every test passing and this failing.
+      # Listing the one tool reaches no store, so this needs no credential beyond the pull.
+      # Before the image is deployed anywhere. The protocol itself is proven in the test
+      # suite; what only the image can answer is whether it ships what serving the protocol
+      # needs, and an SDK moved into a development group would leave every test passing and
+      # this failing. Listing the one tool reaches no store, so this needs no credential
+      # beyond the pull.
+      - name: MCP exposure in the built image (starts, offers one tool)
+        run: |
+          az acr login --name "${{ vars.ACR_NAME }}"
+          docker run --rm "${{ vars.ACR_NAME }}.azurecr.io/$IMAGE_REPO:${{ github.sha }}" uv run --frozen --no-dev --group llm python -c "import asyncio; from opspilot.mcp.server import build_server, EXPOSED_CAPABILITY; offered = [tool.name for tool in asyncio.run(build_server().list_tools())]; assert offered == [EXPOSED_CAPABILITY], offered; print('the image serves exactly:', offered)"
+
       # ACR pull-via-identity is configured declaratively by the Bicep (configureAcrPull=true),
       # NOT a separate `az containerapp registry set`: that ran BEFORE this declarative deploy, which
       # (with no registries block) then nulled it out — so the next fresh image failed to pull (401

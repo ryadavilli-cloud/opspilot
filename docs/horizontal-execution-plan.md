@@ -437,7 +437,7 @@ receive an answer whose citations resolve.
 
 ## H7. One MCP capability
 
-**State:** Not started.
+**State:** Complete.
 
 **Builds.** `get_deployments` additionally served through an in-process MCP server built on the
 official Python SDK over stdio, dispatching to the same registered implementation the direct path
@@ -452,12 +452,21 @@ of the runtime.
 **If present, remove.** Nothing: the three legacy tools and the server that fronted them went with
 the evidence foundation, so this step builds against no existing exposure.
 
-**Proof unique to this step.** For the same arguments the MCP path and the direct path return the
-same admitted result; the MCP path refuses any write-shaped request; the activity event for an MCP
-call carries `transport: mcp` and nothing else differs.
+**Proof unique to this step.** Exercised as a protocol rather than as a function call: a real
+stdio server is spawned as a process and a real client connects over its pipes. It offers exactly
+one tool and every other registered capability is unreachable through it, which is what makes the
+read-only property structural rather than checked. For the same arguments the MCP path and the
+direct path return the same admitted result, field for field, and the protocol path carries the same
+envelope fields as every capability rather than a shape of its own. A write-shaped or otherwise
+unknown request has nowhere to arrive. The exposure records `transport: mcp` where the investigation
+records `direct` for the same capability, and the built image starts the server and offers that one
+tool with the packages it ships.
 
-**Hosted effect: Application.** Deploy; the hosted MCP call returns the same result as the direct
-call.
+**Hosted effect: Application.** Deploy the revision containing the exposure. Protocol behavior and
+direct-versus-MCP parity are established by the deterministic test and by the check against the
+built image, not by a hosted call: the designed transport is stdio, so no externally reachable MCP
+endpoint exists to call and none is added. What deployment establishes is that carrying the exposure
+did not disturb the hosted application.
 
 **Complete when** the exposure exists over the official SDK with parity and transport visibility
 and no other tool is exposed.
