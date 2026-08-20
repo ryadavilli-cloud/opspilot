@@ -8,9 +8,10 @@ two reports look alike when they are not, so the report says which mode each sce
 
 Advisory. This gates nothing, and its output is a document rather than an exit code.
 
-Run. The full set needs the `llm` group because the fixture is obtained live; the fast scenario
-replays and needs none of it:
-  uv run --group dev python eval/run_evaluation.py
+Run. Both lanes need the `llm` group, because the judge is a live call in either; the full set
+additionally obtains the benign fixture live. Without it the investigations still replay and the
+report says the judge did not run:
+  uv run --group dev --group llm python eval/run_evaluation.py
   uv run --group dev --group llm python eval/run_evaluation.py --full
 """
 
@@ -30,6 +31,13 @@ from answer_key import FIXTURE, SCENARIOS  # noqa: E402
 from evaluation import Provenance, ScenarioResult, Source, evaluate  # noqa: E402
 from fake_knowledge import knowledge_retriever  # noqa: E402
 from fake_operational_records import corpus_documents, corpus_records  # noqa: E402
+from judge import (  # noqa: E402
+    DIAGNOSIS_MATCH,
+    QUALITIES,
+    Judged,
+    UnusableVerdict,
+    judge,
+)
 
 from opspilot import config  # noqa: E402
 from opspilot.api import initial_state  # noqa: E402
@@ -130,6 +138,33 @@ def obtain_fixture(source: Source) -> tuple[CompletedInvestigation | None, Sourc
         )
 
 
+def judged(
+    record: CompletedInvestigation | None, scenario: dict[str, Any], reported: str
+) -> Judged:
+    """The judge over one completed investigation, or the reason there is no judgement.
+
+    Each way there is none is said rather than left blank, and they are told apart: the scenario did
+    not run, no deployment is configured, the deployment could not be reached, the call did not
+    complete, or the answer was not a judgement. The last is refused rather than repaired, because
+    a category nobody chose is worse than no category.
+    """
+    scenario_id = scenario.get("id", "")
+    if record is None:
+        return Judged(scenario_id, note="no investigation to judge")
+    if not config.AZURE_OPENAI_DEPLOYMENT:
+        return Judged(scenario_id, note="no model deployment is configured to run the judge")
+    try:
+        model = build_chat_model("azure")
+    except Exception as error:  # noqa: BLE001 - reported, never swallowed
+        return Judged(scenario_id, note=f"the judge could not be reached: {error}")
+    try:
+        return judge(model, record, scenario, reported)
+    except UnusableVerdict as error:
+        return Judged(scenario_id, note=f"the judge did not return a usable verdict: {error}")
+    except Exception as error:  # noqa: BLE001 - reported, never swallowed
+        return Judged(scenario_id, note=f"the judge call did not complete: {error}")
+
+
 def configuration_identity() -> dict[str, str]:
     """What this run ran under. Two reports are only comparable where these agree."""
     return {
@@ -141,8 +176,40 @@ def configuration_identity() -> dict[str, str]:
     }
 
 
-def render(results: list[ScenarioResult], identity: dict[str, str], taken_at: str) -> str:
+def _judge_deployment(judgements: list[Judged] | None) -> str:
+    """Which deployment answered the judge, recorded even while it equals the runtime's.
+
+    Two reports whose judgements came from different models are not comparable, and with only the
+    runtime deployment on the page they would look as though they were.
+    """
+    answered = {j.deployment for j in judgements or [] if j.ran and j.deployment}
+    return ", ".join(sorted(answered)) if answered else "(the judge did not run)"
+
+
+def _judge_lines(judgement: Judged | None) -> list[str]:
+    """One scenario's categories, or why there are none. Never a count and never a total: these
+    are reported beside the deterministic result and are not commensurable with it."""
+    if judgement is None:
+        return []
+    if not judgement.ran:
+        return ["Judge: not run. " + judgement.note, ""]
+    verdicts = judgement.verdicts or {}
+    lines = [f"Judge ({judgement.deployment}):", ""]
+    for name in (*QUALITIES, DIAGNOSIS_MATCH):
+        verdict = verdicts[name]
+        lines.append(f"- **{name}**: {verdict.category}. {verdict.why}")
+    lines.append("")
+    return lines
+
+
+def render(
+    results: list[ScenarioResult],
+    identity: dict[str, str],
+    taken_at: str,
+    judgements: list[Judged] | None = None,
+) -> str:
     """One document per run: per-scenario results with named failures, and no total."""
+    by_scenario = {j.scenario_id: j for j in judgements or []}
     lines = [
         "# OpsPilot evaluation report",
         "",
@@ -151,6 +218,7 @@ def render(results: list[ScenarioResult], identity: dict[str, str], taken_at: st
         "## Configuration identity",
         "",
         *(f"- **{key}**: {value}" for key, value in identity.items()),
+        f"- **judge_deployment**: {_judge_deployment(judgements)}",
         "",
         "## Scenarios",
         "",
@@ -162,6 +230,7 @@ def render(results: list[ScenarioResult], identity: dict[str, str], taken_at: st
         lines.append("")
         if not result.ran:
             lines.extend(["Not run.", ""])
+            lines.extend(_judge_lines(by_scenario.get(result.scenario_id)))
             continue
         if result.failures:
             lines.append("Failed:")
@@ -172,6 +241,7 @@ def render(results: list[ScenarioResult], identity: dict[str, str], taken_at: st
         if result.notes:
             lines.extend([f"_{note}_" for note in result.notes])
             lines.append("")
+        lines.extend(_judge_lines(by_scenario.get(result.scenario_id)))
     ran = [r for r in results if r.ran]
     lines.extend(
         [
@@ -193,11 +263,15 @@ def main(argv: list[str] | None = None) -> None:
 
     chosen = SCENARIOS if args.full else [s for s in SCENARIOS if s["id"] == FAST_SCENARIO]
     results: list[ScenarioResult] = []
+    judgements: list[Judged] = []
     for scenario in chosen:
         scenario_id = scenario["id"]
         source = Source.for_scenario(scenario_id)
         record = obtain(scenario_id, source)
+        # Deterministic first, always. The judge is asked afterwards and told none of it.
         results.append(evaluate(scenario_id, record, scenario["evaluation"], source))
+        reported = _scenario_incident(scenario_id).short_description
+        judgements.append(judged(record, scenario, reported))
 
     if args.full:
         record, source = obtain_fixture(Source.for_fixture(config.AZURE_OPENAI_DEPLOYMENT))
@@ -210,11 +284,13 @@ def main(argv: list[str] | None = None) -> None:
                 benign=FIXTURE["evaluation"]["requires_no_immediate_action"],
             )
         )
+        judgements.append(judged(record, FIXTURE, _fixture_incident().short_description))
 
     taken_at = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
     REPORTS.mkdir(parents=True, exist_ok=True)
     path = REPORTS / f"{taken_at.replace(':', '')}.md"
-    path.write_text(render(results, configuration_identity(), taken_at), encoding="utf-8")
+    report = render(results, configuration_identity(), taken_at, judgements)
+    path.write_text(report, encoding="utf-8")
     print(f"wrote {path.relative_to(REPO_ROOT)}")
 
 
