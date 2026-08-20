@@ -140,7 +140,6 @@ them. Corpus preparation is a separate offline script with its own identity.
 A small smoke suite runs after each deployment. It proves: the application started and reports
 healthy at the deployed revision; an authenticated caller is admitted and an unauthenticated one is
 refused; one investigation streams identity, activity, and a terminal brief; the completed record
-is readable afterwards and its citations resolve; a question about it is answered; the MCP-exposed
-capability returns the same result as the direct path; and the run's telemetry is queryable by
-`investigation_id` in Application Insights. Behavior the environment does not change is owned by
+is readable afterwards and its citations resolve; a question about it is answered; and the run's
+telemetry is queryable by `investigation_id` in Application Insights. Behavior the environment does not change is owned by
 deterministic tests, not repeated here.

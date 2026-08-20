@@ -61,6 +61,11 @@ scenarios:
     # What a correct investigation of this scenario looks like, for the offline
     # evaluation. Authored: nothing here is derived from a model run.
     evaluation:
+      weakens_candidate:
+        - reference: metrics:cosmos-db:ru_throttled_rate@2026-05-12T14:30:00Z
+          rules_out: >-
+            Cosmos-side throttling as the cause. The store is not throttling here, so the
+            saturation is in payment-api's own pool, not in the datastore.
       acceptable_alternatives:
         - >-
           Cosmos DB connection exhaustion at payment-api stated as a connection-pool or
@@ -118,6 +123,11 @@ scenarios:
     # What a correct investigation of this scenario looks like, for the offline
     # evaluation. Authored: nothing here is derived from a model run.
     evaluation:
+      weakens_candidate:
+        - reference: metrics:redis-cache:evicted_keys_rate@2026-05-28T09:15:00Z
+          rules_out: >-
+            Cache eviction as the cause of the read failures. The cache is healthy, so the
+            degradation is on the datastore path.
       acceptable_alternatives:
         - >-
           Cosmos DB throttling stated as RU exhaustion, provisioned-throughput limit, or 429s
@@ -179,6 +189,11 @@ scenarios:
     # What a correct investigation of this scenario looks like, for the offline
     # evaluation. Authored: nothing here is derived from a model run.
     evaluation:
+      weakens_candidate:
+        - reference: metrics:checkout-api:http_5xx_rate@2026-06-10T20:10:00Z
+          rules_out: >-
+            A broader customer-facing outage. The failure is confined to the asynchronous
+            notification path, which is why this is SEV3 rather than SEV1.
       acceptable_alternatives:
         - >-
           A poison or undeserializable message stopping the consumer, stated as a crash loop, a
@@ -389,6 +404,11 @@ scenarios:
     # What a correct investigation of this scenario looks like, for the offline
     # evaluation. Authored: nothing here is derived from a model run.
     evaluation:
+      weakens_candidate:
+        - reference: metrics:checkout-api:http_5xx_rate@2026-07-02T09:40:00Z
+          rules_out: >-
+            A broader outage, confined to the asynchronous notification path on the same
+            reasoning as the earlier backlog incident.
       acceptable_alternatives:
         - >-
           The same poison-message crash loop as inc-003, stated as a recurrence or as the

@@ -7,8 +7,7 @@ holds read-only on the RetailEase database, enforced by the Cosmos role assignme
 anything in this file.
 
 It lives under `scripts/` rather than `src/opspilot/` so that "reachable from no runtime code" is a
-property of the layout rather than a convention. Tests import it by path, the way the answer key's
-`build_goldens.py` is already imported.
+property of the layout rather than a convention. Tests import it by path.
 
 Usage:
     uv run python scripts/prepare_corpus.py            # seed both containers

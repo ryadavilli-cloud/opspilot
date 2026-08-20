@@ -484,14 +484,21 @@ applies to a non-incident. The numeric machinery and the golden output files are
 them the builder that emitted them; the loaders six test modules had been reaching through that
 builder moved to the tests' own directory, which is smaller than what this step described and does
 the same job. Still to build: the two controlled comparisons and the evaluation-only injection seam
-they need, and the judge. See `status.md`.
+they need. See `status.md`.
 
-Two things this landing found, both for the author rather than for the next implementation step.
-The deterministic list names a check on structured-query results matching expected rows, which
-cannot be written as stated: nothing authored says which rows a query should return, and no run
-records the query that produced an aggregate. And the same expectations are now stated in two
-authored files under different names, `scenarios.yaml` and `golden_scenarios.yaml`, which the judge
-will have to read one of.
+The judge exists and runs after the deterministic checks, on the runtime's chat deployment with one
+authored rubric, returning a category for each of the four qualities and the semantic diagnosis
+match. Its rubric sits outside the runtime prompt registry, so nothing in the application can reach
+it and adding it did not move the versions the cassette manifest pins. It is reported beside the
+deterministic results and cannot reach them: a scenario result has no field a category could be
+written into. The report records which deployment judged, which is the same one the runtime uses
+today and would not be if that ever changed.
+
+The expectation shape is now one file. `golden_scenarios.yaml` and its tests are absent: the file
+was authored against a document section that no longer describes it and cited two artifacts this
+work removed. The judgement it uniquely held, the references whose ordinary reading rules a
+competing cause out, moved into the expectation beside the rest, and the closure check over
+generated telemetry now covers them.
 
 **Builds.** The offline evaluation capability over completed investigations, kept small. The
 authored expectation shape simplified to what the runner reads (expected cause, acceptable
@@ -505,10 +512,10 @@ record carries rather than against authored files on disk, so evaluation reads t
 knowledge the run itself saw: references resolve, `what_happened` and established candidates have
 operational support, no knowledge reference stands as proof, no attempted operation was a write
 (from the record's operations list against the registry), deliberately absent evidence is
-disclosed, structured-query results match expected rows. Scenario behavior: the mechanical checks
-(accepted outcome, affirmative no-immediate-action entry where required) read from the record;
-diagnosis matching, ambiguity handling, and multiple-contributor recognition decided by the one
-offline judge against the expectation as categories. The evaluation-only injection seam on the
+disclosed. Scenario behavior: the mechanical checks (accepted outcome, affirmative
+no-immediate-action entry where required) read from the record; diagnosis matching, ambiguity
+handling, and multiple-contributor recognition decided by the one offline judge against the
+expectation as categories. The evaluation-only injection seam on the
 investigation runner: substitute a fixed next-action source, withhold retrieved passages at prompt
 assembly, or invoke the runner with the benign fixture's incident context; never an API parameter,
 configuration, or persisted state. The adaptive-versus-fixed-path comparison run across candidate
