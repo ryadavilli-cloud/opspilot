@@ -85,7 +85,7 @@ class ProposedAction:
         return not self.capability
 
 
-def _ask(model: Any, task: str, prompt: Prompt, user: str) -> ChatResult:
+def _ask(model: Any, task: str, prompt: Prompt, user: str, deadline_s: float | None) -> ChatResult:
     """One model call, with the prompt version it was made under stamped onto the result.
 
     The seam returns which deployment answered and what the call cost; which prompt asked is the
@@ -99,6 +99,7 @@ def _ask(model: Any, task: str, prompt: Prompt, user: str) -> ChatResult:
             ChatMessage(role="system", content=prompt.text),
             ChatMessage(role="user", content=user),
         ],
+        deadline_s,
     )
     return replace(result, prompt_version=prompt.version)
 
@@ -182,14 +183,16 @@ def _attempts(evidence: EvidenceSet) -> str:
     return "\n".join(lines)
 
 
-def interpret_objective(model: Any, incident: Any) -> tuple[str, ChatResult]:
+def interpret_objective(
+    model: Any, incident: Any, deadline_s: float | None = None
+) -> tuple[str, ChatResult]:
     """The Supervisor's one model call: what is this investigation trying to establish?
 
     An unreadable answer falls back to the incident's own words rather than failing the run. The
     objective frames the work; it is not a finding, and nothing downstream rests on its wording.
     """
     prompt = get_prompt("investigation_objective")
-    result = _ask(model, OBJECTIVE_TASK, prompt, "\n".join(_incident_lines(incident)))
+    result = _ask(model, OBJECTIVE_TASK, prompt, "\n".join(_incident_lines(incident)), deadline_s)
     stated = str(_json_object(result.text).get("objective", "")).strip()
     return stated or f"Establish what caused: {incident.symptom}", result
 
@@ -209,6 +212,7 @@ def propose_action(
     capabilities: tuple[str, ...],
     calls_left: int,
     open_question: str = "",
+    deadline_s: float | None = None,
 ) -> tuple[ProposedAction, ChatResult]:
     """The Evidence Investigator's one call per step: which capability, with what, to answer what.
 
@@ -261,7 +265,7 @@ def propose_action(
             knowledge_digest(knowledge),
         ]
     )
-    result = _ask(model, SELECTION_TASK, prompt, user)
+    result = _ask(model, SELECTION_TASK, prompt, user, deadline_s)
     payload = _json_object(result.text)
 
     capability = str(payload.get("capability", "")).strip()
@@ -324,6 +328,7 @@ def synthesize(
     stopped_because: str,
     *,
     returned: bool = False,
+    deadline_s: float | None = None,
 ) -> tuple[Assessment, UnresolvedQuestion | None, ChatResult]:
     """The RCA Analyst's one call. Raises `UnusableProposal` when nothing can be made of it.
 
@@ -339,7 +344,7 @@ def synthesize(
     user = _synthesis_user_message(
         incident, objective, evidence, knowledge, stopped_because, returned=returned
     )
-    result = _ask(model, SYNTHESIS_TASK, prompt, user)
+    result = _ask(model, SYNTHESIS_TASK, prompt, user, deadline_s)
     proposal = parse_proposal(result.text)
     return admit_assessment(proposal), proposal.unresolved_question, result
 
@@ -352,6 +357,7 @@ def correct(
     knowledge: Sequence[Passage],
     stopped_because: str,
     problem: str,
+    deadline_s: float | None = None,
 ) -> tuple[Assessment, ChatResult]:
     """The one corrective call, carrying what was wrong with the first attempt.
 
@@ -368,7 +374,7 @@ def correct(
             problem,
         ]
     )
-    result = _ask(model, CORRECTION_TASK, prompt, user)
+    result = _ask(model, CORRECTION_TASK, prompt, user, deadline_s)
     return admit_assessment(parse_proposal(result.text)), result
 
 
@@ -444,7 +450,9 @@ def _record_digest(record: Any) -> str:
     return "\n".join(line for line in lines if line is not None)
 
 
-def answer_question(model: Any, record: Any, question: str) -> tuple[RecordAnswer, ChatResult]:
+def answer_question(
+    model: Any, record: Any, question: str, deadline_s: float | None = None
+) -> tuple[RecordAnswer, ChatResult]:
     """The Supervisor's one call over a finished investigation.
 
     Returns what the model said, unchecked. Whether every reference it cited is one the record
@@ -453,7 +461,7 @@ def answer_question(model: Any, record: Any, question: str) -> tuple[RecordAnswe
     """
     prompt = get_prompt("record_question")
     user = "\n".join([_record_digest(record), "", f"The engineer asks: {question}"])
-    result = _ask(model, QUESTION_TASK, prompt, user)
+    result = _ask(model, QUESTION_TASK, prompt, user, deadline_s)
     payload = _json_object(result.text)
 
     position = payload.get("candidate_position")

@@ -47,4 +47,14 @@ class ChatModel(Protocol):
 
     deployment: str
 
-    def complete(self, task: str, messages: list[ChatMessage]) -> ChatResult: ...
+    def complete(
+        self, task: str, messages: list[ChatMessage], deadline_s: float | None = None
+    ) -> ChatResult:
+        """One call. `deadline_s` is what the run has left, and a call may not outlast it.
+
+        Passed per call rather than held on the model, because the model is process-wide and a
+        deadline stored on it would belong to whichever investigation wrote it last. Absent
+        means unbounded, which is for callers outside an investigation: a recording, a replay,
+        or a question about a record, none of which is racing a deadline.
+        """
+        ...

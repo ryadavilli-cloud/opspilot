@@ -14,6 +14,7 @@ the same Azure OpenAI deployment corpus preparation used to embed every passage
 
 from __future__ import annotations
 
+import time
 from collections.abc import Iterable
 from dataclasses import dataclass
 from typing import Any
@@ -132,13 +133,23 @@ class Retriever:
         # several; the only normalization is that both arrive as a tuple.
         categories = (collection,) if isinstance(collection, str) else tuple(collection)
 
+        # One deadline for the search, not one per operation inside it. A retrieval embeds, then
+        # searches by vector, then reads candidates lexically, and handing the same duration to
+        # each would let three sequential operations take three times what the caller allowed while
+        # every one of them honoured it. Fixed here as an absolute moment and spent down.
+        expires_at = time.monotonic() + deadline_s
+
+        def remaining() -> float:
+            return max(0.0, expires_at - time.monotonic())
+
+        embedding = self._embedder.embed(query, deadline_s=remaining())
         dense_rows = self._records.nearest(
             categories,
-            self._embedder.embed(query, deadline_s=deadline_s),
+            embedding,
             services,
-            deadline_s=deadline_s,
+            deadline_s=remaining(),
         )
-        candidate_rows = self._records.by_categories(categories, services, deadline_s=deadline_s)
+        candidate_rows = self._records.by_categories(categories, services, deadline_s=remaining())
 
         rows_by_id = {row["id"]: row for row in (*dense_rows, *candidate_rows)}
         fused = _fuse(query, dense_rows, candidate_rows)

@@ -40,7 +40,7 @@ class _QuietModel:
 
     deployment = "fake"
 
-    def complete(self, task, messages):
+    def complete(self, task, messages, deadline_s=None):
         return ChatResult(text="{}", task=task, deployment=self.deployment)
 
 
@@ -177,7 +177,7 @@ class _BlockingModel:
         self.entered = threading.Event()
         self.released = threading.Event()
 
-    def complete(self, task, messages):
+    def complete(self, task, messages, deadline_s=None):
         self.entered.set()
         self.released.wait(timeout=_BLOCKED_SECONDS)
         return ChatResult(text="{}", task=task, deployment=self.deployment)

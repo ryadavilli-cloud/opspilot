@@ -20,7 +20,6 @@ from dataclasses import dataclass, field
 from enum import StrEnum
 
 from opspilot.assessment.contracts import Assessment, Outcome
-from opspilot.assessment.synthesis import UnresolvedQuestion
 from opspilot.evidence.operations import EvidenceSet
 from opspilot.grounding.gate import Issue
 from opspilot.intake.contracts import NormalizedIncidentContext
@@ -105,10 +104,6 @@ class InvestigationState:
     capability_calls_made: int = 0
     model_calls_made: int = 0
     assessment: Assessment | None = None
-    # Routing metadata from the last synthesis, read only by the supervisor deciding the one
-    # return. It is never part of the assessment and never reaches the engineer.
-    unresolved: UnresolvedQuestion | None = None
-    pursuing: str = ""
     issues: list[Issue] = field(default_factory=list)
     outcome: Outcome | None = None
     stopped_because: str = ""

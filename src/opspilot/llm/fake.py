@@ -18,7 +18,9 @@ class FakeChatModel:
         self._responses = responses
         self._index = 0
 
-    def complete(self, task: str, messages: list[ChatMessage]) -> ChatResult:
+    def complete(
+        self, task: str, messages: list[ChatMessage], deadline_s: float | None = None
+    ) -> ChatResult:
         if callable(self._responses):
             text = self._responses(messages)
         else:
