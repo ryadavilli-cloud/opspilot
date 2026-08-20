@@ -365,19 +365,24 @@ def main(argv: list[str] | None = None) -> int:
 
     print(f"[smoke] target: {base_url}", flush=True)
     try:
-        # Asked before anything else, and before a token exists: whether the route is open is a
-        # property of the deployment rather than of this run, and a check that ran later could be
-        # answered by a session the earlier checks had established.
-        headers = {}
+        # Readiness first, always, and unauthenticated: the health paths are excluded from the
+        # gate, so this works before a token exists, and it is the only check that waits out a
+        # cold start. Anything placed ahead of it meets a container that has not finished
+        # starting and fails on a timeout that says nothing about what it was testing.
+        headers: dict[str, str] = {}
+        with httpx.Client(base_url=base_url, timeout=REQUEST_TIMEOUT_S) as opening:
+            ready = wait_for_ready(
+                opening, timeout_s=ready_timeout_s, poll_interval_s=poll_interval_s
+            )
+
         if audience:
+            # Its own client, carrying nothing. Order does not decide this one: a session
+            # established earlier could not answer it, because the request is made without one.
             an_unauthenticated_caller_is_refused(base_url)
             headers["Authorization"] = f"Bearer {_bearer_token(audience)}"
             print("[smoke] authenticated: holding a token for the application", flush=True)
 
         with httpx.Client(base_url=base_url, timeout=REQUEST_TIMEOUT_S, headers=headers) as client:
-            ready = wait_for_ready(
-                client, timeout_s=ready_timeout_s, poll_interval_s=poll_interval_s
-            )
             for check in ("operational_records", "retrieval"):
                 _require(
                     ready.checks.get(check) == "ok",
