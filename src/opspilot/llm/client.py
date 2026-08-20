@@ -121,6 +121,11 @@ def build_chat_model(
 
     `deployment` overrides `config.AZURE_OPENAI_DEPLOYMENT`; `cassette` is the recording path the
     replay provider reads. Unknown provider raises.
+
+    Whatever is built is wrapped so the call is traced. Instrumenting here rather than inside each
+    adapter is what makes the span a property of every model call rather than of the adapter that
+    remembered to emit one: a provider added later is traced because it came through this function,
+    and a caller cannot obtain an untraced model without bypassing the only factory there is.
     """
     provider = (provider or config.LLM_PROVIDER).lower()
 
@@ -129,13 +134,15 @@ def build_chat_model(
             raise ValueError("the 'replay' provider requires a cassette path")
         from opspilot.llm.cassette import ReplayChatModel
 
-        return ReplayChatModel(cassette)
+        return TracedChatModel(ReplayChatModel(cassette))
 
     if provider == "azure":
-        return AzureChatModel(
-            deployment or config.AZURE_OPENAI_DEPLOYMENT,
-            endpoint=config.AZURE_OPENAI_ENDPOINT or None,
-            api_version=config.AZURE_OPENAI_API_VERSION,
+        return TracedChatModel(
+            AzureChatModel(
+                deployment or config.AZURE_OPENAI_DEPLOYMENT,
+                endpoint=config.AZURE_OPENAI_ENDPOINT or None,
+                api_version=config.AZURE_OPENAI_API_VERSION,
+            )
         )
 
     raise ValueError(f"unknown LLM provider {provider!r}; known: {', '.join(_KNOWN)}")
@@ -146,6 +153,11 @@ class TracedChatModel:
 
     Capture only: the span records the task, deployment, latency, and token usage the call
     reported, and nothing reads them back to enforce anything here.
+
+    Everything it was given is passed on. A wrapper that quietly drops an argument is worse than no
+    wrapper: the bound this one carries is the run's remaining time, and losing it here would
+    unbound every model call in the deployed composition while the tests, which construct adapters
+    directly, went on proving the bound held.
     """
 
     def __init__(self, inner: ChatModel) -> None:
@@ -158,7 +170,7 @@ class TracedChatModel:
         from opspilot.obs.tracing import span
 
         with span("model.complete", attributes={"task": task}) as sp:
-            result = self._inner.complete(task, messages)
+            result = self._inner.complete(task, messages, deadline_s)
             usage = result.usage or {}
             sp.attributes["model_deployment"] = result.deployment
             sp.attributes["latency_ms"] = result.latency_ms
