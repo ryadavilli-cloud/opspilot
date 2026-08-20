@@ -84,6 +84,21 @@ param corpusSetupPrincipalId string = ''
 @description('Entra tenant the app identity belongs to, injected as AZURE_TENANT_ID. Defaults to the deployment tenant; override only for a cross-tenant setup.')
 param entraTenantId string = tenant().tenantId
 
+@description('Key Vault holding the one secret this system has: the client secret built-in authentication redeems an authorization code with. Nothing on a data path uses a key, and this is the front door rather than a data path.')
+param keyVaultName string = 'kv${namePrefix}${uniqueString(resourceGroup().id)}'
+
+@description('Name of the secret inside that vault.')
+param authClientSecretName string = 'opspilot-auth-client-secret'
+
+@description('Entra application (client) id built-in authentication signs callers in against. Empty until the registration exists, which Bicep cannot create: an app registration is a Graph object rather than an ARM resource.')
+param authClientId string = ''
+
+@description('Create the Key Vault Secrets User grant for the app identity. Mirrors manageAcrPullRoleAssignment: false where the grant was made outside this template and redeclaring it would collide.')
+param manageKeyVaultRoleAssignment bool = true
+
+@description('Attach the vault-backed secret and turn built-in authentication on. MUST be false on the deploy that first creates the grant above: the app resolves the secret as its own identity, and a revision that starts before that grant has propagated cannot read the vault and fails. Turn it on once the grant exists, exactly as configureAcrPull does for the registry binding.')
+param configureAuth bool = false
+
 @description('What this revision reports itself as, injected as OPSPILOT_ENV.')
 @allowed([
   'dev'
@@ -100,6 +115,7 @@ var acrPullRoleId = '7f951dda-4ed3-4680-a7ca-43fe172d538d' // AcrPull built-in r
 var openAiUserRoleId = '5e0bd9bd-7b93-4f28-af87-19fc36ad61bd'
 // Cosmos DB Built-in Data Contributor — the well-known built-in data-plane role id (same value in
 // every Cosmos account; not a subscription-scoped built-in role definition like the two above).
+var keyVaultSecretsUserRoleId = '4633458b-17de-408a-b874-0445c86b69e6'
 var cosmosDataContributorRoleId = '00000000-0000-0000-0000-000000000002'
 var cosmosDataReaderRoleId = '00000000-0000-0000-0000-000000000001'
 
@@ -125,6 +141,27 @@ resource insights 'Microsoft.Insights/components@2020-02-02' = {
     Application_Type: 'web'
     WorkspaceResourceId: logs.id
     IngestionMode: 'LogAnalytics'
+  }
+}
+
+// The one secret this system holds. Everything on a data path authenticates as the app's identity
+// with no key at all; built-in authentication is the exception, because redeeming an authorization
+// code is a confidential-client exchange and the platform performing it needs the credential.
+//
+// RBAC rather than access policies, so the grant below is a role assignment like every other grant
+// here. The value is not in this template and never passes through a deployment: it is written to
+// the vault once, out of band, and read from it at runtime by the identity that needs it.
+resource vault 'Microsoft.KeyVault/vaults@2023-07-01' = {
+  name: keyVaultName
+  location: location
+  properties: {
+    sku: { family: 'A', name: 'standard' }
+    tenantId: entraTenantId
+    enableRbacAuthorization: true
+    enableSoftDelete: true
+    // The default, and matched to the live vault deliberately: this value cannot be lowered once
+    // set, so a template naming a smaller one is rejected rather than applied.
+    softDeleteRetentionInDays: 90
   }
 }
 
@@ -404,6 +441,21 @@ resource app 'Microsoft.App/containerApps@2024-03-01' = {
           identity: 'system'
         }
       ] : []
+      // Sourced from the vault rather than passed in. The value never enters this template, a
+      // deployment parameter, or a pipeline variable: the platform reads it from the vault as the
+      // app's own identity, which is the same way the app reaches Cosmos and the model deployments.
+      // Rotating it is a write to the vault, with no redeploy and nothing to update here.
+      //
+      // Gated for the same reason `registries` is: the grant below has to exist and propagate
+      // before a revision can resolve this, and a revision that cannot resolve its secrets does
+      // not start.
+      secrets: configureAuth ? [
+        {
+          name: 'auth-client-secret'
+          keyVaultUrl: '${vault.properties.vaultUri}secrets/${authClientSecretName}'
+          identity: 'system'
+        }
+      ] : []
     }
     template: {
       containers: [
@@ -558,6 +610,66 @@ resource acrPull 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (mana
   }
 }
 
+// Read of the one secret, for the identity that needs it. Guarded like the grants around it,
+// because creating a role assignment needs more than Contributor on the scope.
+resource authSecretRead 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (manageKeyVaultRoleAssignment) {
+  name: guid(vault.id, app.id, keyVaultSecretsUserRoleId)
+  scope: vault
+  properties: {
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', keyVaultSecretsUserRoleId)
+    principalId: app.identity.principalId
+    principalType: 'ServicePrincipal'
+  }
+}
+
+// Who may call this application. The platform answers it before a request reaches the container, so
+// the application holds no authentication code: presence of an authenticated caller is the whole
+// check, and every caller that passes it can do everything the application does.
+//
+// The health paths are excluded because the probes are the platform's own and carry no principal.
+// Requiring authentication on them fails every probe, the revision never becomes healthy, and the
+// deployment fails on what reads as a broken application. What they disclose is that the source
+// answered and which retrieval backend came up, which is the price of being probeable.
+resource auth 'Microsoft.App/containerApps/authConfigs@2024-03-01' = if (configureAuth) {
+  parent: app
+  name: 'current'
+  properties: {
+    platform: {
+      enabled: true
+    }
+    globalValidation: {
+      unauthenticatedClientAction: 'RedirectToLoginPage'
+      redirectToProvider: 'azureactivedirectory'
+      excludedPaths: [
+        '/health'
+        '/health/live'
+        '/health/ready'
+      ]
+    }
+    identityProviders: {
+      azureActiveDirectory: {
+        enabled: true
+        registration: {
+          clientId: authClientId
+          clientSecretSettingName: 'auth-client-secret'
+          // Work and school accounts in any tenant, matching the registration's own audience. A
+          // single-tenant issuer here would refuse every caller from anywhere else, which is the
+          // opposite of what the registration was created for.
+          openIdIssuer: 'https://login.microsoftonline.com/organizations/v2.0'
+        }
+        validation: {
+          allowedAudiences: [
+            'api://${authClientId}'
+          ]
+        }
+      }
+    }
+    login: {
+      preserveUrlFragmentsForLogins: false
+    }
+  }
+}
+
 // Keyless auth to Azure OpenAI: grant the app's managed identity data-plane inference on the
 // account. Guarded like AcrPull — creating a role assignment needs Owner / User Access Administrator
 // on the scope; set manageOpenAiRoleAssignment=false when the deploy principal has only Contributor
@@ -658,5 +770,7 @@ output openAiEndpoint string = openai.properties.endpoint
 output openAiAccountName string = openai.name
 output cosmosAccountName string = cosmos.name
 output cosmosEndpoint string = cosmos.properties.documentEndpoint
+output keyVaultName string = vault.name
+output authEnabled bool = configureAuth
 output appInsightsName string = insights.name
 output appInsightsConnectionString string = insights.properties.ConnectionString
