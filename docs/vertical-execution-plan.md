@@ -536,7 +536,7 @@ designed.
 
 ## V8. One MCP capability
 
-**State:** Not started.
+**State:** Complete.
 
 **Builds.** `get_deployments` additionally served through an in-process MCP server built on the
 official Python SDK over stdio, dispatching to the same registered implementation the direct path
@@ -551,12 +551,19 @@ of the runtime.
 **If present, remove.** Nothing: the superseded exposures and the server that fronted them are
 already absent, so this slice builds against no existing exposure.
 
-**Proof unique to this slice.** For the same arguments the MCP path and the direct path return the
-same admitted result; the MCP path refuses any write-shaped request; the activity event for an MCP
-call carries `transport: mcp` and nothing else differs.
+**Proof unique to this slice.** Exercised as a protocol: a real stdio server is spawned as a
+process and a real client connects over its pipes. It offers exactly one tool and every other
+registered capability is unreachable through it, so read-only is structural rather than checked. The
+same arguments through both paths return the same admitted result field for field, with no shape of
+the protocol's own; an unknown or write-shaped request has nowhere to arrive; the exposure records
+`transport: mcp` where the investigation records `direct`; and the built image starts the server and
+offers that one tool with the packages it ships.
 
-**Hosted effect: Application.** Deploy; the hosted MCP call returns the same result as the direct
-call.
+**Hosted effect: Application.** Deploy the revision containing the exposure. Protocol behavior and
+parity are established by the deterministic test and the check against the built image, not by a
+hosted call: the designed transport is stdio, so there is no externally reachable endpoint to call
+and none is added. Deployment establishes that carrying the exposure did not disturb the hosted
+application.
 
 **Complete when** the exposure exists over the official SDK with parity and transport visibility
 and no other tool is exposed.
