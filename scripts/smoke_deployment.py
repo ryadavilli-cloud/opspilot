@@ -290,6 +290,66 @@ def an_unknown_investigation_is_a_clean_absence(client: httpx.Client) -> None:
     print("[smoke] absence: an unknown identifier is refused cleanly on both routes", flush=True)
 
 
+def an_unauthenticated_caller_is_refused(base_url: str) -> None:
+    """The gate itself, asked without a token.
+
+    Its own client, because the one the rest of this uses carries the token. What counts as refused
+    is either an outright 401 or a redirect to sign in: the platform is configured to send a browser
+    to a login page, and a redirect away from the application is a refusal to serve it.
+
+    The health paths are deliberately not checked here. They are excluded from authentication so the
+    platform's own probes can reach them, so they answer to anyone, and asserting otherwise would be
+    asserting the opposite of how this is configured.
+    """
+    with httpx.Client(base_url=base_url, timeout=REQUEST_TIMEOUT_S, follow_redirects=False) as anon:
+        resp = anon.post("/investigations", json={"incident_id": SMOKE_INCIDENT_ID})
+
+    refused = resp.status_code in (401, 403) or (
+        resp.status_code in (302, 303, 307) and "login" in resp.headers.get("location", "").lower()
+    )
+    _require(
+        refused,
+        f"an unauthenticated caller reached the investigation route: HTTP {resp.status_code}. "
+        "The application starts real work and spends real model calls, so an open route is the "
+        "one thing built-in authentication exists to prevent",
+    )
+    print(f"[smoke] unauthenticated: refused with HTTP {resp.status_code}", flush=True)
+
+
+def _bearer_token(audience: str) -> str:
+    """A token for the API, from whatever identity is already signed in.
+
+    Shelling out to `az` rather than holding a credential: the workflow has already authenticated
+    as its own principal, and this asks that session for a token rather than introducing a second
+    way to prove who is calling.
+    """
+    import subprocess
+
+    result = subprocess.run(
+        [
+            "az",
+            "account",
+            "get-access-token",
+            "--resource",
+            audience,
+            "--query",
+            "accessToken",
+            "-o",
+            "tsv",
+        ],
+        capture_output=True,
+        text=True,
+        shell=sys.platform == "win32",
+    )
+    _require(
+        result.returncode == 0 and result.stdout.strip() != "",
+        "could not obtain a token for the application. The deploy principal needs the app role "
+        f"that permits it, and the audience {audience} must be the registration's identifier URI. "
+        f"az said: {result.stderr.strip()[:300]}",
+    )
+    return result.stdout.strip()
+
+
 def main(argv: list[str] | None = None) -> int:
     argv = sys.argv[1:] if argv is None else argv
     base_url = argv[0] if argv else os.environ.get("OPSPILOT_BASE_URL")
@@ -300,9 +360,21 @@ def main(argv: list[str] | None = None) -> int:
     ready_timeout_s = float(os.environ.get("OPSPILOT_SMOKE_READY_TIMEOUT_S", "300"))
     poll_interval_s = float(os.environ.get("OPSPILOT_SMOKE_POLL_INTERVAL_S", "5"))
 
+    base_url = base_url.rstrip("/")
+    audience = os.environ.get("OPSPILOT_AUTH_AUDIENCE", "")
+
     print(f"[smoke] target: {base_url}", flush=True)
     try:
-        with httpx.Client(base_url=base_url.rstrip("/"), timeout=REQUEST_TIMEOUT_S) as client:
+        # Asked before anything else, and before a token exists: whether the route is open is a
+        # property of the deployment rather than of this run, and a check that ran later could be
+        # answered by a session the earlier checks had established.
+        headers = {}
+        if audience:
+            an_unauthenticated_caller_is_refused(base_url)
+            headers["Authorization"] = f"Bearer {_bearer_token(audience)}"
+            print("[smoke] authenticated: holding a token for the application", flush=True)
+
+        with httpx.Client(base_url=base_url, timeout=REQUEST_TIMEOUT_S, headers=headers) as client:
             ready = wait_for_ready(
                 client, timeout_s=ready_timeout_s, poll_interval_s=poll_interval_s
             )

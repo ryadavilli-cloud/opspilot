@@ -12,11 +12,11 @@ repository contradicts it.
 
 ## 1. Baseline
 
-- **Inspected:** `main` at `1a1a8a3` plus the hosted-posture landing, working tree, 2026-08-20.
+- **Inspected:** `main` at `542c997` plus the authentication landing, working tree, 2026-08-20.
 - **Toolchain:** `uv`; Python 3.12.
 - **Gates at this tree:** `ruff check` clean; `ruff format --check` clean repository-wide; `mypy`
   strict clean over 61 source files with no override list; deterministic lane
-  `pytest -q -m "not llm"`: **618 passed, 1 deselected, no xfails**; the pre-commit hook (lint,
+  `pytest -q -m "not llm"`: **632 passed, 1 deselected, no xfails**; the pre-commit hook (lint,
   format, em-dash, vocabulary) passes. CI runs one lane.
 - **The count rose** by what the offering and the budget now carry, and by the recurrence
   recording: that every capability describes itself, that the investigator is told what it has
@@ -55,7 +55,7 @@ anything, must still shrink.
 | Deterministic replay | `eval/cassettes/inc-005.json`, `eval/cassettes/inc-004.json`, `eval/cassettes/inc-007.json`, `eval/record_investigation.py` | Three committed cassettes, one per recorded incident, each holding every model call of one whole investigation, so the deterministic lane replays real runs rather than scripted calls; one is a run where the analyst asked for more and code granted it, one where it asked for nothing and closed on what it had, and one where the investigator consulted written knowledge and the assessment cited it; the recorder drives the real streaming request, so a recorded response can only be one the replay path would ask for, and refuses to run unless the endpoint and deployment are named; the recording is taken through the Azure adapter against the chat deployment the application calls, keyless as the signed-in identity, so it is evidence about the serving path the application actually takes; the manifest refuses a cassette recorded under a different deployment, reasoning effort, API version, or prompt version, and names the field that moved | Nothing |
 | Interaction over a completed record | `api.py`, `investigation/agents.py`, `llm/prompts/record_question.v1.md`, `static/investigation.html` | The application builds the Cosmos store through the factory that already existed, so a record outlives the process and the revision that wrote it; tests substitute through the dependency they already override and no setting chooses between the two. Two ordinary requests over a finished investigation: read one by identifier, and ask about one, which the Supervisor answers in a single call whose only context is that record and which returns the answer, the references it rests on, and optionally a candidate's place in the list the record carries. Code then checks every citation against the record and any position against that list, and a failure of either replaces the answer rather than trimming it. The digest states the citable references on their own lines, because a call asked to quote exactly cannot be left to decide where a reference ends. Nothing is gathered and no record is written; an identifier naming nothing is a clean absence on both requests. The screen gains the question box, shown once a terminal event carries a brief | Nothing |
 | One capability over MCP | `mcp/server.py` | `get_deployments` additionally served by an in-process stdio server on the official SDK, dispatching to the same registered capability and returning the envelope it produced without reshaping it. One tool and no other, so every other capability is unreachable through the boundary by construction rather than by a check; a write-shaped or unknown request has nowhere to arrive. The exposure records `transport: mcp` on its span where the investigation records `direct` for the same capability. The server starts and describes itself without a backing store, so the built image can be asked what it offers; the registry is built on the first call that needs one. Nothing starts this in the application, readiness does not probe it, and no HTTP route fronts it | Nothing |
-| Azure baseline | `infra/main.bicep`, `.github/workflows` | One Container App, ACR, one OpenAI account with one chat and one embedding deployment, one Cosmos account with the three containers, Log Analytics and a workspace-based Application Insights over it, scoped data-plane roles, OIDC deploy; one replica; readiness asks only that the operational source answer a seeded lookup and that retrieval came up as the configured backend, and the post-deploy smoke run is where a hosted investigation, the record read back, and a question over it are proven, followed by a query of the workspace for that run's spans | Built-in authentication is absent |
+| Azure baseline | `infra/main.bicep`, `.github/workflows` | One Container App, ACR, one OpenAI account with one chat and one embedding deployment, one Cosmos account with the three containers, Log Analytics and a workspace-based Application Insights over it, scoped data-plane roles, OIDC deploy; one replica; readiness asks only that the operational source answer a seeded lookup and that retrieval came up as the configured backend, and the post-deploy smoke run is where a hosted investigation, the record read back, and a question over it are proven, followed by a query of the workspace for that run's spans; built-in authentication in front of every route but health, with its one secret read from a Key Vault by the app's own identity | Nothing |
 
 ---
 
@@ -71,9 +71,7 @@ anything, must still shrink.
 
 Required by the governing design and not present in any form:
 
-- the two controlled comparisons and their evaluation-only injection seam;
-- Container Apps built-in authentication. It is the only route-facing gap left: the streaming
-  route still starts work for anyone who reaches it.
+- the two controlled comparisons and their evaluation-only injection seam.
 
 ---
 
@@ -161,6 +159,26 @@ A deployed revision refuses to start on a required setting left unset, or on a s
 provider or exporter that does not exist, and says which setting rather than what it held. Local
 runs are exempt from the first, because the stand-ins are what local means.
 
+The application is behind built-in authentication. The platform refuses a caller before the
+request reaches the container, so the application holds no authentication code and presence of an
+authenticated caller is the whole check: every caller that passes it can do everything, and the
+completed record does not say who ran it. The health paths are excluded, because the platform's own
+probes carry no principal and requiring it there fails every probe. Verified on the deployed
+revision: health answers, an API client is refused, a browser is redirected to sign in at the
+multi-tenant endpoint.
+
+The one secret this system holds is the client secret that exchange needs. It lives in a Key Vault
+and is read at runtime by the app's own identity, so it is in no template, deployment parameter, or
+pipeline variable, and rotating it is a write to the vault. It expires 2027-08-20, and an expired
+one keeps deploying while every sign-in fails, which is why the smoke run authenticates rather than
+only checking health.
+
+Three things exist outside this repository, because they are Graph or data-plane objects no template
+can create: the app registration, an app role assigned to the principal the deployment workflow runs
+as, and that secret. The role is not authorization and nothing reads it; Entra will not issue a
+service principal a token for an API it has no granted permission on. The template records all three
+beside the configuration that needs them.
+
 A hosted stream can end with the connection closed and no terminal event, which fails the
 deploy's smoke run on a revision that is otherwise healthy. Observed three times, once in CI. In the
 case examined the replacing revision logged no request at all for the run that failed, while
@@ -244,9 +262,14 @@ question without asking for more is a correct run.
   server exists in the tree: the one that fronted three superseded tools went with the request
   models its schemas were generated from. The `mcp` dependency is retained for the exposure the
   design carries.
-- **The streaming route is unauthenticated**, and it is now the only route that starts work. The
-  hand-rolled three-role authorization went with the endpoints it fronted, and Container Apps
-  built-in authentication has not replaced it, so the gap is open rather than merely pending.
+- **Every authenticated caller is fully privileged, and none of them is recorded.** Presence of a
+  caller is the whole check, which is what the design asks for, and two consequences follow that
+  are worth stating rather than discovering. Anyone who can sign in reads every completed
+  investigation and asks questions of it; there is no scoping. And the completed record carries no
+  caller, so after the fact nothing can say who ran one. Neither is an oversight, and neither is
+  free: a deployment admitting accounts from any tenant is admitting them to all of it.
+- **Nothing rate-limits a run.** One investigation is around eleven model calls, measurable per run
+  now that spans carry token usage. Authentication decides who may spend that, not how much.
 - **The investigator works down the offering rather than selecting from it.** With six
   capabilities offered a recorded run made six capability calls and had budget left; with nine
   offered, both re-recorded runs made nine selection calls and spent the cap. The call count
