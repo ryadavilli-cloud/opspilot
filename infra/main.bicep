@@ -40,7 +40,12 @@ param chatModelVersion string = '2025-08-07'
 param chatDeploymentName string = 'gpt-5-mini'
 
 @description('GlobalStandard capacity for the chat deployment, in thousands of tokens/min (TPM).')
-param chatModelCapacity int = 30
+// GlobalStandard bills per token consumed, so this is a ceiling on how fast work may proceed and
+// not a reservation: raising it reserves nothing and adds nothing to the bill. 30 was below what
+// one investigation needs. A single run pushes 30-54k tokens through in a burst, against a limit
+// that is both 30k tokens and 30 requests a minute, so the offline evaluation could not get two
+// conditions of a controlled comparison through without being throttled.
+param chatModelCapacity int = 100
 
 @description('Azure OpenAI data-plane API version the app calls (AZURE_OPENAI_API_VERSION). 2025-04-01-preview supports the gpt-5 reasoning models; 2024-10-21 predates them.')
 param azureOpenAiApiVersion string = '2025-04-01-preview'

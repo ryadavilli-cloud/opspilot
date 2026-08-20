@@ -184,8 +184,25 @@ RETRIEVAL_SCENARIO = "inc-007"
 LIVE = "run live against the configured deployment"
 
 
+class ConditionFailed(RuntimeError):
+    """One condition of a comparison could not be obtained."""
+
+
 def _live(incident: IncidentRecord, harness: Harness | None, run_id: str):
-    return _run_investigation(incident, build_chat_model("azure"), harness, run_id)
+    """One condition, run live, or a refusal naming what stopped it.
+
+    Both conditions are live calls, which is the one part of a comparison that can fail for reasons
+    outside the repository: a throttled deployment, an expired credential, no network. That is
+    reported as a comparison nobody could set up, rather than being allowed to end a report whose
+    scenario results are already good.
+    """
+    try:
+        record = _run_investigation(incident, build_chat_model("azure"), harness, run_id)
+    except Exception as error:  # noqa: BLE001 - reported, never swallowed
+        raise ConditionFailed(str(error)) from error
+    if record is None:
+        raise ConditionFailed("the condition completed without writing a record")
+    return record
 
 
 def compare_adaptive(scenario: dict[str, Any]) -> ComparisonResult:
@@ -197,10 +214,13 @@ def compare_adaptive(scenario: dict[str, Any]) -> ComparisonResult:
     """
     scenario_id = scenario["id"]
     incident = _scenario_incident(scenario_id)
-    adaptive = _live(incident, None, f"adaptive-{scenario_id}")
-    fixed = _live(incident, Harness(next_action=fixed_path), f"fixed-{scenario_id}")
-    if adaptive is None or fixed is None:
-        return _not_evaluable("adaptive value", scenario_id, "a condition did not complete")
+    try:
+        adaptive = _live(incident, None, f"adaptive-{scenario_id}")
+        fixed = _live(incident, Harness(next_action=fixed_path), f"fixed-{scenario_id}")
+    except ConditionFailed as error:
+        return _not_evaluable(
+            "adaptive value", scenario_id, f"a condition did not complete: {error}"
+        )
 
     reported = incident.short_description
     return adaptive_value(
@@ -218,10 +238,13 @@ def compare_retrieval_influence(scenario: dict[str, Any]) -> ComparisonResult:
     """The same scenario twice, retrieval running in both, its passages reaching only one."""
     scenario_id = scenario["id"]
     incident = _scenario_incident(scenario_id)
-    shown = _live(incident, None, f"shown-{scenario_id}")
-    withheld = _live(incident, Harness(withhold_knowledge=True), f"withheld-{scenario_id}")
-    if shown is None or withheld is None:
-        return _not_evaluable("retrieval influence", scenario_id, "a condition did not complete")
+    try:
+        shown = _live(incident, None, f"shown-{scenario_id}")
+        withheld = _live(incident, Harness(withhold_knowledge=True), f"withheld-{scenario_id}")
+    except ConditionFailed as error:
+        return _not_evaluable(
+            "retrieval influence", scenario_id, f"a condition did not complete: {error}"
+        )
 
     return retrieval_influence(
         scenario,

@@ -21,7 +21,7 @@ from fixed_path import ORDER, fixed_path
 from judge import DIAGNOSIS_MATCH, Judged, Verdict
 from test_completed_record import _record
 
-from opspilot.assessment.contracts import Action, Candidate, Label
+from opspilot.assessment.contracts import Action, Candidate, SupportLabel
 from opspilot.evidence.operations import Operation
 from opspilot.investigation.harness import HARNESS, Harness, knowledge_for_prompts
 from opspilot.retrieval.retriever import Passage
@@ -35,7 +35,11 @@ def _with(**update):
     return _record().model_copy(update=update)
 
 
-def _candidate(statement: str, supporting: tuple[str, ...] = (), label: Label = Label.CAUSE):
+def _candidate(
+    statement: str,
+    supporting: tuple[str, ...] = (),
+    label: SupportLabel = SupportLabel.LEADING,
+):
     return Candidate(statement=statement, label=label, supporting=list(supporting))
 
 
@@ -72,7 +76,7 @@ def test_the_harness_is_not_a_setting():
 
 
 def test_a_run_given_no_harness_behaves_as_though_there_were_none():
-    passages = [Passage(text="t", reference="runbook:x")]
+    passages = [PASSAGE]
 
     assert knowledge_for_prompts(passages, None) == passages
     assert knowledge_for_prompts(passages, Harness()) == passages
@@ -80,7 +84,7 @@ def test_a_run_given_no_harness_behaves_as_though_there_were_none():
 
 def test_withholding_keeps_passages_from_prompts_only():
     """Retrieval still ran and the record still carries it; the roles simply were not shown it."""
-    passages = [Passage(text="t", reference="runbook:x")]
+    passages = [PASSAGE]
 
     assert knowledge_for_prompts(passages, Harness(withhold_knowledge=True)) == []
     assert passages, "the run's own knowledge set is untouched"
@@ -205,7 +209,14 @@ def test_two_conditions_replaying_one_recording_are_refused():
 
 # --- retrieval influence -------------------------------------------------------------------------
 RETRIEVAL = {"id": "inc-007"}
-PASSAGE = Passage(text="a postmortem", reference="postmortem:inc-003")
+PASSAGE = Passage(
+    reference="postmortem:inc-003",
+    category="postmortem",
+    title="An earlier backlog",
+    text="The consumer crash-looped on a poison message.",
+    services=("notification-worker",),
+    score=0.1,
+)
 
 
 def test_a_scenario_that_retrieved_nothing_is_not_evaluable():
@@ -246,7 +257,7 @@ def test_a_capability_only_one_condition_asked_for_is_reported():
         passages=[PASSAGE],
         operations=[
             *_record().operations,
-            Operation("op-99", "get_metrics", ExecutionOutcome.SUCCEEDED),
+            Operation("op-99", "search_past_incidents", ExecutionOutcome.SUCCEEDED),
         ],
     )
 
@@ -259,9 +270,40 @@ def test_retrieval_differing_between_conditions_is_noted_as_a_second_variable():
     """Withholding influence keeps the tool counts comparable. If they moved anyway then more than
     the one variable did, and the comparison says so rather than reading the difference as the
     effect of the variable."""
-    shown = _with(passages=[PASSAGE, Passage(text="b", reference="runbook:x")])
+    shown = _with(passages=[PASSAGE, _record().passages[0]])
     withheld = _with(passages=[PASSAGE])
 
     result = retrieval_influence(RETRIEVAL, shown, withheld, LIVE, OTHER_LIVE)
 
     assert "more than the one variable moved" in result.note
+
+
+# --- a throttled condition is a comparison nobody could set up, not a lost report ----------------
+def test_a_condition_that_cannot_be_obtained_is_reported_rather_than_ending_the_run(monkeypatch):
+    """Both conditions are live calls, the one part of a comparison that can fail for reasons
+    outside the repository. Losing an otherwise good report to a throttled deployment would throw
+    away every scenario result that had already been computed."""
+    monkeypatch.setattr(run_evaluation.config, "AZURE_OPENAI_DEPLOYMENT", "gpt-x")
+    monkeypatch.setattr(
+        run_evaluation,
+        "build_chat_model",
+        lambda *a, **k: (_ for _ in ()).throw(RuntimeError("429 rate limit")),
+    )
+
+    result = run_evaluation.compare_adaptive({"id": "inc-004", "expected_evidence": []})
+
+    assert not result.ran
+    assert "429 rate limit" in result.note
+
+
+def test_a_throttled_retrieval_condition_is_reported_the_same_way(monkeypatch):
+    monkeypatch.setattr(run_evaluation.config, "AZURE_OPENAI_DEPLOYMENT", "gpt-x")
+    monkeypatch.setattr(
+        run_evaluation,
+        "build_chat_model",
+        lambda *a, **k: (_ for _ in ()).throw(RuntimeError("429 rate limit")),
+    )
+
+    result = run_evaluation.compare_retrieval_influence({"id": "inc-007"})
+
+    assert not result.ran and "429" in result.note
