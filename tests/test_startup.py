@@ -150,3 +150,28 @@ def test_a_run_reaches_the_configured_exporter(monkeypatch):
         with tracing.span("probe", trace_id="t-1"):
             pass
         assert [s.name for s in exporter.spans] == ["probe"]
+
+
+def test_the_root_path_sends_a_local_visitor_to_the_screen(monkeypatch):
+    """Nothing serves the platform's sign-in path locally, so sending a visitor there would send
+    them nowhere."""
+    monkeypatch.setattr(config, "ENVIRONMENT", "local")
+
+    with TestClient(app, follow_redirects=False) as client:
+        assert client.get("/").headers["location"] == "/investigation"
+
+
+def test_the_root_path_sends_a_deployed_visitor_to_sign_in(monkeypatch):
+    """Where the platform answers first, `/` is the one path left open, and the screen would
+    answer a visitor holding no session with a bare 401. This hands them to the sign-in instead,
+    which returns them to the screen, so the address worth sharing is still the bare one."""
+    monkeypatch.setattr(config, "ENVIRONMENT", "prod")
+    monkeypatch.setattr(config, "AZURE_OPENAI_ENDPOINT", "https://example")
+    monkeypatch.setattr(config, "AZURE_OPENAI_DEPLOYMENT", "chat")
+    monkeypatch.setattr(config, "COSMOS_ENDPOINT", "https://example")
+
+    with TestClient(app, follow_redirects=False) as client:
+        location = client.get("/").headers["location"]
+
+    assert location.startswith("/.auth/login/aad")
+    assert "investigation" in location

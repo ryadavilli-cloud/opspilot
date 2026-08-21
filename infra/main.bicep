@@ -651,9 +651,18 @@ resource auth 'Microsoft.App/containerApps/authConfigs@2024-03-01' = if (configu
       enabled: true
     }
     globalValidation: {
-      unauthenticatedClientAction: 'RedirectToLoginPage'
-      redirectToProvider: 'azureactivedirectory'
+      // Refuse rather than redirect, which is what lets a caller presenting a bearer token be
+      // admitted at all: in redirect mode the platform answers a token with a 500 whatever its
+      // audience and issuer, so the deployment could be signed into by a person and reached by
+      // nothing else. That would leave the smoke run unable to drive an investigation, and the
+      // proof that this revision works is worth more than the shape of one refusal.
+      //
+      // A person is not left holding a 401. `/` is excluded and redirects to the sign-in the
+      // platform serves, so the address to share is still the bare one: a visitor lands there,
+      // signs in, and arrives at the screen.
+      unauthenticatedClientAction: 'Return401'
       excludedPaths: [
+        '/'
         '/health'
         '/health/live'
         '/health/ready'
@@ -665,16 +674,28 @@ resource auth 'Microsoft.App/containerApps/authConfigs@2024-03-01' = if (configu
         registration: {
           clientId: authClientId
           clientSecretSettingName: 'auth-client-secret'
-          // Work and school accounts in any tenant, matching the registration's own audience. A
-          // single-tenant issuer here would refuse every caller from anywhere else, which is the
-          // opposite of what the registration was created for. The host comes from the deployment
-          // environment rather than being written down, so this is not a template that only works
-          // in one cloud.
-          openIdIssuer: '${environment().authentication.loginEndpoint}organizations/v2.0'
+          // Any tenant, which is what the registration's own audience admits. `common` rather
+          // than `organizations`, and the difference is not cosmetic: both are multi-tenant, but
+          // the metadata `organizations` publishes declares its issuer as a template with the
+          // tenant left as a placeholder, and the platform does not substitute it when validating
+          // a token presented directly. A caller holding a perfectly good token is answered with
+          // a server error rather than a refusal, which is how it was found: the error says the
+          // check failed, not that the token did.
+          //
+          // Personal accounts are not admitted by the wider endpoint. The registration decides
+          // that, and it admits work and school accounts only, so `common` costs nothing here.
+          //
+          // The host comes from the deployment environment rather than being written down, so this
+          // is not a template that works in one cloud alone.
+          openIdIssuer: '${environment().authentication.loginEndpoint}common/v2.0'
         }
         validation: {
+          // Both forms. A token requested for the identifier URI arrives carrying the bare client
+          // id as its audience, because the registration issues v2 tokens, so listing only the URI
+          // matches nothing that is ever presented.
           allowedAudiences: [
             'api://${authClientId}'
+            authClientId
           ]
         }
       }
