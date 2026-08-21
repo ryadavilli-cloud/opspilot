@@ -475,30 +475,18 @@ and no other tool is exposed.
 
 ## H8. Evaluation
 
-**State:** Partial. The deterministic half exists and the runner around it: the correctness and
-scenario-behavior checks, each proven by mutation rather than by reading its wiring, and one runner
-that replays a scenario with a recording, obtains the benign fixture live, names anything else as
-not run, and writes one report per run recording its configuration identity. The authored
-expectations now carry what an evaluation reads of them, and the benign fixture carries only what
-applies to a non-incident. The numeric machinery and the golden output files are absent, and with
-them the builder that emitted them; the loaders six test modules had been reaching through that
-builder moved to the tests' own directory, which is smaller than what this step described and does
-the same job. Still to build: the two controlled comparisons and the evaluation-only injection seam
-they need. See `status.md`.
+**State:** Complete. The runner, the checks, the seam, both comparisons, the judge, and the report
+exist as designed, and the numeric evaluation machinery and the golden files are absent. See
+`status.md`.
 
-The judge exists and runs after the deterministic checks, on the runtime's chat deployment with one
-authored rubric, returning a category for each of the four qualities and the semantic diagnosis
-match. Its rubric sits outside the runtime prompt registry, so nothing in the application can reach
-it and adding it did not move the versions the cassette manifest pins. It is reported beside the
-deterministic results and cannot reach them: a scenario result has no field a category could be
-written into. The report records which deployment judged, which is the same one the runtime uses
-today and would not be if that ever changed.
-
-The expectation shape is now one file. `golden_scenarios.yaml` and its tests are absent: the file
-was authored against a document section that no longer describes it and cited two artifacts this
-work removed. The judgement it uniquely held, the references whose ordinary reading rules a
-competing cause out, moved into the expectation beside the rest, and the closure check over
-generated telemetry now covers them.
+Both comparisons have been run rather than only built, which is what this step required of them:
+the adaptive comparison on the first of its candidate scenarios reached required evidence the fixed
+order never did, and the retrieval comparison on the recurrence scenario differed on every
+dimension it watches, with each difference naming the condition it fell on. The chat deployment's
+rate limit had to be raised to run them at all: a single investigation pushes more tokens through
+in a burst than the limit allowed in a minute, so no comparison could get two conditions through.
+That is a ceiling on a consumption deployment rather than a reservation, so raising it reserves
+nothing.
 
 **Builds.** The offline evaluation capability over completed investigations, kept small. The
 authored expectation shape simplified to what the runner reads (expected cause, acceptable
