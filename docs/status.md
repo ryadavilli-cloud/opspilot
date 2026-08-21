@@ -189,13 +189,17 @@ as, and that secret. The role is not authorization and nothing reads it; Entra w
 service principal a token for an API it has no granted permission on. The template records all three
 beside the configuration that needs them.
 
-A hosted stream can end with the connection closed and no terminal event, which fails the
-deploy's smoke run on a revision that is otherwise healthy. Observed three times, once in CI. In the
-case examined the replacing revision logged no request at all for the run that failed, while
-readiness had answered moments earlier, so the investigation was begun against the revision being
-drained and cut when it went. A run started after the new revision is sole-active completes. This is
-recorded rather than fixed: it is the deploy sequence, not the application, and it belongs with the
-step that owns hosted posture.
+A hosted stream that is begun during a revision handover ends with the connection closed and no
+terminal event, which failed the deploy's smoke run three times on revisions that were healthy. The
+deploy returns once the new revision is provisioned, not once it is the only one serving; the old
+one drains after that, and an investigation started into the gap streams for two minutes through a
+revision being retired. The timeline settles it: the revision that failed was created eleven seconds
+before the run that failed began, and a re-run against the settled deployment passed unchanged.
+Running the same checks against a quiet deployment passes in about three minutes.
+
+The deploy now waits for one active revision before smoking, which is a check rather than a pause,
+and satisfied immediately by a deploy that changed nothing. Deploys are serialized as well, because
+a single application with a single revision cannot serve two runs replacing it at once.
 
 `/version` on that revision reports `environment=local`. `OPSPILOT_ENV` is set nowhere in the
 template, so the container takes the default. Nothing keys off it today and no behavior is affected,
