@@ -251,6 +251,33 @@ def test_a_different_action_is_reported():
     assert any(d.dimension == "an action recommended" for d in result.differences)
 
 
+def test_every_difference_names_the_condition_it_fell_on():
+    """The direction is the finding. A difference reporting only that the two conditions differed
+    cannot say whether knowledge reaching reasoning changed anything, which is the question."""
+    shown = _with(
+        passages=[PASSAGE],
+        assessment=_assessed([_candidate("a recurrence")], [Action(action="roll back", now=True)]),
+    )
+    withheld = _with(
+        passages=[PASSAGE],
+        assessment=_assessed([_candidate("something new")], [Action(action="wait", now=False)]),
+        operations=[
+            *_record().operations,
+            Operation("op-99", "search_past_incidents", ExecutionOutcome.SUCCEEDED),
+        ],
+    )
+
+    result = retrieval_influence(RETRIEVAL, shown, withheld, LIVE, OTHER_LIVE)
+
+    assert result.differences, "the two conditions plainly differ"
+    for difference in result.differences:
+        assert "shown" in difference.detail or "withheld" in difference.detail, (
+            f"{difference.dimension} does not say which condition it fell on: {difference.detail}"
+        )
+    capability = next(d for d in result.differences if d.dimension == "a capability proposed")
+    assert "withheld" in capability.detail and "search_past_incidents" in capability.detail
+
+
 def test_a_capability_only_one_condition_asked_for_is_reported():
     shown = _with(passages=[PASSAGE])
     withheld = _with(

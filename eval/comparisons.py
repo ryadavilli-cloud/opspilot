@@ -177,39 +177,47 @@ def retrieval_influence(
             f"{len(without_knowledge.passages)}), so more than the one variable moved"
         )
 
-    proposed = set(_capabilities(with_knowledge)) ^ set(_capabilities(without_knowledge))
-    if proposed:
-        result.differences.append(
-            Difference(
-                "a capability proposed",
-                f"only one condition asked for {', '.join(sorted(proposed))}",
+    shown_only = sorted(set(_capabilities(with_knowledge)) - set(_capabilities(without_knowledge)))
+    withheld_only = sorted(
+        set(_capabilities(without_knowledge)) - set(_capabilities(with_knowledge))
+    )
+    for capabilities, side in ((shown_only, "shown"), (withheld_only, "withheld")):
+        if capabilities:
+            result.differences.append(
+                Difference(
+                    "a capability proposed",
+                    f"only the condition {side} its passages asked for {', '.join(capabilities)}",
+                )
             )
-        )
 
     lead_with, lead_without = _leading(with_knowledge), _leading(without_knowledge)
     if _lead_of(lead_with) != _lead_of(lead_without):
         result.differences.append(
             Difference(
                 "the leading candidate",
-                f"{_lead_of(lead_with)} against {_lead_of(lead_without)}",
+                f"shown its passages: {_lead_of(lead_with)} // withheld: {_lead_of(lead_without)}",
             )
         )
 
-    interpretations = _statements(with_knowledge) ^ _statements(without_knowledge)
-    if interpretations:
+    shown_says = _statements(with_knowledge) - _statements(without_knowledge)
+    withheld_says = _statements(without_knowledge) - _statements(with_knowledge)
+    if shown_says or withheld_says:
         result.differences.append(
             Difference(
                 "an interpretation stated",
-                f"{len(interpretations)} statement(s) appear in one condition and not the other",
+                f"{len(shown_says)} statement(s) only where passages were shown, "
+                f"{len(withheld_says)} only where they were withheld",
             )
         )
 
-    actions = _actions(with_knowledge) ^ _actions(without_knowledge)
-    if actions:
+    shown_urges = _actions(with_knowledge) - _actions(without_knowledge)
+    withheld_urges = _actions(without_knowledge) - _actions(with_knowledge)
+    if shown_urges or withheld_urges:
         result.differences.append(
             Difference(
                 "an action recommended",
-                f"{len(actions)} recommendation(s) appear in one condition and not the other",
+                f"{len(shown_urges)} recommendation(s) only where passages were shown, "
+                f"{len(withheld_urges)} only where they were withheld",
             )
         )
     return result
