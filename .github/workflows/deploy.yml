@@ -9,6 +9,14 @@ on:
     branches: [main]
   workflow_dispatch:
 
+# One deploy at a time. There is a single application and a single revision serving it, so two
+# runs deploying at once means one replaces the revision the other is streaming an investigation
+# through. Queued rather than cancelled: a run that reached Azure should finish saying whether what
+# it deployed works.
+concurrency:
+  group: deploy-hosted
+  cancel-in-progress: false
+
 # OIDC: no stored secrets — federated credential authenticates to Azure (deploy job only).
 permissions:
   id-token: write
@@ -118,6 +126,33 @@ jobs:
               authClientId="${{ vars.AUTH_CLIENT_ID }}" \
             --query properties.outputs.appFqdn.value -o tsv)
           echo "app_fqdn=$FQDN" >> "$GITHUB_OUTPUT"
+
+      - name: Wait for the new revision to be the only one serving
+        # The deploy above returns once the new revision is provisioned, not once it is the only
+        # one taking traffic. The old one drains for a while after that, and the smoke run starts
+        # an investigation that streams for two minutes: begun during the handover, it is served
+        # by the revision being retired and the connection is cut mid-stream. That has failed this
+        # gate three times, each time on a revision that was healthy and an application that was
+        # fine.
+        #
+        # Waiting for one active revision is the check rather than a pause of some hopeful length.
+        # A deploy that changed nothing satisfies it immediately.
+        run: |
+          for attempt in $(seq 1 30); do
+            ACTIVE=$(az containerapp revision list \
+              --name opspilot-api \
+              --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
+              --query "length([?properties.active])" -o tsv)
+            if [ "$ACTIVE" = "1" ]; then
+              echo "[revision] one active revision after ${attempt} check(s)"
+              exit 0
+            fi
+            echo "[revision] $ACTIVE active, waiting for the previous one to drain"
+            sleep 10
+          done
+          echo "::error::more than one revision was still active after five minutes"
+          exit 1
+
 
       - name: Post-deploy smoke test (one real investigation)
         id: smoke
