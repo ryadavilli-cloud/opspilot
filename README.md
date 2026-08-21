@@ -68,6 +68,23 @@ The investigation is genuinely model-directed, and authority stops in exactly st
 
 The compact rule this implements: models propose; code authorizes.
 
+## Try one investigation
+
+Start inc-004: checkout-api returning 500s shortly after this morning's deployment.
+
+A deployment really did occur near the failure. Watch what evidence the investigator chooses,
+whether later observations strengthen or weaken that initial correlation, how candidate causes are
+expressed with supporting and weakening evidence, and what deterministic checks run before the
+brief is delivered. Things worth looking for: capability choices changing in response to what came
+back, a possible return to gathering, grounding passing before delivery, each recommended action
+naming whether retrieved guidance or the analyst's own judgement produced it, and a refused
+proposal if one occurs. After the run, ask the record: was the morning deployment actually
+responsible, and what evidence supports that conclusion?
+
+Setup and the screen's address are in the quickstart below.
+
+The full guide to reading a live run, scenario by scenario, is [docs/DEMO.md](docs/DEMO.md).
+
 ## Technology
 
 - Python 3.12, FastAPI, `uv`
@@ -194,21 +211,6 @@ authored rubric, returns a category for four qualities of the delivered brief pl
 diagnosis match, per scenario. It is advisory, runs after the deterministic checks, is reported
 beside them and never combined into one number, and a verdict outside its vocabulary is refused
 rather than repaired. The method is [docs/evaluation.md](docs/evaluation.md).
-
-## Try one investigation
-
-Start inc-004: checkout-api returning 500s shortly after this morning's deployment.
-
-A deployment really did occur near the failure. Watch what evidence the investigator chooses,
-whether later observations strengthen or weaken that initial correlation, how candidate causes are
-expressed with supporting and weakening evidence, and what deterministic checks run before the
-brief is delivered. Things worth looking for: capability choices changing in response to what came
-back, a possible return to gathering, grounding passing before delivery, each recommended action
-naming whether retrieved guidance or the analyst's own judgement produced it, and a refused
-proposal if one occurs. After the run, ask the record: was the morning deployment actually
-responsible, and what evidence supports that conclusion?
-
-The full guide to reading a live run, scenario by scenario, is [docs/DEMO.md](docs/DEMO.md).
 
 ## Quickstart
 
