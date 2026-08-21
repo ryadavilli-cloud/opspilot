@@ -11,7 +11,7 @@ Three things are true here and each is established where it actually lives:
   query said, so the stand-in deliberately does not read it.
 
 That the emitted query means what it appears to mean is Cosmos's answer, established by one live
-run and recorded in `status.md`. No fake here filters, so no test here can pass because a fake and
+run against the deployed store. No fake here filters, so no test here can pass because a fake and
 the translator were wrong in the same way.
 """
 
