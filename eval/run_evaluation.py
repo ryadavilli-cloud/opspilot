@@ -324,13 +324,13 @@ def configuration_identity() -> dict[str, str]:
     }
 
 
-def _judge_deployment(judgements: list[Judged] | None) -> str:
+def _judge_deployment(scenarios: list[ScenarioRun]) -> str:
     """Which deployment answered the judge, recorded even while it equals the runtime's.
 
     Two reports whose judgements came from different models are not comparable, and with only the
     runtime deployment on the page they would look as though they were.
     """
-    answered = {j.deployment for j in judgements or [] if j.ran and j.deployment}
+    answered = {s.judge_deployment for s in scenarios if s.verdicts and s.judge_deployment}
     return ", ".join(sorted(answered)) if answered else "(the judge did not run)"
 
 
@@ -339,6 +339,12 @@ def _judge_deployment(judgements: list[Judged] | None) -> str:
 # failure passed. The benign check runs only where the expectation requires no immediate action.
 CHECKS = ("grounding", "read-only", "absence", "outcome")
 BENIGN_CHECK = "benign"
+# Where a failure goes when it matches no check name above. Grouping failures by prefix is only
+# faithful while every check prefixes its failures with its own name, and a check added later that
+# forgets to would otherwise drop its failures silently: they would leave the evaluation, the kept
+# run, and the report at once, and each would look clean. Collecting them under a name nobody
+# recognizes keeps them on the page and makes the convention's breach the visible thing.
+UNATTRIBUTED_CHECK = "unattributed"
 
 
 def _checks(result: ScenarioResult, *, benign: bool) -> list[DeterministicCheck]:
@@ -347,9 +353,18 @@ def _checks(result: ScenarioResult, *, benign: bool) -> list[DeterministicCheck]
     if not result.ran:
         return []
     checks = []
+    claimed = [False] * len(result.failures)
     for name in (*CHECKS, BENIGN_CHECK) if benign else CHECKS:
-        named = [failure for failure in result.failures if failure.startswith(f"{name}:")]
+        named = []
+        for index, failure in enumerate(result.failures):
+            if failure.startswith(f"{name}:"):
+                named.append(failure)
+                claimed[index] = True
         checks.append(DeterministicCheck(name=name, passed=not named, failures=named))
+
+    unclaimed = [failure for index, failure in enumerate(result.failures) if not claimed[index]]
+    if unclaimed:
+        checks.append(DeterministicCheck(name=UNATTRIBUTED_CHECK, passed=False, failures=unclaimed))
     return checks
 
 
@@ -370,8 +385,10 @@ def _scenario_run(
         scenario_id=result.scenario_id,
         provenance=result.source.provenance.value,
         source=result.source.detail,
+        ran=result.ran,
         outcome=record.outcome.value if record is not None else "",
         checks=_checks(result, benign=benign),
+        notes=list(result.notes),
         verdicts=verdicts,
         judge_deployment=judgement.deployment,
         judge_note=judgement.note,
@@ -425,23 +442,27 @@ def build_run(
     )
 
 
-def _judge_lines(judgement: Judged | None) -> list[str]:
+def _judge_lines(scenario: ScenarioRun) -> list[str]:
     """One scenario's categories, or why there are none. Never a count and never a total: these
-    are reported beside the deterministic result and are not commensurable with it."""
-    if judgement is None:
-        return []
-    if not judgement.ran:
-        return ["Judge: not run. " + judgement.note, ""]
-    verdicts = judgement.verdicts or {}
-    lines = [f"Judge ({judgement.deployment}):", ""]
+    are reported beside the deterministic result and are not commensurable with it.
+
+    The qualities are printed in the rubric's own order rather than the order the verdicts happen
+    to be stored in, so a recording that came back in another order still reads the same way.
+    """
+    if not scenario.verdicts:
+        if not scenario.judge_note:
+            return []
+        return ["Judge: not run. " + scenario.judge_note, ""]
+    by_quality = {verdict.quality: verdict for verdict in scenario.verdicts}
+    lines = [f"Judge ({scenario.judge_deployment}):", ""]
     for name in (*QUALITIES, DIAGNOSIS_MATCH):
-        verdict = verdicts[name]
+        verdict = by_quality[name]
         lines.append(f"- **{name}**: {verdict.category}. {verdict.why}")
     lines.append("")
     return lines
 
 
-def _comparison_lines(comparisons: list[ComparisonResult] | None) -> list[str]:
+def _comparison_lines(comparisons: list[ComparisonRun]) -> list[str]:
     """What each comparison found. A comparison that found nothing says so: this is falsification,
     so a null result is a finding about the variable rather than a failure of the run."""
     if not comparisons:
@@ -465,15 +486,16 @@ def _comparison_lines(comparisons: list[ComparisonResult] | None) -> list[str]:
     return lines
 
 
-def render(
-    results: list[ScenarioResult],
-    identity: dict[str, str],
-    taken_at: str,
-    judgements: list[Judged] | None = None,
-    comparisons: list[ComparisonResult] | None = None,
-) -> str:
-    """One document per run: per-scenario results with named failures, and no total."""
-    by_scenario = {j.scenario_id: j for j in judgements or []}
+def render(run: EvaluationRun) -> str:
+    """One document per run: per-scenario results with named failures, and no total.
+
+    A view over the kept run rather than a second derivation beside it. The report and the stored
+    document said the same things by walking the same inputs twice, which is a duplication that
+    holds only until one of the two walks learns something the other does not; rendering from the
+    document instead makes "the page shows what was kept" true by construction rather than by
+    both sides being edited together.
+    """
+    taken_at = run.taken_at.strftime("%Y-%m-%dT%H:%M:%SZ")
     lines = [
         "# OpsPilot evaluation report",
         "",
@@ -481,41 +503,46 @@ def render(
         "",
         "## Configuration identity",
         "",
-        *(f"- **{key}**: {value}" for key, value in identity.items()),
+        *(f"- **{key}**: {value}" for key, value in run.configuration.items()),
         # Beside the configured identity above: the deployment that actually answered, read from
         # the judgements themselves, so a report can show the two disagreeing.
-        f"- **judge_deployment_answered**: {_judge_deployment(judgements)}",
+        f"- **judge_deployment_answered**: {_judge_deployment(run.scenarios)}",
         "",
         "## Scenarios",
         "",
     ]
-    for result in results:
-        lines.append(f"### {result.scenario_id} - {result.source.provenance.value}")
+    for scenario in run.scenarios:
+        lines.append(f"### {scenario.scenario_id} - {scenario.provenance}")
         lines.append("")
-        lines.append(f"Source: {result.source.detail}")
+        lines.append(f"Source: {scenario.source}")
         lines.append("")
-        if not result.ran:
+        if not scenario.ran:
             lines.extend(["Not run.", ""])
-            lines.extend(_judge_lines(by_scenario.get(result.scenario_id)))
+            lines.extend(_judge_lines(scenario))
             continue
-        if result.failures:
+        # Every failure the scenario recorded, gathered back out of the checks that claimed them.
+        # Nothing can be lost on the way, because a failure no check claimed is carried by the
+        # unattributed one.
+        failures = [failure for check in scenario.checks for failure in check.failures]
+        if failures:
             lines.append("Failed:")
-            lines.extend(f"- {failure}" for failure in result.failures)
+            lines.extend(f"- {failure}" for failure in failures)
         else:
             lines.append("No deterministic check failed.")
         lines.append("")
-        if result.notes:
-            lines.extend([f"_{note}_" for note in result.notes])
+        if scenario.notes:
+            lines.extend([f"_{note}_" for note in scenario.notes])
             lines.append("")
-        lines.extend(_judge_lines(by_scenario.get(result.scenario_id)))
-    lines.extend(_comparison_lines(comparisons))
-    ran = [r for r in results if r.ran]
+        lines.extend(_judge_lines(scenario))
+    lines.extend(_comparison_lines(run.comparisons))
+    ran = [scenario for scenario in run.scenarios if scenario.ran]
+    clean = [s for s in ran if not any(check.failures for check in s.checks)]
     lines.extend(
         [
             "## Coverage",
             "",
-            f"- {len(ran)} of {len(results)} scenario(s) ran.",
-            f"- {len([r for r in ran if r.passed])} of those had no deterministic failure.",
+            f"- {len(ran)} of {len(run.scenarios)} scenario(s) ran.",
+            f"- {len(clean)} of those had no deterministic failure.",
             "",
             "No composite score is reported, and none of this gates a merge.",
         ]
@@ -555,33 +582,39 @@ def main(argv: list[str] | None = None) -> None:
         judgement = judged(record, FIXTURE, _fixture_incident().short_description)
         scenarios.append((result, record, judgement, benign))
 
-    results = [result for result, _, _, _ in scenarios]
-    judgements = [judgement for _, _, judgement, _ in scenarios]
     now = datetime.now(UTC)
-    taken_at = now.strftime("%Y-%m-%dT%H:%M:%SZ")
-    REPORTS.mkdir(parents=True, exist_ok=True)
-    path = REPORTS / f"{taken_at.replace(':', '')}.md"
     comparisons = run_comparisons(chosen) if args.full else []
-    report = render(results, configuration_identity(), taken_at, judgements, comparisons)
-    path.write_text(report, encoding="utf-8")
-    print(f"wrote {path.relative_to(REPO_ROOT)}")
 
+    # The store is opened before the run is built, where this run is being kept, because the
+    # identifier depends on what is already kept for today. A run nobody keeps is still built and
+    # still rendered; it simply takes the first identifier of its date and is never written under
+    # it, which is what an unkept run's identity is worth.
+    store = None
+    kept_ids: list[str] = []
     if args.keep is not None:
         from opspilot.evaluation.store import default_evaluation_runs
 
         store = default_evaluation_runs()
         kept_ids = [kept.run_id for kept in store.list_runs()]
-        run = build_run(
-            run_id=next_run_id(kept_ids, now.strftime("%Y-%m-%d")),
-            taken_at=now,
-            label=args.keep,
-            # The configured identity, runtime and judge alike, exactly as the report records it.
-            # Which deployment actually answered the judge is kept per scenario, beside each
-            # judgement, so a kept run can show the two disagreeing as the report can.
-            configuration=configuration_identity(),
-            scenarios=scenarios,
-            comparisons=comparisons,
-        )
+
+    run = build_run(
+        run_id=next_run_id(kept_ids, now.strftime("%Y-%m-%d")),
+        taken_at=now,
+        label=args.keep or "",
+        # The configured identity, runtime and judge alike. Which deployment actually answered the
+        # judge is kept per scenario, beside each judgement, so a kept run can show the two
+        # disagreeing as the report does.
+        configuration=configuration_identity(),
+        scenarios=scenarios,
+        comparisons=comparisons,
+    )
+
+    REPORTS.mkdir(parents=True, exist_ok=True)
+    path = REPORTS / f"{run.taken_at.strftime('%Y-%m-%dT%H%M%SZ')}.md"
+    path.write_text(render(run), encoding="utf-8")
+    print(f"wrote {path.relative_to(REPO_ROOT)}")
+
+    if store is not None:
         # Refused by the store as a duplicate if the identifier is somehow already kept, which is
         # left to raise: a kept run is never overwritten.
         store.save(run)

@@ -33,7 +33,7 @@ from evaluation import (
     evaluate,
     require_distinct,
 )
-from judge import Judged, Verdict
+from judge import DIAGNOSIS_MATCH, QUALITIES, Judged, Verdict
 from run_evaluation import _fixture_incident, build_run, next_run_id, render
 from test_completed_record import _record
 
@@ -270,7 +270,22 @@ def test_a_live_fixture_run_that_fails_is_reported_rather_than_ending_the_run(mo
 
 # --- the report states coverage rather than implying it -------------------------------------------
 def _rendered(*results: ScenarioResult) -> str:
-    return render(list(results), {"model_deployment": "gpt-5-mini"}, "2026-08-20T00:00:00Z")
+    """The report for these scenarios, rendered the only way it can be: from the kept run.
+
+    Nothing here supplies a judgement, so each scenario carries neither verdicts nor a reason there
+    are none, and the report leaves the judge out entirely rather than reporting a judgement that
+    was never asked for.
+    """
+    return render(
+        build_run(
+            run_id="2026-08-20-1",
+            taken_at=datetime(2026, 8, 20, tzinfo=UTC),
+            label="",
+            configuration={"model_deployment": "gpt-5-mini"},
+            scenarios=[(result, None, Judged(result.scenario_id), False) for result in results],
+            comparisons=[],
+        )
+    )
 
 
 def test_the_report_names_how_each_scenario_ran():
@@ -308,6 +323,203 @@ def test_named_failures_reach_the_report_and_no_score_does():
 
 def test_the_report_records_what_it_ran_under():
     assert "gpt-5-mini" in _rendered()
+
+
+# --- the report is a view of the kept run, and carries everything it used to --------------------
+# One document is derived and the report is read off it. The risk that creates is silent loss: a
+# field the report used to reach for directly is now reached through the model, and one the model
+# does not carry would simply stop appearing. This is the whole report, byte for byte, as the
+# derivation that walked the raw results produced it. A diff here names the field being lost.
+GOLDEN_REPORT = """\
+# OpsPilot evaluation report
+
+Run at 2026-08-22T09:15:00Z.
+
+## Configuration identity
+
+- **model_deployment**: gpt-5-mini
+- **reasoning_effort**: medium
+- **judge_provider**: anthropic-foundry
+- **judge_deployment**: claude-opus-5
+- **judge_deployment_answered**: claude-opus-5
+
+## Scenarios
+
+### inc-005 - replayed
+
+Source: eval/cassettes/inc-005.json
+
+Failed:
+- grounding: unresolved_reference logs:checkout-api:evt-999
+- outcome: reported partial, which this scenario does not accept (complete)
+
+_outcome partial_
+_3 observation(s), 1 passage(s)_
+
+Judge (claude-opus-5):
+
+- **usefulness_and_coherence**: meets. the usefulness_and_coherence reason
+- **appropriate_uncertainty**: meets. the appropriate_uncertainty reason
+- **explanation_in_context**: meets. the explanation_in_context reason
+- **recommendation_fit**: meets. the recommendation_fit reason
+- **diagnosis_match**: leads. the expected cause led
+
+### inc-001 - not_run
+
+Source: no recording at eval/cassettes/inc-001.json
+
+Not run.
+
+Judge: not run. no investigation to judge
+
+### benign-01 - obtained
+
+Source: run live against gpt-5-mini
+
+No deterministic check failed.
+
+_outcome inconclusive_
+_settled no cause, which some scenarios accept_
+
+Judge (claude-opus-5):
+
+- **usefulness_and_coherence**: meets. the usefulness_and_coherence reason
+- **appropriate_uncertainty**: meets. the appropriate_uncertainty reason
+- **explanation_in_context**: meets. the explanation_in_context reason
+- **recommendation_fit**: meets. the recommendation_fit reason
+- **diagnosis_match**: leads. the expected cause led
+
+## Comparisons
+
+### adaptive value on inc-004
+
+What differed:
+- **required evidence**: only the adaptive path reached deploys:x:dep-4
+
+_one condition was slower_
+
+### retrieval influence on inc-007
+
+Not evaluable. the deployment was throttled
+
+## Coverage
+
+- 2 of 3 scenario(s) ran.
+- 1 of those had no deterministic failure.
+
+No composite score is reported, and none of this gates a merge.
+"""
+
+
+def _every_verdict() -> dict[str, Verdict]:
+    made = {name: Verdict("meets", f"the {name} reason") for name in QUALITIES}
+    made[DIAGNOSIS_MATCH] = Verdict("leads", "the expected cause led")
+    return made
+
+
+def _representative_run() -> object:
+    """A run covering what the report has to say: a scenario that failed some checks and passed
+    others, one that never ran, a clean benign one, and both comparisons, one of which could not
+    be set up. Failures are in the order `evaluate` appends them."""
+    replayed = ScenarioResult(
+        "inc-005",
+        Source(Provenance.REPLAYED, "eval/cassettes/inc-005.json"),
+        [
+            "grounding: unresolved_reference logs:checkout-api:evt-999",
+            "outcome: reported partial, which this scenario does not accept (complete)",
+        ],
+        ["outcome partial", "3 observation(s), 1 passage(s)"],
+    )
+    absent = ScenarioResult(
+        "inc-001",
+        Source(Provenance.NOT_RUN, "no recording at eval/cassettes/inc-001.json"),
+        [],
+        ["no recording at eval/cassettes/inc-001.json"],
+    )
+    benign = ScenarioResult(
+        "benign-01",
+        Source(Provenance.OBTAINED, "run live against gpt-5-mini"),
+        [],
+        ["outcome inconclusive", "settled no cause, which some scenarios accept"],
+    )
+    return build_run(
+        run_id="2026-08-22-1",
+        taken_at=datetime(2026, 8, 22, 9, 15, tzinfo=UTC),
+        label="a label the report does not print",
+        configuration={
+            "model_deployment": "gpt-5-mini",
+            "reasoning_effort": "medium",
+            "judge_provider": "anthropic-foundry",
+            "judge_deployment": "claude-opus-5",
+        },
+        scenarios=[
+            (replayed, _record(), Judged("inc-005", _every_verdict(), "claude-opus-5"), False),
+            (absent, None, Judged("inc-001", note="no investigation to judge"), False),
+            (benign, _record(), Judged("benign-01", _every_verdict(), "claude-opus-5"), True),
+        ],
+        comparisons=[
+            ComparisonResult(
+                "adaptive value",
+                "inc-004",
+                [Difference("required evidence", "only the adaptive path reached deploys:x:dep-4")],
+                "one condition was slower",
+            ),
+            ComparisonResult(
+                "retrieval influence", "inc-007", [], "the deployment was throttled", False
+            ),
+        ],
+    )
+
+
+def test_the_report_rendered_from_the_kept_run_is_what_it_always_was():
+    assert render(_representative_run()) == GOLDEN_REPORT
+
+
+def test_the_kept_run_carries_the_notes_the_report_prints():
+    """The report's italic lines are the evaluation's own observations, and the model had no field
+    for them: rendering from a run that dropped them would quietly shorten every scenario."""
+    run = _representative_run()
+
+    assert run.scenarios[0].notes == ["outcome partial", "3 observation(s), 1 passage(s)"]
+    assert run.scenarios[2].notes[-1] == "settled no cause, which some scenarios accept"
+
+
+def test_the_kept_run_says_whether_a_scenario_ran_rather_than_leaving_it_inferred():
+    """ "No check failed" and "no check ran" read alike and are not the same claim, so the run
+    states which of the two it was instead of leaving it to be deduced from an empty list."""
+    run = _representative_run()
+
+    assert [scenario.ran for scenario in run.scenarios] == [True, False, True]
+    assert run.scenarios[1].checks == []
+
+
+def test_a_failure_naming_no_known_check_is_kept_rather_than_dropped():
+    """Grouping failures by prefix is faithful only while every check prefixes its own. One that
+    did not would lose its failures from the run and the report at once, and both would look
+    clean; they are carried under a name nobody recognizes instead."""
+    result = ScenarioResult(
+        "inc-005",
+        Source(Provenance.REPLAYED, "a.json"),
+        ["grounding: a real one", "a failure that names no check at all"],
+    )
+
+    run = build_run(
+        run_id="2026-08-22-1",
+        taken_at=datetime(2026, 8, 22, tzinfo=UTC),
+        label="",
+        configuration={},
+        scenarios=[(result, _record(), Judged("inc-005"), False)],
+        comparisons=[],
+    )
+
+    unattributed = [
+        c for c in run.scenarios[0].checks if c.name == run_evaluation.UNATTRIBUTED_CHECK
+    ]
+    assert unattributed and unattributed[0].failures == ["a failure that names no check at all"]
+    assert not unattributed[0].passed
+    assert "a failure that names no check at all" in render(run)
+    assert "1 of 1 scenario(s) ran." in render(run)
+    assert "0 of those had no deterministic failure." in render(run)
 
 
 # --- keeping a run: built from what the runner already holds ------------------------------------
