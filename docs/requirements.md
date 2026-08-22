@@ -2,7 +2,7 @@
 
 **What must OpsPilot accomplish and demonstrate, and what stays out?**
 
-OpsPilot is an educational and portfolio capstone: an agentic incident-investigation assistant that
+OpsPilot is an educational agentic-AI capstone: an agentic incident-investigation assistant that
 demonstrates a coherent set of important agentic-AI ideas through one believable, end-to-end
 investigation of an authored incident. It is not a production incident-management platform, and it
 is not measured as one.

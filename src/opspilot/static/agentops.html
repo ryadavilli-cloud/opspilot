@@ -280,6 +280,10 @@
     ], function (line) { return el("li", line); }));
 
     region.appendChild(heading("Operations attempted"));
+    // No transport column: an investigation reaches every capability directly, so the value
+    // would read the same on every row of every record. Where the two transports differ is
+    // the span, which records mcp against direct for the same capability.
+    region.appendChild(el("p", "Reached directly, which is the only route an investigation takes.", "muted"));
     region.appendChild(list(r.operations, function (op) {
       var line = el("li", op.operation_ref + "  " + op.capability + ": ");
       line.appendChild(el("span", op.outcome, op.outcome === "succeeded" ? "ok" : "bad"));
@@ -405,8 +409,15 @@
       return el("li", key + ": " + configuration[key]);
     }));
     region.appendChild(list(run.scenarios, function (s) {
+      // The prompts shown are the ones that produced this scenario's investigation, which for a
+      // replay are the recording's rather than the run's. A run may mix the two, so they belong
+      // beside the scenario and not only in the run-level configuration.
+      var prompts = Object.keys(s.prompt_versions || {}).sort().map(function (k) {
+        return k + "=" + s.prompt_versions[k];
+      }).join(", ");
       return el("li", s.scenario_id + ": " + s.provenance + " (" + s.source + ")" +
-        (s.outcome ? "; outcome " + s.outcome : ""));
+        (s.outcome ? "; outcome " + s.outcome : "") +
+        (prompts ? "; prompts " + prompts : ""));
     }));
 
     // Verify: the deterministic checks, failures named.

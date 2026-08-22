@@ -84,7 +84,7 @@ def test_kept_evaluation_runs_are_listed_newest_first_with_their_configuration(c
     assert response.status_code == 200
     listed = response.json()
     assert [s["run_id"] for s in listed] == ["2026-08-21-1", "2026-08-20-1"]
-    assert listed[0]["configuration"]["judge_deployment"] == "claude-sonnet-5"
+    assert listed[0]["configuration"]["judge_deployment"] == "claude-opus-5"
     assert listed[1]["configuration"]["judge_deployment"] == "gpt-x"
     assert "scenarios" not in listed[0]
 

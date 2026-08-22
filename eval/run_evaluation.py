@@ -69,7 +69,7 @@ from opspilot.llm.cassette import ReplayChatModel  # noqa: E402
 from opspilot.llm.claude import EFFORT as JUDGE_EFFORT  # noqa: E402
 from opspilot.llm.claude import THINKING as JUDGE_THINKING  # noqa: E402
 from opspilot.llm.client import build_chat_model  # noqa: E402
-from opspilot.llm.prompts import get_prompt  # noqa: E402
+from opspilot.llm.prompts import get_prompt, resolved_versions  # noqa: E402
 from opspilot.record.completed import CompletedInvestigation  # noqa: E402
 from opspilot.record.memory import InMemoryCompletedInvestigations  # noqa: E402
 from opspilot.tools.contracts import IncidentRecord  # noqa: E402
@@ -313,6 +313,14 @@ def configuration_identity() -> dict[str, str]:
     return {
         "model_deployment": config.AZURE_OPENAI_DEPLOYMENT or "(unset)",
         "reasoning_effort": config.REASONING_EFFORT,
+        # The prompts the run's own roles spoke through, read from the registry that resolves
+        # them rather than listed here. A prompt version moving changes what the runtime asks
+        # and therefore what a report means, which is the same reason cassette replay refuses a
+        # recording whose prompt versions have drifted; a report that named only the deployment
+        # would call two runs comparable across a rewritten prompt.
+        "runtime_prompt_versions": ", ".join(
+            f"{name}={version}" for name, version in sorted(resolved_versions().items())
+        ),
         "capability_call_cap": str(config.CAPABILITY_CALL_CAP),
         "model_call_cap": str(config.MODEL_CALL_CAP),
         "investigation_deadline_s": str(config.INVESTIGATION_DEADLINE_SECONDS),
@@ -387,6 +395,7 @@ def _scenario_run(
         source=result.source.detail,
         ran=result.ran,
         outcome=record.outcome.value if record is not None else "",
+        prompt_versions=dict(record.prompt_versions) if record is not None else {},
         checks=_checks(result, benign=benign),
         notes=list(result.notes),
         verdicts=verdicts,
@@ -516,6 +525,9 @@ def render(run: EvaluationRun) -> str:
         lines.append("")
         lines.append(f"Source: {scenario.source}")
         lines.append("")
+        if scenario.prompt_versions:
+            versions = ", ".join(f"{k}={v}" for k, v in sorted(scenario.prompt_versions.items()))
+            lines.extend([f"Prompts: {versions}", ""])
         if not scenario.ran:
             lines.extend(["Not run.", ""])
             lines.extend(_judge_lines(scenario))

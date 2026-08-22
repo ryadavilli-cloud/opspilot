@@ -142,7 +142,7 @@ scenario and correctness checks, run the two comparisons where the set includes 
 call the judge, and write one report. For the benign fixture the runner invokes the investigation
 runner directly with the fixture's incident context; the fixture is not selectable in the product
 interface. The report is one document per run: per-scenario results with named failures, the two
-comparison results with what differed, judge categories, and usage figures. It records the
+comparison results with what differed, and judge categories. It records the
 configuration identity it ran under. Where the report lives, and which scenario is the fast one, are conventions rather than
 decisions.
 

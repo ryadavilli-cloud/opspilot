@@ -167,7 +167,11 @@ def set_objective(
 
     # The run starts here, and the record's duration is measured from this point. Taken before
     # the first model call so that call is inside what the run is said to have cost.
-    started_at = time.monotonic()
+    # perf_counter rather than monotonic: this measures how long the run took, and on some
+    # platforms monotonic advances in steps of tens of milliseconds, which records a fast run
+    # as having taken no time at all. The deadline keeps monotonic, where that granularity is
+    # immaterial against a bound measured in minutes.
+    started_at = time.perf_counter()
     # The run's remaining time travels with the model call for the same reason it travels with
     # a capability call: nothing an investigation started may still be running after it stopped.
     objective, result = interpret_objective(
@@ -518,7 +522,7 @@ def persist(state: InvestigationState, config: RunnableConfig | None = None) -> 
         model_calls_made=state.model_calls_made,
         capability_calls_made=state.capability_calls_made,
         token_usage=dict(state.token_usage),
-        duration_s=round(time.monotonic() - state.started_at, 3),
+        duration_s=round(time.perf_counter() - state.started_at, 6),
     )
     try:
         _deps(config)[RECORD].save(record)

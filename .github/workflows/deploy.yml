@@ -111,6 +111,11 @@ jobs:
       # (manageAcrPullRoleAssignment=false), so binding in the template is safe and durable.
       - name: Deploy infra (image, ingress, probes, ACR pull — declarative)
         id: deploy
+        # `manageOpenAiRoleAssignment=false` for the same reason the two flags above it are false:
+        # this environment's model-inference grants were made outside the template, and Azure
+        # refuses a second role assignment over the same scope, role, and principal even under a
+        # different name. A fresh environment leaves the default true and gets them declaratively.
+        #
         # `evaluationPrincipalId` is the identity that runs the offline evaluation, and it gates
         # two grants the application deliberately does not hold: inference on the judge model, and
         # write access to the kept-evaluation-runs container. Both are declared conditionally, so
@@ -128,6 +133,7 @@ jobs:
               manageAcrPullRoleAssignment=false \
               configureAcrPull=true \
               manageKeyVaultRoleAssignment=false \
+              manageOpenAiRoleAssignment=false \
               configureAuth=true \
               authClientId="${{ vars.AUTH_CLIENT_ID }}" \
               evaluationPrincipalId="${{ vars.EVALUATION_PRINCIPAL_ID }}" \

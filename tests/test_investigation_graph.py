@@ -419,6 +419,47 @@ def test_a_retrieved_passage_joins_the_knowledge_set_and_never_the_evidence_set(
     assert final["evidence"].observations == []
 
 
+def test_what_a_run_retrieves_reaches_its_record_and_its_assessment(incident, records):
+    """Retrieval that no role acts on is a call that happened rather than an influence, so the
+    passages have to survive into the record and the assessment has to be able to cite them.
+
+    Scripted rather than replayed. Whether a live model reaches for written knowledge on a given
+    incident is its own decision: the committed recording of the recurrence has solved it from
+    operational evidence alone and consulted nothing, which is a correct investigation rather than
+    a regression, and a test asserting otherwise would be asserting a choice nobody controls. What
+    is held still here is the mechanism. That reaching knowledge changes a result is the offline
+    comparison's to show, live and against both conditions.
+    """
+    # One operational call before the retrieval: a run that observed nothing is a failed execution
+    # whatever it read, so the assessment needs something admitted to rest on. The first pass is
+    # only to learn what this run admitted and what it retrieved, both of which the gate resolves
+    # against rather than taking on trust.
+    steps = [_action(), _RUNBOOK_SEARCH, _finished()]
+    probe = ScriptedModel(evidence_selection=list(steps), rca_synthesis=[_assessment()])
+    first, _ = run(incident, probe, service=_knowledge_service(records))
+    reference = _admitted_ref(first)
+    passage = first["knowledge"][0].reference
+
+    model = ScriptedModel(
+        evidence_selection=list(steps),
+        rca_synthesis=[
+            _assessment(
+                history="this has happened before",
+                history_refs=[passage],
+                knowledge_used=[passage],
+            ).replace("REF", reference)
+        ],
+    )
+    _, record = run(incident, model, service=_knowledge_service(records))
+    saved = record.get("inv-1")
+
+    assert saved is not None
+    assert saved.passages, "the record carries no retrieved passage"
+    cited = set(saved.assessment.knowledge_used) | set(saved.assessment.history_refs)
+    assert cited, "the run retrieved knowledge and the assessment cited none of it"
+    assert cited <= {passage.reference for passage in saved.passages}
+
+
 def test_a_retrieval_still_records_the_operation_it_attempted(incident, records):
     """Its passages stay out of the evidence set; the call itself does not. The operations list is
     every operation attempted, and it is what an account of the run is checked against."""

@@ -178,8 +178,14 @@ def run_investigation(client: httpx.Client) -> str:
         f"the brief reported no recognizable outcome: {brief.get('outcome')}",
     )
     _require(bool(brief.get("text", "").strip()), "the brief was empty")
-    # A probability would mean the deployment is presenting confidence as evidence.
-    _require("%" not in brief["text"], "the brief presented a percentage")
+    # No check here that the brief presents no probability. That property does not depend on the
+    # environment: a candidate carries a label from a fixed vocabulary and never a number, and the
+    # renderer adds nothing the assessment does not hold, so it is proven where it can be held
+    # still rather than re-asserted against whatever a live model wrote this time. Scanning hosted
+    # prose for a percent sign tested something else entirely and failed a healthy deployment for
+    # it: this incident's own evidence is percentage-valued, `used_memory_pct` and `hit_rate`, so a
+    # brief reporting what it observed reads as a violation while an actual claim of confidence in
+    # words would pass.
 
     print(
         f"[smoke] investigation: id={investigation_id} incident={SMOKE_INCIDENT_ID} "

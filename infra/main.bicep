@@ -881,6 +881,22 @@ resource openAiUserCorpusSetup 'Microsoft.Authorization/roleAssignments@2022-04-
   }
 }
 
+// The evaluation calls the runtime's own chat deployment as well as the judge's model, so it
+// needs this grant beside the one it holds on the Foundry account. Easy to miss, because the
+// fast lane replays its investigations and only the judge is live: what needs this is the full
+// lane, where the benign fixture runs live and both controlled comparisons run both of their
+// conditions live. Without it those parts do not fail loudly, they report as not run and not
+// evaluable, which reads as a thin report rather than a missing permission.
+// `principalType` is unset for the same reason as the assignment above.
+resource openAiUserEvaluation 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (manageOpenAiRoleAssignment && !empty(evaluationPrincipalId)) {
+  name: guid(openai.id, evaluationPrincipalId, openAiUserRoleId)
+  scope: openai
+  properties: {
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', openAiUserRoleId)
+    principalId: evaluationPrincipalId
+  }
+}
+
 // Keyless auth to Cosmos DB: grant the app's managed identity data-plane read/write on the account.
 // Unlike the two assignments above, this is a Microsoft.DocumentDB data-plane role assignment, not
 // a Microsoft.Authorization one — creating it only needs plain Contributor on the Cosmos account

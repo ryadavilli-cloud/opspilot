@@ -243,3 +243,23 @@ scaling down to what is available.
 Both failures were free, which is the part worth keeping. Preflight validation rejects a template
 before it creates anything, so `az deployment group validate` against the real resource group
 answers both questions in seconds without a deployment, a revision, or a partial rollout to undo.
+
+## A grant nobody passes is a dependency nobody can reach
+
+The judge model deployed cleanly, the adapter was configured, the design named it, and no
+principal could call it. The template declared the two role assignments the offline evaluation
+needs, inference on the judge account and write access to the kept-evaluation-runs container, both
+conditional on the identity that runs evaluation. Nothing ever passed that identity, so both
+resources evaluated to nothing on every deploy and the account carried no role assignment at all.
+
+A conditional resource whose condition is never met deploys successfully and silently, which is
+what makes this the infrastructure form of a component that is instrumented and never invoked. It
+does not fail, and there is no error to read: the deployment reports success, the setting is
+documented, the model answers the portal, and the first sign of trouble is a call refused at a
+boundary far from the cause. Both faults were found the same way, by asking what the running
+composition would actually reach rather than what the pieces declare.
+
+The deploy now passes the identity from a repository variable, so a rebuilt environment gets both
+grants from the template rather than from someone remembering to create them by hand. Leaving it
+unset still deploys, and still produces an environment where evaluation cannot run; that is now a
+stated condition rather than an accident.

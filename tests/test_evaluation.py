@@ -349,6 +349,8 @@ Run at 2026-08-22T09:15:00Z.
 
 Source: eval/cassettes/inc-005.json
 
+Prompts: rca_synthesis=v2
+
 Failed:
 - grounding: unresolved_reference logs:checkout-api:evt-999
 - outcome: reported partial, which this scenario does not accept (complete)
@@ -375,6 +377,8 @@ Judge: not run. no investigation to judge
 ### benign-01 - obtained
 
 Source: run live against gpt-5-mini
+
+Prompts: rca_synthesis=v2
 
 No deterministic check failed.
 

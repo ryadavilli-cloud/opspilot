@@ -62,6 +62,12 @@ class ScenarioRun(BaseModel):
     source: str
     ran: bool = False
     outcome: str = ""
+    # The prompts that actually produced this investigation, read from the record it wrote rather
+    # than from the configuration this run holds. A replayed scenario was produced by the prompts
+    # of its recording, which are the ones the cassette pins and not necessarily today's, so a run
+    # that mixes replayed and live scenarios has more than one answer and the run-level identity
+    # can only carry one of them.
+    prompt_versions: dict[str, str] = Field(default_factory=dict)
     checks: list[DeterministicCheck] = Field(default_factory=list)
     notes: list[str] = Field(default_factory=list)
     verdicts: list[JudgeVerdict] = Field(default_factory=list)

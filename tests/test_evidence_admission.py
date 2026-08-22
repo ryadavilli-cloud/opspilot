@@ -338,6 +338,9 @@ def test_the_operations_list_identifies_every_attempted_call_including_failed_on
 
 
 def test_an_operation_carries_its_identifier_capability_and_outcome_and_nothing_else():
+    """Not its arguments, not its raw result, and not the transport it took: an investigation
+    reaches every capability directly, so a recorded transport would be a constant. Where the two
+    transports differ is the span, which records mcp against direct for the same capability."""
     evidence = _evidence()
     admit(
         _result("get_metrics", ExecutionOutcome.FAILED, Completeness.NOT_APPLICABLE),
