@@ -42,7 +42,9 @@ registry of agents, and no message bus between them.
 **Interface.** One screen: incident selection, a compact activity feed, the brief as the dominant
 element, one expandable details area, and a question box for a completed investigation. One
 streaming request owns a run. It receives the question and presents the answer; the Supervisor
-produces the answer. It reaches no model of its own.
+produces the answer. It reaches no model of its own. A second page, reached from the screen, lists
+completed investigations and kept evaluation runs and shows one of either in full; it is read-only,
+starts nothing, and reaches no model.
 
 **Evidence access.** The registered read-only capabilities and the admission of their results:
 
@@ -59,10 +61,14 @@ same capability-call cap. Every operational result is admitted through one deter
 retrieval passages join the knowledge set, and a failed retrieval is a limitation.
 
 **Investigation Record.** Passive persistence of the one completed-investigation artifact. Save
-once, read by identifier. It routes nothing and validates nothing.
+once, read by identifier, listed as summaries. It routes nothing and validates nothing.
+
+**Evaluation Record.** Passive persistence of kept evaluation runs. Save once, read by identifier,
+listed as summaries. It is written by the evaluation runner outside the live system and only read
+by the application. It routes nothing and validates nothing.
 
 **Evaluation** is outside the live system. It reads completed investigations and telemetry after
-the fact.
+the fact, and writes a kept run to the Evaluation Record.
 
 ---
 
@@ -78,14 +84,17 @@ the fact.
   RCA Analyst ──► Supervisor           the assessment proposal, optionally with one question
   Supervisor ──► Investigation Record  save the completed investigation
   Investigation Record ──► Supervisor  the completed investigation, read by identifier for the
-                                       question and for reading it back
+                                       question and for reading it back; the completed
+                                       investigations, listed as summaries for the read-only view
   Supervisor ──► Interface             activity while running; the brief; the answer
+  Evaluation ──► Evaluation Record     save one kept run
+  Evaluation Record ──► Interface      kept runs, listed as summaries and read by identifier
 ```
 
 The table is conceptual: it names who may reach whom, not request and result classes. No other
 direction exists. The Evidence Investigator does not reach the engineer. The RCA Analyst does not
 reach evidence access. Nothing writes to the record before completion, and nothing but the
-Supervisor writes to it at all.
+Supervisor writes to it at all. Nothing in the live system writes to the Evaluation Record.
 
 ---
 
@@ -97,8 +106,9 @@ latency, and token usage. It is replaceable in tests by a fake and by cassette r
 behind it. The offline judge has its own adapter to its own model deployment, under the same
 contract and the same tracing; no runtime path constructs it.
 
-**Persistence.** One repository with `save` and `get`. An in-memory implementation for tests, a
-Cosmos implementation for local and hosted runs.
+**Persistence.** Two passive repositories, each with `save`, `get`, and a listing of summaries: one
+for completed investigations, one for kept evaluation runs. An in-memory implementation for tests,
+a Cosmos implementation for local and hosted runs.
 
 **Telemetry.** One tracing seam every component emits through, correlated by `investigation_id`.
 The engineer-facing activity feed is a projection built at the same instrumentation points, so the
@@ -184,8 +194,8 @@ new. It gathers no evidence, creates no investigation, and is not a run.
 | Structured query | Validated structure to one parameterized Cosmos query | `runtime-and-deployment.md` |
 | Operational tools | Read-only adapters over the operational-records container | `runtime-and-deployment.md` |
 | MCP | Official Python SDK, in-process, stdio, one capability | `decisions.md` |
-| Persistence | Cosmos, one container, one artifact per investigation | `runtime-and-deployment.md` |
+| Persistence | Cosmos, one container per record kind: one artifact per investigation, one document per kept evaluation run | `runtime-and-deployment.md` |
 | Hosting | One Container App, one image, zero to one replica | `runtime-and-deployment.md` |
 | Identity | Container Apps built-in authentication; managed identity with scoped data-plane and model-access roles | `runtime-and-deployment.md` |
 | Telemetry | One tracing seam; Application Insights hosted | `runtime-and-deployment.md` |
-| Evaluation | Offline runner over completed investigations; one judge | `evaluation.md` |
+| Evaluation | Offline runner over completed investigations; one judge; kept runs persisted for the read-only view | `evaluation.md` |

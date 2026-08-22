@@ -116,6 +116,10 @@ class InvestigationState:
     events: list[ActivityEvent] = field(default_factory=list)
     model_deployment: str = ""
     prompt_versions: dict[str, str] = field(default_factory=dict)
+    # What the model calls have cost so far, accumulated where each call is accounted for, and
+    # when the objective was set, so the completed record can say how long the run took.
+    token_usage: dict[str, int] = field(default_factory=dict)
+    started_at: float = 0.0
 
     @property
     def knowledge_refs(self) -> set[str]:

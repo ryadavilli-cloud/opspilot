@@ -1,11 +1,13 @@
-"""The Investigation Record seam: save one completed investigation, read it back by identifier.
+"""The Investigation Record seam: save one completed investigation, read it back by identifier,
+and list what has been saved.
 
 The record is passive. It stores the completed artifact and answers reads. It routes no workflow,
 decides nothing, synthesizes nothing, validates no grounding, and never holds a partial run.
 
-Two operations and no more. Nothing is written while an investigation is still running, so an
+Three operations and no more. Nothing is written while an investigation is still running, so an
 interrupted run leaves nothing behind, and the investigation comes into existence with its one
-successful save rather than as a shell created in advance.
+successful save rather than as a shell created in advance. Listing returns summaries rather than
+records, because a listing is read to choose one, and each choice is then read in full.
 
 A second save of the same identifier is refused rather than accepted. One completed record per
 investigation is an invariant, not a convention: a delivered brief is never edited and a terminal
@@ -18,7 +20,7 @@ from __future__ import annotations
 
 from typing import Protocol
 
-from opspilot.record.completed import CompletedInvestigation
+from opspilot.record.completed import CompletedInvestigation, InvestigationSummary
 
 
 class AlreadySaved(Exception):
@@ -42,4 +44,8 @@ class CompletedInvestigationRepository(Protocol):
 
     def get(self, investigation_id: str) -> CompletedInvestigation | None:
         """The saved investigation, or None where nothing was ever saved under that identifier."""
+        ...
+
+    def list_investigations(self) -> list[InvestigationSummary]:
+        """Every completed investigation as a summary, newest first."""
         ...

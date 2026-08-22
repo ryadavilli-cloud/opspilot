@@ -13,6 +13,10 @@ carrying the brief or a sanitized failure category. There is no job, no polling,
 If the request disconnects the run is abandoned, which is safe precisely because the record is
 written before the terminal event or not at all.
 
+Beside it, one read-only page lists every completed investigation and every kept evaluation run
+and shows one of either in full. The routes behind it only read: nothing here creates, triggers,
+edits, or deletes a record or a run, and the application holds no write on the run container.
+
 Errors never expose a stack trace, a path, or a secret.
 """
 
@@ -37,13 +41,15 @@ from opspilot.data.operational_records import (
     OperationalRecords,
     default_operational_records,
 )
+from opspilot.evaluation.record import EvaluationRun, EvaluationRunSummary
+from opspilot.evaluation.store import EvaluationRunRepository
 from opspilot.evidence.operations import EvidenceSet
 from opspilot.intake.contracts import from_predefined_incident
 from opspilot.investigation.agents import answer_question
 from opspilot.investigation.graph import MODEL, RECORD, SERVICE, build_graph
 from opspilot.investigation.state import Bounds, FailureCategory, InvestigationState
 from opspilot.obs import tracing
-from opspilot.record.completed import CompletedInvestigation
+from opspilot.record.completed import CompletedInvestigation, InvestigationSummary
 from opspilot.record.port import CompletedInvestigationRepository
 from opspilot.startup import configuration_problems, startup_record
 from opspilot.stream.contracts import IdentityEvent, TerminalEvent
@@ -87,6 +93,9 @@ app = FastAPI(title="OpsPilot", version=__version__, lifespan=_lifespan)
 _INVESTIGATION_HTML = (Path(__file__).parent / "static" / "investigation.html").read_text(
     encoding="utf-8"
 )
+# The read-only page over completed investigations and kept evaluation runs, same shape and same
+# reasons.
+_AGENTOPS_HTML = (Path(__file__).parent / "static" / "agentops.html").read_text(encoding="utf-8")
 
 # Every lazy singleton below is built under this lock. `if x is None: x = build()` is a
 # check-then-act race: two concurrent first requests both observe None and both construct, which
@@ -97,6 +106,7 @@ _graph: Any = None
 _tool_service: Any = None
 _model: Any = None
 _record: CompletedInvestigationRepository | None = None
+_evaluation_runs: EvaluationRunRepository | None = None
 _operational_records: OperationalRecords | None = None
 
 
@@ -157,6 +167,24 @@ def get_record() -> CompletedInvestigationRepository:
 
                 _record = default_completed_investigations()
     return _record
+
+
+def get_evaluation_runs() -> EvaluationRunRepository:
+    """Where kept evaluation runs are read from.
+
+    Read and never written from here: the evaluation runner writes this container under its own
+    principal, and the application's identity holds read on it and nothing more, so the line is
+    held by the role assignment rather than by this module declining to call `save`. Built once
+    per process and lazily, like the record, and substituted by tests the same way.
+    """
+    global _evaluation_runs
+    if _evaluation_runs is None:
+        with _singleton_lock:
+            if _evaluation_runs is None:
+                from opspilot.evaluation.store import default_evaluation_runs
+
+                _evaluation_runs = default_evaluation_runs()
+    return _evaluation_runs
 
 
 def get_operational_records() -> OperationalRecords:
@@ -234,6 +262,16 @@ def investigation() -> str:
     """Intake, a compact live activity feed, the brief as the dominant element once it arrives,
     and one expandable details area."""
     return _INVESTIGATION_HTML
+
+
+@app.get("/agentops", response_class=HTMLResponse, include_in_schema=False)
+def agentops() -> str:
+    """Every completed investigation and every kept evaluation run, listed and readable.
+
+    Read-only by construction: the page fetches from the listing and reading routes below and
+    nothing else, and no route it could reach starts, triggers, edits, or deletes anything.
+    """
+    return _AGENTOPS_HTML
 
 
 # --------------------------------------------------------------------------------------
@@ -486,6 +524,15 @@ _UNSUPPORTED = (
 )
 
 
+@app.get("/investigations")
+def list_investigations(
+    record: CompletedInvestigationRepository = Depends(get_record),
+) -> list[InvestigationSummary]:
+    """Every completed investigation as a summary, newest first. Each is then read in full by
+    its identifier, through the route below."""
+    return record.list_investigations()
+
+
 @app.get("/investigations/{investigation_id}")
 def read_investigation(
     investigation_id: str,
@@ -495,6 +542,33 @@ def read_investigation(
     saved = record.get(investigation_id)
     if saved is None:
         raise HTTPException(status_code=404, detail="Unknown investigation_id.")
+    return saved
+
+
+# --------------------------------------------------------------------------------------
+# Kept evaluation runs
+# --------------------------------------------------------------------------------------
+# Two reads over what the evaluation runner kept, offline and under its own principal. Nothing
+# here runs, triggers, or schedules an evaluation, and nothing here can write one: the
+# application's identity holds read on that container and nothing more.
+
+
+@app.get("/evaluations")
+def list_evaluations(
+    runs: EvaluationRunRepository = Depends(get_evaluation_runs),
+) -> list[EvaluationRunSummary]:
+    """Every kept evaluation run as a summary, newest first."""
+    return runs.list_runs()
+
+
+@app.get("/evaluations/{run_id}")
+def read_evaluation(
+    run_id: str, runs: EvaluationRunRepository = Depends(get_evaluation_runs)
+) -> EvaluationRun:
+    """One kept run, as it was saved. 404 for an identifier that names none."""
+    saved = runs.get(run_id)
+    if saved is None:
+        raise HTTPException(status_code=404, detail="Unknown run_id.")
     return saved
 
 

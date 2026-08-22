@@ -17,7 +17,7 @@ Retired records keep an identifier and one line so the number is never reused.
 | D-006 Evaluation scenario selections | Accepted |
 | D-007 Normalized incident context | Accepted |
 | D-008 Reference encoding | Accepted |
-| D-009 Evaluation artifact storage | Retired |
+| D-009 Evaluation artifact storage | Accepted |
 | D-010 Analysis-to-gathering return | Accepted |
 
 ---
@@ -135,8 +135,21 @@ decide by inspection whether a reference may stand as current operational suppor
 
 ### D-009 Evaluation artifact storage
 
-Retired. Where evaluation files live is a convention stated in `evaluation.md`, not a decision
-that constrains implementation.
+**Decision.** A kept evaluation run is persisted as one document in its own Cosmos container,
+partitioned by `run_id`, in the shape `evaluation.md` states: the configuration identity including
+the judge's, per-scenario results with deterministic checks and judge categories in separate
+fields, and both comparisons. The application identity holds read on that container and the
+principal running evaluation holds write, so the application reads kept runs and never writes one.
+A saved run is never edited or deleted, and a second save under one `run_id` is refused. The
+report document the runner writes beside it is a convention.
+
+**Why.** Kept runs are what the read-only view lists and reads, so where they live, how they are
+keyed, what shape they take, and who may write them constrain the view, the runner, and the role
+assignments alike. Holding the write grant away from the application is what keeps evaluation
+offline once the view exists: no request can write a run.
+
+**Cost.** A fourth container, a grant to a second principal, and a document shape the runner and
+the view both depend on. Keeping a run is opt-in, which is a discipline on whoever runs evaluation.
 
 ### D-010 Analysis-to-gathering return
 

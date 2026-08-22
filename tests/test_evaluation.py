@@ -15,9 +15,12 @@ statement that nothing needs doing.
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
+
 import pytest
 import run_evaluation
 from answer_key import FIXTURE
+from comparisons import ComparisonResult, Difference
 from evaluation import (
     Provenance,
     ScenarioResult,
@@ -30,10 +33,12 @@ from evaluation import (
     evaluate,
     require_distinct,
 )
-from run_evaluation import _fixture_incident, render
+from judge import Judged, Verdict
+from run_evaluation import _fixture_incident, build_run, next_run_id, render
 from test_completed_record import _record
 
 from opspilot.assessment.contracts import Action
+from opspilot.evaluation.store import InMemoryEvaluationRuns
 from opspilot.evidence.operations import Operation
 from opspilot.tools.contracts import ExecutionOutcome
 
@@ -303,3 +308,119 @@ def test_named_failures_reach_the_report_and_no_score_does():
 
 def test_the_report_records_what_it_ran_under():
     assert "gpt-5-mini" in _rendered()
+
+
+# --- keeping a run: built from what the runner already holds ------------------------------------
+_TAKEN = datetime(2026, 8, 21, 12, tzinfo=UTC)
+
+
+def _judged(scenario_id: str = "inc-005") -> Judged:
+    return Judged(
+        scenario_id,
+        verdicts={"usefulness_and_coherence": Verdict("meets", "it reads well")},
+        deployment="gpt-5-mini",
+    )
+
+
+def _kept_run(scenarios, comparisons=()):
+    return build_run(
+        run_id="2026-08-21-1",
+        taken_at=_TAKEN,
+        label="a label",
+        configuration={"model_deployment": "gpt-5-mini", "judge_deployment": "gpt-5-mini"},
+        scenarios=scenarios,
+        comparisons=list(comparisons),
+    )
+
+
+def test_a_kept_run_records_each_check_by_name_with_pass_or_fail_and_the_failure_named():
+    """The report lists failures; the kept run says which check each belonged to and which checks
+    passed, so a run with no failure is distinguishable from a run where no check ran."""
+    result = ScenarioResult(
+        "inc-005",
+        Source(Provenance.REPLAYED, "eval/cassettes/inc-005.json"),
+        ["outcome: reported partial, which this scenario does not accept (complete)"],
+    )
+
+    run = _kept_run([(result, _record(), _judged(), False)])
+
+    (scenario,) = run.scenarios
+    assert scenario.provenance == "replayed"
+    assert scenario.source == "eval/cassettes/inc-005.json"
+    assert scenario.outcome == "partial"
+    by_name = {check.name: check for check in scenario.checks}
+    assert set(by_name) == {"grounding", "read-only", "absence", "outcome"}
+    assert by_name["grounding"].passed and by_name["grounding"].failures == []
+    assert not by_name["outcome"].passed
+    assert by_name["outcome"].failures == [
+        "outcome: reported partial, which this scenario does not accept (complete)"
+    ]
+
+
+def test_the_benign_check_is_recorded_only_where_the_scenario_requires_no_immediate_action():
+    result = ScenarioResult("benign-01", Source(Provenance.OBTAINED, "run live"))
+
+    kept = _kept_run([(result, _record(), _judged("benign-01"), True)])
+    ordinary = _kept_run([(result, _record(), _judged("benign-01"), False)])
+
+    assert "benign" in {check.name for check in kept.scenarios[0].checks}
+    assert "benign" not in {check.name for check in ordinary.scenarios[0].checks}
+
+
+def test_a_scenario_that_did_not_run_keeps_its_reason_and_no_checks_or_verdicts():
+    result = ScenarioResult("inc-001", Source(Provenance.NOT_RUN, "no recording"))
+
+    run = _kept_run([(result, None, Judged("inc-001", note="no investigation to judge"), False)])
+
+    (scenario,) = run.scenarios
+    assert scenario.provenance == "not_run" and scenario.source == "no recording"
+    assert scenario.outcome == ""
+    assert scenario.checks == [] and scenario.verdicts == []
+    assert scenario.judge_note == "no investigation to judge"
+
+
+def test_judge_verdicts_are_kept_as_quality_category_and_sentence_beside_the_checks():
+    """Separate fields, so the kept run can no more merge them than the report can."""
+    result = ScenarioResult("inc-005", Source(Provenance.REPLAYED, "a.json"))
+
+    run = _kept_run([(result, _record(), _judged(), False)])
+
+    (scenario,) = run.scenarios
+    assert [(v.quality, v.category, v.why) for v in scenario.verdicts] == [
+        ("usefulness_and_coherence", "meets", "it reads well")
+    ]
+    assert scenario.judge_deployment == "gpt-5-mini"
+
+
+def test_comparisons_are_kept_with_their_differences_or_the_reason_they_could_not_run():
+    differed = ComparisonResult(
+        "adaptive value",
+        "inc-004",
+        [Difference("required evidence", "only the adaptive path reached deploys:x")],
+    )
+    not_evaluable = ComparisonResult("retrieval influence", "inc-007", note="throttled", ran=False)
+
+    run = _kept_run([], [differed, not_evaluable])
+
+    first, second = run.comparisons
+    assert first.ran and first.differences[0].detail.startswith("only the adaptive path")
+    assert not second.ran and second.note == "throttled"
+
+
+def test_a_kept_run_is_what_the_store_writes_and_reads_back():
+    store = InMemoryEvaluationRuns()
+    result = ScenarioResult("inc-005", Source(Provenance.REPLAYED, "a.json"))
+    run = _kept_run([(result, _record(), _judged(), False)])
+
+    store.save(run)
+
+    assert store.get("2026-08-21-1") == run
+    assert [s.run_id for s in store.list_runs()] == ["2026-08-21-1"]
+
+
+def test_run_identifiers_are_date_ordered_and_count_within_the_day():
+    assert next_run_id([], "2026-08-21") == "2026-08-21-1"
+    assert next_run_id(["2026-08-20-3"], "2026-08-21") == "2026-08-21-1"
+    assert next_run_id(["2026-08-21-1", "2026-08-21-2", "2026-08-20-9"], "2026-08-21") == (
+        "2026-08-21-3"
+    )

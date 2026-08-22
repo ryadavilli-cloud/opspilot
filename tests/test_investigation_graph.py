@@ -192,6 +192,66 @@ def test_the_activity_feed_carries_no_prompt_or_hidden_reasoning(incident, recor
     assert "hypothesis" not in body.lower()  # no working hypothesis
 
 
+# --- the record says what the run cost ----------------------------------------------------------
+class _CostedModel(ScriptedModel):
+    """A scripted model whose every answer reports what it cost, the way the live adapter does."""
+
+    def complete(
+        self, task: str, messages: list[Any], deadline_s: float | None = None
+    ) -> ChatResult:
+        result = super().complete(task, messages, deadline_s)
+        return ChatResult(
+            text=result.text,
+            task=task,
+            deployment=self.deployment,
+            usage={"prompt_tokens": 1_000, "completion_tokens": 100},
+        )
+
+
+def test_the_saved_record_accounts_for_what_the_run_cost(incident, records):
+    """Counted by the graph, not reported by the model: every call passes through the one place
+    calls are recorded, so the totals cannot be forgotten by a caller. Input and output tokens stay
+    separate, and the duration is measured from the objective."""
+    model = _CostedModel(evidence_selection=[_action(), _finished()])
+    first, _ = run(incident, model, service=ToolService(records))
+    reference = _admitted_ref(first)
+
+    model = _CostedModel(
+        evidence_selection=[_action(), _finished()],
+        rca_synthesis=[_assessment().replace("REF", reference)],
+    )
+    final, record = run(incident, model, service=ToolService(records))
+    saved = record.get("inv-1")
+
+    assert saved is not None
+    assert saved.model_calls_made == len(model.calls) == final["model_calls_made"]
+    assert saved.capability_calls_made == len(saved.operations) == 1
+    assert saved.token_usage == {
+        "prompt_tokens": 1_000 * len(model.calls),
+        "completion_tokens": 100 * len(model.calls),
+    }
+    assert 0 < saved.duration_s < config.INVESTIGATION_DEADLINE_SECONDS
+
+
+def test_a_model_that_reports_no_usage_leaves_the_usage_empty_rather_than_invented(
+    incident, records
+):
+    model = ScriptedModel(evidence_selection=[_action(), _finished()])
+    first, _ = run(incident, model, service=ToolService(records))
+    reference = _admitted_ref(first)
+
+    model = ScriptedModel(
+        evidence_selection=[_action(), _finished()],
+        rca_synthesis=[_assessment().replace("REF", reference)],
+    )
+    _, record = run(incident, model, service=ToolService(records))
+    saved = record.get("inv-1")
+
+    assert saved is not None
+    assert saved.token_usage == {}
+    assert saved.model_calls_made == len(model.calls)
+
+
 # --- deterministic authorization ----------------------------------------------------------------
 def test_an_unregistered_capability_ends_gathering_with_the_reason(incident, records):
     """Refused rather than filtered out, so the refusal is visible in the feed and in the reason."""
