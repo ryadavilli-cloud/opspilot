@@ -190,9 +190,9 @@ The defenses are structural: each failure mode meets a mechanism, not a guidelin
 ## Evidence that the system works
 
 **Deterministic tests.** The repository-wide gates at this tree: `ruff check` and
-`ruff format --check` clean, `mypy` strict clean over 63 source files with no override list, and
-the deterministic lane `pytest -m "not llm"` at 657 passed with 1 deselected (the one test that
-calls a live deployment). Three committed cassettes replay whole recorded investigations, taken
+`ruff format --check` clean, `mypy` strict clean over 68 source files with no override list, and
+the deterministic lane `pytest -m "not llm"` at 711 passed with 2 deselected (the two tests that
+call a live deployment). Three committed cassettes replay whole recorded investigations, taken
 through the same Azure adapter the application ships, so the deterministic lane replays real runs
 rather than scripted calls.
 

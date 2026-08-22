@@ -298,6 +298,13 @@ correlated end to end well enough to understand and troubleshoot a demonstration
 telemetry, and the application reports basic health and fails in legible ways. This is a practical
 troubleshooting baseline, not production observability.
 
+**R-35 Read-only view of investigations and evaluation runs.** Completed investigations and kept
+evaluation runs are listed and readable in a read-only view on its own page, reached from the
+investigation screen. What it shows is offline in origin: the retained record of each investigation
+as it was saved, and the results of evaluation runs that were kept. The view is never a runtime
+authority; nothing it shows participates in a live investigation, and it creates, triggers, edits,
+and deletes nothing.
+
 ---
 
 ## 10. Preferences
@@ -309,9 +316,6 @@ other document unless promoted here first.
 - **Parallel execution of independent evidence actions**, where it is cheap and does not complicate
   bounds, failure handling, or the activity view.
 - **A verification signal for an immediate mitigation**: what to observe to confirm it worked.
-- **A developer view** exposing model and prompt metadata, structured model outputs, detailed tool
-  requests and responses, trace identifiers, basic usage figures such as latency and approximate
-  cost, and evaluation results, as progressive disclosure within the primary interface.
 - **Extending the R-31 rubric to entailment**: whether each cited piece of evidence actually
   supports the claim it is attached to.
 - **Query rewriting or expansion; context compression; lightweight caching; a self-critique pass.**

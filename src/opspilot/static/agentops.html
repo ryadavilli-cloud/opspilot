@@ -1,0 +1,471 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>OpsPilot: Investigations and evaluation runs</title>
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg: #f7f7f8;
+    --panel: #ffffff;
+    --border: #d9dce1;
+    --text: #1b1f24;
+    --muted: #5b6570;
+    --accent: #2454ff;
+    --ok: #1a7f37;
+    --warn: #9a6700;
+    --bad: #cf222e;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    padding: 0 0 3rem;
+    background: var(--bg);
+    color: var(--text);
+    font: 15px/1.5 -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  header {
+    padding: 1.25rem 1.5rem;
+    border-bottom: 1px solid var(--border);
+    background: var(--panel);
+  }
+  header h1 { margin: 0; font-size: 1.15rem; }
+  header p { margin: 0.25rem 0 0; color: var(--muted); font-size: 0.85rem; }
+  a { color: var(--accent); }
+
+  main {
+    max-width: 960px;
+    margin: 0 auto;
+    padding: 0 1.5rem;
+  }
+
+  section {
+    margin-top: 1.5rem;
+    padding: 1rem 1.25rem;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+  }
+  section h2 {
+    margin: 0 0 0.75rem;
+    font-size: 0.95rem;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    color: var(--muted);
+  }
+  h3 {
+    margin: 1rem 0 0.4rem;
+    font-size: 0.9rem;
+    color: var(--muted);
+  }
+
+  table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+  th, td {
+    text-align: left;
+    padding: 0.35rem 0.5rem;
+    border-bottom: 1px solid var(--border);
+    vertical-align: top;
+  }
+  th { color: var(--muted); font-weight: 600; }
+  tbody tr.row { cursor: pointer; }
+  tbody tr.row:hover { background: var(--bg); }
+  tbody tr.selected { background: var(--bg); }
+  tr.break td {
+    color: var(--warn);
+    font-size: 0.8rem;
+    text-align: center;
+    border-bottom: 1px dashed var(--warn);
+    border-top: 1px dashed var(--warn);
+  }
+
+  .detail { margin-top: 1rem; font-size: 0.9rem; }
+  .detail.pending { color: var(--muted); }
+  .detail ul { margin: 0.25rem 0; padding-left: 1.25rem; }
+  .detail li { margin: 0.15rem 0; }
+  .detail pre {
+    margin: 0.4rem 0 0;
+    padding: 0.75rem;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    overflow-x: auto;
+    white-space: pre-wrap;
+    font-size: 0.8rem;
+  }
+  .ok { color: var(--ok); }
+  .bad { color: var(--bad); }
+  .muted { color: var(--muted); }
+  code { font-size: 0.85em; }
+</style>
+</head>
+<body>
+<header>
+  <h1>OpsPilot: Investigations and evaluation runs</h1>
+  <p>Every completed investigation and every kept evaluation run, as saved. Read-only: nothing on
+     this page starts, edits, or deletes anything.
+     <a href="/investigation">Back to the investigation screen</a></p>
+</header>
+
+<main>
+  <section>
+    <h2>Investigations</h2>
+    <table id="investigations">
+      <thead>
+        <tr>
+          <th>Date</th><th>Incident</th><th>Outcome</th><th>Model calls</th>
+          <th>Capability calls</th><th>Tokens</th><th>Duration</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+    <div id="investigation-detail" class="detail pending">Loading...</div>
+  </section>
+
+  <section>
+    <h2>Evaluation runs</h2>
+    <table id="evaluations">
+      <thead>
+        <tr><th>Date</th><th>Label</th><th>Runtime deployment</th><th>Judge deployment, effort</th></tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+    <div id="evaluation-detail" class="detail pending">Loading...</div>
+  </section>
+</main>
+
+<script>
+(function () {
+  "use strict";
+
+  var investigationsBody = document.querySelector("#investigations tbody");
+  var investigationDetail = document.getElementById("investigation-detail");
+  var evaluationsBody = document.querySelector("#evaluations tbody");
+  var evaluationDetail = document.getElementById("evaluation-detail");
+
+  // --- small DOM helpers; everything is text, nothing is interpreted as markup ---------------
+  function el(tag, text, className) {
+    var node = document.createElement(tag);
+    if (text != null) node.textContent = String(text);
+    if (className) node.className = className;
+    return node;
+  }
+
+  function cell(text, className) {
+    return el("td", text, className);
+  }
+
+  function list(items, render) {
+    var ul = el("ul");
+    if (!items || !items.length) {
+      ul.appendChild(el("li", "(none)", "muted"));
+      return ul;
+    }
+    items.forEach(function (item) { ul.appendChild(render(item)); });
+    return ul;
+  }
+
+  function heading(text) {
+    return el("h3", text);
+  }
+
+  function fmtDate(iso) {
+    if (!iso) return "";
+    var d = new Date(iso);
+    return isNaN(d.getTime()) ? String(iso) : d.toISOString().replace("T", " ").slice(0, 19) + "Z";
+  }
+
+  function fmtTokens(usage) {
+    var keys = Object.keys(usage || {});
+    if (!keys.length) return "(not reported)";
+    return keys.sort().map(function (k) { return k + " " + usage[k]; }).join(", ");
+  }
+
+  function fmtDuration(seconds) {
+    var n = Number(seconds);
+    return isNaN(n) ? "" : n.toFixed(1) + " s";
+  }
+
+  function fail(region, what, error) {
+    region.textContent = what + " could not be loaded: " + error;
+    region.classList.remove("pending");
+  }
+
+  function select(body, row) {
+    Array.prototype.forEach.call(body.querySelectorAll("tr.selected"), function (r) {
+      r.classList.remove("selected");
+    });
+    row.classList.add("selected");
+  }
+
+  // --- investigations --------------------------------------------------------------------------
+  async function loadInvestigations() {
+    var response;
+    try {
+      response = await fetch("/investigations");
+    } catch (error) {
+      fail(investigationDetail, "The investigations", error);
+      return;
+    }
+    if (!response.ok) {
+      fail(investigationDetail, "The investigations", "HTTP " + response.status);
+      return;
+    }
+    var summaries = await response.json();
+    investigationsBody.innerHTML = "";
+    if (!summaries.length) {
+      investigationDetail.textContent = "No completed investigation has been saved yet.";
+      return;
+    }
+    summaries.forEach(function (s) {
+      var row = el("tr", null, "row");
+      row.appendChild(cell(fmtDate(s.taken_at)));
+      row.appendChild(cell(s.incident_id));
+      row.appendChild(cell(s.outcome));
+      row.appendChild(cell(s.model_calls_made));
+      row.appendChild(cell(s.capability_calls_made));
+      row.appendChild(cell(fmtTokens(s.token_usage)));
+      row.appendChild(cell(fmtDuration(s.duration_s)));
+      row.addEventListener("click", function () {
+        select(investigationsBody, row);
+        loadInvestigation(s.investigation_id);
+      });
+      investigationsBody.appendChild(row);
+    });
+    investigationDetail.textContent = "Select an investigation to read it in full.";
+  }
+
+  async function loadInvestigation(id) {
+    investigationDetail.textContent = "Loading " + id + "...";
+    investigationDetail.classList.add("pending");
+    var response;
+    try {
+      response = await fetch("/investigations/" + encodeURIComponent(id));
+    } catch (error) {
+      fail(investigationDetail, "The investigation", error);
+      return;
+    }
+    if (!response.ok) {
+      fail(investigationDetail, "The investigation", "HTTP " + response.status);
+      return;
+    }
+    renderInvestigation(await response.json());
+  }
+
+  function renderInvestigation(r) {
+    var region = investigationDetail;
+    region.innerHTML = "";
+    region.classList.remove("pending");
+
+    region.appendChild(heading("Investigation " + r.investigation_id + " over " + r.incident_id));
+    region.appendChild(el("div", "Objective: " + r.objective));
+    region.appendChild(el("div", "Outcome: " + r.outcome + ". Gathering stopped because: " +
+      r.stopped_because));
+
+    region.appendChild(heading("Configuration that produced it"));
+    var versions = Object.keys(r.prompt_versions || {}).sort();
+    region.appendChild(list(
+      [["deployment", r.model_deployment]].concat(versions.map(function (task) {
+        return [task, r.prompt_versions[task]];
+      })),
+      function (pair) { return el("li", pair[0] + ": " + pair[1]); }
+    ));
+
+    region.appendChild(heading("What the run cost"));
+    region.appendChild(list([
+      "model calls: " + r.model_calls_made,
+      "capability calls: " + r.capability_calls_made,
+      "tokens: " + fmtTokens(r.token_usage),
+      "duration: " + fmtDuration(r.duration_s)
+    ], function (line) { return el("li", line); }));
+
+    region.appendChild(heading("Operations attempted"));
+    region.appendChild(list(r.operations, function (op) {
+      var line = el("li", op.operation_ref + "  " + op.capability + ": ");
+      line.appendChild(el("span", op.outcome, op.outcome === "succeeded" ? "ok" : "bad"));
+      return line;
+    }));
+
+    region.appendChild(heading("Passages retrieved"));
+    region.appendChild(list(r.passages, function (p) {
+      return el("li", p.reference + " [" + p.category + "] " + p.title);
+    }));
+
+    region.appendChild(heading("Observations admitted"));
+    region.appendChild(list(r.observations, function (o) {
+      return el("li", o.evidence_ref + " [" + o.evidence_type + ", " + o.completeness + "] " +
+        (typeof o.observation === "string" ? o.observation : JSON.stringify(o.observation)));
+    }));
+
+    region.appendChild(heading("Limitations"));
+    region.appendChild(list(r.limitations, function (l) {
+      return el("li", l.question + ": " + l.reason + " (" + l.capability + ", " + l.outcome + ")");
+    }));
+
+    // A record exists only because the gate passed before it was written. Whether the one
+    // correction was spent first is visible in which prompts the run used.
+    region.appendChild(heading("Grounding"));
+    var corrected = Boolean((r.prompt_versions || {}).assessment_correction);
+    region.appendChild(el("div",
+      "Passed: a record is saved only after the grounding gate accepts the assessment." +
+      (corrected ? " The one corrective call was spent before it passed." : "")));
+
+    region.appendChild(heading("Brief"));
+    region.appendChild(el("pre", r.brief && r.brief.text));
+
+    region.appendChild(heading("Telemetry"));
+    region.appendChild(el("div", "trace_id: " + r.trace_id +
+      ". Query the workspace by this identifier for every span of the run."));
+  }
+
+  // --- evaluation runs ---------------------------------------------------------------------------
+  // The configuration entries that describe the evaluator rather than the runtime. Where these
+  // differ between a run and the one listed above it, the list marks the break, because judge
+  // categories from two differently configured judges are not one series.
+  function evaluatorIdentity(configuration) {
+    var keys = Object.keys(configuration || {}).filter(function (k) {
+      return k.indexOf("judge_") === 0;
+    }).sort();
+    return keys.map(function (k) { return k + "=" + configuration[k]; }).join("; ");
+  }
+
+  async function loadEvaluations() {
+    var response;
+    try {
+      response = await fetch("/evaluations");
+    } catch (error) {
+      fail(evaluationDetail, "The evaluation runs", error);
+      return;
+    }
+    if (!response.ok) {
+      fail(evaluationDetail, "The evaluation runs", "HTTP " + response.status);
+      return;
+    }
+    var summaries = await response.json();
+    evaluationsBody.innerHTML = "";
+    if (!summaries.length) {
+      evaluationDetail.textContent = "No evaluation run has been kept yet.";
+      return;
+    }
+    var previous = null;
+    summaries.forEach(function (s) {
+      var identity = evaluatorIdentity(s.configuration);
+      if (previous !== null && identity !== previous) {
+        var marker = el("tr", null, "break");
+        var td = cell("evaluator configuration changes here: runs above and below are not one series");
+        td.colSpan = 4;
+        marker.appendChild(td);
+        evaluationsBody.appendChild(marker);
+      }
+      previous = identity;
+      var c = s.configuration || {};
+      var row = el("tr", null, "row");
+      row.appendChild(cell(fmtDate(s.taken_at)));
+      row.appendChild(cell(s.label || s.run_id));
+      row.appendChild(cell(c.model_deployment || ""));
+      row.appendChild(cell((c.judge_deployment || "") + (c.judge_effort ? ", " + c.judge_effort : "")));
+      row.addEventListener("click", function () {
+        select(evaluationsBody, row);
+        loadEvaluation(s.run_id);
+      });
+      evaluationsBody.appendChild(row);
+    });
+    evaluationDetail.textContent = "Select a run to read it in full.";
+  }
+
+  async function loadEvaluation(runId) {
+    evaluationDetail.textContent = "Loading " + runId + "...";
+    evaluationDetail.classList.add("pending");
+    var response;
+    try {
+      response = await fetch("/evaluations/" + encodeURIComponent(runId));
+    } catch (error) {
+      fail(evaluationDetail, "The run", error);
+      return;
+    }
+    if (!response.ok) {
+      fail(evaluationDetail, "The run", "HTTP " + response.status);
+      return;
+    }
+    renderEvaluation(await response.json());
+  }
+
+  function renderEvaluation(run) {
+    var region = evaluationDetail;
+    region.innerHTML = "";
+    region.classList.remove("pending");
+
+    region.appendChild(heading("Run " + run.run_id + (run.label ? ": " + run.label : "") +
+      ", taken " + fmtDate(run.taken_at)));
+
+    // Observe: what it ran under, and what each scenario did.
+    region.appendChild(heading("Observe"));
+    var configuration = run.configuration || {};
+    region.appendChild(list(Object.keys(configuration).sort(), function (key) {
+      return el("li", key + ": " + configuration[key]);
+    }));
+    region.appendChild(list(run.scenarios, function (s) {
+      return el("li", s.scenario_id + ": " + s.provenance + " (" + s.source + ")" +
+        (s.outcome ? "; outcome " + s.outcome : ""));
+    }));
+
+    // Verify: the deterministic checks, failures named.
+    region.appendChild(heading("Verify"));
+    region.appendChild(list(run.scenarios, function (s) {
+      var item = el("li", s.scenario_id);
+      if (!s.checks.length) {
+        item.appendChild(el("span", ": no check ran", "muted"));
+        return item;
+      }
+      item.appendChild(list(s.checks, function (check) {
+        var line = el("li", check.name + ": ");
+        line.appendChild(el("span", check.passed ? "pass" : "fail", check.passed ? "ok" : "bad"));
+        if (check.failures.length) {
+          line.appendChild(list(check.failures, function (f) { return el("li", f); }));
+        }
+        return line;
+      }));
+      return item;
+    }));
+
+    // Evaluate: the judge's categories with its sentences, and which deployment judged.
+    region.appendChild(heading("Evaluate"));
+    region.appendChild(list(run.scenarios, function (s) {
+      var item = el("li", s.scenario_id +
+        (s.judge_deployment ? " (judged by " + s.judge_deployment + ")" : ""));
+      if (!s.verdicts.length) {
+        item.appendChild(el("span", ": no judgement. " + (s.judge_note || ""), "muted"));
+        return item;
+      }
+      item.appendChild(list(s.verdicts, function (v) {
+        return el("li", v.quality + ": " + v.category + ". " + v.why);
+      }));
+      return item;
+    }));
+
+    // Experiment: both comparisons, each difference naming its condition, or why not.
+    region.appendChild(heading("Experiment"));
+    region.appendChild(list(run.comparisons, function (c) {
+      var item = el("li", c.name + (c.scenario_id ? " on " + c.scenario_id : ""));
+      if (!c.ran) {
+        item.appendChild(el("div", "Not evaluable: " + c.note, "muted"));
+        return item;
+      }
+      if (c.differences.length) {
+        item.appendChild(list(c.differences, function (d) {
+          return el("li", d.dimension + ": " + d.detail);
+        }));
+      } else {
+        item.appendChild(el("div", "Nothing differed between the two conditions.", "muted"));
+      }
+      if (c.note) item.appendChild(el("div", c.note, "muted"));
+      return item;
+    }));
+  }
+
+  loadInvestigations();
+  loadEvaluations();
+})();
+</script>
+</body>
+</html>

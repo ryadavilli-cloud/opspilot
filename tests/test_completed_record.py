@@ -15,6 +15,7 @@ parametrization is for.
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 import pytest
@@ -43,33 +44,60 @@ RUNBOOK = "runbook:redis-cache-degradation"
 
 
 class _FakeCosmosContainer:
-    """Enough of a Cosmos container for the two calls this store makes.
+    """Enough of a Cosmos container for the three calls the stores make.
 
-    It answers like the real one in the two ways that matter: a create against an id it already
-    holds conflicts, and a read of an absent id is a 404 rather than an empty answer. It also adds
-    the system properties Cosmos stamps on every document, so a record that only round-trips
-    because nothing extra came back would fail here.
+    It answers like the real one in the ways that matter: a create against an id it already holds
+    conflicts, a read of an absent id is a 404 rather than an empty answer, and every document
+    comes back stamped with the system properties Cosmos adds, so a record that only round-trips
+    because nothing extra came back would fail here. `_ts` advances with each write, as the real
+    write time does, which is what the listing orders by.
+
+    A listing query is parsed just far enough to answer the two the stores issue: a projection of
+    named fields over every document, ordered by one field descending. Projecting for real rather
+    than returning whole documents is what lets a field dropped from the query fail here rather
+    than only against the deployed container.
     """
 
     def __init__(self) -> None:
         self.documents: dict[str, dict[str, Any]] = {}
+        self._written_at: dict[str, int] = {}
+        self._clock = 1_780_000_000
 
     def create_item(self, body: dict[str, Any]) -> dict[str, Any]:
         if body["id"] in self.documents:
             raise _CosmosError(409)
         self.documents[body["id"]] = dict(body)
+        self._clock += 1
+        self._written_at[body["id"]] = self._clock
         return body
+
+    def _stamped(self, item: str) -> dict[str, Any]:
+        return {
+            **self.documents[item],
+            "_rid": "abc==",
+            "_ts": self._written_at.get(item, self._clock),
+            "_etag": '"0x8DA"',
+            "_self": "dbs/x/colls/y/docs/z",
+        }
 
     def read_item(self, item: str, partition_key: str) -> dict[str, Any]:
         if item not in self.documents:
             raise _CosmosError(404)
-        return {
-            **self.documents[item],
-            "_rid": "abc==",
-            "_ts": 1_780_000_000,
-            "_etag": '"0x8DA"',
-            "_self": "dbs/x/colls/y/docs/z",
-        }
+        return self._stamped(item)
+
+    def query_items(
+        self, query: str, enable_cross_partition_query: bool = False, **_: Any
+    ) -> list[dict[str, Any]]:
+        assert enable_cross_partition_query, "a listing reads every partition, and must say so"
+        select, _, rest = query.partition(" FROM ")
+        fields = re.findall(r"c\.(\w+)", select)
+        assert fields, f"not a projection this fake can answer: {query}"
+        order = re.search(r"ORDER BY c\.(\w+) DESC", rest)
+        rows = [self._stamped(item) for item in self.documents]
+        projected = [{name: row[name] for name in fields if name in row} for row in rows]
+        if order:
+            projected.sort(key=lambda row: row[order.group(1)], reverse=True)
+        return projected
 
 
 class _CosmosError(Exception):
@@ -169,6 +197,10 @@ def _record(investigation_id: str = "inv-1") -> CompletedInvestigation:
         trace_id="inv-1",
         model_deployment="gpt-5-mini",
         prompt_versions={"rca_synthesis": "v2"},
+        model_calls_made=6,
+        capability_calls_made=4,
+        token_usage={"prompt_tokens": 31_200, "completion_tokens": 4_150},
+        duration_s=87.4,
     )
 
 
@@ -217,6 +249,19 @@ def test_the_read_carries_every_part_the_record_was_given(repository):
     assert read_back.brief.outcome is Outcome.PARTIAL
     assert read_back.model_deployment == "gpt-5-mini"
     assert read_back.prompt_versions == {"rca_synthesis": "v2"}
+
+
+def test_the_record_carries_what_the_run_cost(repository):
+    """The four accounting figures survive the round trip beside the deployment and prompt
+    versions they belong with. Input and output tokens stay separate."""
+    repository.save(_record())
+    read_back = repository.get("inv-1")
+
+    assert read_back is not None
+    assert read_back.model_calls_made == 6
+    assert read_back.capability_calls_made == 4
+    assert read_back.token_usage == {"prompt_tokens": 31_200, "completion_tokens": 4_150}
+    assert read_back.duration_s == 87.4
 
 
 def test_the_operations_list_keeps_the_calls_that_answered_nothing(repository):
@@ -282,6 +327,63 @@ def test_two_investigations_are_stored_independently(repository):
     first, second = repository.get("inv-1"), repository.get("inv-2")
     assert first is not None and second is not None
     assert first.investigation_id == "inv-1" and second.investigation_id == "inv-2"
+
+
+# --- listing what has been saved ----------------------------------------------------------------
+def test_an_empty_store_lists_nothing(repository):
+    assert repository.list_investigations() == []
+
+
+def test_the_listing_carries_one_summary_per_saved_investigation_newest_first(repository):
+    """Newest first, because the listing is read to find the run that just happened. Two backends,
+    one order: what a listing means must not depend on which store is behind the seam."""
+    repository.save(_record("inv-1"))
+    repository.save(_record("inv-2"))
+    repository.save(_record("inv-3"))
+
+    listed = repository.list_investigations()
+
+    assert [summary.investigation_id for summary in listed] == ["inv-3", "inv-2", "inv-1"]
+    assert listed[0].taken_at >= listed[1].taken_at >= listed[2].taken_at
+
+
+def test_a_summary_carries_the_identity_outcome_and_accounting_and_not_the_record(repository):
+    """Enough to choose a run and to see what it cost, and nothing that needs the whole record:
+    a summary is what the listing shows, and each choice is then read in full."""
+    repository.save(_record())
+
+    (summary,) = repository.list_investigations()
+
+    assert summary.investigation_id == "inv-1"
+    assert summary.incident_id == "inc-005"
+    assert summary.outcome is Outcome.PARTIAL
+    assert summary.model_deployment == "gpt-5-mini"
+    assert summary.model_calls_made == 6
+    assert summary.capability_calls_made == 4
+    assert summary.token_usage == {"prompt_tokens": 31_200, "completion_tokens": 4_150}
+    assert summary.duration_s == 87.4
+    assert summary.taken_at.tzinfo is not None, "a listing date without a zone is ambiguous"
+    assert not hasattr(summary, "observations")
+    assert not hasattr(summary, "brief")
+
+
+def test_a_record_written_before_accounting_existed_still_lists_and_reads():
+    """The durable store already holds records without the accounting fields. They are listed
+    with the figures absent rather than refused, and read back as they were saved."""
+    container = _FakeCosmosContainer()
+    older = _record("inv-old").model_dump(mode="json")
+    for name in ("model_calls_made", "capability_calls_made", "token_usage", "duration_s"):
+        del older[name]
+    container.create_item(body={**older, "id": "inv-old"})
+    store = CosmosCompletedInvestigations(container)
+
+    (summary,) = store.list_investigations()
+    read_back = store.get("inv-old")
+
+    assert summary.investigation_id == "inv-old"
+    assert (summary.model_calls_made, summary.capability_calls_made) == (0, 0)
+    assert summary.token_usage == {} and summary.duration_s == 0.0
+    assert read_back is not None and read_back.model_calls_made == 0
 
 
 # --- the record answers for its own citations ---------------------------------------------------

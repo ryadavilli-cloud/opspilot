@@ -13,6 +13,11 @@ additionally obtains the benign fixture live. Without it the investigations stil
 report says the judge did not run:
   uv run --group dev --group llm python eval/run_evaluation.py
   uv run --group dev --group llm python eval/run_evaluation.py --full
+
+Keeping. A run worth keeping is also written to the evaluation store, where the application lists
+and reads it; keeping is opt-in so an exploratory run does not enter the history. The identity
+running this must hold write on that container, which the application's own identity does not:
+  uv run --group dev --group llm python eval/run_evaluation.py --full --keep "before prompt v6"
 """
 
 from __future__ import annotations
@@ -50,6 +55,14 @@ from judge import (  # noqa: E402
 from opspilot import config  # noqa: E402
 from opspilot.api import initial_state  # noqa: E402
 from opspilot.evaluation.judge_model import build_judge_model  # noqa: E402
+from opspilot.evaluation.record import (  # noqa: E402
+    ComparisonDifference,
+    ComparisonRun,
+    DeterministicCheck,
+    EvaluationRun,
+    JudgeVerdict,
+    ScenarioRun,
+)
 from opspilot.investigation.graph import MODEL, RECORD, SERVICE, build_graph  # noqa: E402
 from opspilot.investigation.harness import HARNESS, Harness  # noqa: E402
 from opspilot.llm.cassette import ReplayChatModel  # noqa: E402
@@ -321,6 +334,97 @@ def _judge_deployment(judgements: list[Judged] | None) -> str:
     return ", ".join(sorted(answered)) if answered else "(the judge did not run)"
 
 
+# --- keeping a run --------------------------------------------------------------------------------
+# The deterministic checks, by the name each prefixes its failures with. A check that named no
+# failure passed. The benign check runs only where the expectation requires no immediate action.
+CHECKS = ("grounding", "read-only", "absence", "outcome")
+BENIGN_CHECK = "benign"
+
+
+def _checks(result: ScenarioResult, *, benign: bool) -> list[DeterministicCheck]:
+    """Each check that ran on a scenario, as name plus pass or fail plus the failures it named.
+    A scenario that did not run had no check run on it."""
+    if not result.ran:
+        return []
+    checks = []
+    for name in (*CHECKS, BENIGN_CHECK) if benign else CHECKS:
+        named = [failure for failure in result.failures if failure.startswith(f"{name}:")]
+        checks.append(DeterministicCheck(name=name, passed=not named, failures=named))
+    return checks
+
+
+def _scenario_run(
+    result: ScenarioResult,
+    record: CompletedInvestigation | None,
+    judgement: Judged,
+    *,
+    benign: bool = False,
+) -> ScenarioRun:
+    """One scenario as the kept run records it. The deterministic result and the judgement arrive
+    separately and are written to separate fields; nothing here merges them."""
+    verdicts = [
+        JudgeVerdict(quality=quality, category=verdict.category, why=verdict.why)
+        for quality, verdict in (judgement.verdicts or {}).items()
+    ]
+    return ScenarioRun(
+        scenario_id=result.scenario_id,
+        provenance=result.source.provenance.value,
+        source=result.source.detail,
+        outcome=record.outcome.value if record is not None else "",
+        checks=_checks(result, benign=benign),
+        verdicts=verdicts,
+        judge_deployment=judgement.deployment,
+        judge_note=judgement.note,
+    )
+
+
+def _comparison_run(comparison: ComparisonResult) -> ComparisonRun:
+    return ComparisonRun(
+        name=comparison.name,
+        scenario_id=comparison.scenario_id,
+        ran=comparison.ran,
+        differences=[
+            ComparisonDifference(dimension=d.dimension, detail=d.detail)
+            for d in comparison.differences
+        ],
+        note=comparison.note,
+    )
+
+
+def next_run_id(kept: list[str], date: str) -> str:
+    """The next identifier for a run taken on `date`: date-ordered, and unique within the day by a
+    sequence after whatever is already kept for it."""
+    sequences = []
+    for run_id in kept:
+        prefix, _, sequence = run_id.rpartition("-")
+        if prefix == date and sequence.isdigit():
+            sequences.append(int(sequence))
+    return f"{date}-{max(sequences, default=0) + 1}"
+
+
+def build_run(
+    run_id: str,
+    taken_at: datetime,
+    label: str,
+    configuration: dict[str, str],
+    scenarios: list[tuple[ScenarioResult, CompletedInvestigation | None, Judged, bool]],
+    comparisons: list[ComparisonResult],
+) -> EvaluationRun:
+    """The kept run, built from what the runner already holds. Nothing is computed that the report
+    does not already carry, and no aggregate is added."""
+    return EvaluationRun(
+        run_id=run_id,
+        taken_at=taken_at,
+        label=label,
+        configuration=configuration,
+        scenarios=[
+            _scenario_run(result, record, judgement, benign=benign)
+            for result, record, judgement, benign in scenarios
+        ],
+        comparisons=[_comparison_run(comparison) for comparison in comparisons],
+    )
+
+
 def _judge_lines(judgement: Judged | None) -> list[str]:
     """One scenario's categories, or why there are none. Never a count and never a total: these
     are reported beside the deterministic result and are not commensurable with it."""
@@ -422,40 +526,66 @@ def render(
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--full", action="store_true", help="every scenario, not just the fast one")
+    parser.add_argument(
+        "--keep",
+        nargs="?",
+        const="",
+        default=None,
+        metavar="LABEL",
+        help="also write this run to the evaluation store, optionally under a label; without "
+        "this the run produces its report and enters no history",
+    )
     args = parser.parse_args(sys.argv[1:] if argv is None else argv)
 
     chosen = SCENARIOS if args.full else [s for s in SCENARIOS if s["id"] == FAST_SCENARIO]
-    results: list[ScenarioResult] = []
-    judgements: list[Judged] = []
+    scenarios: list[tuple[ScenarioResult, CompletedInvestigation | None, Judged, bool]] = []
     for scenario in chosen:
         scenario_id = scenario["id"]
         source = Source.for_scenario(scenario_id)
         record = obtain(scenario_id, source)
         # Deterministic first, always. The judge is asked afterwards and told none of it.
-        results.append(evaluate(scenario_id, record, scenario["evaluation"], source))
+        result = evaluate(scenario_id, record, scenario["evaluation"], source)
         reported = _scenario_incident(scenario_id).short_description
-        judgements.append(judged(record, scenario, reported))
+        scenarios.append((result, record, judged(record, scenario, reported), False))
 
     if args.full:
+        benign = bool(FIXTURE["evaluation"]["requires_no_immediate_action"])
         record, source = obtain_fixture(Source.for_fixture(config.AZURE_OPENAI_DEPLOYMENT))
-        results.append(
-            evaluate(
-                FIXTURE["id"],
-                record,
-                FIXTURE["evaluation"],
-                source,
-                benign=FIXTURE["evaluation"]["requires_no_immediate_action"],
-            )
-        )
-        judgements.append(judged(record, FIXTURE, _fixture_incident().short_description))
+        result = evaluate(FIXTURE["id"], record, FIXTURE["evaluation"], source, benign=benign)
+        judgement = judged(record, FIXTURE, _fixture_incident().short_description)
+        scenarios.append((result, record, judgement, benign))
 
-    taken_at = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+    results = [result for result, _, _, _ in scenarios]
+    judgements = [judgement for _, _, judgement, _ in scenarios]
+    now = datetime.now(UTC)
+    taken_at = now.strftime("%Y-%m-%dT%H:%M:%SZ")
     REPORTS.mkdir(parents=True, exist_ok=True)
     path = REPORTS / f"{taken_at.replace(':', '')}.md"
     comparisons = run_comparisons(chosen) if args.full else []
     report = render(results, configuration_identity(), taken_at, judgements, comparisons)
     path.write_text(report, encoding="utf-8")
     print(f"wrote {path.relative_to(REPO_ROOT)}")
+
+    if args.keep is not None:
+        from opspilot.evaluation.store import default_evaluation_runs
+
+        store = default_evaluation_runs()
+        kept_ids = [kept.run_id for kept in store.list_runs()]
+        run = build_run(
+            run_id=next_run_id(kept_ids, now.strftime("%Y-%m-%d")),
+            taken_at=now,
+            label=args.keep,
+            # The configured identity, runtime and judge alike, exactly as the report records it.
+            # Which deployment actually answered the judge is kept per scenario, beside each
+            # judgement, so a kept run can show the two disagreeing as the report can.
+            configuration=configuration_identity(),
+            scenarios=scenarios,
+            comparisons=comparisons,
+        )
+        # Refused by the store as a duplicate if the identifier is somehow already kept, which is
+        # left to raise: a kept run is never overwritten.
+        store.save(run)
+        print(f"kept {run.run_id}")
 
 
 if __name__ == "__main__":

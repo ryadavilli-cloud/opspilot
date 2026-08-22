@@ -206,7 +206,11 @@ the terminal event, read afterwards for the brief, the question, and evaluation:
 - the retrieved passages used, with their references and text where the question needs them;
 - the assessment;
 - the brief;
-- a correlation reference into telemetry, and the model deployment and prompt versions used.
+- a correlation reference into telemetry, and the model deployment and prompt versions used;
+- run accounting: the number of model calls made, the number of capability calls made, token usage
+  accumulated across the run with input and output kept separate, and the run's duration. These
+  are facts about the run in the same category as the deployment and prompt versions: they are not
+  evidence, are cited by nothing, and are read by nothing in the investigation.
 
 Ephemeral working state is not persisted: no bounds, no proposals, no working hypotheses. Evaluation
 artifacts are separate and reference the investigation, never the reverse.
