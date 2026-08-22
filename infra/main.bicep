@@ -60,19 +60,44 @@ param manageOpenAiRoleAssignment bool = true
 param foundryAccountName string = toLower('${namePrefix}foundry${uniqueString(resourceGroup().id)}')
 
 @description('Claude model the judge calls (Foundry catalog name, publisher Anthropic).')
-param claudeModelName string = 'claude-sonnet-5'
+param claudeModelName string = 'claude-opus-5'
 
-@description('Claude model version, pinned. A judge is a measuring instrument, and the model changing underneath it silently breaks comparability across every earlier report, so the version is concrete here and NoAutoUpgrade below. Verify the value against the region catalog before deploy (az cognitiveservices model list -l <region>, publisher Anthropic).')
-param claudeModelVersion string = '1'
+@description('Claude model version, pinned. A judge is a measuring instrument, and the model changing underneath it silently breaks comparability across every earlier report, so the version is concrete here and NoAutoUpgrade below. Version 2 is the Azure-hosted realization, which runs on Azure end to end rather than on the partner\'s own infrastructure and is what the rest of this system\'s posture assumes; version 1 is the same model served from Anthropic. Verify the value against the region catalog before deploy (az cognitiveservices model list -l <region>, publisher Anthropic).')
+param claudeModelVersion string = '2'
 
 @description('Deployment name the evaluation calls (AZURE_CLAUDE_DEPLOYMENT). Kept equal to the model name for clarity.')
-param claudeDeploymentName string = 'claude-sonnet-5'
+param claudeDeploymentName string = 'claude-opus-5'
 
-@description('GlobalStandard capacity for the judge deployment, in thousands of tokens/min. Small on purpose: the judge is one sequential call per scenario in an offline evaluation, never a burst like the investigation path.')
-param claudeModelCapacity int = 50
+@description('GlobalStandard capacity for the judge deployment, in thousands of tokens/min. This is the whole subscription allocation for the model, which nothing else here competes for; the judge itself needs far less, being one sequential call per scenario in an offline evaluation rather than a burst like the investigation path. Raising it above the allocation fails the deployment at preflight rather than queueing.')
+param claudeModelCapacity int = 40
+
+@description('Create the Claude model deployment. Set false where the subscription holds no quota for the model named above: Claude quota is allocated per subscription and shared across every region, so a model with a zero allocation cannot be deployed anywhere and fails the whole template at preflight. The account, project, and evaluation grant deploy either way, and the evaluation reports the judge as not run while this is off - mirrors configureAuth and configureAcrPull, which gate on the same class of dependency.')
+param deployClaudeModel bool = true
 
 @description('Object id of the principal that runs the offline evaluation. The judge is called from wherever evaluation runs, never from the application, so this grant belongs to a different principal than the app identity, which deliberately holds no access to the judge model. The same principal writes kept evaluation runs to the evaluation container below, which the application only reads. Empty (the default) creates no assignment, which is correct for an environment nobody evaluates from.')
 param evaluationPrincipalId string = ''
+
+@description('Organization name sent to Anthropic as attestation with the Claude deployment. Deploying with this block auto-accepts the Anthropic Marketplace offer terms (https://www.anthropic.com/legal/commercial-terms), so it must match the real person or legal entity deploying.')
+param claudeOrganizationName string = 'ryadavilli'
+
+@description('Two-letter ISO country code for the Claude deployment attestation.')
+@minLength(2)
+@maxLength(2)
+param claudeCountryCode string = 'US'
+
+@description('Industry for the Claude deployment attestation. Lowercase, from the Foundry portal\'s own list.')
+@allowed([
+  'technology'
+  'finance'
+  'healthcare'
+  'education'
+  'retail'
+  'manufacturing'
+  'government'
+  'media'
+  'other'
+])
+param claudeIndustry string = 'technology'
 
 @description('Cosmos DB account name: the durable store holding completed investigations and the RetailEase corpus the application reads. Must be globally unique; lowercase alphanumeric + hyphens.')
 param cosmosAccountName string = toLower('${namePrefix}-cosmos-${uniqueString(resourceGroup().id)}')
@@ -268,13 +293,12 @@ resource embeddingDeployment 'Microsoft.CognitiveServices/accounts/deployments@2
 // anywhere. The application identity holds no role here and the runtime never constructs the
 // judge's adapter, so nothing in a live investigation can reach this account.
 //
-// Recorded beside the configuration that needs it, as the template already records the app
-// registration, the app role, and the vault secret: Claude in Foundry is sold and operated by
-// Anthropic as a partner offering, and the one-time acceptance of its terms (the Marketplace
-// agreement the first deployment of the model prompts for) is not an ARM resource this template
-// can create. An environment rebuilt from this repository alone deploys the account and then
-// fails the model deployment below until that acceptance exists in the subscription.
-resource foundry 'Microsoft.CognitiveServices/accounts@2025-04-01-preview' = {
+// Claude in Foundry is sold and operated by Anthropic as a partner offering, and the offer terms
+// are accepted by the deployment itself: the resource provider auto-signs the Marketplace
+// agreement from the `modelProviderData` attestation the deployment below carries, refusing an
+// Anthropic deployment without one. Nothing about the offering has to exist out of band, but the
+// attestation is sent to Anthropic and must state the real deployer.
+resource foundry 'Microsoft.CognitiveServices/accounts@2025-10-01-preview' = {
   name: foundryAccountName
   location: location
   kind: 'AIServices'
@@ -291,7 +315,7 @@ resource foundry 'Microsoft.CognitiveServices/accounts@2025-04-01-preview' = {
 // The Foundry project the supported realization files the deployment under. Organizational: the
 // data plane the judge's adapter calls is the account's /anthropic/ endpoint, and the project is
 // how the portal presents what is deployed there.
-resource foundryProject 'Microsoft.CognitiveServices/accounts/projects@2025-04-01-preview' = {
+resource foundryProject 'Microsoft.CognitiveServices/accounts/projects@2025-10-01-preview' = {
   parent: foundry
   name: '${namePrefix}-evaluation'
   location: location
@@ -302,7 +326,7 @@ resource foundryProject 'Microsoft.CognitiveServices/accounts/projects@2025-04-0
 // The judge deployment, pinned. NoAutoUpgrade for the same reason the version parameter is
 // concrete: two reports judged by silently different models are not comparable, however alike
 // they look on the page.
-resource claudeDeployment 'Microsoft.CognitiveServices/accounts/deployments@2025-04-01-preview' = {
+resource claudeDeployment 'Microsoft.CognitiveServices/accounts/deployments@2025-10-01-preview' = if (deployClaudeModel) {
   parent: foundry
   name: claudeDeploymentName
   sku: {
@@ -315,8 +339,20 @@ resource claudeDeployment 'Microsoft.CognitiveServices/accounts/deployments@2025
       name: claudeModelName
       version: claudeModelVersion
     }
+    // Required for an Anthropic deployment: the attestation the provider auto-signs the
+    // Marketplace offer from, sent to Anthropic. A deployment without it fails preflight.
+    modelProviderData: {
+      organizationName: claudeOrganizationName
+      countryCode: claudeCountryCode
+      industry: claudeIndustry
+    }
     versionUpgradeOption: 'NoAutoUpgrade'
+    raiPolicyName: 'Microsoft.DefaultV2'
   }
+  // Foundry serializes writes under one account, the same way the OpenAI account above
+  // serializes its two deployments; and the project must exist before the deployment the
+  // portal files under it.
+  dependsOn: [foundryProject]
 }
 
 // Data-plane inference on the Foundry account for whoever runs the evaluation. `principalType`
@@ -948,7 +984,9 @@ output openAiAccountName string = openai.name
 // The value AZURE_CLAUDE_ENDPOINT takes: the Foundry resource's Anthropic path, which is where
 // the judge's adapter sends its requests.
 output claudeEndpoint string = 'https://${foundryAccountName}.services.ai.azure.com/anthropic/'
-output claudeDeploymentName string = claudeDeployment.name
+// Empty while the deployment is gated off, so a reader of the outputs sees that the judge model
+// is not there to call rather than a name that resolves to nothing.
+output claudeDeploymentName string = deployClaudeModel ? claudeDeploymentName : ''
 output foundryAccountName string = foundry.name
 output cosmosAccountName string = cosmos.name
 output cosmosEndpoint string = cosmos.properties.documentEndpoint

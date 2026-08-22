@@ -75,7 +75,7 @@ local to its request.
 | Container Apps environment and one app, replicas 0 to 1 | Hosts the application, starts on demand |
 | Container Registry | Holds the image |
 | One Azure OpenAI account with one chat deployment and one embedding deployment | Every runtime model task and query embeddings |
-| One Foundry account with one Claude Sonnet 5 deployment, pinned | The offline judge; nothing in a live investigation calls it |
+| One Foundry account with one Claude Opus 5 deployment, pinned | The offline judge; nothing in a live investigation calls it |
 | One Cosmos account: `investigations`, `evaluation-runs`, `knowledge`, `operational-records` containers | The completed record, kept evaluation runs, the prepared corpus |
 | Log Analytics and Application Insights | Telemetry sink |
 | Managed identity and role assignments | The application reads the corpus and kept evaluation runs, writes only completed investigations, and calls the model deployments as its managed identity; corpus preparation writes the corpus and evaluation writes kept runs, each under a separate identity |
@@ -92,7 +92,7 @@ private endpoints, HA, DR, scaling rules, a second frontend, a second runtime ch
 One adapter to Azure OpenAI. One chat deployment serves objective interpretation, evidence-source
 selection, structured-query proposal, synthesis, correction, and the question.
 One embedding deployment serves corpus preparation and query embedding. The offline judge calls
-its own Claude Sonnet 5 deployment in Microsoft Foundry through its own adapter, keyless like
+its own Claude Opus 5 deployment in Microsoft Foundry through its own adapter, keyless like
 every other path; the application never constructs it, and a revision serves investigations with
 the judge deployment unconfigured. Every model call records
 its task label, deployment, latency, and token usage. Cassette replay and a fake model stand in for

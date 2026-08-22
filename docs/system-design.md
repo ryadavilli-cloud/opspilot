@@ -187,7 +187,7 @@ new. It gathers no evidence, creates no investigation, and is not a run.
 | Responsibility | Realization | Settled in |
 | --- | --- | --- |
 | Model reasoning | Azure OpenAI, one chat deployment, one adapter | `runtime-and-deployment.md` |
-| The offline judge | Claude Sonnet 5 in Microsoft Foundry, its own adapter | `decisions.md` |
+| The offline judge | Claude Opus 5 in Microsoft Foundry, its own adapter | `decisions.md` |
 | Embeddings | Azure OpenAI, one embedding deployment | `runtime-and-deployment.md` |
 | Orchestration | One small compiled in-process graph over typed state, no checkpointer | `decisions.md` |
 | Knowledge retrieval | Cosmos vector search plus in-process lexical, RRF, identifier promotion | `decisions.md` |
