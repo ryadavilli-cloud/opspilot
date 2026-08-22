@@ -1,8 +1,11 @@
-"""The chat-model factory: one live adapter, or recorded replay.
+"""The chat-model factory: one live runtime adapter, recorded replay, and the judge's adapter.
 
-There is one provider. Azure OpenAI serves every model task through one chat deployment, and the
-factory's only other answer is cassette replay, which needs no network and no provider SDK so the
-deterministic test lane never reaches a live service.
+Azure OpenAI serves every runtime model task through one chat deployment; cassette replay stands
+in for it deterministically, needing no network and no provider SDK, so the deterministic test
+lane never reaches a live service. The offline judge's Claude adapter is constructible here too,
+so its calls are traced like every other model call, and it is deliberately not selectable by
+configuration: the runtime asks the factory for no provider by name, so it can only receive what
+configuration selected, and configuration may not select the judge's model.
 
 Authentication is keyless and has no alternative. The Azure OpenAI account has local authentication
 disabled, so no key exists to configure, and an api-key branch beside this one would be a fallback
@@ -24,7 +27,14 @@ from opspilot import config
 if TYPE_CHECKING:
     from opspilot.llm.base import ChatMessage, ChatModel, ChatResult
 
-_KNOWN = ("azure", "replay")
+# What the factory can build. A superset of what configuration may select: the judge's Claude
+# adapter must come through this factory to be traced, and must never be reachable from a
+# deployed setting, so constructible and selectable are two different lists on purpose.
+_PROVIDERS = ("azure", "replay", "claude")
+# What `OPSPILOT_LLM_PROVIDER` may name. Deliberately narrower than `_PROVIDERS`: this is the
+# boundary that keeps the investigation graph off the judge's model. Startup validates the same
+# set. Do not merge these tuples however alike they look; the difference is the boundary.
+_SELECTABLE = ("azure", "replay")
 
 # Reasoning models (gpt-5*, o1/o3/o4*) reject an explicit `temperature`, so the request carries
 # `reasoning_effort` instead. Detected by deployment-name prefix, which is how the deployment is
@@ -127,7 +137,17 @@ def build_chat_model(
     remembered to emit one: a provider added later is traced because it came through this function,
     and a caller cannot obtain an untraced model without bypassing the only factory there is.
     """
-    provider = (provider or config.LLM_PROVIDER).lower()
+    if provider is None:
+        # The runtime path: no caller names a provider, so what is built is what configuration
+        # selected, and configuration may only select from the narrower list. This is where a
+        # setting naming the judge's model is refused rather than routed.
+        provider = config.LLM_PROVIDER.lower()
+        if provider not in _SELECTABLE:
+            raise ValueError(
+                f"OPSPILOT_LLM_PROVIDER may select only {', '.join(_SELECTABLE)}; got {provider!r}"
+            )
+    else:
+        provider = provider.lower()
 
     if provider == "replay":
         if not cassette:
@@ -145,7 +165,17 @@ def build_chat_model(
             )
         )
 
-    raise ValueError(f"unknown LLM provider {provider!r}; known: {', '.join(_KNOWN)}")
+    if provider == "claude":
+        from opspilot.llm.claude import ClaudeFoundryChatModel
+
+        return TracedChatModel(
+            ClaudeFoundryChatModel(
+                deployment or config.AZURE_CLAUDE_DEPLOYMENT,
+                endpoint=config.AZURE_CLAUDE_ENDPOINT or None,
+            )
+        )
+
+    raise ValueError(f"unknown LLM provider {provider!r}; known: {', '.join(_PROVIDERS)}")
 
 
 class TracedChatModel:
