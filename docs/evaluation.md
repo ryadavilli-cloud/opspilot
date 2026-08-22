@@ -145,6 +145,17 @@ comparison results with what differed, judge categories, and usage figures. It r
 configuration identity it ran under. Where the report lives, and which scenario is the fast one, are conventions rather than
 decisions.
 
+A run worth keeping is also persisted, as one document holding what the report holds: the
+configuration identity including the judge's, and per scenario the identifier, how it was obtained
+or why it was not run, the outcome reported, each deterministic check by name with pass or fail and
+the named failure, and the judge's categories with the sentence behind each; and per comparison its
+name, its scenario, and either the differences, each naming the condition it fell on, or the reason
+it could not be set up. Deterministic results and judge categories stay in separate fields, so
+nothing can merge them, and no aggregate is stored. Keeping is chosen on the command for that run,
+so an exploratory run does not enter the history. A kept run is written once, under the principal
+that ran evaluation, and is never edited or deleted; the application reads kept runs, lists them,
+and never writes one. Where kept runs live is settled in `decisions.md`.
+
 Cadence: the fast scenario on a meaningful change; the full set before a milestone. Both are
 advisory.
 
