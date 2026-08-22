@@ -16,7 +16,12 @@ from opspilot import config
 from opspilot.evaluation.judge_model import build_judge_model
 from opspilot.llm.base import ChatMessage
 from opspilot.llm.claude import EFFORT, MAX_TOKENS, THINKING, ClaudeFoundryChatModel
-from opspilot.llm.client import TracedChatModel, build_chat_model
+from opspilot.llm.client import (
+    PROVIDERS,
+    SELECTABLE_PROVIDERS,
+    TracedChatModel,
+    build_chat_model,
+)
 
 TASK = "judge"
 MESSAGES = [
@@ -122,6 +127,29 @@ def test_the_factory_builds_a_traced_claude_model_without_the_sdk():
     assert isinstance(model, TracedChatModel)
     assert isinstance(model._inner, ClaudeFoundryChatModel)
     assert model.deployment == "claude-opus-5"
+
+
+def test_the_two_provider_sets_relate_as_the_boundary_requires():
+    """Constructible is a strict superset of selectable, and the judge's model is exactly the
+    difference. Asserted rather than read off two tuples that happen to agree: the boundary is
+    the gap between them, so a change that closed it by widening what a setting may select would
+    otherwise be invisible."""
+    assert set(SELECTABLE_PROVIDERS) < set(PROVIDERS)
+    assert set(PROVIDERS) - set(SELECTABLE_PROVIDERS) == {"claude"}
+
+
+def test_startup_validates_against_the_same_set_the_factory_enforces():
+    """One answer to what a setting may select. Startup refusing a provider the factory would
+    accept, or accepting one it would refuse, is a deployment that disagrees with itself."""
+    from opspilot.startup import _KNOWN_PROVIDERS
+
+    assert _KNOWN_PROVIDERS is SELECTABLE_PROVIDERS
+
+
+def test_a_provider_the_factory_cannot_build_is_refused_by_name(monkeypatch):
+    """The constructible set is checked against, not merely printed in the error it raises."""
+    with pytest.raises(ValueError, match="unknown LLM provider"):
+        build_chat_model("anthropic-native")
 
 
 def test_configuration_may_not_select_the_judge_provider(monkeypatch):

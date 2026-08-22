@@ -17,6 +17,7 @@ read by whoever can see the logs, which is not always whoever may see an endpoin
 from __future__ import annotations
 
 from opspilot import config
+from opspilot.llm.client import SELECTABLE_PROVIDERS
 
 # Required only where the application talks to the deployed world. Locally the corpus fake, cassette
 # replay, and the in-memory record stand in for each of these, and demanding them would refuse to
@@ -33,10 +34,12 @@ _SETTING_VALUES = {
     "AZURE_COSMOS_ENDPOINT": lambda: config.COSMOS_ENDPOINT,
 }
 
-# What `OPSPILOT_LLM_PROVIDER` may select. The model factory can also construct the offline
-# judge's Claude adapter, but only for a caller that asks for it by name; it is deliberately
-# absent here so no configuration value can route the investigation onto the judge's model.
-_KNOWN_PROVIDERS = ("azure", "replay")
+# What `OPSPILOT_LLM_PROVIDER` may select, imported from the factory that enforces it rather
+# than restated here. The factory can also construct the offline judge's Claude adapter, but only
+# for a caller that asks for it by name, so no configuration value can route the investigation
+# onto the judge's model. Two tuples agreeing today is not the same as one answer: this check and
+# the factory's refusal have to mean the same thing, and importing is what makes them.
+_KNOWN_PROVIDERS = SELECTABLE_PROVIDERS
 _KNOWN_EXPORTERS = ("none", "memory", "stdout")
 
 

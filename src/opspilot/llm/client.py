@@ -29,12 +29,16 @@ if TYPE_CHECKING:
 
 # What the factory can build. A superset of what configuration may select: the judge's Claude
 # adapter must come through this factory to be traced, and must never be reachable from a
-# deployed setting, so constructible and selectable are two different lists on purpose.
-_PROVIDERS = ("azure", "replay", "claude")
-# What `OPSPILOT_LLM_PROVIDER` may name. Deliberately narrower than `_PROVIDERS`: this is the
-# boundary that keeps the investigation graph off the judge's model. Startup validates the same
-# set. Do not merge these tuples however alike they look; the difference is the boundary.
-_SELECTABLE = ("azure", "replay")
+# deployed setting, so constructible and selectable are two different lists on purpose. Both are
+# checked against rather than described: a name absent from the first is refused before dispatch,
+# so neither tuple can fall out of step with what this function actually does.
+PROVIDERS = ("azure", "replay", "claude")
+# What `OPSPILOT_LLM_PROVIDER` may name. Deliberately narrower than `PROVIDERS`: this is the
+# boundary that keeps the investigation graph off the judge's model. Startup validates against
+# this same tuple by importing it, so there is one answer to what a setting may select rather
+# than two that agree today. Do not merge them however alike they look; the difference is the
+# boundary.
+SELECTABLE_PROVIDERS = ("azure", "replay")
 
 # Reasoning models (gpt-5*, o1/o3/o4*) reject an explicit `temperature`, so the request carries
 # `reasoning_effort` instead. Detected by deployment-name prefix, which is how the deployment is
@@ -142,12 +146,15 @@ def build_chat_model(
         # selected, and configuration may only select from the narrower list. This is where a
         # setting naming the judge's model is refused rather than routed.
         provider = config.LLM_PROVIDER.lower()
-        if provider not in _SELECTABLE:
+        if provider not in SELECTABLE_PROVIDERS:
             raise ValueError(
-                f"OPSPILOT_LLM_PROVIDER may select only {', '.join(_SELECTABLE)}; got {provider!r}"
+                f"OPSPILOT_LLM_PROVIDER may select only "
+                f"{', '.join(SELECTABLE_PROVIDERS)}; got {provider!r}"
             )
     else:
         provider = provider.lower()
+        if provider not in PROVIDERS:
+            raise ValueError(f"unknown LLM provider {provider!r}; known: {', '.join(PROVIDERS)}")
 
     if provider == "replay":
         if not cassette:
@@ -175,7 +182,7 @@ def build_chat_model(
             )
         )
 
-    raise ValueError(f"unknown LLM provider {provider!r}; known: {', '.join(_PROVIDERS)}")
+    raise ValueError(f"unknown LLM provider {provider!r}; known: {', '.join(PROVIDERS)}")
 
 
 class TracedChatModel:
