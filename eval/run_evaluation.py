@@ -378,7 +378,9 @@ def render(
         "## Configuration identity",
         "",
         *(f"- **{key}**: {value}" for key, value in identity.items()),
-        f"- **judge_deployment**: {_judge_deployment(judgements)}",
+        # Beside the configured identity above: the deployment that actually answered, read from
+        # the judgements themselves, so a report can show the two disagreeing.
+        f"- **judge_deployment_answered**: {_judge_deployment(judgements)}",
         "",
         "## Scenarios",
         "",
