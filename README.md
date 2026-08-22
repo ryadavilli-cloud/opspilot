@@ -186,6 +186,22 @@ The defenses are structural: each failure mode meets a mechanism, not a guidelin
 | A source cannot answer | A stated limitation, never a fabricated observation; an authoritative empty answer stays citable as an absence |
 | Synthesis returns something unusable | Structural admission refuses it; one correction, then a sanitized failed execution that persists nothing |
 | Anything attempts remediation | The capability surface is read-only on every path, including MCP, by construction |
+| A retrieved passage or incident text carries an instruction | Serialized as a data value it cannot break out of, beneath prompts stating that quoted material is content; whatever the model then proposes is still bounded, admitted, and grounded |
+
+### On untrusted content
+
+OpsPilot does not claim prompt-injection immunity. Runtime content it did not author, meaning
+incident text, source output, retrieved passages, and the engineer's own question, is serialized
+as data beneath authored instructions, and model output remains subject to deterministic
+authorization. That structurally limits what a persuaded model can do: it cannot widen a bound,
+reach an unregistered capability, repeat a spent call, fabricate an observation, or cite a
+reference this run did not obtain. It does not guarantee that untrusted prose cannot influence
+reasoning within the authority the model legitimately has.
+
+That residual is deliberate rather than overlooked, and it is why the grounding gate declines to
+read prose: whether a cited observation bears out the sentence attached to it is judgement. The
+offline judge makes that judgement afterwards, over completed investigations, and is advisory; it
+may notice bad reasoning during evaluation and contains nothing during a live run.
 
 ## Evidence that the system works
 

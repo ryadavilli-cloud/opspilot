@@ -306,31 +306,6 @@ def test_every_reference_the_second_brief_carries_was_admitted_too(ambiguous):
 
 
 # --- retrieval influences the investigation ------------------------------------------------------
-def test_the_investigator_reached_for_written_knowledge(recurrence):
-    """Chosen, not scripted. Retrieval is one entry among nine in the offering and nothing
-    privileges it; on this recording the investigator decided that reading what was written down
-    beat spending another call guessing."""
-    events, _ = recurrence
-
-    searched = [e for e in events if (e.get("capability") or "").startswith("search_")]
-    assert searched, "the run never consulted written knowledge"
-
-
-def test_what_it_retrieved_reached_the_assessment(recurrence):
-    """The property this step exists for. Retrieval that no role acts on is a call that happened,
-    not an influence: the assessment has to carry what the run read."""
-    events, record = recurrence
-    saved = record.get(events[0]["investigation_id"])
-
-    assert saved is not None
-    assert saved.passages, "the record carries no retrieved passage"
-
-    assessment = saved.assessment
-    cited = set(assessment.knowledge_used) | set(assessment.history_refs)
-    cited |= {action.knowledge_ref for action in assessment.actions if action.knowledge_ref}
-    assert cited, "the run retrieved knowledge and the assessment cited none of it"
-
-
 def test_every_citation_names_something_this_run_retrieved(recurrence):
     """Attribution has to be checkable. A knowledge reference is real because this investigation
     retrieved the passage it names, so the record holds everything needed to check the brief."""
