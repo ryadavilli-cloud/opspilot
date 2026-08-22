@@ -56,6 +56,24 @@ param azureOpenAiApiVersion string = '2025-04-01-preview'
 @description('Create the Cognitive Services OpenAI User role assignment for the app identity. Set false when the deploy principal lacks RBAC-write (Owner / User Access Administrator) and the grant is bootstrapped imperatively — mirrors manageAcrPullRoleAssignment.')
 param manageOpenAiRoleAssignment bool = true
 
+@description('Microsoft Foundry account serving the offline judge model. A separate account from the Azure OpenAI one, because Claude is a partner model served from a Foundry (AIServices) resource\'s /anthropic/ endpoint, which an OpenAI-kind account does not offer. Must be globally unique; lowercase alphanumeric + hyphens.')
+param foundryAccountName string = toLower('${namePrefix}foundry${uniqueString(resourceGroup().id)}')
+
+@description('Claude model the judge calls (Foundry catalog name, publisher Anthropic).')
+param claudeModelName string = 'claude-sonnet-5'
+
+@description('Claude model version, pinned. A judge is a measuring instrument, and the model changing underneath it silently breaks comparability across every earlier report, so the version is concrete here and NoAutoUpgrade below. Verify the value against the region catalog before deploy (az cognitiveservices model list -l <region>, publisher Anthropic).')
+param claudeModelVersion string = '1'
+
+@description('Deployment name the evaluation calls (AZURE_CLAUDE_DEPLOYMENT). Kept equal to the model name for clarity.')
+param claudeDeploymentName string = 'claude-sonnet-5'
+
+@description('GlobalStandard capacity for the judge deployment, in thousands of tokens/min. Small on purpose: the judge is one sequential call per scenario in an offline evaluation, never a burst like the investigation path.')
+param claudeModelCapacity int = 50
+
+@description('Object id of the principal that runs the offline evaluation. The judge is called from wherever evaluation runs, never from the application, so this grant belongs to a different principal than the app identity, which deliberately holds no access to the judge model. Empty (the default) creates no assignment, which is correct for an environment nobody evaluates from.')
+param evaluationPrincipalId string = ''
+
 @description('Cosmos DB account name: the durable store holding completed investigations and the RetailEase corpus the application reads. Must be globally unique; lowercase alphanumeric + hyphens.')
 param cosmosAccountName string = toLower('${namePrefix}-cosmos-${uniqueString(resourceGroup().id)}')
 
@@ -124,6 +142,10 @@ var openAiUserRoleId = '5e0bd9bd-7b93-4f28-af87-19fc36ad61bd'
 // Cosmos DB Built-in Data Contributor — the well-known built-in data-plane role id (same value in
 // every Cosmos account; not a subscription-scoped built-in role definition like the two above).
 var keyVaultSecretsUserRoleId = '4633458b-17de-408a-b874-0445c86b69e6'
+// Cognitive Services User — data-plane inference on the Foundry account for the principal that
+// runs evaluation. Broader than the OpenAI-specific role above because the judge model is not an
+// OpenAI model; still inference-only, with deployment management staying with this template.
+var cognitiveServicesUserRoleId = 'a97b65f3-24c7-4388-baec-2e87135dc908'
 var cosmosDataContributorRoleId = '00000000-0000-0000-0000-000000000002'
 var cosmosDataReaderRoleId = '00000000-0000-0000-0000-000000000001'
 
@@ -235,6 +257,75 @@ resource embeddingDeployment 'Microsoft.CognitiveServices/accounts/deployments@2
       version: '1'
     }
     versionUpgradeOption: 'NoAutoUpgrade'
+  }
+}
+
+// Microsoft Foundry (AIServices) — the offline judge's model host. Keyless like everything else:
+// disableLocalAuth means the ONLY way in is an Entra token, and no Anthropic API key exists
+// anywhere. The application identity holds no role here and the runtime never constructs the
+// judge's adapter, so nothing in a live investigation can reach this account.
+//
+// Recorded beside the configuration that needs it, as the template already records the app
+// registration, the app role, and the vault secret: Claude in Foundry is sold and operated by
+// Anthropic as a partner offering, and the one-time acceptance of its terms (the Marketplace
+// agreement the first deployment of the model prompts for) is not an ARM resource this template
+// can create. An environment rebuilt from this repository alone deploys the account and then
+// fails the model deployment below until that acceptance exists in the subscription.
+resource foundry 'Microsoft.CognitiveServices/accounts@2025-04-01-preview' = {
+  name: foundryAccountName
+  location: location
+  kind: 'AIServices'
+  sku: { name: 'S0' }
+  identity: { type: 'SystemAssigned' }
+  properties: {
+    customSubDomainName: foundryAccountName
+    allowProjectManagement: true
+    publicNetworkAccess: 'Enabled'
+    disableLocalAuth: true
+  }
+}
+
+// The Foundry project the supported realization files the deployment under. Organizational: the
+// data plane the judge's adapter calls is the account's /anthropic/ endpoint, and the project is
+// how the portal presents what is deployed there.
+resource foundryProject 'Microsoft.CognitiveServices/accounts/projects@2025-04-01-preview' = {
+  parent: foundry
+  name: '${namePrefix}-evaluation'
+  location: location
+  identity: { type: 'SystemAssigned' }
+  properties: {}
+}
+
+// The judge deployment, pinned. NoAutoUpgrade for the same reason the version parameter is
+// concrete: two reports judged by silently different models are not comparable, however alike
+// they look on the page.
+resource claudeDeployment 'Microsoft.CognitiveServices/accounts/deployments@2025-04-01-preview' = {
+  parent: foundry
+  name: claudeDeploymentName
+  sku: {
+    name: 'GlobalStandard'
+    capacity: claudeModelCapacity
+  }
+  properties: {
+    model: {
+      format: 'Anthropic'
+      name: claudeModelName
+      version: claudeModelVersion
+    }
+    versionUpgradeOption: 'NoAutoUpgrade'
+  }
+}
+
+// Data-plane inference on the Foundry account for whoever runs the evaluation. `principalType`
+// is deliberately unset for the same reason as the corpus-setup grant below: this may be a user
+// or a service principal depending on who evaluates, ARM infers it, and asserting the wrong one
+// fails the create.
+resource claudeUserEvaluation 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (!empty(evaluationPrincipalId)) {
+  name: guid(foundry.id, evaluationPrincipalId, cognitiveServicesUserRoleId)
+  scope: foundry
+  properties: {
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', cognitiveServicesUserRoleId)
+    principalId: evaluationPrincipalId
   }
 }
 
@@ -812,6 +903,11 @@ output appFqdn string = app.properties.configuration.ingress.fqdn
 output environmentName string = env.name
 output openAiEndpoint string = openai.properties.endpoint
 output openAiAccountName string = openai.name
+// The value AZURE_CLAUDE_ENDPOINT takes: the Foundry resource's Anthropic path, which is where
+// the judge's adapter sends its requests.
+output claudeEndpoint string = 'https://${foundryAccountName}.services.ai.azure.com/anthropic/'
+output claudeDeploymentName string = claudeDeployment.name
+output foundryAccountName string = foundry.name
 output cosmosAccountName string = cosmos.name
 output cosmosEndpoint string = cosmos.properties.documentEndpoint
 output keyVaultName string = vault.name
