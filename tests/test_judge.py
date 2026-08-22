@@ -13,6 +13,7 @@ code, and asserting a category from a live call would be asserting something abo
 from __future__ import annotations
 
 import json
+from datetime import UTC, datetime
 
 import pytest
 import run_evaluation
@@ -29,7 +30,14 @@ from judge import (
     judge,
     read_verdicts,
 )
-from run_evaluation import _judge_deployment, _judge_lines, judged, render
+from run_evaluation import (
+    _judge_deployment,
+    _judge_lines,
+    _scenario_run,
+    build_run,
+    judged,
+    render,
+)
 from test_completed_record import _record
 
 from opspilot.llm.base import ChatResult
@@ -174,10 +182,17 @@ def test_a_scenario_result_has_nowhere_to_put_a_category():
     )
 
 
+def _scenario(judgement: Judged, scenario_id: str = "inc-005"):
+    """One scenario of a kept run, which is what the report is rendered from."""
+    return _scenario_run(
+        ScenarioResult(scenario_id, Source(Provenance.REPLAYED, "a.json")), _record(), judgement
+    )
+
+
 def test_the_report_prints_the_categories_beside_the_result():
     verdicts = read_verdicts(_sound())
 
-    lines = "\n".join(_judge_lines(Judged("inc-005", verdicts, "a-deployment")))
+    lines = "\n".join(_judge_lines(_scenario(Judged("inc-005", verdicts, "a-deployment"))))
 
     assert "a-deployment" in lines
     assert all(name in lines for name in (*QUALITIES, DIAGNOSIS_MATCH))
@@ -185,10 +200,31 @@ def test_the_report_prints_the_categories_beside_the_result():
     assert not any(word in lines.lower() for word in ("score", "total", "overall", "passed"))
 
 
+def test_the_categories_print_in_the_rubrics_order_whatever_order_they_were_stored_in():
+    """The verdicts are a list on the kept run, so the page's order became a fact about how they
+    were recorded rather than about the rubric. It is the rubric's order either way."""
+    verdicts = read_verdicts(_sound())
+    scenario = _scenario(Judged("inc-005", dict(reversed(list(verdicts.items()))), "a-deployment"))
+
+    printed = [line for line in _judge_lines(scenario) if line.startswith("- **")]
+
+    assert printed == [
+        f"- **{name}**: {verdicts[name].category}. {verdicts[name].why}"
+        for name in (*QUALITIES, DIAGNOSIS_MATCH)
+    ]
+
+
 def test_a_judgement_that_did_not_run_says_why():
-    lines = "\n".join(_judge_lines(Judged("inc-001", note="no investigation to judge")))
+    lines = "\n".join(_judge_lines(_scenario(Judged("inc-001", note="no investigation to judge"))))
 
     assert "not run" in lines and "no investigation to judge" in lines
+
+
+def test_a_scenario_nobody_judged_reports_no_judgement_rather_than_an_empty_one():
+    """Distinct from a judgement that was attempted and did not run. Nothing was asked, so there
+    is nothing to say about it, and saying "not run" with no reason would be an account of a
+    judgement that never existed."""
+    assert _judge_lines(_scenario(Judged("inc-005"))) == []
 
 
 def test_the_judge_deployment_is_recorded_in_the_configuration_identity():
@@ -196,15 +232,27 @@ def test_the_judge_deployment_is_recorded_in_the_configuration_identity():
     deployment on the page they would look as though they were."""
     verdicts = read_verdicts(_sound())
 
-    assert _judge_deployment([Judged("inc-005", verdicts, "a-deployment")]) == "a-deployment"
-    assert "did not run" in _judge_deployment([Judged("inc-005", note="no deployment")])
+    answered = _scenario(Judged("inc-005", verdicts, "a-deployment"))
+    silent = _scenario(Judged("inc-005", note="no deployment"))
+
+    assert _judge_deployment([answered]) == "a-deployment"
+    assert "did not run" in _judge_deployment([silent])
 
 
 def test_the_report_carries_the_judge_deployment():
     verdicts = read_verdicts(_sound())
-    results = [ScenarioResult("inc-005", Source(Provenance.REPLAYED, "a.json"))]
+    result = ScenarioResult("inc-005", Source(Provenance.REPLAYED, "a.json"))
 
-    report = render(results, {}, "2026-08-20T00:00:00Z", [Judged("inc-005", verdicts, "gpt-x")])
+    report = render(
+        build_run(
+            run_id="2026-08-20-1",
+            taken_at=datetime(2026, 8, 20, tzinfo=UTC),
+            label="",
+            configuration={},
+            scenarios=[(result, _record(), Judged("inc-005", verdicts, "gpt-x"), False)],
+            comparisons=[],
+        )
+    )
 
     assert "judge_deployment" in report and "gpt-x" in report
 

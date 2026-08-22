@@ -42,8 +42,17 @@ class ScenarioRun(BaseModel):
     """What one scenario did in this run.
 
     `provenance` says how its investigation was obtained: replayed, obtained live, or not run, and
-    `source` names the recording, the deployment, or the reason it did not run. Where the judge
-    gave no verdicts, `judge_note` says why, so an absent judgement is stated rather than blank.
+    `source` names the recording, the deployment, or the reason it did not run. `ran` says whether
+    there was an investigation to evaluate at all, which decides whether the checks below mean
+    "nothing failed" or "nothing was checked"; the two read alike and are not the same claim.
+
+    `notes` is what the evaluation observed in passing rather than checked: the outcome reported,
+    how much evidence was admitted, and where a scenario settled no cause. They qualify the result
+    without being part of it, so they are neither checks nor failures.
+
+    Where the judge gave no verdicts, `judge_note` says why, so an absent judgement is stated
+    rather than blank. Both empty means no judgement was attached to this scenario at all, which is
+    a different thing from one that was attempted and did not run.
     """
 
     model_config = ConfigDict(frozen=True)
@@ -51,8 +60,10 @@ class ScenarioRun(BaseModel):
     scenario_id: str
     provenance: str
     source: str
+    ran: bool = False
     outcome: str = ""
     checks: list[DeterministicCheck] = Field(default_factory=list)
+    notes: list[str] = Field(default_factory=list)
     verdicts: list[JudgeVerdict] = Field(default_factory=list)
     judge_deployment: str = ""
     judge_note: str = ""
