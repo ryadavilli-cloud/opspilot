@@ -111,6 +111,12 @@ jobs:
       # (manageAcrPullRoleAssignment=false), so binding in the template is safe and durable.
       - name: Deploy infra (image, ingress, probes, ACR pull — declarative)
         id: deploy
+        # `evaluationPrincipalId` is the identity that runs the offline evaluation, and it gates
+        # two grants the application deliberately does not hold: inference on the judge model, and
+        # write access to the kept-evaluation-runs container. Both are declared conditionally, so
+        # leaving the variable unset deploys an environment where evaluation cannot run rather
+        # than one that fails visibly. Passed here so a rebuilt environment gets them from the
+        # template rather than from someone remembering to grant them by hand.
         run: |
           FQDN=$(az deployment group create \
             --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
@@ -124,6 +130,7 @@ jobs:
               manageKeyVaultRoleAssignment=false \
               configureAuth=true \
               authClientId="${{ vars.AUTH_CLIENT_ID }}" \
+              evaluationPrincipalId="${{ vars.EVALUATION_PRINCIPAL_ID }}" \
             --query properties.outputs.appFqdn.value -o tsv)
           echo "app_fqdn=$FQDN" >> "$GITHUB_OUTPUT"
 
