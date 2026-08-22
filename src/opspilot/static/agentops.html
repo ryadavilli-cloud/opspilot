@@ -405,8 +405,15 @@
       return el("li", key + ": " + configuration[key]);
     }));
     region.appendChild(list(run.scenarios, function (s) {
+      // The prompts shown are the ones that produced this scenario's investigation, which for a
+      // replay are the recording's rather than the run's. A run may mix the two, so they belong
+      // beside the scenario and not only in the run-level configuration.
+      var prompts = Object.keys(s.prompt_versions || {}).sort().map(function (k) {
+        return k + "=" + s.prompt_versions[k];
+      }).join(", ");
       return el("li", s.scenario_id + ": " + s.provenance + " (" + s.source + ")" +
-        (s.outcome ? "; outcome " + s.outcome : ""));
+        (s.outcome ? "; outcome " + s.outcome : "") +
+        (prompts ? "; prompts " + prompts : ""));
     }));
 
     // Verify: the deterministic checks, failures named.

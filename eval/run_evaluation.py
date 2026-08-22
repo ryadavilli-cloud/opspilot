@@ -395,6 +395,7 @@ def _scenario_run(
         source=result.source.detail,
         ran=result.ran,
         outcome=record.outcome.value if record is not None else "",
+        prompt_versions=dict(record.prompt_versions) if record is not None else {},
         checks=_checks(result, benign=benign),
         notes=list(result.notes),
         verdicts=verdicts,
@@ -524,6 +525,9 @@ def render(run: EvaluationRun) -> str:
         lines.append("")
         lines.append(f"Source: {scenario.source}")
         lines.append("")
+        if scenario.prompt_versions:
+            versions = ", ".join(f"{k}={v}" for k, v in sorted(scenario.prompt_versions.items()))
+            lines.extend([f"Prompts: {versions}", ""])
         if not scenario.ran:
             lines.extend(["Not run.", ""])
             lines.extend(_judge_lines(scenario))
