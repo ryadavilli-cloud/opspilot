@@ -19,6 +19,8 @@ analyst had.
 
 from __future__ import annotations
 
+from datetime import datetime
+
 from pydantic import BaseModel, ConfigDict, Field
 
 from opspilot.assessment.contracts import Assessment, Brief, Outcome
@@ -67,6 +69,15 @@ class CompletedInvestigation(BaseModel):
     model_deployment: str = ""
     prompt_versions: dict[str, str] = Field(default_factory=dict)
 
+    # What the run cost, known at persist time and accounted for nowhere else. Facts about the run
+    # in the same category as the deployment and prompt versions: not evidence, cited by nothing,
+    # and read by nothing in the investigation. Token usage keeps input and output apart, under the
+    # names the adapter reports them by.
+    model_calls_made: int = 0
+    capability_calls_made: int = 0
+    token_usage: dict[str, int] = Field(default_factory=dict)
+    duration_s: float = 0.0
+
     @property
     def evidence_refs(self) -> set[str]:
         """Every reference this record can answer for: admitted observations and retrieved
@@ -74,3 +85,25 @@ class CompletedInvestigation(BaseModel):
         return {observation.evidence_ref for observation in self.observations} | {
             passage.reference for passage in self.passages
         }
+
+
+class InvestigationSummary(BaseModel):
+    """One completed investigation as a listing shows it: identity, outcome, what produced it, and
+    what it cost.
+
+    `taken_at` is when the record was written, which is when the investigation completed, because
+    the record is written once and only then. The store supplies it from what it knows about the
+    write; the record itself carries no clock.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    investigation_id: str
+    incident_id: str
+    taken_at: datetime
+    outcome: Outcome
+    model_deployment: str = ""
+    model_calls_made: int = 0
+    capability_calls_made: int = 0
+    token_usage: dict[str, int] = Field(default_factory=dict)
+    duration_s: float = 0.0

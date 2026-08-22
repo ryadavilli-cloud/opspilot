@@ -88,6 +88,9 @@ AZURE_OPENAI_DEPLOYMENT = _env("AZURE_OPENAI_DEPLOYMENT")
 COSMOS_ENDPOINT = _env("AZURE_COSMOS_ENDPOINT")
 COSMOS_DATABASE = _env("AZURE_COSMOS_DATABASE", "opspilot")
 COSMOS_INVESTIGATION_CONTAINER = _env("AZURE_COSMOS_INVESTIGATION_CONTAINER", "investigations")
+# Kept evaluation runs. The application holds read here and nothing more: the evaluation runner
+# writes under its own principal, and the role assignment is what keeps a request from writing one.
+COSMOS_EVALUATION_CONTAINER = _env("AZURE_COSMOS_EVALUATION_CONTAINER", "evaluation-runs")
 
 
 # --------------------------------------------------------------------------------------

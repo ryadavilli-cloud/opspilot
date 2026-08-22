@@ -68,6 +68,9 @@ param cosmosDatabaseName string = 'opspilot'
 @description('Container for completed investigation records. Partitioned by /investigation_id.')
 param cosmosInvestigationContainerName string = 'investigations'
 
+@description('Container for kept evaluation runs. Partitioned by /run_id. The application reads it and never writes it; the principal running evaluation writes it. Must match AZURE_COSMOS_EVALUATION_CONTAINER (config.COSMOS_EVALUATION_CONTAINER).')
+param cosmosEvaluationContainerName string = 'evaluation-runs'
+
 @description('Cosmos SQL database holding the RetailEase corpus the application only ever reads. Separate from the OpsPilot database so the read-only grant is scoped to a database rather than enumerated per container.')
 param retailEaseDatabaseName string = 'retailease'
 
@@ -88,6 +91,9 @@ param embeddingDimensions int = 1536
 
 @description('Object id of the principal that runs corpus preparation. Corpus preparation writes the RetailEase containers; the application never does, so this grant belongs to a different principal than the app identity. Empty (the default) creates no assignment, which is correct for an environment nobody seeds from.')
 param corpusSetupPrincipalId string = ''
+
+@description('Object id of the principal that runs evaluation and keeps runs. It writes the evaluation container; the application only reads it, so this grant belongs to a different principal than the app identity. Empty (the default) creates no assignment, which is correct for an environment nobody keeps runs from.')
+param evaluationPrincipalId string = ''
 
 @description('Entra tenant the app identity belongs to, injected as AZURE_TENANT_ID. Defaults to the deployment tenant; override only for a cross-tenant setup.')
 param entraTenantId string = tenant().tenantId
@@ -286,6 +292,8 @@ resource cosmosDb 'Microsoft.DocumentDB/databaseAccounts/sqlDatabases@2024-08-15
 // workloads modeled as one store is what these are separate to avoid:
 //
 //  - investigations:       /investigation_id   one logical partition per attempt.
+//  - evaluation-runs:      /run_id             one kept evaluation run per document, written by
+//                                              the evaluation principal and only read by the app.
 //
 // The `checkpoints` and `investigation-index` containers were removed when the account was
 // recreated for vector search (2026-08-09). Both belonged to the rejected durable-pause and
@@ -297,6 +305,7 @@ resource cosmosDb 'Microsoft.DocumentDB/databaseAccounts/sqlDatabases@2024-08-15
 // available as a property update.
 var cosmosContainers = [
   { name: cosmosInvestigationContainerName, partitionKey: '/investigation_id' }
+  { name: cosmosEvaluationContainerName, partitionKey: '/run_id' }
 ]
 
 resource cosmosContainerResources 'Microsoft.DocumentDB/databaseAccounts/sqlDatabases/containers@2024-08-15' = [
@@ -509,6 +518,12 @@ resource app 'Microsoft.App/containerApps@2024-03-01' = {
             {
               name: 'AZURE_COSMOS_INVESTIGATION_CONTAINER'
               value: cosmosInvestigationContainerName
+            }
+            // Kept evaluation runs, which the application lists and reads for its read-only view
+            // and never writes: the grant below is read-only on this container.
+            {
+              name: 'AZURE_COSMOS_EVALUATION_CONTAINER'
+              value: cosmosEvaluationContainerName
             }
             // The RetailEase corpus the application reads and never writes. Named here so the
             // runtime resolves the same containers corpus preparation wrote, rather than each side
@@ -757,8 +772,9 @@ resource cosmosDataReaderRoleDefinition 'Microsoft.DocumentDB/databaseAccounts/s
   name: cosmosDataReaderRoleId
 }
 
-// The application holds ONE identity with TWO differently scoped data-plane grants, not an
-// account-wide one. `runtime-and-deployment.md` requires read and write on the investigations
+// The application holds ONE identity with THREE differently scoped data-plane grants, not an
+// account-wide one: write on the investigations container, read on the evaluation container, and
+// read on the RetailEase database. `runtime-and-deployment.md` requires read and write on the investigations
 // container and read-only on every RetailEase container, with the write boundary "enforced by the
 // role assignment, not by application convention" (NFR-1). The hosted suite checks exactly that:
 // the application writes the Record and is refused a write to any RetailEase container. An
@@ -771,6 +787,35 @@ resource cosmosDataContributor 'Microsoft.DocumentDB/databaseAccounts/sqlRoleAss
     roleDefinitionId: cosmosDataContributorRoleDefinition.id
     principalId: app.identity.principalId
     scope: '${cosmos.id}/dbs/${cosmosDatabaseName}/colls/${cosmosInvestigationContainerName}'
+  }
+  dependsOn: [cosmosContainerResources]
+}
+
+// The application reads kept evaluation runs and never writes one. Read-only on that container,
+// so no request can write a run: evaluation stays offline after the view exists because the grant
+// says so, not because a route declines to.
+resource cosmosDataReaderEvaluation 'Microsoft.DocumentDB/databaseAccounts/sqlRoleAssignments@2024-08-15' = if (manageCosmosRoleAssignment) {
+  parent: cosmos
+  name: guid(cosmos.id, app.id, cosmosDataReaderRoleId, cosmosEvaluationContainerName)
+  properties: {
+    roleDefinitionId: cosmosDataReaderRoleDefinition.id
+    principalId: app.identity.principalId
+    scope: '${cosmos.id}/dbs/${cosmosDatabaseName}/colls/${cosmosEvaluationContainerName}'
+  }
+  dependsOn: [cosmosContainerResources]
+}
+
+// The write half of that boundary, held by the principal that runs evaluation and scoped to the
+// one container it keeps runs in. The same arrangement as corpus preparation below: a different
+// principal writes, the application reads. `principalType` is left for ARM to infer, as it is
+// there, because whoever keeps runs may be a user or a service principal.
+resource cosmosDataContributorEvaluation 'Microsoft.DocumentDB/databaseAccounts/sqlRoleAssignments@2024-08-15' = if (manageCosmosRoleAssignment && !empty(evaluationPrincipalId)) {
+  parent: cosmos
+  name: guid(cosmos.id, evaluationPrincipalId, cosmosDataContributorRoleId, cosmosEvaluationContainerName)
+  properties: {
+    roleDefinitionId: cosmosDataContributorRoleDefinition.id
+    principalId: evaluationPrincipalId
+    scope: '${cosmos.id}/dbs/${cosmosDatabaseName}/colls/${cosmosEvaluationContainerName}'
   }
   dependsOn: [cosmosContainerResources]
 }

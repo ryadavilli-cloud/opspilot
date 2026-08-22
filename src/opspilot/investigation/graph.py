@@ -29,6 +29,7 @@ cause, and collapsing them would turn a broken run into a clean bill of health.
 # annotations turn it into a string it does not recognize, so it passes None instead and every
 # dependency silently goes missing.
 
+import time
 from dataclasses import replace
 from typing import Any
 
@@ -122,14 +123,22 @@ def _record_call(state: InvestigationState, result: Any) -> dict[str, Any]:
     Prompt versions are kept by task rather than as a list, because which prompt asked is only
     meaningful alongside what it was asking for: a later run comparing itself against this one
     needs to know that the selection prompt moved, not merely that some prompt did.
+
+    Token usage is accumulated here too, because this is the one place every model call passes
+    through: a total kept here cannot be forgotten by a caller, and one kept beside it can. Input
+    and output stay separate, under the names the result reports them by.
     """
     versions = dict(state.prompt_versions)
     if result.prompt_version:
         versions[result.task] = result.prompt_version
+    usage = dict(state.token_usage)
+    for name, count in (result.usage or {}).items():
+        usage[name] = usage.get(name, 0) + int(count)
     return {
         "model_calls_made": state.model_calls_made + 1,
         "model_deployment": result.deployment or state.model_deployment,
         "prompt_versions": versions,
+        "token_usage": usage,
     }
 
 
@@ -156,6 +165,9 @@ def set_objective(
     if state.bounds.expired:
         return _failed(state, FailureCategory.DEADLINE_EXPIRED, "the deadline expired before work")
 
+    # The run starts here, and the record's duration is measured from this point. Taken before
+    # the first model call so that call is inside what the run is said to have cost.
+    started_at = time.monotonic()
     # The run's remaining time travels with the model call for the same reason it travels with
     # a capability call: nothing an investigation started may still be running after it stopped.
     objective, result = interpret_objective(
@@ -164,6 +176,7 @@ def set_objective(
     update = _record_call(state, result)
     return {
         **update,
+        "started_at": started_at,
         "objective": objective,
         "events": _activity(
             state,
@@ -502,6 +515,10 @@ def persist(state: InvestigationState, config: RunnableConfig | None = None) -> 
         operations=list(state.evidence.operations),
         passages=list(state.knowledge),
         prompt_versions=dict(state.prompt_versions),
+        model_calls_made=state.model_calls_made,
+        capability_calls_made=state.capability_calls_made,
+        token_usage=dict(state.token_usage),
+        duration_s=round(time.monotonic() - state.started_at, 3),
     )
     try:
         _deps(config)[RECORD].save(record)

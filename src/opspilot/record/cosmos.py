@@ -7,16 +7,28 @@ from the store itself rather than from a read-then-write check that two writers 
 
 Cosmos requires an `id` on every document and adds its own bookkeeping properties to every read.
 Neither belongs to the record, so `id` is attached on the way out and the system properties are
-ignored on the way back: the model carries the design's fields and no storage artifact.
+ignored on the way back: the model carries the design's fields and no storage artifact. The one
+system property that is read is `_ts`, the write time, and only to date a listing: a record is
+written once, on completion, so when it was written is when the investigation completed.
 """
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from typing import Any
 
 from opspilot import config
-from opspilot.record.completed import CompletedInvestigation
+from opspilot.record.completed import CompletedInvestigation, InvestigationSummary
 from opspilot.record.port import AlreadySaved
+
+# The listing reads the summary fields and nothing else, across every partition, newest first. A
+# record written before an accounting field existed simply lacks it in the projection, and the
+# summary's default stands in.
+_SUMMARY_QUERY = (
+    "SELECT c.investigation_id, c.incident_id, c.outcome, c.model_deployment, "
+    "c.model_calls_made, c.capability_calls_made, c.token_usage, c.duration_s, c._ts "
+    "FROM c ORDER BY c._ts DESC"
+)
 
 
 class CosmosCompletedInvestigations:
@@ -54,6 +66,15 @@ class CosmosCompletedInvestigations:
         # Unknown keys are ignored, which is how the container's own `_rid`, `_ts`, `_etag`, and
         # `_self` stay out of the record without this having to name them.
         return CompletedInvestigation.model_validate(document)
+
+    def list_investigations(self) -> list[InvestigationSummary]:
+        rows = self._container.query_items(query=_SUMMARY_QUERY, enable_cross_partition_query=True)
+        return [
+            InvestigationSummary.model_validate(
+                {**row, "taken_at": datetime.fromtimestamp(row["_ts"], tz=UTC)}
+            )
+            for row in rows
+        ]
 
 
 def _status(exc: Exception) -> int | None:
