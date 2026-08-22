@@ -39,8 +39,9 @@ neither. A dependency and its state model sit in the execution path.
 
 ### D-002 Model routing
 
-Retired. No requirement mandates a routed task or a second chat deployment. One chat deployment
-serves every model task, including the judge.
+Retired. No requirement mandates routing between models inside the runtime. One chat deployment
+serves every runtime model task; the offline judge's own model is D-005's business, and no
+routing exists between the two.
 
 ### D-003 Retrieval realization
 
@@ -78,13 +79,23 @@ introduced.
 
 ### D-005 Offline judge
 
-**Decision.** One offline judge using the runtime's chat deployment and one authored rubric,
-returning a category for each of: usefulness and coherence, appropriate uncertainty, explanation
-in context, recommendation fit. Advisory, run after deterministic checks, never combined into one
-number, never a runtime authority.
+**Decision.** One offline judge and one authored rubric, returning a category for each of:
+usefulness and coherence, appropriate uncertainty, explanation in context, recommendation fit.
+Advisory, run after deterministic checks, never combined into one number, never a runtime
+authority. The judge runs on its own model, Claude Sonnet 5 hosted in Microsoft Foundry, pinned
+to a concrete model version, with adaptive thinking at a fixed medium effort; it does not use the
+runtime's chat deployment, and nothing in a live investigation can reach it.
 
-**Cost.** Judge output varies with the model; that is why it is advisory and reported beside the
-deterministic results.
+**Why.** A judge scoring the briefs the runtime model produced should not be the runtime model:
+one model on both sides correlates the judge's blind spots with the system's and lets it prefer
+its own phrasing. A different model family breaks that correlation. The version is pinned because
+a judge is a measuring instrument, and the model changing underneath it breaks the history
+silently.
+
+**Cost.** A second model dependency: its own endpoint, deployment, and access to configure, and a
+judge that cannot run where only the runtime deployment exists. Judge token figures are not
+comparable with runtime ones, because the tokenizers differ. Judge output still varies with the
+model; that is why it is advisory and reported beside the deterministic results.
 
 ### D-006 Evaluation scenario selections
 
