@@ -34,13 +34,7 @@ from evaluation import (
     require_distinct,
 )
 from judge import Judged, Verdict
-from run_evaluation import (
-    _fixture_incident,
-    build_run,
-    judge_identity,
-    next_run_id,
-    render,
-)
+from run_evaluation import _fixture_incident, build_run, next_run_id, render
 from test_completed_record import _record
 
 from opspilot.assessment.contracts import Action
@@ -430,11 +424,3 @@ def test_run_identifiers_are_date_ordered_and_count_within_the_day():
     assert next_run_id(["2026-08-21-1", "2026-08-21-2", "2026-08-20-9"], "2026-08-21") == (
         "2026-08-21-3"
     )
-
-
-def test_the_judge_identity_names_the_deployment_that_answered_and_the_rubric_version():
-    identity = judge_identity([_judged()])
-
-    assert identity["judge_deployment"] == "gpt-5-mini"
-    assert identity["judge_prompt_version"].startswith("judge.v")
-    assert "did not run" in judge_identity([])["judge_deployment"]

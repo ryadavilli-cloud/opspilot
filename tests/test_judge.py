@@ -217,22 +217,28 @@ def test_a_scenario_that_did_not_run_is_not_judged():
     assert "no investigation to judge" in result.note
 
 
-def test_without_a_deployment_the_judge_is_reported_not_run(monkeypatch):
-    """The lane still replays and still checks; only the judgement is missing, and it says so."""
-    monkeypatch.setattr(run_evaluation.config, "AZURE_OPENAI_DEPLOYMENT", "")
+def test_without_the_judge_deployment_the_judge_is_reported_not_run(monkeypatch):
+    """The lane still replays and still checks; only the judgement is missing, and it says so.
+    The judge's own settings decide this, not the runtime's: a revision serving investigations
+    does not need the judge, and the judge does not run on the runtime's deployment."""
+    monkeypatch.setattr(run_evaluation.config, "AZURE_CLAUDE_ENDPOINT", "")
+    monkeypatch.setattr(run_evaluation.config, "AZURE_CLAUDE_DEPLOYMENT", "")
 
     result = judged(_record(), SCENARIO, REPORTED)
 
     assert not result.ran
-    assert "no model deployment is configured" in result.note
+    assert "no judge model deployment is configured" in result.note
 
 
 def test_a_deployment_that_cannot_be_reached_is_not_reported_as_a_bad_verdict(monkeypatch):
     """Distinct from an unusable answer. The judge said nothing, so saying it answered badly would
     be a different and untrue account of the run."""
-    monkeypatch.setattr(run_evaluation.config, "AZURE_OPENAI_DEPLOYMENT", "gpt-x")
+    monkeypatch.setattr(run_evaluation.config, "AZURE_CLAUDE_ENDPOINT", "https://x.invalid/")
+    monkeypatch.setattr(run_evaluation.config, "AZURE_CLAUDE_DEPLOYMENT", "claude-x")
     monkeypatch.setattr(
-        run_evaluation, "build_chat_model", lambda *a, **k: (_ for _ in ()).throw(ImportError("no"))
+        run_evaluation,
+        "build_judge_model",
+        lambda *a, **k: (_ for _ in ()).throw(ImportError("no")),
     )
 
     result = judged(_record(), SCENARIO, REPORTED)
@@ -242,8 +248,9 @@ def test_a_deployment_that_cannot_be_reached_is_not_reported_as_a_bad_verdict(mo
 
 
 def test_an_unusable_answer_is_reported_as_one(monkeypatch):
-    monkeypatch.setattr(run_evaluation.config, "AZURE_OPENAI_DEPLOYMENT", "gpt-x")
-    monkeypatch.setattr(run_evaluation, "build_chat_model", lambda *a, **k: _Model("nonsense"))
+    monkeypatch.setattr(run_evaluation.config, "AZURE_CLAUDE_ENDPOINT", "https://x.invalid/")
+    monkeypatch.setattr(run_evaluation.config, "AZURE_CLAUDE_DEPLOYMENT", "claude-x")
+    monkeypatch.setattr(run_evaluation, "build_judge_model", lambda *a, **k: _Model("nonsense"))
 
     result = judged(_record(), SCENARIO, REPORTED)
 

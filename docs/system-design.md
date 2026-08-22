@@ -100,10 +100,11 @@ Supervisor writes to it at all. Nothing in the live system writes to the Evaluat
 
 ## 3. Seams
 
-**Model access.** One adapter to the chat deployment, used by the three agents and the judge. It
+**Model access.** One adapter to the chat deployment, used by the three agents. It
 takes a task label and messages, returns structured proposed output, and records the deployment,
 latency, and token usage. It is replaceable in tests by a fake and by cassette replay. Prompts live
-behind it.
+behind it. The offline judge has its own adapter to its own model deployment, under the same
+contract and the same tracing; no runtime path constructs it.
 
 **Persistence.** Two passive repositories, each with `save`, `get`, and a listing of summaries: one
 for completed investigations, one for kept evaluation runs. An in-memory implementation for tests,
@@ -185,7 +186,8 @@ new. It gathers no evidence, creates no investigation, and is not a run.
 
 | Responsibility | Realization | Settled in |
 | --- | --- | --- |
-| Model reasoning and the judge | Azure OpenAI, one chat deployment, one adapter | `runtime-and-deployment.md` |
+| Model reasoning | Azure OpenAI, one chat deployment, one adapter | `runtime-and-deployment.md` |
+| The offline judge | Claude Sonnet 5 in Microsoft Foundry, its own adapter | `decisions.md` |
 | Embeddings | Azure OpenAI, one embedding deployment | `runtime-and-deployment.md` |
 | Orchestration | One small compiled in-process graph over typed state, no checkpointer | `decisions.md` |
 | Knowledge retrieval | Cosmos vector search plus in-process lexical, RRF, identifier promotion | `decisions.md` |

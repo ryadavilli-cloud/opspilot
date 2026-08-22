@@ -34,7 +34,7 @@ def _run(
     *,
     taken_at: datetime | None = None,
     label: str = "before the prompt change",
-    judge: str = "gpt-5-mini",
+    judge: str = "claude-sonnet-5",
 ) -> EvaluationRun:
     """One kept run with every part populated: a replayed scenario with a failure and a judgement,
     a scenario that did not run, a comparison that differed, and one that could not be set up."""
@@ -48,7 +48,10 @@ def _run(
             "capability_call_cap": "8",
             "model_call_cap": "14",
             "investigation_deadline_s": "240.0",
+            "judge_provider": "anthropic-foundry",
             "judge_deployment": judge,
+            "judge_effort": "medium",
+            "judge_thinking": "adaptive",
             "judge_prompt_version": "judge.v1",
         },
         scenarios=[
@@ -128,7 +131,7 @@ def test_the_read_carries_every_part_the_run_was_given(store):
 
     assert read_back is not None
     assert read_back.label == "before the prompt change"
-    assert read_back.configuration["judge_deployment"] == "gpt-5-mini"
+    assert read_back.configuration["judge_deployment"] == "claude-sonnet-5"
     assert [s.scenario_id for s in read_back.scenarios] == ["inc-005", "inc-001"]
     replayed, not_run = read_back.scenarios
     assert replayed.outcome == "partial"

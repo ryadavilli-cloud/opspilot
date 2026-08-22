@@ -1,6 +1,7 @@
-"""Evaluation concerns that cross a process boundary: the kept-run document and its store.
+"""What the offline evaluation owns inside the package the image ships.
 
-The evaluation runner lives outside the application and writes here; the application only reads.
-The shapes live in the package the image ships because both sides have to agree on them, exactly
-as both already agree on the configuration module.
+Two things, for two different reasons. The judge's model construction, which nothing in a live
+investigation imports. And the kept-run document and its store, which cross a process boundary:
+the evaluation runner writes a kept run and the application only reads it, so both sides have to
+agree on the shape, exactly as both already agree on the configuration module.
 """

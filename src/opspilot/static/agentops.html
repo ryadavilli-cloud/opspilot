@@ -126,7 +126,7 @@
     <h2>Evaluation runs</h2>
     <table id="evaluations">
       <thead>
-        <tr><th>Date</th><th>Label</th><th>Runtime deployment</th><th>Judge deployment</th></tr>
+        <tr><th>Date</th><th>Label</th><th>Runtime deployment</th><th>Judge deployment, effort</th></tr>
       </thead>
       <tbody></tbody>
     </table>
@@ -363,7 +363,7 @@
       row.appendChild(cell(fmtDate(s.taken_at)));
       row.appendChild(cell(s.label || s.run_id));
       row.appendChild(cell(c.model_deployment || ""));
-      row.appendChild(cell(c.judge_deployment || ""));
+      row.appendChild(cell((c.judge_deployment || "") + (c.judge_effort ? ", " + c.judge_effort : "")));
       row.addEventListener("click", function () {
         select(evaluationsBody, row);
         loadEvaluation(s.run_id);

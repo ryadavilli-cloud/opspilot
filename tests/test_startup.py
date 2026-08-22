@@ -61,6 +61,18 @@ def test_a_setting_naming_something_that_does_not_exist_is_refused_anywhere(monk
     assert "OPSPILOT_LLM_PROVIDER" in problems[0]
 
 
+def test_a_constructible_but_unselectable_provider_is_refused(monkeypatch):
+    """The model factory can build the judge's Claude adapter, but configuration may not route
+    the runtime onto it: presence of an adapter is not permission to select it."""
+    monkeypatch.setattr(config, "ENVIRONMENT", "local")
+    monkeypatch.setattr(config, "LLM_PROVIDER", "claude")
+
+    problems = configuration_problems()
+
+    assert len(problems) == 1
+    assert "OPSPILOT_LLM_PROVIDER" in problems[0]
+
+
 def test_an_exporter_that_names_nothing_is_refused_rather_than_silently_discarding(monkeypatch):
     """The exporter falls back to the one that throws every span away. Without this a revision
     configured for telemetry emits none and looks configured."""

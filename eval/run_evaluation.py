@@ -54,6 +54,7 @@ from judge import (  # noqa: E402
 
 from opspilot import config  # noqa: E402
 from opspilot.api import initial_state  # noqa: E402
+from opspilot.evaluation.judge_model import build_judge_model  # noqa: E402
 from opspilot.evaluation.record import (  # noqa: E402
     ComparisonDifference,
     ComparisonRun,
@@ -65,6 +66,8 @@ from opspilot.evaluation.record import (  # noqa: E402
 from opspilot.investigation.graph import MODEL, RECORD, SERVICE, build_graph  # noqa: E402
 from opspilot.investigation.harness import HARNESS, Harness  # noqa: E402
 from opspilot.llm.cassette import ReplayChatModel  # noqa: E402
+from opspilot.llm.claude import EFFORT as JUDGE_EFFORT  # noqa: E402
+from opspilot.llm.claude import THINKING as JUDGE_THINKING  # noqa: E402
 from opspilot.llm.client import build_chat_model  # noqa: E402
 from opspilot.llm.prompts import get_prompt  # noqa: E402
 from opspilot.record.completed import CompletedInvestigation  # noqa: E402
@@ -176,10 +179,10 @@ def judged(
     scenario_id = scenario.get("id", "")
     if record is None:
         return Judged(scenario_id, note="no investigation to judge")
-    if not config.AZURE_OPENAI_DEPLOYMENT:
-        return Judged(scenario_id, note="no model deployment is configured to run the judge")
+    if not (config.AZURE_CLAUDE_ENDPOINT and config.AZURE_CLAUDE_DEPLOYMENT):
+        return Judged(scenario_id, note="no judge model deployment is configured")
     try:
-        model = build_chat_model("azure")
+        model = build_judge_model()
     except Exception as error:  # noqa: BLE001 - reported, never swallowed
         return Judged(scenario_id, note=f"the judge could not be reached: {error}")
     try:
@@ -300,13 +303,24 @@ def run_comparisons(chosen: list[dict[str, Any]]) -> list[ComparisonResult]:
 
 
 def configuration_identity() -> dict[str, str]:
-    """What this run ran under. Two reports are only comparable where these agree."""
+    """What this run ran under. Two reports are only comparable where these agree.
+
+    The judge fields sit beside the runtime fields rather than merged into them, because the two
+    models are accounted separately: the judge's tokenizer maps the same text to roughly 1.0 to
+    1.35x more tokens than the runtime's, so judge token figures are not comparable with runtime
+    ones and a merged accounting would invite exactly that comparison.
+    """
     return {
         "model_deployment": config.AZURE_OPENAI_DEPLOYMENT or "(unset)",
         "reasoning_effort": config.REASONING_EFFORT,
         "capability_call_cap": str(config.CAPABILITY_CALL_CAP),
         "model_call_cap": str(config.MODEL_CALL_CAP),
         "investigation_deadline_s": str(config.INVESTIGATION_DEADLINE_SECONDS),
+        "judge_provider": "anthropic-foundry",
+        "judge_deployment": config.AZURE_CLAUDE_DEPLOYMENT or "(unset)",
+        "judge_effort": JUDGE_EFFORT,
+        "judge_thinking": JUDGE_THINKING,
+        "judge_prompt_version": get_prompt("judge", prompts_dir=PROMPTS).version,
     }
 
 
@@ -318,18 +332,6 @@ def _judge_deployment(judgements: list[Judged] | None) -> str:
     """
     answered = {j.deployment for j in judgements or [] if j.ran and j.deployment}
     return ", ".join(sorted(answered)) if answered else "(the judge did not run)"
-
-
-def judge_identity(judgements: list[Judged] | None) -> dict[str, str]:
-    """Who judged this run: the deployment that answered and the rubric version it was asked.
-
-    Kept beside the runtime's identity in a kept run, because two runs judged differently are not
-    one series, and the listing marks where these change.
-    """
-    return {
-        "judge_deployment": _judge_deployment(judgements),
-        "judge_prompt_version": get_prompt("judge", prompts_dir=PROMPTS).version,
-    }
 
 
 # --- keeping a run --------------------------------------------------------------------------------
@@ -480,7 +482,9 @@ def render(
         "## Configuration identity",
         "",
         *(f"- **{key}**: {value}" for key, value in identity.items()),
-        f"- **judge_deployment**: {_judge_deployment(judgements)}",
+        # Beside the configured identity above: the deployment that actually answered, read from
+        # the judgements themselves, so a report can show the two disagreeing.
+        f"- **judge_deployment_answered**: {_judge_deployment(judgements)}",
         "",
         "## Scenarios",
         "",
@@ -571,7 +575,10 @@ def main(argv: list[str] | None = None) -> None:
             run_id=next_run_id(kept_ids, now.strftime("%Y-%m-%d")),
             taken_at=now,
             label=args.keep,
-            configuration={**configuration_identity(), **judge_identity(judgements)},
+            # The configured identity, runtime and judge alike, exactly as the report records it.
+            # Which deployment actually answered the judge is kept per scenario, beside each
+            # judgement, so a kept run can show the two disagreeing as the report can.
+            configuration=configuration_identity(),
             scenarios=scenarios,
             comparisons=comparisons,
         )

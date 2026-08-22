@@ -80,6 +80,14 @@ AZURE_OPENAI_ENDPOINT = _env("AZURE_OPENAI_ENDPOINT") or _env("AZURE_FOUNDRY_END
 AZURE_OPENAI_API_VERSION = _env("AZURE_OPENAI_API_VERSION", "2025-04-01-preview")
 AZURE_OPENAI_DEPLOYMENT = _env("AZURE_OPENAI_DEPLOYMENT")
 
+# The offline judge's model: one Claude deployment in a Microsoft Foundry resource, reached
+# keyless like everything else. Read only when an evaluation runs. Neither setting is required
+# by a deployed revision and readiness never probes the deployment, because a revision serving
+# investigations does not need the judge, and requiring it would let an unrelated
+# misconfiguration take down the investigation path for a workload that never runs there.
+AZURE_CLAUDE_ENDPOINT = _env("AZURE_CLAUDE_ENDPOINT")
+AZURE_CLAUDE_DEPLOYMENT = _env("AZURE_CLAUDE_DEPLOYMENT")
+
 # --------------------------------------------------------------------------------------
 # Cosmos
 # --------------------------------------------------------------------------------------
