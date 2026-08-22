@@ -213,3 +213,33 @@ unsettled, and which written record answers it, are properties of the model and 
 the design. The consequence runs through the proofs: deterministic tests hold the mechanisms still
 and prove them exactly, hosted verification proves the envelope and the delivered brief, and no
 proof asserts that a named scenario will exhibit a model-directed behavior on demand.
+
+## A partner model deploys under different rules than a first-party one
+
+Adding the judge's model to the template failed deployment preflight twice, each time for a
+prerequisite the Azure OpenAI deployments beside it had never needed, and each time before any
+resource was touched.
+
+The first was an attestation. An Anthropic deployment is rejected without a `modelProviderData`
+block naming the deploying organization, its country, and its industry. The reason it exists is
+worth knowing rather than treating as a required field: the resource provider signs the partner's
+Marketplace offer on the deployer's behalf from exactly that data. The one-time acceptance had
+been assumed to be a portal step no template could express, recorded beside the app registration
+and the vault secret as something an environment rebuilt from this repository would still lack.
+It is not: the attestation makes it declarative, and the assumption was simply wrong.
+
+The second was quota, and the shape of it is the durable part. Claude quota is allocated per
+subscription and shared across every region, so a model with a zero allocation cannot be deployed
+anywhere, and choosing a different region for the account changes nothing. The model the design
+first named held zero in this subscription while every other model in its family held the
+documented default, which reads as a rollout gap for that one model rather than anything about
+the account. Two consequences followed. The judge moved to the strongest model in the family that
+had an allocation, which cost nothing the decision cared about, because what the judge decision
+turned on was being a different model family from the runtime it scores rather than a size within
+that family. And the requested capacity now matches the allocation exactly, because asking for
+more than the subscription holds fails the whole template at preflight rather than queueing or
+scaling down to what is available.
+
+Both failures were free, which is the part worth keeping. Preflight validation rejects a template
+before it creates anything, so `az deployment group validate` against the real resource group
+answers both questions in seconds without a deployment, a revision, or a partial rollout to undo.
