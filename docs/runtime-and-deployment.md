@@ -49,11 +49,14 @@ the activity feed, the brief, one expandable details area, and the question box.
 | --- | --- | --- |
 | In-progress investigation: objective, bounds, evidence set, passages, proposal, flags | Process memory | The streaming request |
 | Completed investigation, with the contents `data-and-evidence.md` states | Cosmos, one container, keyed by `investigation_id` | Retained |
+| Kept evaluation run, with the contents `evaluation.md` states | Cosmos, one container, keyed by `run_id`, written offline | Retained |
 | Corpus: knowledge passages, operational records | Cosmos, prepared offline | Retained |
 
-The completed investigation is saved once, before the terminal event. The repository is `save` and
-`get`; an in-memory implementation serves tests. No compare-and-swap, lease, outbox, or version
-protocol is needed for one writer at zero to one replica.
+The completed investigation is saved once, before the terminal event. The repository is `save`,
+`get`, and a listing of summaries; an in-memory implementation serves tests. No compare-and-swap,
+lease, outbox, or version protocol is needed for one writer at zero to one replica. The kept
+evaluation run has the same three operations over its own container; the application only reads
+it.
 
 ---
 
@@ -73,9 +76,9 @@ local to its request.
 | Container Registry | Holds the image |
 | One Azure OpenAI account with one chat deployment and one embedding deployment | Every runtime model task and query embeddings |
 | One Foundry account with one Claude Sonnet 5 deployment, pinned | The offline judge; nothing in a live investigation calls it |
-| One Cosmos account: `investigations`, `knowledge`, `operational-records` containers | The completed record, the prepared corpus |
+| One Cosmos account: `investigations`, `evaluation-runs`, `knowledge`, `operational-records` containers | The completed record, kept evaluation runs, the prepared corpus |
 | Log Analytics and Application Insights | Telemetry sink |
-| Managed identity and role assignments | The application reads the corpus, writes only completed investigations, and calls the model deployments as its managed identity; corpus preparation writes the corpus under a separate identity |
+| Managed identity and role assignments | The application reads the corpus and kept evaluation runs, writes only completed investigations, and calls the model deployments as its managed identity; corpus preparation writes the corpus and evaluation writes kept runs, each under a separate identity |
 | Container Apps built-in authentication with one app registration | Caller authentication; presence of an authenticated caller is the whole check |
 | OIDC deployment workflow | Builds, pushes, deploys, smokes |
 
@@ -99,14 +102,16 @@ deterministic tests.
 
 ## 7. Cosmos realization
 
-Three containers. `knowledge` holds section-level passages with text, embedding, collection
+Four containers. `knowledge` holds section-level passages with text, embedding, collection
 category, extracted identifiers, and reference; retrieval reads it with vector search and reads the
 same category-filtered candidates for the lexical pass. `operational-records` holds the RetailEase
 records the tools and the structured query read; the query is one parameterized read-only statement
 over an approved surface. `investigations` holds one document per completed investigation.
+`evaluation-runs` holds one document per kept evaluation run, partitioned by `run_id`.
 
-The application identity holds read on the corpus and contributor on `investigations` only.
-Preparation writes the corpus under a different principal.
+The application identity holds read on the corpus, read on `evaluation-runs`, and contributor on
+`investigations` only. Preparation writes the corpus and evaluation writes kept runs, each under a
+different principal.
 
 ---
 
