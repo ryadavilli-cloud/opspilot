@@ -189,12 +189,13 @@ The defenses are structural: each failure mode meets a mechanism, not a guidelin
 
 ## Evidence that the system works
 
-**Deterministic tests.** The repository-wide gates at this tree: `ruff check` and
-`ruff format --check` clean, `mypy` strict clean over 68 source files with no override list, and
-the deterministic lane `pytest -m "not llm"` at 711 passed with 2 deselected (the two tests that
-call a live deployment). Three committed cassettes replay whole recorded investigations, taken
-through the same Azure adapter the application ships, so the deterministic lane replays real runs
-rather than scripted calls.
+**Deterministic tests.** Every change runs the same gates repository-wide: `ruff check`,
+`ruff format --check`, `mypy` strict with no override list, and the deterministic lane
+`pytest -m "not llm"`, which excludes only the tests that call a live deployment. They pass
+without suppression or the change is not done, and the current figures are whatever the latest
+run on `main` reports rather than a number transcribed here to go stale. Three committed cassettes
+replay whole recorded investigations, taken through the same Azure adapter the application ships,
+so the lane replays real runs rather than scripted calls.
 
 **Authored scenario evaluation.** Seven authored incidents across five overlapping failure
 families, each carrying an authored expectation of what a correct investigation establishes, plus
@@ -225,10 +226,27 @@ uv run pytest -m "not llm" -q         # the deterministic CI lane
 uv run uvicorn opspilot.api:app --reload
 ```
 
-The investigation screen is at `http://localhost:8000/investigation`. A live local investigation
-reaches the same Azure resources the hosted application uses, keyless: copy `.env.example` to
-`.env`, fill in the Azure OpenAI and Cosmos endpoints, and sign in with `az login` as an identity
-holding the data-plane roles. The deterministic test lane needs none of that.
+The investigation screen is at `http://localhost:8000/investigation`. The deterministic test lane
+needs nothing else: it replays recorded runs and reaches no service.
+
+A live local run reaches the same Azure resources the hosted application uses, keyless. Add the
+model clients, which the deterministic lane does not install, copy `.env.example` to `.env` and
+fill in the Azure OpenAI, Cosmos, and judge endpoints, then sign in with `az login` as an identity
+holding the data-plane roles:
+
+```bash
+uv sync --group dev --group data --group llm
+uv run --group llm uvicorn opspilot.api:app --reload
+```
+
+The offline evaluation runs from the same environment. A run worth keeping is written to the
+evaluation store, and the application lists and reads those at
+`http://localhost:8000/agentops`, where a kept run and the investigations behind it can be
+inspected together:
+
+```bash
+uv run --group dev --group llm python eval/run_evaluation.py --full --keep "before prompt v6"
+```
 
 ## Repository map
 
