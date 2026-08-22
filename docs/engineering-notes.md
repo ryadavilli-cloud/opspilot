@@ -3,10 +3,9 @@
 **What did building, evaluating, and hosting OpsPilot establish that reading the design would
 not?**
 
-Each passage records one observed problem, its diagnosis, and the design or implementation
-consequence that followed. Historical run results are observations from the recorded and hosted
-runs that produced them, not guarantees about any future run: a live model's choices are its own,
-and the durable claims are about what the system makes possible, checkable, and safe.
+Historical run results are observations from the recorded and hosted runs that produced them, not
+guarantees about any future run: a live model's choices are its own, and the durable claims are
+about what the system makes possible, checkable, and safe.
 
 ---
 

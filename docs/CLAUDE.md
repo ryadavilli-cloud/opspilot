@@ -37,6 +37,23 @@ the presentation surface and must stay true to the tree: a tree-checkable claim 
 against the repository before it is written, and historical observations belong in
 `engineering-notes.md`.
 
+## Writing `README.md`, `DEMO.md`, and `engineering-notes.md`
+
+- State the decision and the behavior it produces before naming the library, service, or product
+  that implements it. A technology named without the decision it serves is a fact about the
+  dependency list, not about the system.
+- Describe properties to observe, never a sequence to expect. Do not promise that a model will
+  make a particular choice, reach a particular outcome, consult a particular source, or take a
+  particular path; write model-directed behavior conditionally: what to watch for, and how to
+  read it whichever way it goes. A run that takes an unpredicted path is the system working;
+  never frame it as a shortfall.
+- Let concepts be inferred, never advertised. Do not list the agentic techniques the system uses;
+  describe the concrete mechanism precisely enough that a reader recognizes the technique
+  without being told its name. No checklists of concepts, no capability badges, no section whose
+  content is a set of labels.
+- No document explains its own existence, audience, or role in the set. Purpose is carried by
+  the order a reader moves through the material.
+
 ## Precedence
 
 `requirements.md`; then the governing design (`architecture.md`, `system-design.md`,

@@ -27,6 +27,27 @@ infrastructure, and it owns the testing policy and the gates. It does not load w
 read it before writing code. Ownership and editing rules for everything under `docs/` are in
 `docs/CLAUDE.md`.
 
+## Writing the presentation documents
+
+These rules bind every change to `README.md`, `docs/DEMO.md`, and `docs/engineering-notes.md`.
+
+- State the decision and the behavior it produces before naming the library, service, or product
+  that implements it. "The investigation lifecycle is deterministic and bounded while evidence
+  selection stays model-directed" comes before "LangGraph". A technology named without the
+  decision it serves is a fact about the dependency list, not about the system.
+- Describe properties to observe, never a sequence to expect. Do not promise that a model will
+  make a particular choice, reach a particular outcome, consult a particular source, or take a
+  particular path. Write model-directed behavior conditionally: what to watch for, and how to
+  read it whichever way it goes. A run that takes an unpredicted path is the system working;
+  never frame it as a shortfall.
+- Let concepts be inferred, never advertised. Do not list the agentic techniques the system uses.
+  Describe the concrete mechanism precisely enough that a reader recognizes the technique
+  without being told its name: write what a model-selected call is checked against before it
+  executes, not that guardrails are present. No checklists of concepts, no capability badges, no
+  section whose content is a set of labels.
+- No document explains its own existence, audience, or role in the set. Purpose is carried by
+  the order a reader moves through the material.
+
 ## Changing the implementation
 
 - Every change remains faithful to the governing design. If a requested change cannot be made
