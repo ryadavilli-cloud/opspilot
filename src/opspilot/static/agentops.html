@@ -280,8 +280,12 @@
     ], function (line) { return el("li", line); }));
 
     region.appendChild(heading("Operations attempted"));
+    // No transport column: an investigation reaches every capability directly, so the value
+    // would read the same on every row of every record. Where the two transports differ is
+    // the span, which records mcp against direct for the same capability.
+    region.appendChild(el("p", "Reached directly, which is the only route an investigation takes.", "muted"));
     region.appendChild(list(r.operations, function (op) {
-      var line = el("li", op.operation_ref + "  " + op.capability + " (" + op.transport + "): ");
+      var line = el("li", op.operation_ref + "  " + op.capability + ": ");
       line.appendChild(el("span", op.outcome, op.outcome === "succeeded" ? "ok" : "bad"));
       return line;
     }));

@@ -40,11 +40,6 @@ class Operation:
     operation_ref: str
     capability: str
     outcome: ExecutionOutcome
-    # How the call reached the capability. Every call an investigation makes is direct, and the
-    # activity feed and telemetry span have always said so; the record did not, so a reader of a
-    # finished investigation could see which capability answered and not by which route. Recorded
-    # rather than derived, because it is a fact about the call that was made.
-    transport: str = "direct"
 
 
 def is_operation_ref(value: str) -> bool:
