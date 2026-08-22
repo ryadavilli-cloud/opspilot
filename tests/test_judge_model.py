@@ -25,7 +25,7 @@ MESSAGES = [
 ]
 
 
-def _capturing(monkeypatch, deployment: str = "claude-sonnet-5"):
+def _capturing(monkeypatch, deployment: str = "claude-opus-5"):
     """The adapter with its client replaced by a stub that records the request it was sent."""
     model = ClaudeFoundryChatModel(deployment, endpoint="https://example.invalid/anthropic/")
     captured: dict = {}
@@ -60,12 +60,12 @@ def test_system_and_user_messages_map_to_the_messages_api(monkeypatch):
 
 
 def test_the_configured_deployment_is_the_one_called(monkeypatch):
-    model, captured = _capturing(monkeypatch, deployment="claude-sonnet-5-pinned")
+    model, captured = _capturing(monkeypatch, deployment="claude-opus-5-pinned")
 
     result = model.complete(TASK, MESSAGES)
 
-    assert captured["model"] == "claude-sonnet-5-pinned"
-    assert result.deployment == "claude-sonnet-5-pinned"
+    assert captured["model"] == "claude-opus-5-pinned"
+    assert result.deployment == "claude-opus-5-pinned"
 
 
 def test_the_fixed_measurement_configuration_is_sent(monkeypatch):
@@ -117,11 +117,11 @@ def test_a_deadline_travels_as_the_request_timeout(monkeypatch):
 def test_the_factory_builds_a_traced_claude_model_without_the_sdk():
     """Constructing must not import the optional `llm` group, and whatever the factory builds is
     traced: a client built beside the factory would be the only untraced model path."""
-    model = build_chat_model("claude", deployment="claude-sonnet-5")
+    model = build_chat_model("claude", deployment="claude-opus-5")
 
     assert isinstance(model, TracedChatModel)
     assert isinstance(model._inner, ClaudeFoundryChatModel)
-    assert model.deployment == "claude-sonnet-5"
+    assert model.deployment == "claude-opus-5"
 
 
 def test_configuration_may_not_select_the_judge_provider(monkeypatch):
@@ -136,7 +136,7 @@ def test_configuration_may_not_select_the_judge_provider(monkeypatch):
 # --- the evaluation's entry point ----------------------------------------------------------------
 def test_build_judge_model_refuses_missing_configuration_by_name(monkeypatch):
     monkeypatch.setattr(config, "AZURE_CLAUDE_ENDPOINT", "")
-    monkeypatch.setattr(config, "AZURE_CLAUDE_DEPLOYMENT", "claude-sonnet-5")
+    monkeypatch.setattr(config, "AZURE_CLAUDE_DEPLOYMENT", "claude-opus-5")
     with pytest.raises(ValueError, match="AZURE_CLAUDE_ENDPOINT"):
         build_judge_model()
 
@@ -148,12 +148,12 @@ def test_build_judge_model_refuses_missing_configuration_by_name(monkeypatch):
 
 def test_build_judge_model_returns_the_traced_configured_deployment(monkeypatch):
     monkeypatch.setattr(config, "AZURE_CLAUDE_ENDPOINT", "https://example.invalid/anthropic/")
-    monkeypatch.setattr(config, "AZURE_CLAUDE_DEPLOYMENT", "claude-sonnet-5-pinned")
+    monkeypatch.setattr(config, "AZURE_CLAUDE_DEPLOYMENT", "claude-opus-5-pinned")
 
     model = build_judge_model()
 
     assert isinstance(model, TracedChatModel)
-    assert model.deployment == "claude-sonnet-5-pinned"
+    assert model.deployment == "claude-opus-5-pinned"
 
 
 # --- provenance in the report --------------------------------------------------------------------
@@ -163,12 +163,12 @@ def test_the_configuration_identity_carries_the_judge_beside_the_runtime(monkeyp
     fields alone would make them look as though they were."""
     from run_evaluation import configuration_identity
 
-    monkeypatch.setattr(config, "AZURE_CLAUDE_DEPLOYMENT", "claude-sonnet-5-pinned")
+    monkeypatch.setattr(config, "AZURE_CLAUDE_DEPLOYMENT", "claude-opus-5-pinned")
 
     identity = configuration_identity()
 
     assert identity["judge_provider"] == "anthropic-foundry"
-    assert identity["judge_deployment"] == "claude-sonnet-5-pinned"
+    assert identity["judge_deployment"] == "claude-opus-5-pinned"
     assert identity["judge_effort"] == EFFORT
     assert identity["judge_thinking"] == THINKING
     assert identity["judge_prompt_version"] == "judge.v1"
