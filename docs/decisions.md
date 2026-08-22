@@ -82,13 +82,15 @@ introduced.
 **Decision.** One offline judge and one authored rubric, returning a category for each of:
 usefulness and coherence, appropriate uncertainty, explanation in context, recommendation fit.
 Advisory, run after deterministic checks, never combined into one number, never a runtime
-authority. The judge runs on its own model, Claude Sonnet 5 hosted in Microsoft Foundry, pinned
+authority. The judge runs on its own model, Claude Opus 5 hosted in Microsoft Foundry, pinned
 to a concrete model version, with adaptive thinking at a fixed medium effort; it does not use the
 runtime's chat deployment, and nothing in a live investigation can reach it.
 
 **Why.** A judge scoring the briefs the runtime model produced should not be the runtime model:
 one model on both sides correlates the judge's blind spots with the system's and lets it prefer
-its own phrasing. A different model family breaks that correlation. The version is pinned because
+its own phrasing. A different model family breaks that correlation, and the strongest available
+model in that family is the right one to spend on, because the judge is asked for exactly the
+semantic reading the deterministic checks deliberately cannot make. The version is pinned because
 a judge is a measuring instrument, and the model changing underneath it breaks the history
 silently.
 
