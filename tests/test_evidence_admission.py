@@ -337,14 +337,22 @@ def test_the_operations_list_identifies_every_attempted_call_including_failed_on
     assert len({op.operation_ref for op in evidence.operations}) == 2
 
 
-def test_an_operation_carries_its_identifier_capability_and_outcome_and_nothing_else():
+def test_an_operation_carries_what_it_did_and_not_what_it_was_asked_or_answered():
+    """The identifier, the capability, how it ended, and the route it took. Not its arguments and
+    not its raw result: an account of a run says what it attempted, not what it said."""
     evidence = _evidence()
     admit(
         _result("get_metrics", ExecutionOutcome.FAILED, Completeness.NOT_APPLICABLE),
         evidence=evidence,
         question="q",
     )
-    assert set(vars(evidence.operations[0])) == {"operation_ref", "capability", "outcome"}
+    assert set(vars(evidence.operations[0])) == {
+        "operation_ref",
+        "capability",
+        "outcome",
+        "transport",
+    }
+    assert evidence.operations[0].transport == "direct"
 
 
 def test_operation_references_are_opaque_unique_and_not_evidence_references():

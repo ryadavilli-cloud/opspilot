@@ -281,7 +281,7 @@
 
     region.appendChild(heading("Operations attempted"));
     region.appendChild(list(r.operations, function (op) {
-      var line = el("li", op.operation_ref + "  " + op.capability + ": ");
+      var line = el("li", op.operation_ref + "  " + op.capability + " (" + op.transport + "): ");
       line.appendChild(el("span", op.outcome, op.outcome === "succeeded" ? "ok" : "bad"));
       return line;
     }));
