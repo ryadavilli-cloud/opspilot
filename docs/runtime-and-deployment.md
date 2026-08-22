@@ -71,7 +71,8 @@ local to its request.
 | --- | --- |
 | Container Apps environment and one app, replicas 0 to 1 | Hosts the application, starts on demand |
 | Container Registry | Holds the image |
-| One Azure OpenAI account with one chat deployment and one embedding deployment | Every model task, the judge, and query embeddings |
+| One Azure OpenAI account with one chat deployment and one embedding deployment | Every runtime model task and query embeddings |
+| One Foundry account with one Claude Sonnet 5 deployment, pinned | The offline judge; nothing in a live investigation calls it |
 | One Cosmos account: `investigations`, `knowledge`, `operational-records` containers | The completed record, the prepared corpus |
 | Log Analytics and Application Insights | Telemetry sink |
 | Managed identity and role assignments | The application reads the corpus, writes only completed investigations, and calls the model deployments as its managed identity; corpus preparation writes the corpus under a separate identity |
@@ -79,15 +80,18 @@ local to its request.
 | OIDC deployment workflow | Builds, pushes, deploys, smokes |
 
 Absent by design: Service Bus, workers, queues, Key Vault unless a secret genuinely needs it, VNet,
-private endpoints, HA, DR, scaling rules, a second frontend, a second chat deployment.
+private endpoints, HA, DR, scaling rules, a second frontend, a second runtime chat deployment.
 
 ---
 
 ## 6. Model connectivity
 
 One adapter to Azure OpenAI. One chat deployment serves objective interpretation, evidence-source
-selection, structured-query proposal, synthesis, correction, the question, and the offline judge.
-One embedding deployment serves corpus preparation and query embedding. Every model call records
+selection, structured-query proposal, synthesis, correction, and the question.
+One embedding deployment serves corpus preparation and query embedding. The offline judge calls
+its own Claude Sonnet 5 deployment in Microsoft Foundry through its own adapter, keyless like
+every other path; the application never constructs it, and a revision serves investigations with
+the judge deployment unconfigured. Every model call records
 its task label, deployment, latency, and token usage. Cassette replay and a fake model stand in for
 deterministic tests.
 

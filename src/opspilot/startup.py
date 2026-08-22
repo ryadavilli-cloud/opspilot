@@ -33,6 +33,9 @@ _SETTING_VALUES = {
     "AZURE_COSMOS_ENDPOINT": lambda: config.COSMOS_ENDPOINT,
 }
 
+# What `OPSPILOT_LLM_PROVIDER` may select. The model factory can also construct the offline
+# judge's Claude adapter, but only for a caller that asks for it by name; it is deliberately
+# absent here so no configuration value can route the investigation onto the judge's model.
 _KNOWN_PROVIDERS = ("azure", "replay")
 _KNOWN_EXPORTERS = ("none", "memory", "stdout")
 
@@ -52,7 +55,7 @@ def configuration_problems() -> list[str]:
 
     if config.LLM_PROVIDER.lower() not in _KNOWN_PROVIDERS:
         problems.append(
-            "OPSPILOT_LLM_PROVIDER names no adapter; it must be one of "
+            "OPSPILOT_LLM_PROVIDER names nothing the runtime may select; it must be one of "
             f"{', '.join(_KNOWN_PROVIDERS)}"
         )
 

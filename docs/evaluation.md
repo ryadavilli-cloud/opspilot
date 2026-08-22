@@ -123,7 +123,8 @@ harness. It is not an API parameter, not configuration, and not persisted state.
 
 ## 7. The judge
 
-One offline model-assisted judge, using the same chat deployment as the runtime and one authored
+One offline model-assisted judge, using its own judge model rather than the runtime's chat
+deployment (the choice and its cost are D-005 in `decisions.md`) and one authored
 rubric. It reads the brief, the incident summary, and the expectation, and returns a category for
 each of four qualities: whether the brief is useful and coherent; whether uncertainty is
 communicated appropriately; whether the diagnosis is well explained in context; and whether the

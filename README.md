@@ -89,8 +89,10 @@ The full guide to reading a live run, scenario by scenario, is [docs/DEMO.md](do
 
 - Python 3.12, FastAPI, `uv`
 - LangGraph: one small compiled in-process graph over typed state, no checkpointer
-- Azure OpenAI: one chat deployment for every model task and one embedding deployment, called
-  keyless as the managed identity
+- Azure OpenAI: one chat deployment for every runtime model task and one embedding deployment,
+  called keyless as the managed identity
+- Claude Sonnet 5 in Microsoft Foundry: the offline evaluation judge, deliberately a different
+  model family from the runtime it scores, keyless
 - Azure Cosmos DB: the prepared corpus (knowledge and operational records) and the completed
   investigations, including vector search for retrieval
 - Hybrid retrieval: vector search plus an in-process BM25-style lexical pass, combined by
@@ -206,11 +208,14 @@ with them withheld on every dimension the comparison watches. Both are observati
 runs, recorded in [docs/engineering-notes.md](docs/engineering-notes.md), not guarantees about
 future runs.
 
-**Semantic evaluation.** An offline LLM judge on the runtime's own chat deployment, with one
-authored rubric, returns a category for four qualities of the delivered brief plus the semantic
-diagnosis match, per scenario. It is advisory, runs after the deterministic checks, is reported
-beside them and never combined into one number, and a verdict outside its vocabulary is refused
-rather than repaired. The method is [docs/evaluation.md](docs/evaluation.md).
+**Semantic evaluation.** An offline LLM judge scores each delivered brief on a model deliberately
+different from the one that produced it, so the judge's blind spots are not the system's own:
+Claude Sonnet 5 in Microsoft Foundry, pinned to a concrete version, while every runtime task stays
+on the Azure OpenAI chat deployment. With one authored rubric it returns a category for four
+qualities of the brief plus the semantic diagnosis match, per scenario. It is advisory, runs after
+the deterministic checks, is reported beside them and never combined into one number, and a
+verdict outside its vocabulary is refused rather than repaired. The method is
+[docs/evaluation.md](docs/evaluation.md).
 
 ## Quickstart
 
