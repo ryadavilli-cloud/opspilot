@@ -2,7 +2,7 @@
 id: architecture:retailease-system-overview
 title: RetailEase System Overview
 kind: architecture
-services: [checkout-api, payment-api, inventory-api, catalog-api, notification-worker, service-bus, cosmos-db, redis-cache, payment-gateway, email-provider]
+services: [checkout-api, payment-api, inventory-api, catalog-api, notification-worker, inventory-reservation-worker, service-bus, cosmos-db, redis-cache, payment-gateway, email-provider]
 source: "synthetic (RetailEase); structure after real SRE practice"
 ---
 
@@ -17,6 +17,7 @@ RetailEase is an e-commerce checkout platform running on Azure. It lets customer
 - **`inventory-api`** — reserves and decrements stock for an order. It reads/writes stock state in `cosmos-db` and uses `redis-cache` for hot stock reads. It emits `reservation_error_rate` when reservations fail.
 - **`catalog-api`** — serves product catalog data (listings, prices, descriptions). It reads from `cosmos-db` and caches hot reads in `redis-cache`. It is not on the synchronous checkout path.
 - **`notification-worker`** — consumes order-placed events from `service-bus` and sends order confirmations through the external `email-provider`. It runs asynchronously, off the critical checkout path.
+- **`inventory-reservation-worker`** — applies queued stock reservations against `cosmos-db` after `inventory-api` has answered the availability check. It runs asynchronously, off the critical checkout path, so a customer never waits on it; when it falls behind, reservations sit unapplied while availability keeps being read as though they had landed.
 
 ## Azure infrastructure backends
 

@@ -140,6 +140,32 @@ def test_the_fixed_path_does_not_branch_on_what_it_found():
     assert empty.capability == full.capability == ORDER[1]
 
 
+def test_a_target_the_fixed_path_learns_from_dependencies_arrives_too_late_to_query():
+    """The structural claim the adaptive-value comparison rests on.
+
+    Dependencies are the last thing the script asks for, so a service it first hears about there
+    is a service it can never go and query: the step that would have asked for that service's
+    metrics is spent, and the path has no way back to it. This is not an argument that a fixed
+    order is a worse order. No rearrangement helps, because whichever step runs last learns
+    something the steps before it could have used.
+    """
+    assert ORDER[-1] == "get_service_dependencies"
+
+    after_dependencies, _ = _step(len(ORDER))
+    assert after_dependencies.is_finished
+    assert after_dependencies.capability == ""
+
+    # And the one metrics step it does get is bound to the alerting service, never to a service
+    # the run has yet to hear of.
+    metrics_step, _ = _step(ORDER.index("get_metrics"))
+    assert metrics_step.capability == "get_metrics"
+    assert metrics_step.arguments["service"] == _Incident.scope
+    assert "metric" not in metrics_step.arguments, (
+        "the fixed metrics step asks for every series the service has, so hiding one behind a "
+        "name would not put it out of reach; only a different service does that"
+    )
+
+
 # --- adaptive value ------------------------------------------------------------------------------
 SCENARIO = {
     "id": "inc-004",

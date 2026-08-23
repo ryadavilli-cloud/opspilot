@@ -165,6 +165,75 @@ def test_6_postmortem_runbook_crossrefs_resolve():
             assert _kb_doc(ref) is not None, f"{p.name} references missing {ref}"
 
 
+# --- the second contributor is learned, not handed over ----------------------------------------
+# inc-006 has two contributing failures and the second one lives on a service nothing points at.
+# That is the scenario's whole subject, and it is a property of the data rather than of any comment
+# explaining it: a later edit that drops the worker's name into the incident text, the storm, or the
+# alerting service's own logs would quietly hand over the answer and nothing else would notice.
+SECOND_CONTRIBUTOR = "inventory-reservation-worker"
+ALERTING_SERVICE = "inventory-api"
+INC_006 = next(s for s in SCENARIOS if s["id"] == "inc-006")
+
+
+def _window(scenario: dict) -> tuple[str, str]:
+    """The authored incident moment, as the bounds any operational read of it would use."""
+    stamps = sorted(ref.split("@", 1)[1] for ref in scenario["expected_evidence"] if "@" in ref)
+    return stamps[0], stamps[-1]
+
+
+def test_the_reservation_worker_is_named_by_nothing_the_fixed_path_reads_first():
+    """Incident text, correlated alerts, and the alerting service's own logs, metrics, and deploys.
+
+    These are exactly the sources a predetermined path consults before it asks what anything
+    depends on. None of them may name the worker, or the target for the decisive second check
+    arrives before the step that is supposed to be the only way to it.
+    """
+    record = INC_BY_SCEN["inc-006"]
+    incident_text = " ".join(str(v) for v in record.values())
+    assert SECOND_CONTRIBUTOR not in incident_text
+
+    storm = [a for a in ALERTS if a.get("incident_id") == "inc-006"]
+    assert storm, "inc-006 has no alert storm to check"
+    assert SECOND_CONTRIBUTOR not in json.dumps(storm)
+    assert SECOND_CONTRIBUTOR not in {a["service"] for a in storm}
+
+    first, last = _window(INC_006)
+    alerting_logs = [
+        r for r in LOGS if r["service"] == ALERTING_SERVICE and first <= r["ts"] <= last
+    ]
+    assert alerting_logs, "the alerting service logged nothing in the window"
+    assert SECOND_CONTRIBUTOR not in json.dumps(alerting_logs)
+
+    alerting_metrics = [s for s in METRICS if s["service"] == ALERTING_SERVICE]
+    assert SECOND_CONTRIBUTOR not in json.dumps(alerting_metrics)
+    assert not any(s["metric"] == "reservation_queue_depth" for s in alerting_metrics), (
+        "the queue depth is back on the alerting service, where the fixed metrics step reaches it"
+    )
+
+    alerting_deploys = [d for d in DEPLOYS if d["service"] == ALERTING_SERVICE]
+    assert SECOND_CONTRIBUTOR not in json.dumps(alerting_deploys)
+
+
+def test_asking_the_alerting_service_what_it_depends_on_is_what_reveals_the_worker():
+    downstream = {e["to"] for e in EDGES if e["from"] == ALERTING_SERVICE}
+    assert SECOND_CONTRIBUTOR in downstream
+
+
+def test_the_decisive_second_contributor_evidence_lives_on_the_worker():
+    """Reachable the moment someone knows to ask for it, and only then. Nothing here is hidden:
+    the series and the log row exist throughout the window."""
+    expected = INC_006["expected_evidence"]
+    assert f"metrics:{SECOND_CONTRIBUTOR}:reservation_queue_depth" in " ".join(expected)
+    assert any(ref.startswith(f"logs:{SECOND_CONTRIBUTOR}:") for ref in expected)
+
+    depth = [
+        s
+        for s in METRICS
+        if s["service"] == SECOND_CONTRIBUTOR and s["metric"] == "reservation_queue_depth"
+    ]
+    assert depth, "the worker carries no queue depth to find"
+
+
 # --- closure question 7: recurrence-verification data model ------------------------------------
 # The known-issue fast path trusts a candidate match only after checking the stored issue's
 # required/disqualifying signals + affected versions. These fields must be authored in the answer

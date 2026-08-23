@@ -78,8 +78,11 @@ ENTITY_METRICS: dict[str, list[str]] = {
         "reservation_error_rate",
         "request_rate",
         "cpu_pct",
-        "reservation_queue_depth",
     ],
+    # The reservation queue is the worker's, not the API's. inventory-api hands reservations off
+    # and does not hold them, so depth belongs to whatever is draining it. Keeping it on the API
+    # would put the backlog in the same answer as the symptom, which is not where it lives.
+    "inventory-reservation-worker": ["reservation_queue_depth", "cpu_pct"],
     "catalog-api": ["p95_latency_ms", "request_rate", "cpu_pct"],
     "notification-worker": ["restart_count", "msg_processed_rate", "cpu_pct"],
     "cosmos-db": ["ru_throttled_rate", "used_ru_pct"],
@@ -138,6 +141,11 @@ LOG_EVENTS: dict[str, dict[str, str]] = {
         "service": "checkout-api",
         "level": "error",
         "message": "reserve failed: inventory conflict",
+    },
+    "evt-006-03": {
+        "service": "inventory-reservation-worker",
+        "level": "error",
+        "message": "reservation apply deadline exceeded; queue depth above drain capacity",
     },
     "evt-007-01": {
         "service": "notification-worker",
