@@ -239,6 +239,8 @@ scenarios:
       - deploys:checkout-api:dep-20260628-01   # the red-herring deploy
       - deps:checkout-api->payment-api
     expected_retrieval:
+      - postmortem:inc-104     # the convincing near-match: a real deploy regression, wrong here
+      - postmortem:inc-109     # the true class, reachable but not the closest by wording
       - runbook:checkout-api-500-errors
       - runbook:payment-timeout
       - runbook:deployment-rollback
@@ -246,6 +248,10 @@ scenarios:
     # What a correct investigation of this scenario looks like, for the offline
     # evaluation. Authored: nothing here is derived from a model run.
     evaluation:
+      # The precedent a lookup with no reasoning behind it reaches for. Named because the whole
+      # point of this scenario is that the nearest write-up is convincing and wrong: without
+      # saying which one, a passing comparison would only prove the shortcut ran.
+      nearest_history_should_select: postmortem:inc-104
       acceptable_alternatives:
         - >-
           Third-party payment-gateway latency or timeouts stated as an external dependency
@@ -288,6 +294,7 @@ scenarios:
       - metrics:checkout-api:p95_latency_ms@2026-06-22T11:45:00Z
       - deps:checkout-api->redis-cache
     expected_retrieval:
+      - postmortem:inc-105     # useful cache-capacity precedent; does not establish this incident
       - runbook:redis-cache-degradation
       - architecture:service-dependency-map
     # What a correct investigation of this scenario looks like, for the offline
@@ -353,6 +360,8 @@ scenarios:
       - deps:inventory-api->redis-cache
       - deps:inventory-api->inventory-reservation-worker   # how the worker is discovered at all
     expected_retrieval:
+      - postmortem:inc-107     # the backlog half, on its own
+      - postmortem:inc-106     # the stale-cache half, on another service
       - runbook:deployment-rollback
       - runbook:redis-cache-degradation
       - architecture:service-dependency-map
@@ -410,7 +419,8 @@ scenarios:
       - deploys:notification-worker:dep-20260702-01   # re-deploy of the affected revision
       - deps:notification-worker->service-bus
     expected_retrieval:
-      - postmortem:inc-003
+      - postmortem:inc-003     # the true recurrence
+      - postmortem:inc-108     # same rising queue, healthy worker: the discrimination to make
       - runbook:service-bus-backlog
       - runbook:deployment-rollback
     # What a correct investigation of this scenario looks like, for the offline
@@ -421,6 +431,8 @@ scenarios:
           rules_out: >-
             A broader outage, confined to the asynchronous notification path on the same
             reasoning as the earlier backlog incident.
+      # Here the shortcut reaches the right precedent, having verified nothing about today.
+      nearest_history_should_select: postmortem:inc-003
       acceptable_alternatives:
         - >-
           The same poison-message crash loop as inc-003, stated as a recurrence or as the

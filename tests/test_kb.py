@@ -82,3 +82,85 @@ def test_postmortems_carry_the_verification_data_model():
         assert fm.get("required_signals"), f"{ref}: missing/empty required_signals"
         assert fm.get("affected_versions"), f"{ref}: missing/empty affected_versions"
         assert isinstance(fm.get("disqualifying_signals"), list), f"{ref}: bad disqualifying"
+
+
+# --- the authored relationships actually surface -------------------------------------------------
+# Authoring a precedent into the corpus is not the same as the retriever returning it. A larger
+# history changes vector order, lexical order, fusion, promotion, and what survives the budget, so
+# a scenario that depends on meeting a particular past incident has to be checked against the real
+# algorithm rather than against the intention behind the document.
+#
+# What is asserted here is presence: the precedent is reachable within the budget for a question
+# shaped like the incident. Position is deliberately not asserted. The embedder standing in for
+# Azure here is 32 hashed dimensions against the deployed 1536, so its dense half discriminates
+# too weakly to be evidence about semantic order; that claim belongs to the real index.
+BY_ID = {s["id"]: s for s in SCENARIOS}
+
+
+def _precedents(scenario_id: str) -> set[str]:
+    from fake_knowledge import knowledge_retriever
+
+    query = BY_ID[scenario_id]["alert"]["summary"]
+    found = knowledge_retriever().search_incidents(query, k=5, deadline_s=5.0)
+    return {p.reference for p in found}
+
+
+def test_the_incident_a_deployment_makes_obvious_is_reachable():
+    """inc-004 answers the objection that the nearest write-up is good enough, so the write-up that
+    makes the objection tempting has to be there to be reached."""
+    assert "postmortem:inc-104" in _precedents("inc-004")
+
+
+def test_the_cache_precedent_is_reachable_for_the_latency_incident():
+    assert "postmortem:inc-105" in _precedents("inc-005")
+
+
+def test_both_halves_of_the_oversell_are_reachable_separately():
+    """One precedent per contributor and no single write-up holding the pair, which is what makes
+    the current evidence rather than the history establish the combination."""
+    found = _precedents("inc-006")
+    assert "postmortem:inc-107" in found
+    assert "postmortem:inc-106" in found
+
+
+def test_the_recurrence_and_the_near_match_are_both_reachable():
+    """Recognizing the recurrence is a discrimination, not the only option on offer."""
+    found = _precedents("inc-007")
+    assert "postmortem:inc-003" in found
+    assert "postmortem:inc-108" in found
+
+
+def test_a_scenario_meets_more_than_one_candidate_precedent():
+    """The corpus exists to make retrieval produce candidates to weigh. One result would be an
+    answer handed over rather than a set to discriminate between."""
+    for scenario_id in ("inc-004", "inc-005", "inc-006", "inc-007"):
+        assert len(_precedents(scenario_id)) > 1, scenario_id
+
+
+def test_the_precedent_the_shortcut_should_reach_is_named_and_resolves():
+    """Only where the shortcut runs. Elsewhere there is nothing for it to be right or wrong
+    about, so naming a precedent would assert something the scenario does not test."""
+    named = {
+        s["id"]: s["evaluation"]["nearest_history_should_select"]
+        for s in SCENARIOS
+        if "nearest_history_should_select" in s["evaluation"]
+    }
+    assert set(named) == {"inc-004", "inc-007"}
+    assert named["inc-007"] == "postmortem:inc-003"
+    for scenario_id, ref in named.items():
+        assert _resolve(ref) is not None, f"{scenario_id}: {ref} resolves to no write-up"
+        assert ref in _precedents(scenario_id), f"{scenario_id}: {ref} is not even reachable"
+
+
+def test_guidance_stays_reachable_without_pinning_where_it_lands():
+    """Runbook search answers with sections, and which section answers a question best is exactly
+    the kind of thing a corpus edit may reasonably change. Reachability is the contract."""
+    from fake_knowledge import knowledge_retriever
+
+    hits = knowledge_retriever().search(
+        "redis cache eviction and memory pressure",
+        k=5,
+        collection=("runbook", "architecture"),
+        deadline_s=5.0,
+    )
+    assert "runbook:redis-cache-degradation" in {h.reference for h in hits}

@@ -138,6 +138,17 @@ reciprocal-rank fusion, deterministic promotion of passages whose extracted iden
 identifier-like terms in the question, a small passage budget. Passages carry their text and their
 reference. No model reranker.
 
+Which collection is searched is the caller's choice of capability: past-incident search names the
+postmortem collection, guidance search names runbooks and architecture notes, and either may be
+asked again as the investigation learns enough to ask something different. A service filter, where
+a caller supplies one, removes candidates before ranking rather than weighting them, so narrowing
+scope early forecloses what ranking could otherwise surface.
+
+Ranking always compares sections, because that is where precision is. What a result is follows
+what the capability searches for: guidance answers with the section that answers the question,
+and past-incident search answers with incidents, each carrying the few of its sections that ranked
+highest for the question asked. The realization is D-003's.
+
 Structured query: the Evidence Investigator asks an operational question; the model proposes a
 bounded structure of predicates, projection, optional count, and limit over one approved
 collection; deterministic code validates it against the approved surface and translates it into one

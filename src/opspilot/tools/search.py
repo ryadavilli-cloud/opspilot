@@ -23,7 +23,6 @@ from pydantic import Field
 from opspilot.retrieval.retriever import (
     ARCHITECTURE,
     PASSAGE_BUDGET,
-    POSTMORTEM,
     RUNBOOK,
     Passage,
     Retriever,
@@ -67,11 +66,17 @@ def search_past_incidents(
     service: str | None = None,
 ) -> tuple[list[Passage], list[str]]:
     """Write-ups of incidents that already happened: what was wrong then, and what settled it.
-    Use it when this looks like something the system has done before."""
-    passages = retriever.search(
+    Use it when this looks like something the system has done before.
+
+    One result is one past incident, not one passage of one. Sections are what ranking compares,
+    because that is where precision is, and an incident is what comes back, because that is what
+    the question was about. Each result carries the sections of that write-up which ranked highest
+    for this question, so what arrives is a set of precedents to weigh rather than several views
+    of whichever one matched most often.
+    """
+    passages = retriever.search_incidents(
         query,
         k=k,
-        collection=POSTMORTEM,
         services=(service,) if service else None,
         deadline_s=deadline_s,
     )

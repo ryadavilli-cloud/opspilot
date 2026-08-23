@@ -58,6 +58,27 @@ recorded on the passage or in the completed record: promotion is deterministic, 
 re-derivable from the passage and the question it was retrieved for, and a stored copy would be a
 second answer free to disagree with the one the retriever computes.
 
+Scoring is always over sections. What a result is depends on what the capability searches for.
+Guidance answers with sections, because one section can be exactly the right answer to how
+something is handled. Past-incident search answers with incidents: after promotion, sections are
+grouped by the write-up they came from, each write-up takes the position of its best section, and
+at most two of its highest-ranked sections travel with it under one title.
+
+**Why the grouping.** Asking whether this has happened before is a question about incidents, and a
+budget spent on several sections of one write-up returns one candidate presented repeatedly rather
+than several precedents to weigh. Grouping runs after promotion so an identifier lifts the section
+that carried it rather than every part of whatever document mentioned it somewhere. A write-up
+takes its best section's position and never the sum of its sections, because summing ranks by how
+much was written: more sections mean more chances to accumulate, and the longest history would win
+questions it has no claim to. Two sections rather than one, because a single winning section can
+say why an incident looked similar while saying nothing about what caused it or how it was settled;
+two rather than the whole write-up, because the question asked which incidents resemble this one.
+
+**Cost.** Two result shapes to hold in mind instead of one, and a bound of two sections that can
+cut off useful context in a long write-up. Both are answerable from measured behavior rather than
+preference. The grouping is applied to retrieved results and changes nothing stored, so the corpus
+identity a run records is unaffected by it.
+
 **Why.** Vector search carries meaning; the lexical pass carries operational tokens and exact
 identifiers; reciprocal-rank fusion combines two differently-scaled lists without calibration and
 is the clearest course-aligned hybrid technique; deterministic promotion is the smallest mechanism
