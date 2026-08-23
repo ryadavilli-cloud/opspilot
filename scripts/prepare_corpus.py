@@ -293,7 +293,48 @@ def seed(documents: list[dict[str, Any]], database: str, container: str) -> int:
     target = client.get_database_client(database).get_container_client(container)
     for document in documents:
         target.upsert_item(document)
+    _prune(target, {str(document["id"]) for document in documents})
     return len(documents)
+
+
+def _prune(target: ContainerProxy, produced: set[str]) -> int:
+    """Remove what this preparation no longer produces.
+
+    Upsert converges on what is written and says nothing about what has stopped being written. A
+    passage the chunker now splits differently, or a metric series that moved to another service,
+    keeps its old document alive under an id nothing produces any more, and a read cannot tell that
+    document from a current one. It is the worse half of a stale index precisely because every
+    count and every spot check still looks right: the container holds everything it should, plus
+    something it should not.
+
+    That is not hypothetical here. Moving the reservation queue depth off the alerting service
+    leaves the old series in place under its old id, and a fixed path asking that service for its
+    metrics would still be handed the contributor the scenario exists to keep out of its reach.
+
+    Partition values are read back rather than derived, because they are the container's own and
+    this is the one operation that has to name a document the local shaping no longer describes.
+    """
+    rows = list(
+        target.query_items(
+            "SELECT c.id, c.category, c.kind, c.service FROM c", enable_cross_partition_query=True
+        )
+    )
+    removed = 0
+    for row in rows:
+        if str(row["id"]) in produced:
+            continue
+        # `/category` for knowledge; `/kind` then `/service` for the hierarchically partitioned
+        # operational records, whose second level is legitimately null on some kinds.
+        key: Any = (
+            row["category"]
+            if row.get("category") is not None
+            else [row.get("kind"), row.get("service")]
+        )
+        target.delete_item(item=str(row["id"]), partition_key=key)
+        removed += 1
+    if removed:
+        print(f"  pruned {removed} document(s) this preparation no longer produces")
+    return removed
 
 
 def verify(expected_knowledge: int, expected_operational: int, expected_fingerprint: str) -> int:

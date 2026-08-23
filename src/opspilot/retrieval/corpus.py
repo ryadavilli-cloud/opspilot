@@ -78,8 +78,37 @@ def load_docs(
     return docs
 
 
+POSTMORTEM = "postmortem"
+
+
 def chunk(doc: Doc) -> list[Chunk]:
-    """Split a doc into section chunks (title-prefixed). Header-less docs become one chunk."""
+    """One document, as the units retrieval ranks.
+
+    What a unit is follows what the capability searching for it is asking. Guidance is asked for a
+    section at a time: "how is this handled" is answered by the part of a runbook that handles it,
+    and the rest of that runbook is not the answer. Past incidents are asked for whole: "has this
+    happened before" is a question about an incident, and an incident is only useful as one thing.
+    Its sections are not alternatives to each other. What was wrong, what it did, and what settled
+    it are one account, and a search that returned the strongest few of them would return whichever
+    parts happened to echo the question, which is as likely to be the impact and the timeline as
+    the cause and the resolution.
+
+    Splitting a write-up also puts its parts in competition for the same result budget, so the most
+    quotable incident crowds out the incidents it should be weighed against. Keeping it whole makes
+    a budget of five mean five precedents, which is what a history worth searching is for.
+    """
+    if doc.kind == POSTMORTEM:
+        text = f"{doc.title}\n{doc.text}".strip()
+        return [Chunk(f"{doc.doc_id}#0", doc.doc_id, doc.kind, doc.services, text)]
+    return _sections(doc)
+
+
+def _sections(doc: Doc) -> list[Chunk]:
+    """Split a doc into section chunks (title-prefixed). Header-less docs become one chunk.
+
+    The title is repeated onto every section because a section headed `Root cause` has to say which
+    document it came from; alone it names no system and no incident.
+    """
     chunks: list[Chunk] = []
     current: list[str] = []
     idx = 0

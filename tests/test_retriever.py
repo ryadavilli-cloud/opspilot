@@ -23,7 +23,6 @@ from opspilot.retrieval.retriever import (
     PASSAGE_BUDGET,
     POSTMORTEM,
     RUNBOOK,
-    SECTIONS_PER_INCIDENT,
     Retriever,
 )
 
@@ -157,84 +156,69 @@ def test_promotion_reaches_a_passage_that_fusion_left_below_the_budget():
     assert hits[0].reference == "runbook:named"
 
 
-# --- past incidents come back as incidents ------------------------------------------------------
+# --- what a unit is, per collection --------------------------------------------------------------
 def _incidents(query: str, k: int = PASSAGE_BUDGET) -> list[Any]:
-    return knowledge_retriever().search_incidents(query, k=k, deadline_s=5.0)
+    return knowledge_retriever().search(query, k=k, collection=POSTMORTEM, deadline_s=5.0)
 
 
-def test_one_result_is_one_past_incident():
-    """The question is whether this has happened before, so a result is an incident. Five views of
-    the write-up that matched most often is one candidate presented five times, which is the
-    opposite of what a history worth searching is for."""
+def test_a_past_incident_is_one_unit():
+    """Preparation indexes a write-up whole, so a search of past incidents cannot return the same
+    incident twice however many of its parts echo the question. A budget of five means five
+    precedents, which is what a history worth searching is for."""
     results = _incidents("checkout-api returning 500s shortly after this morning's deployment.")
 
     references = [p.reference for p in results]
     assert len(references) == len(set(references))
     assert all(ref.startswith("postmortem:") for ref in references)
-
-
-def test_at_most_the_budget_of_distinct_incidents_comes_back():
-    results = _incidents("checkout latency deployment queue cache timeout")
     assert 0 < len(results) <= PASSAGE_BUDGET
-    assert len({p.reference for p in results}) == len(results)
 
 
 def test_a_caller_may_ask_for_fewer_incidents():
     assert len(_incidents("checkout deployment", k=2)) <= 2
 
 
-def test_an_incident_carries_at_most_two_of_its_sections():
-    """Enough that a precedent says what happened and how it was settled, and short of shipping the
-    whole write-up for a question that asked which incidents resemble this one."""
-    for passage in _incidents("checkout latency deployment queue cache timeout"):
-        assert passage.text.count("\n## ") <= SECTIONS_PER_INCIDENT
-
-
-def test_an_incident_says_its_title_once():
-    """Corpus preparation prefixes the title to every section so that ranking can see it. Delivered
-    together under one heading, those prefixes would be the same line repeated."""
-    for passage in _incidents("checkout-api 500s after a deployment"):
-        assert passage.title
-        assert passage.text.count(passage.title) == 1
-        assert passage.text.startswith(passage.title)
-
-
-def test_an_incident_never_carries_a_section_that_is_only_its_heading():
-    """The opening section of a write-up is the heading and nothing else, and it ranks first on a
-    question that echoes the title. It still places its incident; it has no content to send."""
-    for passage in _incidents("checkout-api returning 500s after this morning's deployment."):
-        body = passage.text[len(passage.title) :].strip()
-        assert body, f"{passage.reference} came back with a heading and no content"
-
-
-def test_an_incident_takes_its_position_from_its_best_section_not_from_how_much_it_holds():
-    """Summing what a write-up's sections scored would rank by length: more sections means more
-    chances to accumulate, and the longest history would win every question."""
-    long_doc = [
-        _doc(f"long-{i}", "checkout deployment regression rollback revision") for i in range(8)
+def test_a_returned_incident_carries_the_whole_account():
+    """What was wrong, what it did, and what settled it are one account rather than alternatives to
+    each other. A search that returned the strongest few parts would return whichever echoed the
+    question, as likely the impact and the timeline as the cause and the resolution."""
+    (top,) = [
+        p
+        for p in _incidents("checkout-api 500s after a morning deployment")
+        if p.reference == "postmortem:inc-104"
     ]
-    for row in long_doc:
-        row["doc_id"], row["category"] = "postmortem:long", POSTMORTEM
-    short_doc = [_doc("short-0", "checkout deployment regression rollback revision")]
-    short_doc[0]["doc_id"], short_doc[0]["category"] = "postmortem:short", POSTMORTEM
 
-    retriever = retriever_from(long_doc + short_doc)
-    results = retriever.search_incidents("checkout deployment regression", k=5, deadline_s=5.0)
+    assert "## Root cause" in top.text
+    assert "## Resolution" in top.text
+    assert top.text.startswith(top.title)
+
+
+def test_a_write_up_is_not_ranked_by_how_much_it_holds():
+    """Whole units put a long history and a short one on the same footing: neither accumulates
+    score across parts, because neither has parts."""
+    body = "checkout deployment regression rollback revision"
+    long_doc = _doc("long", f"{body} " + "and more detail. " * 60)
+    long_doc["doc_id"], long_doc["category"] = "postmortem:long", POSTMORTEM
+    short_doc = _doc("short", body)
+    short_doc["doc_id"], short_doc["category"] = "postmortem:short", POSTMORTEM
+
+    results = retriever_from([long_doc, short_doc]).search(
+        "checkout deployment regression", k=5, collection=POSTMORTEM, deadline_s=5.0
+    )
 
     assert {p.reference for p in results} == {"postmortem:long", "postmortem:short"}
-    assert results[0].score == max(p.score for p in results)
+    assert len(results) == 2, "one write-up came back more than once"
 
 
-def test_grouping_happens_after_promotion_not_before():
-    """An identifier lifts the section that carried it. Grouping first would let one mention
-    anywhere in a write-up promote every part of it."""
+def test_promotion_reaches_a_past_incident_by_an_identifier_it_carries():
+    """Identifiers are extracted per unit, so a deploy id named anywhere in a write-up promotes
+    that write-up. There are no parts for it to promote separately."""
     named = _doc("named", "The reservation queue drained slowly.", identifiers=("dep-20260625-01",))
     named["doc_id"], named["category"] = "postmortem:named", POSTMORTEM
     other = _doc("other", "checkout deployment regression rollback revision")
     other["doc_id"], other["category"] = "postmortem:other", POSTMORTEM
 
-    results = retriever_from([other, named]).search_incidents(
-        "what happened around dep-20260625-01", k=5, deadline_s=5.0
+    results = retriever_from([other, named]).search(
+        "what happened around dep-20260625-01", k=5, collection=POSTMORTEM, deadline_s=5.0
     )
 
     assert results[0].reference == "postmortem:named"

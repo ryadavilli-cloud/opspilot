@@ -98,88 +98,6 @@ def _promote(ranked: list[str], rows: dict[str, dict[str, Any]], question: str) 
     return named + rest
 
 
-# How many of one incident's sections travel with it. Two, because one is not enough and the whole
-# write-up is more than the question asked for: a single winning section can say why this incident
-# looked similar while saying nothing about what caused it or how it was settled, and the pair that
-# ranked highest for this query usually carries both halves. A number to revisit against measured
-# behavior, never by preference.
-SECTIONS_PER_INCIDENT = 2
-
-
-def _section_body(row: dict[str, Any]) -> str:
-    """One section without the document title corpus preparation prefixed to it.
-
-    The prefix earns its place while ranking, because a title is a real signal about what a section
-    belongs to. It earns nothing when the sections are delivered together under that same title,
-    where it would simply repeat. The row already carries the title as its own field, so this reads
-    what preparation wrote rather than needing a second stored representation of the same text.
-    """
-    text = str(row["text"])
-    title = str(row.get("title", ""))
-    if title and text.startswith(title):
-        text = text[len(title) :].lstrip("\n")
-    # A write-up's opening section carries the document's own heading, which says the title a
-    # second time. Harmless where sections travel alone and repetition where they are delivered
-    # under one heading, so the heading goes and the section keeps its content.
-    first, newline, rest = text.partition("\n")
-    if first.lstrip("#").strip() == title.strip() and first.startswith("#"):
-        return rest.lstrip("\n") if newline else ""
-    return text
-
-
-def _by_incident(
-    ranked: list[str],
-    rows_by_id: dict[str, dict[str, Any]],
-    fused: dict[str, float],
-    *,
-    budget: int,
-) -> list[Passage]:
-    """Ranked sections, regrouped into the incidents they came from.
-
-    An incident takes its position from its best section and from nothing else. Summing what its
-    sections scored would rank by how much was written: a long write-up accumulates score over more
-    sections than a short one and would win on length, which says nothing about whether it is the
-    precedent worth reading. So a second matching section never strengthens an incident's position.
-    It only offers more of that incident once its position is already settled.
-    """
-    order: list[str] = []
-    best: dict[str, str] = {}
-    bodies: dict[str, list[str]] = {}
-    for row_id in ranked:
-        doc_id = str(rows_by_id[row_id]["doc_id"])
-        if doc_id not in bodies:
-            if len(order) >= budget:
-                continue
-            order.append(doc_id)
-            bodies[doc_id] = []
-            best[doc_id] = row_id
-        # A write-up's opening section is its heading and nothing else, so once the heading is
-        # removed there is no content left to send. It still ranks, and ranks well on a question
-        # that echoes the title, so it still decides where its incident sits. It simply has
-        # nothing to contribute to the two sections that travel, and spending one of them on an
-        # empty section would cost the reader the part that says what actually happened.
-        body = _section_body(rows_by_id[row_id]).strip()
-        if body and len(bodies[doc_id]) < SECTIONS_PER_INCIDENT:
-            bodies[doc_id].append(body)
-
-    passages: list[Passage] = []
-    for doc_id in order:
-        row = rows_by_id[best[doc_id]]
-        title = str(row.get("title", ""))
-        body = "\n\n".join(bodies[doc_id])
-        passages.append(
-            Passage(
-                reference=doc_id,
-                category=str(row["category"]),
-                title=title,
-                text=f"{title}\n\n{body}" if title else body,
-                services=tuple(row.get("services") or ()),
-                score=fused[best[doc_id]],
-            )
-        )
-    return passages
-
-
 def _to_passage(row: dict[str, Any], score: float) -> Passage:
     return Passage(
         reference=str(row["doc_id"]),
@@ -225,9 +143,8 @@ class Retriever:
         services: tuple[str, ...] | None,
         deadline_s: float,
     ) -> tuple[list[str], dict[str, dict[str, Any]], dict[str, float]]:
-        """Every step up to and including promotion: the ordered section ids, the rows they name,
-        and the fused score each carries. One ranking pipeline, whatever the caller does with the
-        order afterwards."""
+        """Every step up to and including promotion: the ordered unit ids, the rows they name, and
+        the fused score each carries. One ranking pipeline over whatever the corpus indexed."""
         # One deadline for the search, not one per operation inside it. A retrieval embeds, then
         # searches by vector, then reads candidates lexically, and handing the same duration to
         # each would let three sequential operations take three times what the caller allowed while
@@ -260,8 +177,12 @@ class Retriever:
         services: tuple[str, ...] | None = None,
         deadline_s: float,
     ) -> list[Passage]:
-        """Sections, ranked. What a caller gets when the useful answer is a passage of guidance
-        rather than the document it came from."""
+        """The best units the named collection holds for this question.
+
+        What a unit is was decided when the corpus was prepared: a section of guidance, or a past
+        incident whole. So a budget of five means five sections of a runbook or five distinct
+        precedents, according to what was asked for, and nothing here needs to know which.
+        """
         # The collection is named by the capability that called, never inferred here. One name or
         # several; the only normalization is that both arrive as a tuple.
         categories = (collection,) if isinstance(collection, str) else tuple(collection)
@@ -270,31 +191,6 @@ class Retriever:
         )
         chosen = ranked[: min(k, PASSAGE_BUDGET)]
         return [_to_passage(rows_by_id[row_id], fused[row_id]) for row_id in chosen]
-
-    def search_incidents(
-        self,
-        query: str,
-        *,
-        k: int,
-        services: tuple[str, ...] | None = None,
-        deadline_s: float,
-    ) -> list[Passage]:
-        """Past incidents, ranked as incidents.
-
-        Scoring stays where precision is: a section is what the dense and lexical passes compare,
-        and a section is what carries the identifiers promotion reads. What comes back is what the
-        capability claims to search for. Asking whether this has happened before is a question
-        about incidents, and five views of one incident is one candidate presented five times,
-        which is the opposite of what a history worth searching is for.
-
-        Sections are grouped after promotion, never before, so an identifier lifts the section that
-        actually carried it rather than lifting every part of whatever document mentioned it
-        somewhere.
-        """
-        ranked, rows_by_id, fused = self._ranked(
-            query, categories=(POSTMORTEM,), services=services, deadline_s=deadline_s
-        )
-        return _by_incident(ranked, rows_by_id, fused, budget=min(k, PASSAGE_BUDGET))
 
 
 def _fuse(

@@ -101,7 +101,7 @@ def _precedents(scenario_id: str) -> set[str]:
     from fake_knowledge import knowledge_retriever
 
     query = BY_ID[scenario_id]["alert"]["summary"]
-    found = knowledge_retriever().search_incidents(query, k=5, deadline_s=5.0)
+    found = knowledge_retriever().search(query, k=5, collection="postmortem", deadline_s=5.0)
     return {p.reference for p in found}
 
 
@@ -115,12 +115,28 @@ def test_the_cache_precedent_is_reachable_for_the_latency_incident():
     assert "postmortem:inc-105" in _precedents("inc-005")
 
 
-def test_both_halves_of_the_oversell_are_reachable_separately():
-    """One precedent per contributor and no single write-up holding the pair, which is what makes
-    the current evidence rather than the history establish the combination."""
-    found = _precedents("inc-006")
-    assert "postmortem:inc-107" in found
-    assert "postmortem:inc-106" in found
+def test_the_oversell_meets_its_two_precedents_through_two_different_questions():
+    """One precedent per contributor, and no single write-up holding the pair, which is what leaves
+    the combination for current evidence to establish.
+
+    They are not both reachable from the same question, and that is the scenario rather than a
+    defect in it. The reported symptom is a reservation conflict, which reaches the backlog
+    history; nothing in it mentions staleness, so the cache history is reached only once evidence
+    has given the investigation a reason to ask about staleness. A history that answered both
+    halves to the opening question would be handing over a combination the incident exists to make
+    someone assemble.
+    """
+    from fake_knowledge import knowledge_retriever
+
+    assert "postmortem:inc-107" in _precedents("inc-006")
+
+    informed = knowledge_retriever().search(
+        "stale cached availability after a deploy dropped cache invalidation",
+        k=5,
+        collection="postmortem",
+        deadline_s=5.0,
+    )
+    assert "postmortem:inc-106" in {p.reference for p in informed}
 
 
 def test_the_recurrence_and_the_near_match_are_both_reachable():
