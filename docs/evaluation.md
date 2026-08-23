@@ -5,8 +5,8 @@ the capstone demonstrates how agentic systems are evaluated?**
 
 This document owns evaluation technique. Evaluation runs offline over completed investigations,
 informs rather than gates, and certifies nothing about production suitability. It is not a
-platform: one runner, authored expectations, deterministic checks, two controlled comparisons, one
-LLM judge, one report.
+platform: one runner, authored expectations, deterministic checks, three comparisons, one LLM
+judge, one report.
 
 ---
 
@@ -38,13 +38,27 @@ overlapping incident families: resource saturation, downstream or external depen
 deployment regression, cache failure or stale data, and queue backlog or consumer failure. Families
 deliberately share alerts and visible symptoms, so a cause is distinguished by evidence and never
 by alert name alone. The fixture represents the benign-or-transient class the seven do not
-naturally contain; it is evaluation corpus, not an eighth authored incident.
+naturally contain; it is evaluation corpus, not an eighth authored incident. All seven are
+evaluated, and four of them are what the product interface offers; the three whose incidents
+already happened are evaluated and not selectable, as the fixture is.
 
 **Authored expectations.** One per scenario, kept small: the expected cause; acceptable
 alternatives; the evidence references a correct investigation must reach; evidence deliberately
 absent from the corpus that a correct investigation must disclose rather than assert; the outcomes
 the scenario accepts; and the behavior the scenario exists to test. Where a scenario expects
 retrieved knowledge to matter, the expectation says how.
+
+**Retrieval shape.** Authoring a historical relationship into the corpus does not establish that a
+search surfaces it, and a relationship a scenario depends on can be lost to a corpus edit made
+elsewhere with no test failing. Each current scenario's intended relationships are therefore
+asserted deterministically, by running the authored corpus through the real retrieval algorithm
+rather than a stand-in for it. Only the behavior a scenario depends on is asserted: that the
+passages it needs are reachable within the result budget, and a rank position only where the
+scenario's own claim rests on it. Runbook reachability is checked loosely, for a representative
+question rather than a fixed order, because pinning guidance to a position fits the assertion to
+today's corpus and fails on the next honest addition to it. The deterministic embedding is a
+stand-in and ranks differently from the deployed one, so the relationships a live demonstration
+turns on are additionally checked against the real index once the corpus is prepared.
 
 **Completed investigations and telemetry.** Replayed for determinism; live where a comparison needs
 it.
@@ -62,7 +76,7 @@ and recommended no immediate action on the benign fixture.
 Two of these are mechanical, read from the record against the expectation: the outcome is one the
 scenario accepts, and an affirmative no-immediate-action entry is present where the expectation
 requires one. The rest compare prose candidates against an expected cause and are semantic; they
-are decided by the one offline judge path (section 7) against the expectation and reported as
+are decided by the one offline judge path (section 8) against the expectation and reported as
 categories, never as a deterministic pass or fail. The mechanical layer stays mechanical.
 
 ---
@@ -116,12 +130,41 @@ names: a capability the Evidence Investigator proposed, the leading candidate or
 interpretation the assessment states, or an action recommended. Retrieval is not required on
 scenarios that do not need it, and no scenario is penalized for not retrieving.
 
-Both comparisons use the one internal injection seam the investigation runner exposes to the
-harness. It is not an API parameter, not configuration, and not persisted state.
+The adaptive-value and retrieval-influence comparisons use the one internal injection seam the
+investigation runner exposes to the harness. It is not an API parameter, not configuration, and not
+persisted state.
 
 ---
 
-## 7. The judge
+## 7. The nearest-history shortcut
+
+The claim an investigation has to earn is that reaching for the most similar past incident is not
+enough. The third comparison states what that shortcut would have concluded, so the claim is
+answered by a result rather than by assertion.
+
+It is deterministic and makes no model call: a query derived from the incident, one search of past
+incidents, the top postmortem returned, and that write-up's recorded cause and resolution taken
+directly as the answer. No agent, no prompt, no judgement about whether the precedent fits. The
+report states what it concluded beside what the investigation of the same incident concluded.
+
+Making the shortcut reason would defeat it. A baseline that weighs precedents against current
+evidence is a second investigation and no longer the alternative anyone actually reaches for, so
+the comparison it exists to lose would be one it could win for reasons that say nothing about
+retrieval.
+
+Two scenarios carry it, because the shortcut fails in two different ways and one of them looks like
+success. On a scenario whose history holds a convincing near-match, it should reach a confident
+wrong cause, which is the failure worth showing. On a recurrence it should reach the right cause
+having verified nothing, which is the same shortcut arriving at an answer it has no grounds to
+trust. Which scenarios carry each is settled in `decisions.md`. It is not run where neither claim
+follows, and a scenario is not penalized for having no useful precedent.
+
+Unlike the other two, this one holds nothing constant and injects nothing: it does not run an
+investigation at all.
+
+---
+
+## 8. The judge
 
 One offline model-assisted judge, using its own judge model rather than the runtime's chat
 deployment (the choice and its cost are D-005 in `decisions.md`) and one authored
@@ -135,34 +178,34 @@ runtime authority. There is one judge path, no ensemble, and no debate.
 
 ---
 
-## 8. The runner and the report
+## 9. The runner and the report
 
 One runner: for a chosen scenario set, obtain or replay the completed investigations, apply the
-scenario and correctness checks, run the two comparisons where the set includes their scenarios,
+scenario and correctness checks, run the three comparisons where the set includes their scenarios,
 call the judge, and write one report. For the benign fixture the runner invokes the investigation
 runner directly with the fixture's incident context; the fixture is not selectable in the product
-interface. The report is one document per run: per-scenario results with named failures, the two
-comparison results with what differed, and judge categories. It records the
-configuration identity it ran under. Where the report lives, and which scenario is the fast one, are conventions rather than
-decisions.
+interface. The report is one document per run: per-scenario results with named failures, the
+comparison results with what differed or, for the shortcut, what it concluded beside what the
+investigation did, and judge categories. It records the configuration identity it ran under. Where
+the report lives, and which scenario is the fast one, are conventions rather than decisions.
 
 A run worth keeping is also persisted, as one document holding what the report holds: the
 configuration identity including the judge's, and per scenario the identifier, how it was obtained
 or why it was not run, the outcome reported, each deterministic check by name with pass or fail and
 the named failure, and the judge's categories with the sentence behind each; and per comparison its
-name, its scenario, and either the differences, each naming the condition it fell on, or the reason
-it could not be set up. Deterministic results and judge categories stay in separate fields, so
-nothing can merge them, and no aggregate is stored. Keeping is chosen on the command for that run,
-so an exploratory run does not enter the history. A kept run is written once, under the principal
-that ran evaluation, and is never edited or deleted; the application reads kept runs, lists them,
-and never writes one. Where kept runs live is settled in `decisions.md`.
+name, its scenario, and either what it found, each difference naming the condition it fell on, or
+the reason it could not be set up. Deterministic results and judge categories stay in separate
+fields, so nothing can merge them, and no aggregate is stored. Keeping is chosen on the command for
+that run, so an exploratory run does not enter the history. A kept run is written once, under the
+principal that ran evaluation, and is never edited or deleted; the application reads kept runs,
+lists them, and never writes one. Where kept runs live is settled in `decisions.md`.
 
 Cadence: the fast scenario on a meaningful change; the full set before a milestone. Both are
 advisory.
 
 ---
 
-## 9. What is not here
+## 10. What is not here
 
 No precision or recall as a mandated metric; no numeric release gate; no repeated-run subsystem
 beyond running the same set again; no per-class report schema as a contract; no evaluator agents;
