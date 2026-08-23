@@ -97,12 +97,22 @@ def test_postmortems_carry_the_verification_data_model():
 BY_ID = {s["id"]: s for s in SCENARIOS}
 
 
-def _precedents(scenario_id: str) -> set[str]:
+def _returned(scenario_id: str) -> list[str]:
+    """What a search on the incident as reported comes back with, in order and with repeats kept.
+
+    Repeats are the thing worth being able to see. A set would hide the failure this contract
+    exists to catch, where one write-up occupies the budget and the result looks like agreement
+    rather than like one document counted five times.
+    """
     from fake_knowledge import knowledge_retriever
 
     query = BY_ID[scenario_id]["alert"]["summary"]
     found = knowledge_retriever().search(query, k=5, collection="postmortem", deadline_s=5.0)
-    return {p.reference for p in found}
+    return [p.reference for p in found]
+
+
+def _precedents(scenario_id: str) -> set[str]:
+    return set(_returned(scenario_id))
 
 
 def test_the_incident_a_deployment_makes_obvious_is_reachable():
@@ -146,11 +156,39 @@ def test_the_recurrence_and_the_near_match_are_both_reachable():
     assert "postmortem:inc-108" in found
 
 
-def test_a_scenario_meets_more_than_one_candidate_precedent():
-    """The corpus exists to make retrieval produce candidates to weigh. One result would be an
-    answer handed over rather than a set to discriminate between."""
+def test_a_search_of_history_spends_its_budget_on_distinct_incidents():
+    """The contract the corpus was enlarged for: what comes back is several precedents to weigh.
+
+    A budget spent on one write-up is one candidate counted repeatedly, which reads as agreement
+    and is not. This is the assertion that fails if a past incident ever stops being one retrieval
+    unit, so it is written against what was returned rather than against the set of it: collapsing
+    to a set first would let five views of one incident pass as one distinct precedent.
+    """
     for scenario_id in ("inc-004", "inc-005", "inc-006", "inc-007"):
-        assert len(_precedents(scenario_id)) > 1, scenario_id
+        returned = _returned(scenario_id)
+        assert len(returned) == len(set(returned)), f"{scenario_id} returned a write-up twice"
+        assert len(returned) > 1, f"{scenario_id} met only one precedent"
+
+
+def test_every_current_incident_meets_the_history_its_expectation_names():
+    """The precedents a scenario is authored to be able to reach, checked through the real
+    algorithm rather than trusted because they were written down.
+
+    Reachability, not position. The embedder standing in here is 32 hashed dimensions against the
+    deployed 1536, so what it orders is lexical rank wearing a hybrid costume; where a precedent
+    lands is a claim only the real index can support. A precedent the opening report gives no
+    reason to ask for is reached by the question that would follow the evidence, which is the
+    oversell's second half and is asserted where that sequence is described.
+    """
+    reachable = {
+        "inc-004": {"postmortem:inc-104", "postmortem:inc-109"},
+        "inc-005": {"postmortem:inc-105"},
+        "inc-006": {"postmortem:inc-107"},
+        "inc-007": {"postmortem:inc-003", "postmortem:inc-108"},
+    }
+    for scenario_id, expected in reachable.items():
+        missing = expected - _precedents(scenario_id)
+        assert not missing, f"{scenario_id}: authored but not reachable: {sorted(missing)}"
 
 
 def test_the_precedent_the_shortcut_should_reach_is_named_and_resolves():
