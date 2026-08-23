@@ -56,6 +56,24 @@ def test_scenario_count_and_split():
     assert sum(1 for s in SCENARIOS if s["type"] == "recurrence") == 1
 
 
+def test_the_selector_offers_the_current_incidents_and_no_incident_that_already_happened():
+    """Which scenarios an engineer may investigate is decided here and nowhere else.
+
+    Four are incidents presented as current; three already happened and are kept for what they can
+    still do, which is carry an authored expectation for evaluation and a write-up retrieval can
+    reach. The page is read against the answer key's own type rather than a list repeated in a
+    second place, so a scenario that changes role cannot leave the selector saying otherwise.
+    """
+    page = (REPO_ROOT / "src" / "opspilot" / "static" / "investigation.html").read_text(
+        encoding="utf-8"
+    )
+    offered = set(re.findall(r'<option value="(inc-[0-9]+)"', page))
+
+    assert offered == {s["id"] for s in SCENARIOS if s["type"] != "historical"}
+    assert not offered & HISTORICAL_IDS
+    assert len(SCENARIOS) == 7, "every authored scenario is still evaluated"
+
+
 def test_scenarios_have_required_fields_and_controlled_vocab():
     required = {
         "id",
