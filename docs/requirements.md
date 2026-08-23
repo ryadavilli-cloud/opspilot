@@ -74,11 +74,15 @@ service topology, operational knowledge, incident history, deployment records, d
 relationships, and post-incident narrative. The synthetic environment is a feature of the capstone:
 it makes every scenario reproducible and every answer checkable.
 
-**R-1 Authored corpus.** The bounded primary domain is seven authored RetailEase incidents spanning
-five overlapping incident families: resource saturation, downstream or external dependency failure,
-deployment regression, cache failure or stale data, and queue backlog or consumer failure. Families
-deliberately share alerts and visible symptoms, so OpsPilot must distinguish causes by evidence and
-must never treat one alert name as one cause.
+**R-1 Authored corpus.** The bounded primary domain contains seven fully authored RetailEase
+scenarios spanning five overlapping incident families: resource saturation, downstream or external
+dependency failure, deployment regression, cache failure or stale data, and queue backlog or
+consumer failure. Families deliberately share alerts and visible symptoms, so OpsPilot must
+distinguish causes by evidence and must never treat one alert name as one cause. Four represent
+current incidents exposed for interactive investigation; three represent historical incidents
+retained as full evaluation scenarios, whose postmortems also form part of the historical knowledge
+corpus. Additional lightweight historical postmortems may expand retrieval knowledge without
+becoming authored scenarios.
 
 Evaluation additionally needs to exercise five scenario classes: a clear single-cause incident, an
 incident with competing hypotheses, an incident with multiple contributing failures, an incident
@@ -102,8 +106,8 @@ incident, producing one investigation brief. Once complete, its record is retain
 questioned. There is one investigation per incident selection; nothing reopens or extends a
 completed one.
 
-**R-3 Start.** The engineer selects one authored RetailEase incident. Investigation begins
-immediately, with no confirmation step and no free-text intake.
+**R-3 Start.** The engineer selects one of the four current incidents exposed for interactive
+investigation. Investigation begins immediately, with no confirmation step and no free-text intake.
 
 **R-4 Run.** The investigation runs adaptively within deterministic bounds while the engineer
 watches its activity. It ends when the evidence is ready to interpret, when a bound is reached, when
