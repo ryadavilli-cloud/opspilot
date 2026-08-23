@@ -150,13 +150,15 @@ can never be queried: the claim becomes that the fixed path cannot formulate the
 all, which no reordering of the same script would rescue. A contributor the fixed path can reach by
 running its own steps proves only that one order was worse than another.
 
-**Cost.** The condition is not satisfied today and is not a documentation change. The second
-contributor is currently the alerting service's own metric, which the fixed path reaches partway
-through its sequence, and the target the condition needs does not exist in the topology at all.
-Satisfying it means a new service with its dependency edges, metrics, and logs, the three
-architecture documents that describe the topology, the authored expectation, and the corpus closure
-test. Until that lands, inc-006 does not demonstrate what this record selects it for, and the
-comparison is measured rather than assumed.
+**Cost.** RetailEase carries a service that exists so that one contributor can sit somewhere the
+alerting service's own telemetry does not reach, and the topology, its metrics and logs, the
+architecture documents describing the graph, and the authored expectation all have to keep saying
+the same thing about it. The condition is a property of the data rather than of any prose, so it is
+held by tests over the incident record, the storm, and the alerting service's logs, metrics, and
+deploys; without them a later edit could hand the target over early and nothing would notice. The
+storm is kept off the worker by the scenario naming it as watched by no alert rule, which is
+truthful and is also a second thing to keep true. What this record selects inc-006 for is still
+measured rather than assumed: the comparison has to be run for the claim to hold.
 
 ### D-007 Normalized incident context
 
