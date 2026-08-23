@@ -321,6 +321,14 @@ def configuration_identity() -> dict[str, str]:
         "runtime_prompt_versions": ", ".join(
             f"{name}={version}" for name, version in sorted(resolved_versions().items())
         ),
+        # The corpus these scenarios retrieved from. Evaluation searches the authored corpus
+        # through a deterministic embedder rather than the deployed one, so this names that corpus
+        # and that embedder: it is comparable with another evaluation run and deliberately not
+        # with a hosted investigation, which retrieved from the same passages in a vector space
+        # ranked differently.
+        "corpus_fingerprint": knowledge_retriever().corpus_fingerprint(
+            deadline_s=config.SOURCE_DEADLINE_SECONDS
+        ),
         "capability_call_cap": str(config.CAPABILITY_CALL_CAP),
         "model_call_cap": str(config.MODEL_CALL_CAP),
         "investigation_deadline_s": str(config.INVESTIGATION_DEADLINE_SECONDS),

@@ -68,6 +68,12 @@ class CompletedInvestigation(BaseModel):
     trace_id: str = ""
     model_deployment: str = ""
     prompt_versions: dict[str, str] = Field(default_factory=dict)
+    # Which knowledge corpus this run could retrieve from. Retrieval behavior moves with the
+    # corpus while the deployment and the prompt versions stay still, so without this two records
+    # from either side of a corpus change carry identical identity and are not comparable. Empty
+    # means the corpus was not recorded, which every record written before this field says, and
+    # which is a different claim from two records disagreeing.
+    corpus_fingerprint: str = ""
 
     # What the run cost, known at persist time and accounted for nowhere else. Facts about the run
     # in the same category as the deployment and prompt versions: not evidence, cited by nothing,

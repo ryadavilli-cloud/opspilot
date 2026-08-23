@@ -386,6 +386,21 @@ def test_a_record_written_before_accounting_existed_still_lists_and_reads():
     assert read_back is not None and read_back.model_calls_made == 0
 
 
+def test_a_record_written_before_the_corpus_was_identified_reads_as_not_recorded():
+    """An empty corpus identity is a record from before there was one, which is a different claim
+    from two records naming different corpora. Reading it back as absent rather than refusing it
+    is what keeps the history readable across the change that introduced the field."""
+    container = _FakeCosmosContainer()
+    older = _record("inv-old").model_dump(mode="json")
+    del older["corpus_fingerprint"]
+    container.create_item(body={**older, "id": "inv-old"})
+
+    read_back = CosmosCompletedInvestigations(container).get("inv-old")
+
+    assert read_back is not None
+    assert read_back.corpus_fingerprint == ""
+
+
 # --- the record answers for its own citations ---------------------------------------------------
 def test_every_reference_the_assessment_cites_resolves_within_the_saved_record(repository):
     """The property that makes the record self-contained: a reader holding it can check a citation

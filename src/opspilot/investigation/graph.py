@@ -504,6 +504,7 @@ def persist(state: InvestigationState, config: RunnableConfig | None = None) -> 
 
     outcome = outcome_of(state.assessment)
     brief = render(state.assessment)
+    deps = _deps(config)
     record = CompletedInvestigation(
         investigation_id=state.investigation_id,
         incident_id=state.incident.incident_id,
@@ -513,6 +514,11 @@ def persist(state: InvestigationState, config: RunnableConfig | None = None) -> 
         assessment=state.assessment,
         brief=brief,
         model_deployment=state.model_deployment,
+        # Read from the service that holds the retriever rather than carried on state, because it
+        # is a fact about the process this run happened in and not about the run: every
+        # investigation this process serves searches the same corpus, and asking once is what the
+        # service already does with it.
+        corpus_fingerprint=deps[SERVICE].corpus_fingerprint,
         trace_id=state.investigation_id,
         observations=list(state.evidence.observations),
         limitations=list(state.evidence.limitations),
@@ -525,7 +531,7 @@ def persist(state: InvestigationState, config: RunnableConfig | None = None) -> 
         duration_s=round(time.perf_counter() - state.started_at, 6),
     )
     try:
-        _deps(config)[RECORD].save(record)
+        deps[RECORD].save(record)
     except AlreadySaved as exc:
         return _failed(state, FailureCategory.SAVE_FAILED, f"the record could not be saved: {exc}")
 

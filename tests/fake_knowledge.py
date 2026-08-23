@@ -25,6 +25,7 @@ from typing import Any
 
 from opspilot.data.knowledge_records import KnowledgeRecords
 from opspilot.retrieval.base import tokenize
+from opspilot.retrieval.fingerprint import embedding_identity
 from opspilot.retrieval.retriever import Retriever
 
 _REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -68,6 +69,13 @@ class FakeQueryEmbedder:
     def __init__(self, dimensions: int = 32) -> None:
         self.dimensions = dimensions
         self.calls: list[str] = []
+
+    @property
+    def identity(self) -> str:
+        """Named for what it is, so a corpus fingerprint taken here can never be mistaken for one
+        taken over the same passages embedded by the deployed model. The two rank differently, and
+        a shared identity would claim they do not."""
+        return embedding_identity("hash-embed", self.dimensions)
 
     def embed(self, text: str, *, deadline_s: float) -> list[float]:
         self.calls.append(text)

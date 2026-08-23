@@ -28,6 +28,7 @@ from opspilot.data.knowledge_records import (
 )
 from opspilot.retrieval.base import tokenize
 from opspilot.retrieval.embeddings import QueryEmbedder, default_query_embedder
+from opspilot.retrieval.fingerprint import fingerprint
 
 # The three logical collections a capability may name. Fixed at three; a fourth would need its own
 # accepted collection.
@@ -119,6 +120,20 @@ class Retriever:
     def __init__(self, records: KnowledgeRecords, embedder: QueryEmbedder) -> None:
         self._records = records
         self._embedder = embedder
+        self._fingerprint: str | None = None
+
+    def corpus_fingerprint(self, *, deadline_s: float) -> str:
+        """What corpus this retriever searches, as one value (D-012).
+
+        Read once and kept, because the corpus is prepared by a setup principal this process is
+        not and cannot change underneath a running one: a re-seed is a deployment, and a
+        deployment is a new process. Computing it per investigation would pay for the whole
+        container on every run to learn what the first run already established.
+        """
+        if self._fingerprint is None:
+            rows = self._records.corpus_rows(deadline_s=deadline_s)
+            self._fingerprint = fingerprint(rows, embedding=self._embedder.identity)
+        return self._fingerprint
 
     def search(
         self,

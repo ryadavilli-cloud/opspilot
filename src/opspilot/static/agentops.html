@@ -264,8 +264,12 @@
 
     region.appendChild(heading("Configuration that produced it"));
     var versions = Object.keys(r.prompt_versions || {}).sort();
+    // A record written before the corpus was identified says so, rather than showing an empty
+    // value that would read as a corpus with no content.
+    var corpus = r.corpus_fingerprint || "";
     region.appendChild(list(
-      [["deployment", r.model_deployment]].concat(versions.map(function (task) {
+      [["deployment", r.model_deployment],
+       ["corpus", corpus ? corpus : "not recorded"]].concat(versions.map(function (task) {
         return [task, r.prompt_versions[task]];
       })),
       function (pair) { return el("li", pair[0] + ": " + pair[1]); }

@@ -233,6 +233,48 @@ def test_the_saved_record_accounts_for_what_the_run_cost(incident, records):
     assert 0 < saved.duration_s < config.INVESTIGATION_DEADLINE_SECONDS
 
 
+def test_the_saved_record_names_the_corpus_the_run_could_retrieve_from(incident, records):
+    """Retrieval behavior moves with the corpus while the deployment and the prompt versions stay
+    still, so the corpus is named on the record whether or not this particular run searched it: a
+    run that retrieved nothing is still comparable only with runs over the same corpus."""
+    service = ToolService(records, retriever_factory=knowledge_retriever)
+    model = ScriptedModel(evidence_selection=[_action(), _finished()])
+    first, _ = run(incident, model, service=service)
+
+    model = ScriptedModel(
+        evidence_selection=[_action(), _finished()],
+        rca_synthesis=[_assessment().replace("REF", _admitted_ref(first))],
+    )
+    _, record = run(incident, model, service=service)
+    saved = record.get("inv-1")
+
+    assert saved is not None
+    assert saved.corpus_fingerprint == knowledge_retriever().corpus_fingerprint(deadline_s=5.0)
+
+
+def test_a_run_whose_corpus_cannot_be_named_still_saves_its_record(incident, records):
+    """The identity of the corpus is a fact about the run, not a part of it. A container that will
+    not answer for it costs the record one field and never the investigation."""
+
+    def unavailable():
+        raise RuntimeError("no credential")
+
+    service = ToolService(records, retriever_factory=unavailable)
+    model = ScriptedModel(evidence_selection=[_action(), _finished()])
+    first, _ = run(incident, model, service=service)
+
+    model = ScriptedModel(
+        evidence_selection=[_action(), _finished()],
+        rca_synthesis=[_assessment().replace("REF", _admitted_ref(first))],
+    )
+    _, record = run(incident, model, service=service)
+    saved = record.get("inv-1")
+
+    assert saved is not None
+    assert saved.outcome is Outcome.COMPLETE
+    assert saved.corpus_fingerprint == ""
+
+
 def test_a_model_that_reports_no_usage_leaves_the_usage_empty_rather_than_invented(
     incident, records
 ):

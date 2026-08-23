@@ -180,6 +180,7 @@ class ToolService:
         self._retriever: Retriever | None = None
         self._retriever_attempted = False
         self._retriever_error: str | None = None
+        self._corpus_fingerprint: str | None = None
         # Built against the one capability inventory, so the registry cannot drift from it. A
         # name in the inventory with no implementation here is a defect, not a silent omission.
         from opspilot.tools import CAPABILITY_NAMES
@@ -281,6 +282,28 @@ class ToolService:
         construction failed (see `retrieval_error` for the reason), for readiness diagnostics."""
         retriever = self._get_retriever()
         return config.RETRIEVAL_BACKEND if retriever is not None else "unavailable"
+
+    @property
+    def corpus_fingerprint(self) -> str:
+        """Which knowledge corpus this process retrieves from, for the record a run leaves (D-012).
+
+        Empty where the corpus cannot be named: no retriever, or a container that did not answer.
+        A record then says the corpus was not recorded, which is honest and is what every record
+        written before this existed says. Failing an investigation over it would trade a whole
+        result for a field the investigation never reads, so the read degrades rather than raises,
+        the way the backend name above does.
+        """
+        if self._corpus_fingerprint is None:
+            retriever = self._get_retriever()
+            try:
+                self._corpus_fingerprint = (
+                    ""
+                    if retriever is None
+                    else retriever.corpus_fingerprint(deadline_s=self.deadline_s)
+                )
+            except Exception:  # noqa: BLE001 - an unnamed corpus is a blank field, never a failure
+                self._corpus_fingerprint = ""
+        return self._corpus_fingerprint
 
     @property
     def retrieval_error(self) -> str | None:
