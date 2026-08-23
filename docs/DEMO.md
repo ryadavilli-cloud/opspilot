@@ -21,9 +21,11 @@ deployment, which is behind sign-in.
 
 The page has five regions.
 
-**Start an investigation.** Pick one authored incident from the selector and press Start
+**Start an investigation.** Pick one of the current incidents from the selector and press Start
 investigation. That is the whole intake: there is no free-text entry, because the investigation
-must reach its own conclusion rather than receive one.
+must reach its own conclusion rather than receive one. The selector offers the incidents presented
+as current; others in the corpus are past incidents, and what a run may reach of them is their
+write-ups, through retrieval, like any other knowledge.
 
 **Activity.** The live feed. Each entry is one action the run took, rendered as
 `[phase] action (status)` with a detail line: which capability was called and what came of it, why
@@ -165,6 +167,11 @@ oversell. Watch whether the assessment recognizes more than one contributor rath
 single cause, whether the brief presents them as contributing causes, and whether the recommended
 actions address the combined situation rather than half of it.
 
+Worth watching alongside that: how the second contributor came into view at all. Which capability
+first put it in front of the run, and whether the run went looking for it after something earlier
+suggested there was more to find, or reached it while covering ground it would have covered
+anyway.
+
 Suggested follow-up: were there multiple contributing causes?
 
 ### inc-005: a straightforward baseline
@@ -210,8 +217,8 @@ lives:
   outcomes, and failure: [workflow-design.md](workflow-design.md);
 - why evidence and retrieved knowledge are different trust classes, and what a reference is:
   [data-and-evidence.md](data-and-evidence.md);
-- how the adaptive and retrieval claims are tested rather than asserted, including the two
-  controlled comparisons: [evaluation.md](evaluation.md).
+- how the adaptive and retrieval claims are tested rather than asserted, and what the cheapest
+  alternative to investigating would have concluded: [evaluation.md](evaluation.md).
 
 The loop runs both ways: a behavior observed in a run is explained by the design, and the design
 read first makes the run easier to interpret. What the recorded comparison runs actually showed is

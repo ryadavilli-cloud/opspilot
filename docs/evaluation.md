@@ -101,9 +101,10 @@ tools in a predetermined order. The comparison reports whether the adaptive path
 meaningfully better result: a correct cause the fixed path missed, a red herring the fixed path
 accepted, or required evidence only the adaptive path reached.
 
-The scenario is chosen empirically. inc-004 is the likely candidate because its evidence path is
-contingent, but no scenario is declared to satisfy this until the comparison has been run and shows
-the difference. One or a few scenarios suffice; this is a falsification test, not a benchmark.
+Which scenario carries it is settled in `decisions.md`, and it is settled as a selection to
+measure rather than a result to assume: no scenario is declared to satisfy this until the
+comparison has been run and shows the difference. One or a few scenarios suffice; this is a
+falsification test, not a benchmark.
 
 ---
 
