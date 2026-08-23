@@ -187,9 +187,66 @@ def test_the_activity_feed_carries_no_prompt_or_hidden_reasoning(incident, recor
     )
     final, _ = run(incident, model, service=ToolService(records))
 
-    body = " ".join(f"{e.action} {e.detail}" for e in final["events"])
+    body = " ".join(f"{e.action} {e.detail} {e.purpose}" for e in final["events"])
     assert "You are the" not in body  # no prompt text
     assert "hypothesis" not in body.lower()  # no working hypothesis
+
+
+def test_a_capability_entry_says_what_the_call_was_meant_to_answer(incident, records):
+    """The investigator states a question when it proposes a call, and the feed shows it. Without
+    it the engineer watches a list of capability names and cannot tell an investigation from a
+    sweep. Nothing is generated for this: the sentence already exists on the proposal, and the
+    same field decides whether the question has been answered before."""
+    question = "which alerts correlate with this incident"
+    model = ScriptedModel(evidence_selection=[_action(question=question), _finished()])
+
+    final, _ = run(incident, model, service=ToolService(records))
+
+    entry = next(e for e in final["events"] if e.capability == "get_correlated_alerts")
+    assert entry.purpose == question
+
+
+def test_a_refused_proposal_still_says_what_it_wanted_to_answer(incident, records):
+    """A refusal is the more interesting entry of the two, so it is the worse one to leave
+    unexplained: the engineer should see what was asked for and that code declined it."""
+    model = ScriptedModel(
+        evidence_selection=[_action(capability="not_a_capability", question="reach for something")]
+    )
+
+    final, _ = run(incident, model, service=ToolService(records))
+
+    refused = next(e for e in final["events"] if e.action == "proposal refused")
+    assert refused.purpose == "reach for something"
+
+
+def test_a_retrieval_entry_names_the_incidents_it_returned(incident, records):
+    """What a search of past incidents obtained is past incidents, so that is what the feed shows.
+    No score travels with them: ranking chose the order and says nothing about how well any of
+    them fits, and a number here would be read as a confidence nothing computed."""
+    model = ScriptedModel(
+        evidence_selection=[
+            json.dumps(
+                {
+                    "capability": "search_past_incidents",
+                    "arguments": {"query": "checkout failures after a deployment"},
+                    "question": "has a deployment caused checkout failures before",
+                }
+            ),
+            _finished(),
+        ]
+    )
+
+    final, _ = run(
+        incident,
+        model,
+        service=ToolService(records, retriever_factory=knowledge_retriever),
+    )
+
+    entry = next(e for e in final["events"] if e.capability == "search_past_incidents")
+    assert entry.purpose == "has a deployment caused checkout failures before"
+    assert entry.references, "the entry named nothing it retrieved"
+    assert all(ref.startswith("postmortem:") for ref in entry.references)
+    assert len(entry.references) == len(set(entry.references)), "one incident listed twice"
 
 
 # --- the record says what the run cost ----------------------------------------------------------

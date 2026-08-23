@@ -103,6 +103,41 @@ def test_the_span_carries_what_the_event_carries():
     assert span.attributes["reference_count"] == "2"
 
 
+def test_the_question_a_call_was_meant_to_answer_travels_to_the_feed(span_exporter):
+    """Carried on the event and deliberately not onto the span. It is engineer-facing text for a
+    feed, where the span's attributes are what a hosted trace is queried by, and a sentence is not
+    something anyone queries by."""
+    event = emit(
+        "investigation.capability",
+        "inv-1",
+        "inc-004",
+        sequence=1,
+        phase="gathering",
+        action="query_logs",
+        detail="query_logs: succeeded, complete (3 admitted, 0 retrieved)",
+        purpose="whether checkout failures originate downstream",
+        capability="query_logs",
+    )
+
+    assert event.purpose == "whether checkout failures originate downstream"
+    (span,) = span_exporter.spans
+    assert "purpose" not in span.attributes
+
+
+def test_an_entry_that_states_no_purpose_carries_an_empty_one(span_exporter):
+    event = emit(
+        "investigation.persisted",
+        "inv-1",
+        "inc-004",
+        sequence=1,
+        phase="persisting",
+        action="record saved",
+        detail="saved",
+    )
+
+    assert event.purpose == ""
+
+
 def test_an_attribute_nothing_supplied_is_absent_rather_than_empty():
     """A query has to tell an entry that had no transport from one whose transport was lost."""
     exporter = tracing.InMemorySpanExporter()

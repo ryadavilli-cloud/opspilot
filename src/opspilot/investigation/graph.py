@@ -88,6 +88,7 @@ def _activity(
     capability: str | None = None,
     outcome: str | None = None,
     references: list[str] | None = None,
+    purpose: str = "",
     after: list[Any] | None = None,
 ) -> list[Any]:
     """One activity entry appended to what the run has already emitted.
@@ -113,6 +114,7 @@ def _activity(
         transport="direct" if capability else None,
         outcome=outcome,
         references=references or [],
+        purpose=purpose,
     )
     return [*emitted, event]
 
@@ -239,6 +241,7 @@ def gather(state: InvestigationState, config: RunnableConfig | None = None) -> d
                 action="proposal refused",
                 status="error",
                 detail=refusal,
+                purpose=action.question,
             ),
         }
 
@@ -279,6 +282,7 @@ def gather(state: InvestigationState, config: RunnableConfig | None = None) -> d
             outcome=tool_result.outcome.value,
             references=[obs.evidence_ref for obs in admitted]
             + [passage.reference for passage in retrieved],
+            purpose=action.question,
         ),
     }
 

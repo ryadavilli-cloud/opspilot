@@ -31,6 +31,7 @@ def emit(
     transport: str | None = None,
     outcome: str | None = None,
     references: list[str] | None = None,
+    purpose: str = "",
 ) -> ActivityEvent:
     """Record one instrumentation fact as both a telemetry span and its matching activity event."""
     # The span carries what the event carries. Both are built here from the same stated facts so
@@ -68,4 +69,5 @@ def emit(
         transport=transport,
         outcome=outcome,
         references=list(references or []),
+        purpose=purpose,
     )

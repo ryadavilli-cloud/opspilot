@@ -46,6 +46,12 @@ class ActivityEvent(BaseModel):
     transport: str | None = None
     outcome: str | None = None
     references: list[str] = Field(default_factory=list)
+    # What the call was meant to answer, in the investigator's own words. This is the question it
+    # already states as part of proposing an action, not an account of how it decided: the same
+    # field authorization reads to refuse a question already answered. Carrying it here is what
+    # makes a feed of capability names legible as an investigation, and it needs no second model
+    # call to produce, because the run already had it.
+    purpose: str = ""
 
 
 class TerminalEvent(BaseModel):

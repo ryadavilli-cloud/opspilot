@@ -167,6 +167,39 @@ def test_the_page_reads_the_run_identity_the_record_carries(client):
     assert "analysis returned to gathering" in page
 
 
+def test_the_page_separates_knowledge_that_was_used_from_knowledge_that_was_only_retrieved(client):
+    """The record knows two things about a passage: that it was retrieved, and whether the accepted
+    assessment referenced it. It does not know that anything was considered and set aside, so the
+    page never says rejected: a passage nobody cited may have been read and dismissed or never read
+    at all, and calling that a rejection would assert a judgement no one recorded."""
+    page = client.get("/agentops").text
+
+    # The two dispositions the record can support, as the literal labels the page renders.
+    assert '"Used in assessment"' in page
+    assert '"Retrieved; not referenced in final assessment"' in page
+    # Derived from what the assessment already states, not from a stored disposition field.
+    assert "knowledge_used" in page and "history_refs" in page and "knowledge_ref" in page
+    assert "corpus_fingerprint" not in page.split("Knowledge retrieved")[1][:400]
+
+
+def test_the_page_never_reads_a_retrieval_score(client):
+    """Ranking put the passages in an order. It did not measure how well any of them fits, and a
+    number rendered beside a passage would be read as though it had."""
+    page = client.get("/agentops").text
+
+    assert "p.score" not in page and ".score" not in page
+
+
+def test_the_investigation_screen_shows_purpose_and_what_a_call_obtained(client):
+    screen = client.get("/investigation").text
+
+    assert "Purpose:" in screen
+    assert "Obtained:" in screen
+    assert "event.purpose" in screen and "event.references" in screen
+    # Ranking order is not a confidence, and nothing on the screen may present it as one.
+    assert "event.score" not in screen and "p.score" not in screen
+
+
 def test_the_investigation_screen_carries_one_link_to_the_page(client):
     screen = client.get("/investigation").text
 

@@ -80,6 +80,7 @@
   #feed li:last-child { border-bottom: none; }
   #feed .status-error { color: var(--bad); }
   #feed .phase { color: var(--muted); }
+  #feed .muted { color: var(--muted); }
 
   #brief { min-height: 2.5rem; }
   #brief.pending { color: var(--muted); }
@@ -166,11 +167,29 @@
   function appendActivity(event) {
     var item = document.createElement("li");
     var statusClass = event.status === "error" ? " status-error" : "";
-    item.innerHTML =
+    var html =
       "<span class=\"phase\">[" + escapeHtml(event.phase) + "]</span> " +
       escapeHtml(event.action) +
-      " <span class=\"" + statusClass.trim() + "\">(" + escapeHtml(event.status) + ")</span>" +
-      "<br>" + escapeHtml(event.detail);
+      " <span class=\"" + statusClass.trim() + "\">(" + escapeHtml(event.status) + ")</span>";
+    // What this call was meant to answer, as the investigator stated it when proposing the call.
+    // It is why a feed of capability names reads as an investigation rather than a list of
+    // lookups. Not reasoning: the run already carries this sentence and shows it unchanged.
+    if (event.purpose) {
+      html += "<br><span class=\"muted\">Purpose:</span> " + escapeHtml(event.purpose);
+    }
+    html += "<br>" + escapeHtml(event.detail);
+    // What came back, by reference. For a search of past incidents these are the incidents
+    // themselves, because that is what the capability returns. No score is shown beside them:
+    // ranking put them in this order and says nothing about how well any of them fits, and a
+    // number printed here would be read as confidence that nothing computed.
+    if (event.references && event.references.length) {
+      html += "<br><span class=\"muted\">Obtained:</span> " +
+        escapeHtml(event.references.slice(0, 8).join(", ")) +
+        (event.references.length > 8
+          ? " (+" + (event.references.length - 8) + " more)"
+          : "");
+    }
+    item.innerHTML = html;
     feed.appendChild(item);
   }
 
