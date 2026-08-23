@@ -745,6 +745,32 @@ def test_analysis_can_send_the_investigation_back_to_gather_once(incident, recor
     assert final.get("failure") is None
 
 
+def test_the_record_says_the_investigation_returned_for_more_evidence(incident, records, reference):
+    """A reader holding the record can tell a run that went back for evidence from one that did
+    not. Only the fact is kept: the question it turned on is the analyst's to state in the
+    assessment's unknowns, and the field the Supervisor routed on is a proposal."""
+    model = _returning(reference)
+
+    _, record = run(incident, model, service=ToolService(records))
+    saved = record.get("inv-1")
+
+    assert saved is not None
+    assert saved.analysis_return_used is True
+
+
+def test_a_run_that_settled_without_returning_says_so(incident, records, reference):
+    model = ScriptedModel(
+        evidence_selection=[_action(), _finished()],
+        rca_synthesis=[_assessment().replace("REF", reference)],
+    )
+
+    _, record = run(incident, model, service=ToolService(records))
+    saved = record.get("inv-1")
+
+    assert saved is not None
+    assert saved.analysis_return_used is False
+
+
 def test_the_question_reaches_the_investigator(incident, records, reference):
     """Seeded, not merely recorded. The point of a return is that gathering resumes on the thing
     analysis could not settle, which means the investigator has to be told what that was."""

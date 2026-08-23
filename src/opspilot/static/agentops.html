@@ -277,6 +277,7 @@
 
     region.appendChild(heading("What the run cost"));
     region.appendChild(list([
+      "analysis returned to gathering: " + (r.analysis_return_used ? "yes" : "no"),
       "model calls: " + r.model_calls_made,
       "capability calls: " + r.capability_calls_made,
       "tokens: " + fmtTokens(r.token_usage),

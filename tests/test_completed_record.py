@@ -386,6 +386,31 @@ def test_a_record_written_before_accounting_existed_still_lists_and_reads():
     assert read_back is not None and read_back.model_calls_made == 0
 
 
+def test_whether_analysis_returned_survives_the_round_trip(repository):
+    """The fact is durable, not a live flag. It reads back as it was written, because a reader
+    months later is exactly who cannot otherwise tell the two kinds of run apart."""
+    returned = _record("inv-returned").model_copy(update={"analysis_return_used": True})
+    repository.save(returned)
+    repository.save(_record("inv-straight"))
+
+    assert repository.get("inv-returned").analysis_return_used is True
+    assert repository.get("inv-straight").analysis_return_used is False
+
+
+def test_a_record_written_before_the_return_was_recorded_reads_as_no_return():
+    """Absent means the run predates the field. That reads as no return rather than refusing the
+    record, which is the same treatment every other field added after the fact receives."""
+    container = _FakeCosmosContainer()
+    older = _record("inv-old").model_dump(mode="json")
+    del older["analysis_return_used"]
+    container.create_item(body={**older, "id": "inv-old"})
+
+    read_back = CosmosCompletedInvestigations(container).get("inv-old")
+
+    assert read_back is not None
+    assert read_back.analysis_return_used is False
+
+
 def test_a_record_written_before_the_corpus_was_identified_reads_as_not_recorded():
     """An empty corpus identity is a record from before there was one, which is a different claim
     from two records naming different corpora. Reading it back as absent rather than refusing it

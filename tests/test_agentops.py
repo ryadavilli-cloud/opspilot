@@ -155,6 +155,18 @@ def test_the_page_is_served_and_reads_only_the_listing_and_reading_routes(client
     assert "method:" not in page.text, "the page issues nothing but plain reads"
 
 
+def test_the_page_reads_the_run_identity_the_record_carries(client):
+    """The corpus a run retrieved from and whether analysis sent it back for evidence are both
+    facts about how the investigation reached its result, and both are unreadable anywhere else
+    once the run is over."""
+    page = client.get("/agentops").text
+
+    assert "corpus_fingerprint" in page
+    assert "not recorded" in page, "a record from before the corpus was identified says so"
+    assert "analysis_return_used" in page
+    assert "analysis returned to gathering" in page
+
+
 def test_the_investigation_screen_carries_one_link_to_the_page(client):
     screen = client.get("/investigation").text
 

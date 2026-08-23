@@ -519,6 +519,7 @@ def persist(state: InvestigationState, config: RunnableConfig | None = None) -> 
         # investigation this process serves searches the same corpus, and asking once is what the
         # service already does with it.
         corpus_fingerprint=deps[SERVICE].corpus_fingerprint,
+        analysis_return_used=state.bounds.return_used,
         trace_id=state.investigation_id,
         observations=list(state.evidence.observations),
         limitations=list(state.evidence.limitations),

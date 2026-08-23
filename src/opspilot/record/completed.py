@@ -74,6 +74,12 @@ class CompletedInvestigation(BaseModel):
     # means the corpus was not recorded, which every record written before this field says, and
     # which is a different claim from two records disagreeing.
     corpus_fingerprint: str = ""
+    # Whether synthesis found a material question gathering could still answer, and the Supervisor
+    # authorized the one return. Not a bound value, which is live control and meaningless once the
+    # run is over, but part of how this investigation reached its result: without it a run that
+    # returned and one that never did persist identically. The question it turned on is not here,
+    # because the analyst states the same matter in the assessment's unknowns.
+    analysis_return_used: bool = False
 
     # What the run cost, known at persist time and accounted for nowhere else. Facts about the run
     # in the same category as the deployment and prompt versions: not evidence, cited by nothing,
