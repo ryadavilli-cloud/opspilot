@@ -1,9 +1,10 @@
 ---
-id: postmortem:inc-102-email-provider-outage
+id: postmortem:inc-102
 title: "INC-102: Transactional Email Delay During Provider Outage"
 kind: postmortem
+incident_id: inc-102
 services: [notification-worker, email-provider, service-bus]
-source: "synthetic (RetailEase); distractor — not a labeled retrieval target"
+source: "synthetic (RetailEase); structure after real SRE practice"
 ---
 
 # INC-102: Transactional Email Delay During Provider Outage
