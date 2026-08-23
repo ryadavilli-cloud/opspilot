@@ -212,8 +212,11 @@ the terminal event, read afterwards for the brief, the question, and evaluation:
   are facts about the run in the same category as the deployment and prompt versions: they are not
   evidence, are cited by nothing, and are read by nothing in the investigation.
 
-Ephemeral working state is not persisted: no bounds, no proposals, no working hypotheses. Evaluation
-artifacts are separate and reference the investigation, never the reverse.
+Ephemeral working state is not persisted: no bound values, no proposals, no working hypotheses.
+Whether the analysis-to-gathering return was taken is recorded, because it is not a bound value but
+a fact about how the investigation reached its result: like the run accounting above it is not
+evidence, is cited by nothing, and is read by nothing in the investigation. Evaluation artifacts are
+separate and reference the investigation, never the reverse.
 
 ---
 
