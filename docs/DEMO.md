@@ -159,29 +159,56 @@ Watch for:
 
 Suggested follow-up: has this happened before, and what should we do differently this time?
 
-### inc-006: multiple contributors
+### inc-006: a contributor nothing points at
 
-Reservation conflicts and oversells at checkout. The scenario is authored so that a simplistic
-one-cause explanation is insufficient: two conditions combined, and neither alone explains the
-oversell. Watch whether the assessment recognizes more than one contributor rather than forcing a
-single cause, whether the brief presents them as contributing causes, and whether the recommended
-actions address the combined situation rather than half of it.
+Reservation conflicts and oversells at checkout. Two conditions combined and neither alone explains
+the oversell, so an account naming one of them has not finished.
 
-Worth watching alongside that: how the second contributor came into view at all. Which capability
-first put it in front of the run, and whether the run went looking for it after something earlier
-suggested there was more to find, or reached it while covering ground it would have covered
-anyway.
+Where the second one lives is what makes this worth watching. Stale cached availability sits on
+services the incident already names. The reservation backlog sits on `inventory-reservation-worker`,
+which the incident text does not mention, no alert names, and the alerting service's own logs,
+metrics, and deployments do not reveal. Nothing pages on its queue depth, which is why a backlog
+there goes unnoticed in the first place. So the question that reaches the second contributor cannot
+be asked at the start: it becomes askable once something returns the worker's name, and the first
+operational result that does is asking `inventory-api` what it depends on.
 
-Suggested follow-up: were there multiple contributing causes?
+Watch for:
 
-### inc-005: a straightforward baseline
+- whether the run asks what the alerting service depends on, and what it does with the answer;
+- whether a capability is called against a service the run had not heard of when it started;
+- whether the account ends with one contributor or two, and whether the recommended actions
+  address both;
+- a possible return to gathering, if the first synthesis finds the reservation side unexplained.
 
-Checkout latency is up and sessions are dropping. The quickest normal investigation: a
-capacity-style cause with no change to blame. It demonstrates the ordinary adaptive loop, and one
-quieter honesty property: nothing was deployed in this incident's window, so watch how the run
-treats change evidence that genuinely is not there. A correct account reports that the change
-history was checked and held nothing, rather than skipping the question or inventing a deploy,
-and the checked absence is itself citable evidence.
+If the run reaches only the stale-cache half, read the brief for whether it says so rather than
+presenting half an explanation as a whole one. An honest partial account is a correct result here.
+
+Suggested follow-up: were there multiple contributing causes, and what led you to the second one?
+
+### inc-005: a precedent that helps without settling anything
+
+Checkout latency is up and sessions are dropping. The corpus holds a past incident where
+`redis-cache` reached its memory ceiling and evicted cart sessions alongside cold entries, close
+enough to this one to be worth reading and not close enough to settle it.
+
+That distinction is the thing to draw out. A precedent can name the signals worth checking, the
+hit rate and the eviction rate beside the latency, and can suggest what resolved it last time,
+without establishing anything about today. Only current metrics do that, and the grounding gate
+holds the line: a postmortem reference may support history or an action's provenance and may never
+stand as current operational support.
+
+Watch for:
+
+- whether history is consulted at all, and if it is, whether the account treats it as a lead or as
+  a finding;
+- current cache metrics being read, and the account resting on those rather than on the precedent;
+- one quieter honesty property this scenario has always carried: nothing was deployed in this
+  incident's window, so watch how the run treats change evidence that genuinely is not there. A
+  correct account reports that the change history was checked and held nothing, rather than
+  skipping the question or inventing a deploy, and the checked absence is itself citable evidence.
+
+If retrieval does not happen on a given run, nothing failed: the run exercised the adaptive loop
+and grounding and did not exercise knowledge influence.
 
 ## When a live run varies
 
