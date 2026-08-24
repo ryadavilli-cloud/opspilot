@@ -13,10 +13,21 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import answer_key
+import comparisons
 import pytest
 import run_evaluation
-from comparisons import adaptive_value, retrieval_influence
+from comparisons import (
+    _condensed,
+    adaptive_value,
+    historical_answer,
+    nearest_history,
+    nearest_history_query,
+    retrieval_influence,
+)
 from evaluation import Provenance, Source
+from fake_knowledge import hash_embed, knowledge_retriever, retriever_from
+from fake_operational_records import corpus_records
 from fixed_path import ORDER, fixed_path
 from judge import DIAGNOSIS_MATCH, Judged, Verdict
 from test_completed_record import _record
@@ -24,8 +35,9 @@ from test_completed_record import _record
 from opspilot.assessment.contracts import Action, Candidate, SupportLabel
 from opspilot.evidence.operations import Operation
 from opspilot.investigation.harness import HARNESS, Harness, knowledge_for_prompts
-from opspilot.retrieval.retriever import Passage
-from opspilot.tools.contracts import ExecutionOutcome
+from opspilot.llm import client as llm_client
+from opspilot.retrieval.retriever import POSTMORTEM, Passage
+from opspilot.tools.contracts import ExecutionOutcome, IncidentRecord
 
 LIVE = Source(Provenance.OBTAINED, "live")
 OTHER_LIVE = Source(Provenance.OBTAINED, "live")
@@ -138,6 +150,32 @@ def test_the_fixed_path_does_not_branch_on_what_it_found():
     )[0]
 
     assert empty.capability == full.capability == ORDER[1]
+
+
+def test_a_target_the_fixed_path_learns_from_dependencies_arrives_too_late_to_query():
+    """The structural claim the adaptive-value comparison rests on.
+
+    Dependencies are the last thing the script asks for, so a service it first hears about there
+    is a service it can never go and query: the step that would have asked for that service's
+    metrics is spent, and the path has no way back to it. This is not an argument that a fixed
+    order is a worse order. No rearrangement helps, because whichever step runs last learns
+    something the steps before it could have used.
+    """
+    assert ORDER[-1] == "get_service_dependencies"
+
+    after_dependencies, _ = _step(len(ORDER))
+    assert after_dependencies.is_finished
+    assert after_dependencies.capability == ""
+
+    # And the one metrics step it does get is bound to the alerting service, never to a service
+    # the run has yet to hear of.
+    metrics_step, _ = _step(ORDER.index("get_metrics"))
+    assert metrics_step.capability == "get_metrics"
+    assert metrics_step.arguments["service"] == _Incident.scope
+    assert "metric" not in metrics_step.arguments, (
+        "the fixed metrics step asks for every series the service has, so hiding one behind a "
+        "name would not put it out of reach; only a different service does that"
+    )
 
 
 # --- adaptive value ------------------------------------------------------------------------------
@@ -334,3 +372,182 @@ def test_a_throttled_retrieval_condition_is_reported_the_same_way(monkeypatch):
     result = run_evaluation.compare_retrieval_influence({"id": "inc-007"})
 
     assert not result.ran and "429" in result.note
+
+
+# --- the nearest-history shortcut ----------------------------------------------------------------
+# What is asserted here is that the shortcut is a shortcut: that it reasons about nothing, reads no
+# current evidence, and reports what retrieval actually returned. What is deliberately not asserted
+# is that the authored precedent ranks first. The embedder these fixtures use is 32 hashed
+# dimensions against the deployed 1536, so its ordering is not evidence about the deployed one, and
+# a local assertion of semantic rank would be a claim this fixture cannot support.
+_SHORTCUT_SCENARIOS = ("inc-004", "inc-007")
+
+
+def _scenario(scenario_id: str) -> dict:
+    return next(s for s in answer_key.SCENARIOS if s["id"] == scenario_id)
+
+
+def _incident(scenario_id):
+    return IncidentRecord(**corpus_records().incident(scenario_id, deadline_s=10))
+
+
+def _returning(*references: str):
+    """A real retriever over hand-built write-ups, for the tops the authored corpus will not
+    produce on demand. Real, because the capability accepts nothing else: it is typed to the
+    retriever, so a duck-typed stand-in would be testing a path production cannot take."""
+    # Carries the sections the shortcut reads, because it now answers from what retrieval returned
+    # rather than from the file behind the reference.
+    body = (
+        "checkout deployment queue notification cache\n\n"
+        "## Root cause\nA recorded cause for this write-up.\n\n"
+        "## Resolution\nWhat settled it at the time.\n"
+    )
+    documents = [
+        {
+            "id": f"{ref}#0",
+            "chunk_id": f"{ref}#0",
+            "category": POSTMORTEM,
+            "doc_id": ref,
+            "title": ref,
+            "text": f"{ref} {body}",
+            "services": ["checkout-api"],
+            "identifiers": [],
+            "date": None,
+            "provenance": {},
+            "embedding": hash_embed(f"{ref} {body}", 32),
+        }
+        for ref in references
+    ]
+    return retriever_from(documents)
+
+
+class _Spy:
+    """Records the search the shortcut issued, standing in for the capability it calls."""
+
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, int]] = []
+
+    def __call__(self, _retriever, _deadline, *, query, k, service=None):
+        self.calls.append((query, k))
+        passage = Passage(
+            reference="postmortem:inc-104",
+            category=POSTMORTEM,
+            title="t",
+            text="",
+            services=(),
+            score=1.0,
+        )
+        return [passage], [passage.reference]
+
+
+def test_the_shortcut_runs_on_the_scenarios_that_name_a_precedent_and_no_others(monkeypatch):
+    """Which scenarios carry it is decided by the answer key naming the precedent a reasoning-free
+    lookup should reach. Elsewhere there is nothing for the shortcut to be right or wrong about."""
+    carrying = tuple(
+        s["id"] for s in answer_key.SCENARIOS if "nearest_history_should_select" in s["evaluation"]
+    )
+    assert carrying == _SHORTCUT_SCENARIOS
+
+    # The real runner with no deployment configured, which is the documented path where the two
+    # model-dependent comparisons report themselves not evaluable. Without pinning it, this would
+    # try to obtain live conditions for them and reach a deployment, which is a live call in a lane
+    # that must make none.
+    monkeypatch.setattr(run_evaluation.config, "AZURE_OPENAI_DEPLOYMENT", "")
+    ran = [
+        c
+        for c in run_evaluation.run_comparisons(answer_key.SCENARIOS)
+        if c.name == "nearest history"
+    ]
+    assert [c.scenario_id for c in ran] == list(_SHORTCUT_SCENARIOS)
+
+
+def test_the_shortcut_makes_no_model_call(monkeypatch):
+    """Not by instruction but by construction: it is handed no model and reaches for none. A
+    baseline that reasoned would be a second investigation, and beating that would say nothing
+    about whether retrieval on its own is enough."""
+
+    def _refuse(*_, **__):
+        raise AssertionError("the shortcut built a model")
+
+    monkeypatch.setattr(llm_client, "build_chat_model", _refuse)
+
+    result = nearest_history(_scenario("inc-004"), _incident("inc-004"), knowledge_retriever())
+
+    assert result.ran and result.conclusion
+
+
+def test_the_shortcut_searches_once_on_the_incident_as_reported(monkeypatch):
+    """The whole of what a shortcut has to work with. Searching on the authored cause would be
+    searching with the answer already in hand, and one search is the whole mechanism."""
+    incident = _incident("inc-004")
+    spy = _Spy()
+    monkeypatch.setattr(comparisons, "search_past_incidents", spy)
+
+    nearest_history(_scenario("inc-004"), incident, knowledge_retriever())
+
+    assert [query for query, _ in spy.calls] == [incident.short_description]
+    assert nearest_history_query(incident) == incident.short_description
+
+
+def test_the_shortcut_answers_from_the_result_it_was_handed():
+    """It copies what the past incident says, which is the point: on the misdirection scenario the
+    recorded answer is a rollback, and the current incident's own cause is nowhere in it.
+
+    The cause is read out of the returned result rather than out of the file behind it. A past
+    incident is one retrieval unit, so the result already holds the whole write-up, and reopening
+    the file would be a second source free to disagree with what the run was actually handed.
+    """
+    retriever = knowledge_retriever()
+    result = nearest_history(_scenario("inc-004"), _incident("inc-004"), retriever)
+
+    (top,) = [
+        p
+        for p in retriever.search(
+            _incident("inc-004").short_description, k=5, collection=POSTMORTEM, deadline_s=5.0
+        )
+        if p.reference == "postmortem:inc-104"
+    ]
+    cause, resolution = historical_answer(top.text)
+    assert cause and resolution, "the returned result did not carry the recorded answer"
+    assert _condensed(cause) in result.conclusion
+    assert "payment-gateway" not in result.conclusion, "the current incident's cause leaked in"
+
+
+def test_a_returned_past_incident_carries_the_answer_the_shortcut_needs():
+    """The property whole units buy: cause and resolution travel with the precedent, so the
+    shortcut never has to go looking for them anywhere else."""
+    for passage in knowledge_retriever().search(
+        "checkout-api returning 500s after a deployment", k=5, collection=POSTMORTEM, deadline_s=5.0
+    ):
+        cause, resolution = historical_answer(passage.text)
+        assert cause, f"{passage.reference} came back without its recorded cause"
+        assert resolution, f"{passage.reference} came back without its recorded resolution"
+
+
+def test_a_precedent_other_than_the_authored_one_is_reported_rather_than_replaced():
+    """A failed premise, not a reason to fake the experiment. The shortcut is only interesting
+    where it lands where a shortcut would land, so a different top means the thing this scenario
+    exists to test did not happen, and the report says which incident actually came first."""
+    result = nearest_history(
+        _scenario("inc-004"), _incident("inc-004"), _returning("postmortem:inc-101")
+    )
+
+    assert not result.ran
+    assert "postmortem:inc-101" in result.note, "the report does not say what actually came first"
+    assert "postmortem:inc-104" in result.note, "the report does not say what was expected"
+    assert not result.conclusion, "an answer was produced for an experiment that did not run"
+
+
+def test_a_search_that_returns_nothing_is_reported_rather_than_guessed():
+    result = nearest_history(_scenario("inc-007"), _incident("inc-007"), _returning())
+
+    assert not result.ran and not result.conclusion
+
+
+def test_the_shortcut_names_the_incident_retrieval_actually_returned():
+    result = nearest_history(
+        _scenario("inc-007"), _incident("inc-007"), _returning("postmortem:inc-003")
+    )
+
+    assert result.ran
+    assert "postmortem:inc-003" in result.conclusion

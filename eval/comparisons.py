@@ -13,11 +13,16 @@ arrangement rather than leaving it as an instruction.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from typing import Any
 
 from evaluation import Source, require_distinct
 from judge import DIAGNOSIS_MATCH
+
+from opspilot.config import SOURCE_DEADLINE_SECONDS as DEADLINE_S
+from opspilot.retrieval.retriever import PASSAGE_BUDGET
+from opspilot.tools.search import search_past_incidents
 
 # Where the expected cause landed in a condition's candidate list, ordered so two conditions can be
 # compared. Only the judge decides these; this is the ranking of what it returned.
@@ -34,13 +39,20 @@ class Difference:
 
 @dataclass
 class ComparisonResult:
-    """What one comparison found, or the reason it could not be run."""
+    """What one comparison found, or the reason it could not be run.
+
+    `conclusion` is what a mechanism reached where reaching something is the point rather than
+    differing from another arm. The nearest-history shortcut has one condition and nothing to
+    differ from: what it produces is an answer, and the report puts that answer beside the
+    investigation's own so a reader can see which they would rather have acted on.
+    """
 
     name: str
     scenario_id: str
     differences: list[Difference] = field(default_factory=list)
     note: str = ""
     ran: bool = True
+    conclusion: str = ""
 
     @property
     def differed(self) -> bool:
@@ -227,3 +239,108 @@ def _lead_of(candidate: Any) -> str:
     if candidate is None:
         return "no leading candidate"
     return f"{candidate.statement} [{candidate.label.value}]"
+
+
+# --- the nearest-history shortcut ---------------------------------------------------------------
+# The objection the other two comparisons cannot answer, because both of them hold OpsPilot against
+# a variant of itself: why investigate at all, when the most similar past incident already carries
+# a cause and a resolution somebody wrote down? This answers it by doing exactly that and reporting
+# what it concluded, so the claim is settled by a result rather than by assertion.
+#
+# It reasons about nothing. One search of past incidents, the incident it actually returned first,
+# and that write-up's recorded cause and resolution taken as the answer. No model call, no prompt,
+# no current evidence, no verification. Making it cleverer would defeat it: a baseline that weighed
+# a precedent against today's evidence is a second investigation, and beating that would say
+# nothing about whether retrieval alone suffices.
+NEAREST_HISTORY = "nearest history"
+
+_SECTION = re.compile(r"^##\s+(.+?)\s*$", re.MULTILINE)
+
+
+def nearest_history_query(incident: Any) -> str:
+    """The query the shortcut searches on: the incident as it was reported, and nothing else.
+
+    Deliberately the whole of what a shortcut has to work with. Reaching for the answer key's cause
+    would be searching with the answer already in hand, and asking a model to rewrite the text into
+    a better query would make this an investigation with one step.
+    """
+    return str(incident.short_description)
+
+
+def _sections(text: str) -> dict[str, str]:
+    """A write-up's second-level sections, by heading. Small and deterministic on purpose: the
+    corpus is authored markdown with stable headings, and reading two of them needs no more than
+    this."""
+    found: dict[str, str] = {}
+    matches = list(_SECTION.finditer(text))
+    for index, match in enumerate(matches):
+        end = matches[index + 1].start() if index + 1 < len(matches) else len(text)
+        found[match.group(1).strip().lower()] = text[match.end() : end].strip()
+    return found
+
+
+def historical_answer(text: str) -> tuple[str, str]:
+    """What a past incident was recorded as having been caused by, and what settled it.
+
+    Read out of the result retrieval returned, because a past incident is one retrieval unit and
+    the result therefore holds the whole write-up. Reopening the authored file to answer would be a
+    second source for the same text, free to disagree with what the run was actually handed, and
+    the shortcut is supposed to reuse what it got rather than what a file says it should have got.
+    No model summarizes it.
+    """
+    sections = _sections(text)
+    return sections.get("root cause", ""), sections.get("resolution", "")
+
+
+def nearest_history(scenario: dict[str, Any], incident: Any, retriever: Any) -> ComparisonResult:
+    """Reach for the closest past incident and reuse its answer, then say what that would have been.
+
+    The premise is checked before the answer is produced. The scenario names the precedent this
+    corpus is authored to put first, and if retrieval returned a different one the experiment did
+    not happen: the shortcut is only interesting where it lands where a shortcut would land. What
+    is reported then is that the premise was not satisfied, and which incident actually came first,
+    so the corpus or the query can be looked at. Substituting the expected precedent would be
+    reporting an experiment nobody ran.
+    """
+    expected = scenario["evaluation"].get("nearest_history_should_select", "")
+    # The capability the investigation itself would call, so the shortcut searches the same corpus
+    # the same way and its result cannot be an artifact of a second retrieval path.
+    precedents, _ = search_past_incidents(
+        retriever, DEADLINE_S, query=nearest_history_query(incident), k=PASSAGE_BUDGET
+    )
+    if not precedents:
+        return not_evaluable(
+            NEAREST_HISTORY, scenario["id"], "the search of past incidents returned nothing"
+        )
+
+    top = precedents[0].reference
+    if expected and top != expected:
+        return not_evaluable(
+            NEAREST_HISTORY,
+            scenario["id"],
+            f"premise not satisfied: this corpus is authored to return {expected} first and "
+            f"returned {top}, so the shortcut was not tested on the precedent it exists to test",
+        )
+
+    cause, resolution = historical_answer(precedents[0].text)
+    if not cause:
+        return not_evaluable(
+            NEAREST_HISTORY, scenario["id"], f"{top} records no cause the shortcut could reuse"
+        )
+
+    return ComparisonResult(
+        name=NEAREST_HISTORY,
+        scenario_id=scenario["id"],
+        conclusion=(
+            f"precedent: {top}\n"
+            f"historical cause: {_condensed(cause)}\n"
+            f"historical resolution: {_condensed(resolution)}"
+        ),
+    )
+
+
+def _condensed(text: str) -> str:
+    """One paragraph of a write-up's section, on one line. The report reads it beside the
+    investigation's own conclusion, so it has to be comparable at a glance."""
+    paragraph = text.split("\n\n", 1)[0]
+    return " ".join(paragraph.split())

@@ -20,7 +20,7 @@ report what you left out), or to be analysed (findings only, change nothing).
 - `runtime-and-deployment.md`: runtime posture, transport, state, Azure resources, model
   connectivity, Cosmos realization, configuration and secrets, telemetry, hosted verification.
 - `evaluation.md`: inputs, scenario behavior, deterministic correctness, the two controlled
-  comparisons, the judge, the runner and report.
+  comparisons, the nearest-history shortcut, the judge, the runner and report.
 - `decisions.md`: settled choices only, each with why and cost; retired records keep their number.
 - `code-guidelines.md`: how code stays faithful to the design; typing, invariants, dependency
   direction, testing policy and gates, change discipline. Binding on every code change.

@@ -239,6 +239,8 @@ scenarios:
       - deploys:checkout-api:dep-20260628-01   # the red-herring deploy
       - deps:checkout-api->payment-api
     expected_retrieval:
+      - postmortem:inc-104     # the convincing near-match: a real deploy regression, wrong here
+      - postmortem:inc-109     # the true class, reachable but not the closest by wording
       - runbook:checkout-api-500-errors
       - runbook:payment-timeout
       - runbook:deployment-rollback
@@ -246,6 +248,10 @@ scenarios:
     # What a correct investigation of this scenario looks like, for the offline
     # evaluation. Authored: nothing here is derived from a model run.
     evaluation:
+      # The precedent a lookup with no reasoning behind it reaches for. Named because the whole
+      # point of this scenario is that the nearest write-up is convincing and wrong: without
+      # saying which one, a passing comparison would only prove the shortcut ran.
+      nearest_history_should_select: postmortem:inc-104
       acceptable_alternatives:
         - >-
           Third-party payment-gateway latency or timeouts stated as an external dependency
@@ -288,6 +294,7 @@ scenarios:
       - metrics:checkout-api:p95_latency_ms@2026-06-22T11:45:00Z
       - deps:checkout-api->redis-cache
     expected_retrieval:
+      - postmortem:inc-105     # useful cache-capacity precedent; does not establish this incident
       - runbook:redis-cache-degradation
       - architecture:service-dependency-map
     # What a correct investigation of this scenario looks like, for the offline
@@ -325,25 +332,36 @@ scenarios:
     expected_match: null
     trigger: >-
       An inventory-api deploy removed cache invalidation on stock writes, and a concurrent
-      promotional-traffic surge pushed inventory-api's reservation queue past its normal depth;
-      together, stale Redis data and a backlog of queued reservation checks let oversells through.
+      promotional-traffic surge pushed the reservation queue past what inventory-reservation-worker
+      could drain; together, stale Redis data and a backlog of unapplied reservations let oversells
+      through.
     root_cause: >-
       Two conditions combined, neither sufficient alone. An inventory-api deploy dropped cache
       invalidation on stock writes, so redis-cache kept serving stale availability. Independently, a
-      promotional-traffic surge pushed inventory-api's reservation queue past its normal depth. Stale
-      availability alone would have caused only occasional oversells; a deep reservation queue alone
-      would have caused slow reservations, not conflicts. Together, checkout-api reservations
-      conflicted and oversold.
-    impacted_chain: [inventory-api, redis-cache, checkout-api]
+      promotional-traffic surge pushed the reservation queue past what inventory-reservation-worker
+      could drain, so reservations sat unapplied while further checks read availability that no
+      longer held. Stale availability alone would have caused only occasional oversells; a deep
+      reservation queue alone would have caused slow reservations, not conflicts. Together,
+      checkout-api reservations conflicted and oversold.
+    impacted_chain: [inventory-api, redis-cache, checkout-api, inventory-reservation-worker]
+    # Nothing pages on the reservation worker. Its queue depth has no alert rule, so the storm that
+    # opens this investigation cannot name it and neither can the alerting service's own logs: the
+    # worker is reached by asking inventory-api what it depends on, which is the point of the
+    # scenario. The evidence is there throughout; what has to be discovered is where to ask.
+    unalerted: [inventory-reservation-worker]
     expected_evidence:
       - logs:inventory-api:evt-006-01          # StockReservationConflict / oversell
       - logs:checkout-api:evt-006-02           # reserve failed downstream
+      - logs:inventory-reservation-worker:evt-006-03   # reservations not applied within deadline
       - metrics:inventory-api:reservation_error_rate@2026-06-25T16:20:00Z
-      - metrics:inventory-api:reservation_queue_depth@2026-06-25T16:15:00Z  # the traffic-surge contributor
+      - metrics:inventory-reservation-worker:reservation_queue_depth@2026-06-25T16:15:00Z  # the traffic-surge contributor
       - metrics:redis-cache:stale_read_rate@2026-06-25T16:20:00Z           # the stale-cache contributor
       - deploys:inventory-api:dep-20260625-01  # causal deploy (the cache-invalidation half)
       - deps:inventory-api->redis-cache
+      - deps:inventory-api->inventory-reservation-worker   # how the worker is discovered at all
     expected_retrieval:
+      - postmortem:inc-107     # the backlog half, on its own
+      - postmortem:inc-106     # the stale-cache half, on another service
       - runbook:deployment-rollback
       - runbook:redis-cache-degradation
       - architecture:service-dependency-map
@@ -357,15 +375,18 @@ scenarios:
       absent_evidence: []
       accepted_outcomes: [partial, complete]
       behavior_tested: >-
-        Multiple contributors recognized. Neither the deploy nor the cache behaviour is sufficient
-        alone, and an account naming only one has not explained the oversell.
+        Multiple contributors recognized, where reaching the second one depends on what an earlier
+        step returned. Neither the deploy nor the cache behaviour is sufficient alone, and an
+        account naming only one has not explained the oversell. The reservation worker is named by
+        no alert, no incident text, and none of the alerting service's own logs, so the question
+        that reaches its queue depth can only be formulated after the dependency lookup returns it.
       knowledge_should: >-
         The rollback and cache-degradation runbooks should both inform the account, because the
         remedy involves the deploy and the stale keys together.
       expected_recommendation: >-
-        Roll back the inventory-api deploy, flush the stale stock keys, and reconcile
-        reservations. A recommendation addressing only one of the two leaves the oversell
-        possible.
+        Roll back the inventory-api deploy, flush the stale stock keys, and drain or scale out the
+        reservation worker so queued reservations apply before availability is read again. A
+        recommendation addressing only one of the two leaves the oversell possible.
 
   # ---------------------------------------------------------------------------- recurrence
   - id: inc-007
@@ -398,7 +419,8 @@ scenarios:
       - deploys:notification-worker:dep-20260702-01   # re-deploy of the affected revision
       - deps:notification-worker->service-bus
     expected_retrieval:
-      - postmortem:inc-003
+      - postmortem:inc-003     # the true recurrence
+      - postmortem:inc-108     # same rising queue, healthy worker: the discrimination to make
       - runbook:service-bus-backlog
       - runbook:deployment-rollback
     # What a correct investigation of this scenario looks like, for the offline
@@ -409,6 +431,8 @@ scenarios:
           rules_out: >-
             A broader outage, confined to the asynchronous notification path on the same
             reasoning as the earlier backlog incident.
+      # Here the shortcut reaches the right precedent, having verified nothing about today.
+      nearest_history_should_select: postmortem:inc-003
       acceptable_alternatives:
         - >-
           The same poison-message crash loop as inc-003, stated as a recurrence or as the

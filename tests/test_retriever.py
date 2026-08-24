@@ -156,6 +156,88 @@ def test_promotion_reaches_a_passage_that_fusion_left_below_the_budget():
     assert hits[0].reference == "runbook:named"
 
 
+# --- what a unit is, per collection --------------------------------------------------------------
+def _incidents(query: str, k: int = PASSAGE_BUDGET) -> list[Any]:
+    return knowledge_retriever().search(query, k=k, collection=POSTMORTEM, deadline_s=5.0)
+
+
+def test_a_past_incident_is_one_unit():
+    """Preparation indexes a write-up whole, so a search of past incidents cannot return the same
+    incident twice however many of its parts echo the question. A budget of five means five
+    precedents, which is what a history worth searching is for."""
+    results = _incidents("checkout-api returning 500s shortly after this morning's deployment.")
+
+    references = [p.reference for p in results]
+    assert len(references) == len(set(references))
+    assert all(ref.startswith("postmortem:") for ref in references)
+    assert 0 < len(results) <= PASSAGE_BUDGET
+
+
+def test_a_caller_may_ask_for_fewer_incidents():
+    assert len(_incidents("checkout deployment", k=2)) <= 2
+
+
+def test_a_returned_incident_carries_the_whole_account():
+    """What was wrong, what it did, and what settled it are one account rather than alternatives to
+    each other. A search that returned the strongest few parts would return whichever echoed the
+    question, as likely the impact and the timeline as the cause and the resolution."""
+    (top,) = [
+        p
+        for p in _incidents("checkout-api 500s after a morning deployment")
+        if p.reference == "postmortem:inc-104"
+    ]
+
+    assert "## Root cause" in top.text
+    assert "## Resolution" in top.text
+    assert top.text.startswith(top.title)
+
+
+def test_a_write_up_is_not_ranked_by_how_much_it_holds():
+    """Whole units put a long history and a short one on the same footing: neither accumulates
+    score across parts, because neither has parts."""
+    body = "checkout deployment regression rollback revision"
+    long_doc = _doc("long", f"{body} " + "and more detail. " * 60)
+    long_doc["doc_id"], long_doc["category"] = "postmortem:long", POSTMORTEM
+    short_doc = _doc("short", body)
+    short_doc["doc_id"], short_doc["category"] = "postmortem:short", POSTMORTEM
+
+    results = retriever_from([long_doc, short_doc]).search(
+        "checkout deployment regression", k=5, collection=POSTMORTEM, deadline_s=5.0
+    )
+
+    assert {p.reference for p in results} == {"postmortem:long", "postmortem:short"}
+    assert len(results) == 2, "one write-up came back more than once"
+
+
+def test_promotion_reaches_a_past_incident_by_an_identifier_it_carries():
+    """Identifiers are extracted per unit, so a deploy id named anywhere in a write-up promotes
+    that write-up. There are no parts for it to promote separately."""
+    named = _doc("named", "The reservation queue drained slowly.", identifiers=("dep-20260625-01",))
+    named["doc_id"], named["category"] = "postmortem:named", POSTMORTEM
+    other = _doc("other", "checkout deployment regression rollback revision")
+    other["doc_id"], other["category"] = "postmortem:other", POSTMORTEM
+
+    results = retriever_from([other, named]).search(
+        "what happened around dep-20260625-01", k=5, collection=POSTMORTEM, deadline_s=5.0
+    )
+
+    assert results[0].reference == "postmortem:named"
+
+
+def test_runbook_search_still_answers_with_sections():
+    """Guidance is different. A single section can be exactly the right answer to "how is this
+    handled", so nothing is grouped there and the same document may answer more than once."""
+    results = knowledge_retriever().search(
+        "redis cache eviction memory",
+        k=PASSAGE_BUDGET,
+        collection=(RUNBOOK, ARCHITECTURE),
+        deadline_s=5.0,
+    )
+
+    assert results
+    assert all(p.category in {RUNBOOK, ARCHITECTURE} for p in results)
+
+
 def test_the_passage_budget_bounds_what_one_call_returns():
     """A ceiling, not a default. What reaches a prompt is bounded by the budget however much the
     corpus holds and whatever the caller asks for."""

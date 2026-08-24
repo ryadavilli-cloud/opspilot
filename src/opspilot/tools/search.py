@@ -67,7 +67,14 @@ def search_past_incidents(
     service: str | None = None,
 ) -> tuple[list[Passage], list[str]]:
     """Write-ups of incidents that already happened: what was wrong then, and what settled it.
-    Use it when this looks like something the system has done before."""
+    Use it when this looks like something the system has done before.
+
+    One result is one past incident, whole. An incident is only useful as one thing: what was
+    wrong, what it did, and what settled it are one account rather than alternatives to each other,
+    and the strongest few parts of a write-up are as likely to be its impact and its timeline as
+    its cause and its resolution. Whole units also stop the most quotable incident from crowding
+    out the incidents it should be weighed against, so the budget means that many precedents.
+    """
     passages = retriever.search(
         query,
         k=k,

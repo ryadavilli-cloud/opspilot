@@ -124,6 +124,24 @@ class KnowledgeRecords:
             deadline_s=deadline_s,
         )
 
+    def corpus_rows(self, *, deadline_s: float) -> list[dict[str, Any]]:
+        """Every passage the container holds, in the fields the corpus identity is computed over
+        (D-012).
+
+        Unbounded on purpose, where every other read here is capped. A cap makes a read cheap by
+        answering from part of the corpus, which is the right trade for a candidate set and the
+        wrong one for an identity: a fingerprint over the first N passages would stop changing the
+        moment the corpus outgrew N, and would go on reporting that two different corpora are the
+        same one. The embedding vectors are not projected, so the rows stay small however many
+        there are.
+        """
+        return self._query(
+            "SELECT c.id, c.category, c.doc_id, c.title, c.text, c.services, c.identifiers, "
+            "c.date FROM c",
+            [],
+            deadline_s=deadline_s,
+        )
+
     def category_counts(self, categories: tuple[str, ...], *, deadline_s: float) -> dict[str, int]:
         """One count per knowledge category, for the deployment-time preparation check."""
         counts: dict[str, int] = {}

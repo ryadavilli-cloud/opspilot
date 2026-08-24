@@ -56,6 +56,24 @@ def test_scenario_count_and_split():
     assert sum(1 for s in SCENARIOS if s["type"] == "recurrence") == 1
 
 
+def test_the_selector_offers_the_current_incidents_and_no_incident_that_already_happened():
+    """Which scenarios an engineer may investigate is decided here and nowhere else.
+
+    Four are incidents presented as current; three already happened and are kept for what they can
+    still do, which is carry an authored expectation for evaluation and a write-up retrieval can
+    reach. The page is read against the answer key's own type rather than a list repeated in a
+    second place, so a scenario that changes role cannot leave the selector saying otherwise.
+    """
+    page = (REPO_ROOT / "src" / "opspilot" / "static" / "investigation.html").read_text(
+        encoding="utf-8"
+    )
+    offered = set(re.findall(r'<option value="(inc-[0-9]+)"', page))
+
+    assert offered == {s["id"] for s in SCENARIOS if s["type"] != "historical"}
+    assert not offered & HISTORICAL_IDS
+    assert len(SCENARIOS) == 7, "every authored scenario is still evaluated"
+
+
 def test_scenarios_have_required_fields_and_controlled_vocab():
     required = {
         "id",
@@ -155,7 +173,11 @@ def test_retrieval_ids_follow_namespaces():
             ns, ident = ref.split(":", 1)
             assert ns in RETRIEVAL_NAMESPACES, f"{s['id']}: bad retrieval namespace in {ref!r}"
             if ns == "postmortem":
-                assert ident in HISTORICAL_IDS, f"{s['id']}: no historical incident {ident}"
+                # A write-up is knowledge whether or not the incident behind it is also an
+                # authored scenario. Most of the organizational history has no telemetry and no
+                # expectation of its own, which is what lets the history be larger than the corpus
+                # of scenarios. That the document exists is closure's question, not this file's.
+                assert ident.startswith("inc-"), f"{s['id']}: bad postmortem reference {ref!r}"
 
 
 # --- what a correct investigation looks like ------------------------------------------------------
@@ -171,8 +193,10 @@ EVALUATION_FIELDS = {
     "expected_recommendation",
 }
 # Stated only where a competing hypothesis is worth ruling out. Requiring it of all seven would
-# mean authoring one for scenarios that have none, which is an expectation nobody holds.
-OPTIONAL_EVALUATION_FIELDS = {"weakens_candidate"}
+# mean authoring one for scenarios that have none, which is an expectation nobody holds. The same
+# reasoning covers the precedent a reasoning-free lookup should reach: it is named only where such
+# a lookup has something to be right or wrong about.
+OPTIONAL_EVALUATION_FIELDS = {"weakens_candidate", "nearest_history_should_select"}
 
 
 def test_every_scenario_states_what_a_correct_investigation_looks_like():

@@ -11,10 +11,17 @@ from __future__ import annotations
 from typing import Any, Protocol
 
 from opspilot.data.operational_records import SourceUnavailable, unanswered_read
+from opspilot.retrieval.fingerprint import embedding_identity
 
 
 class QueryEmbedder(Protocol):
     def embed(self, text: str, *, deadline_s: float) -> list[float]: ...
+
+    @property
+    def identity(self) -> str:
+        """What embedded this, named well enough that two corpora prepared by different models are
+        told apart. Part of the corpus fingerprint (D-012), and never compared for equality with a
+        vector from another embedder, which is exactly what it exists to prevent."""
 
 
 class AzureQueryEmbedder:
@@ -31,6 +38,10 @@ class AzureQueryEmbedder:
         self._endpoint = endpoint
         self._api_version = api_version
         self._client: Any = None
+
+    @property
+    def identity(self) -> str:
+        return embedding_identity(self._deployment, self._dimensions)
 
     def _client_(self) -> Any:
         if self._client is None:

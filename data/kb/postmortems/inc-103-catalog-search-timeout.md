@@ -1,9 +1,10 @@
 ---
-id: postmortem:inc-103-catalog-search-timeout
+id: postmortem:inc-103
 title: "INC-103: Catalog Search Timeouts After Reindex"
 kind: postmortem
+incident_id: inc-103
 services: [catalog-api, redis-cache, cosmos-db]
-source: "synthetic (RetailEase); distractor — not a labeled retrieval target"
+source: "synthetic (RetailEase); structure after real SRE practice"
 ---
 
 # INC-103: Catalog Search Timeouts After Reindex

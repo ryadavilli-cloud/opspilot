@@ -86,11 +86,14 @@ class ComparisonDifference(BaseModel):
 
 
 class ComparisonRun(BaseModel):
-    """One controlled comparison: what differed, or why it could not be set up.
+    """One comparison: what differed, what it concluded, or why it could not be set up.
 
     `ran` is false when a condition could not be obtained, and `note` then carries the reason. When
     it ran, `note` carries any caveat the comparison stated about itself, and a comparison that ran
     and found nothing is a result: the differences are simply empty.
+
+    `conclusion` is for a mechanism that has one condition and so nothing to differ from, where
+    what it reached is the finding. Empty for the two that hold one run against another.
     """
 
     model_config = ConfigDict(frozen=True)
@@ -100,6 +103,7 @@ class ComparisonRun(BaseModel):
     ran: bool = True
     differences: list[ComparisonDifference] = Field(default_factory=list)
     note: str = ""
+    conclusion: str = ""
 
 
 class EvaluationRun(BaseModel):

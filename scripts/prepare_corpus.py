@@ -36,6 +36,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT / "src"))
 
 from opspilot.retrieval.corpus import chunk, load_docs  # noqa: E402
+from opspilot.retrieval.fingerprint import embedding_identity, fingerprint  # noqa: E402
 
 DATA = REPO_ROOT / "data"
 SYN = DATA / "synthetic"
@@ -142,6 +143,22 @@ def knowledge_documents(
             )
     out.sort(key=lambda d: d["id"])
     return out
+
+
+def corpus_fingerprint(knowledge: list[dict[str, Any]]) -> str:
+    """What this checkout would seed, as the one value a run records beside its deployment (D-012).
+
+    Reported before anything is written so that a corpus edit can be seen to have changed what
+    retrieval identifies from, without spending an embedding to find out. The runtime computes the
+    same value over what the container came to hold, so the two agreeing is the check that the
+    store carries the corpus this checkout describes.
+    """
+    from opspilot import config
+
+    return fingerprint(
+        knowledge,
+        embedding=embedding_identity(config.EMBEDDING_DEPLOYMENT, config.EMBEDDING_DIMENSIONS),
+    )
 
 
 def _records(name: str, key: str) -> list[dict[str, Any]]:
@@ -276,10 +293,51 @@ def seed(documents: list[dict[str, Any]], database: str, container: str) -> int:
     target = client.get_database_client(database).get_container_client(container)
     for document in documents:
         target.upsert_item(document)
+    _prune(target, {str(document["id"]) for document in documents})
     return len(documents)
 
 
-def verify(expected_knowledge: int, expected_operational: int) -> int:
+def _prune(target: ContainerProxy, produced: set[str]) -> int:
+    """Remove what this preparation no longer produces.
+
+    Upsert converges on what is written and says nothing about what has stopped being written. A
+    passage the chunker now splits differently, or a metric series that moved to another service,
+    keeps its old document alive under an id nothing produces any more, and a read cannot tell that
+    document from a current one. It is the worse half of a stale index precisely because every
+    count and every spot check still looks right: the container holds everything it should, plus
+    something it should not.
+
+    That is not hypothetical here. Moving the reservation queue depth off the alerting service
+    leaves the old series in place under its old id, and a fixed path asking that service for its
+    metrics would still be handed the contributor the scenario exists to keep out of its reach.
+
+    Partition values are read back rather than derived, because they are the container's own and
+    this is the one operation that has to name a document the local shaping no longer describes.
+    """
+    rows = list(
+        target.query_items(
+            "SELECT c.id, c.category, c.kind, c.service FROM c", enable_cross_partition_query=True
+        )
+    )
+    removed = 0
+    for row in rows:
+        if str(row["id"]) in produced:
+            continue
+        # `/category` for knowledge; `/kind` then `/service` for the hierarchically partitioned
+        # operational records, whose second level is legitimately null on some kinds.
+        key: Any = (
+            row["category"]
+            if row.get("category") is not None
+            else [row.get("kind"), row.get("service")]
+        )
+        target.delete_item(item=str(row["id"]), partition_key=key)
+        removed += 1
+    if removed:
+        print(f"  pruned {removed} document(s) this preparation no longer produces")
+    return removed
+
+
+def verify(expected_knowledge: int, expected_operational: int, expected_fingerprint: str) -> int:
     """Read back what preparation wrote and check the properties 1.3 names.
 
     Azure-assisted and never a CI gate: it needs the live containers. The document-shaping half of
@@ -337,6 +395,27 @@ def verify(expected_knowledge: int, expected_operational: int) -> int:
         if not count(operational, f"WHERE c.kind = '{kind}'"):
             failures.append(f"operational-records holds no {kind} records")
 
+    # The counts above say how much is there; this says whether it is the same corpus. A container
+    # can hold the right number of passages and the wrong text in them, which every count-based
+    # check passes and every retrieval notices.
+    rows: list[Any] = list(
+        knowledge.query_items(
+            "SELECT c.id, c.category, c.doc_id, c.title, c.text, c.services, c.identifiers, "
+            "c.date FROM c",
+            enable_cross_partition_query=True,
+        )
+    )
+    got_fingerprint = fingerprint(
+        rows,
+        embedding=embedding_identity(config.EMBEDDING_DEPLOYMENT, config.EMBEDDING_DIMENSIONS),
+    )
+    print(f"  corpus fingerprint: {got_fingerprint}")
+    if got_fingerprint != expected_fingerprint:
+        failures.append(
+            "the seeded corpus is not the one this checkout prepares: expected "
+            f"{expected_fingerprint}, read back {got_fingerprint}"
+        )
+
     print(f"  knowledge={got_knowledge} operational-records={got_operational} dated={dated}")
     if failures:
         for failure in failures:
@@ -370,6 +449,7 @@ def main(argv: list[str] | None = None) -> int:
 
     print(f"knowledge passages: {len(knowledge)} across categories {categories}")
     print(f"  carrying identifiers: {with_identifiers} | carrying a date: {with_dates}")
+    print(f"  corpus fingerprint: {corpus_fingerprint(knowledge)}")
     print(f"operational records: {len(operational)} across kinds {kinds}")
 
     if args.dry_run:
@@ -378,7 +458,7 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.verify_only:
         print("read-back verification:")
-        return verify(len(knowledge), len(operational))
+        return verify(len(knowledge), len(operational), corpus_fingerprint(knowledge))
 
     sys.path.insert(0, str(REPO_ROOT / "src"))
     from opspilot import config
@@ -399,7 +479,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     print(f"seeded knowledge={wrote_knowledge} operational-records={wrote_operational}")
     print("read-back verification:")
-    return verify(wrote_knowledge, wrote_operational)
+    return verify(wrote_knowledge, wrote_operational, corpus_fingerprint(knowledge))
 
 
 if __name__ == "__main__":

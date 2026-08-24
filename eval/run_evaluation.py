@@ -36,6 +36,7 @@ from answer_key import FIXTURE, SCENARIOS  # noqa: E402
 from comparisons import (  # noqa: E402
     ComparisonResult,
     adaptive_value,
+    nearest_history,
     retrieval_influence,  # noqa: E402
 )
 from comparisons import not_evaluable as _not_evaluable  # noqa: E402
@@ -274,7 +275,7 @@ def compare_retrieval_influence(scenario: dict[str, Any]) -> ComparisonResult:
 
 
 def run_comparisons(chosen: list[dict[str, Any]]) -> list[ComparisonResult]:
-    """Both comparisons, where the chosen set includes their scenarios.
+    """The three comparisons, where the chosen set includes their scenarios.
 
     The adaptive one walks its candidates and stops at the first that shows a difference, because
     it is a falsification test rather than a benchmark: one scenario where the adaptive path did
@@ -283,11 +284,21 @@ def run_comparisons(chosen: list[dict[str, Any]]) -> list[ComparisonResult]:
     by_id = {scenario["id"]: scenario for scenario in chosen}
     results: list[ComparisonResult] = []
 
+    # The shortcut runs first and runs regardless. It makes no model call, so a report from a
+    # machine with no deployment configured can still say what reaching for the nearest precedent
+    # would have concluded, which is the one claim here that needs no model to establish.
+    retriever = knowledge_retriever()
+    for scenario in chosen:
+        if "nearest_history_should_select" not in scenario.get("evaluation", {}):
+            continue
+        results.append(nearest_history(scenario, _scenario_incident(scenario["id"]), retriever))
+
     if not config.AZURE_OPENAI_DEPLOYMENT:
-        return [
+        results.extend(
             _not_evaluable(name, "", "no model deployment is configured to run either condition")
             for name in ("adaptive value", "retrieval influence")
-        ]
+        )
+        return results
 
     for scenario_id in ADAPTIVE_CANDIDATES:
         if scenario_id not in by_id:
@@ -320,6 +331,14 @@ def configuration_identity() -> dict[str, str]:
         # would call two runs comparable across a rewritten prompt.
         "runtime_prompt_versions": ", ".join(
             f"{name}={version}" for name, version in sorted(resolved_versions().items())
+        ),
+        # The corpus these scenarios retrieved from. Evaluation searches the authored corpus
+        # through a deterministic embedder rather than the deployed one, so this names that corpus
+        # and that embedder: it is comparable with another evaluation run and deliberately not
+        # with a hosted investigation, which retrieved from the same passages in a vector space
+        # ranked differently.
+        "corpus_fingerprint": knowledge_retriever().corpus_fingerprint(
+            deadline_s=config.SOURCE_DEADLINE_SECONDS
         ),
         "capability_call_cap": str(config.CAPABILITY_CALL_CAP),
         "model_call_cap": str(config.MODEL_CALL_CAP),
@@ -414,6 +433,7 @@ def _comparison_run(comparison: ComparisonResult) -> ComparisonRun:
             for d in comparison.differences
         ],
         note=comparison.note,
+        conclusion=comparison.conclusion,
     )
 
 
@@ -484,7 +504,11 @@ def _comparison_lines(comparisons: list[ComparisonRun]) -> list[str]:
         if not comparison.ran:
             lines.extend([f"Not evaluable. {comparison.note}", ""])
             continue
-        if comparison.differences:
+        if comparison.conclusion:
+            lines.append("What it concluded:")
+            lines.append("")
+            lines.extend(f"    {line}" for line in comparison.conclusion.splitlines())
+        elif comparison.differences:
             lines.append("What differed:")
             lines.extend(f"- **{d.dimension}**: {d.detail}" for d in comparison.differences)
         else:

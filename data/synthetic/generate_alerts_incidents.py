@@ -75,10 +75,17 @@ def storm_participants(scenario: dict, services: set[str]) -> tuple[list[str], s
     the chain root->customer; the root-cause service is the upstream-most, the trigger is the
     customer-facing edge (checkout-api) when present.
     """
-    chain_services = [s for s in scenario["impacted_chain"] if s in services]
+    # A service alerts because a rule watches one of its signals. Where the scenario authored a
+    # service as carrying no alert rule, it stays out of the storm however impacted it was: that
+    # gap is the scenario's own subject, and a storm that named the service anyway would answer
+    # the question the investigation exists to ask.
+    unalerted = set(scenario.get("unalerted") or ())
+    chain_services = [s for s in scenario["impacted_chain"] if s in services and s not in unalerted]
     ev = parse_evidence(scenario["expected_evidence"])
     ev_services = {svc for svc, *_ in ev["metrics"]} | {svc for svc, _ in ev["logs"]}
-    extra = [s for s in ev_services if s in services and s not in chain_services]
+    extra = [
+        s for s in ev_services if s in services and s not in chain_services and s not in unalerted
+    ]
     participants = chain_services + extra
     root_cause = chain_services[0] if chain_services else participants[0]
     trigger = "checkout-api" if "checkout-api" in participants else participants[-1]

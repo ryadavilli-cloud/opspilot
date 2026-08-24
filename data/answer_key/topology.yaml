@@ -27,6 +27,9 @@ services:
   - id: notification-worker
     role: Async consumer that sends order and shipping notifications.
     tier: worker
+  - id: inventory-reservation-worker
+    role: Async consumer that applies queued stock reservations against the system of record.
+    tier: worker
 
 infra:
   - id: service-bus
@@ -57,6 +60,8 @@ dependencies:
   - { from: payment-api,         to: payment-gateway,  kind: external }
   - { from: inventory-api,       to: cosmos-db,        kind: datastore,  critical: true }
   - { from: inventory-api,       to: redis-cache,      kind: cache }
+  - { from: inventory-api,       to: inventory-reservation-worker, kind: publish }
+  - { from: inventory-reservation-worker, to: cosmos-db, kind: datastore, critical: true }
   - { from: catalog-api,         to: cosmos-db,        kind: datastore }
   - { from: catalog-api,         to: redis-cache,      kind: cache }
   - { from: notification-worker, to: service-bus,      kind: subscribe }

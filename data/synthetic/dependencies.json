@@ -45,6 +45,17 @@
       "kind": "cache"
     },
     {
+      "from": "inventory-api",
+      "to": "inventory-reservation-worker",
+      "kind": "publish"
+    },
+    {
+      "from": "inventory-reservation-worker",
+      "to": "cosmos-db",
+      "kind": "datastore",
+      "critical": true
+    },
+    {
       "from": "catalog-api",
       "to": "cosmos-db",
       "kind": "datastore"

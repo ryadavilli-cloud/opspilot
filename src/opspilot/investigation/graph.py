@@ -88,6 +88,7 @@ def _activity(
     capability: str | None = None,
     outcome: str | None = None,
     references: list[str] | None = None,
+    purpose: str = "",
     after: list[Any] | None = None,
 ) -> list[Any]:
     """One activity entry appended to what the run has already emitted.
@@ -113,6 +114,7 @@ def _activity(
         transport="direct" if capability else None,
         outcome=outcome,
         references=references or [],
+        purpose=purpose,
     )
     return [*emitted, event]
 
@@ -239,6 +241,7 @@ def gather(state: InvestigationState, config: RunnableConfig | None = None) -> d
                 action="proposal refused",
                 status="error",
                 detail=refusal,
+                purpose=action.question,
             ),
         }
 
@@ -279,6 +282,7 @@ def gather(state: InvestigationState, config: RunnableConfig | None = None) -> d
             outcome=tool_result.outcome.value,
             references=[obs.evidence_ref for obs in admitted]
             + [passage.reference for passage in retrieved],
+            purpose=action.question,
         ),
     }
 
@@ -504,6 +508,7 @@ def persist(state: InvestigationState, config: RunnableConfig | None = None) -> 
 
     outcome = outcome_of(state.assessment)
     brief = render(state.assessment)
+    deps = _deps(config)
     record = CompletedInvestigation(
         investigation_id=state.investigation_id,
         incident_id=state.incident.incident_id,
@@ -513,6 +518,12 @@ def persist(state: InvestigationState, config: RunnableConfig | None = None) -> 
         assessment=state.assessment,
         brief=brief,
         model_deployment=state.model_deployment,
+        # Read from the service that holds the retriever rather than carried on state, because it
+        # is a fact about the process this run happened in and not about the run: every
+        # investigation this process serves searches the same corpus, and asking once is what the
+        # service already does with it.
+        corpus_fingerprint=deps[SERVICE].corpus_fingerprint,
+        analysis_return_used=state.bounds.return_used,
         trace_id=state.investigation_id,
         observations=list(state.evidence.observations),
         limitations=list(state.evidence.limitations),
@@ -525,7 +536,7 @@ def persist(state: InvestigationState, config: RunnableConfig | None = None) -> 
         duration_s=round(time.perf_counter() - state.started_at, 6),
     )
     try:
-        _deps(config)[RECORD].save(record)
+        deps[RECORD].save(record)
     except AlreadySaved as exc:
         return _failed(state, FailureCategory.SAVE_FAILED, f"the record could not be saved: {exc}")
 

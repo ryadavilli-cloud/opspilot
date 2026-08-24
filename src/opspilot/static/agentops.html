@@ -264,8 +264,12 @@
 
     region.appendChild(heading("Configuration that produced it"));
     var versions = Object.keys(r.prompt_versions || {}).sort();
+    // A record written before the corpus was identified says so, rather than showing an empty
+    // value that would read as a corpus with no content.
+    var corpus = r.corpus_fingerprint || "";
     region.appendChild(list(
-      [["deployment", r.model_deployment]].concat(versions.map(function (task) {
+      [["deployment", r.model_deployment],
+       ["corpus", corpus ? corpus : "not recorded"]].concat(versions.map(function (task) {
         return [task, r.prompt_versions[task]];
       })),
       function (pair) { return el("li", pair[0] + ": " + pair[1]); }
@@ -273,6 +277,7 @@
 
     region.appendChild(heading("What the run cost"));
     region.appendChild(list([
+      "analysis returned to gathering: " + (r.analysis_return_used ? "yes" : "no"),
       "model calls: " + r.model_calls_made,
       "capability calls: " + r.capability_calls_made,
       "tokens: " + fmtTokens(r.token_usage),
@@ -290,9 +295,25 @@
       return line;
     }));
 
-    region.appendChild(heading("Passages retrieved"));
+    // What the accepted assessment actually leaned on, read from the references it states: the
+    // knowledge it says informed it, the history it cites, and the guidance behind a recommended
+    // action. Anything else the run retrieved was retrieved and not referenced, which is all the
+    // record can honestly say about it. A passage nobody cited may have been read and set aside
+    // or never read at all, and the record does not know which, so it is never called rejected.
+    var used = {};
+    var a = r.assessment || {};
+    (a.knowledge_used || []).forEach(function (ref) { used[ref] = "Used in assessment"; });
+    (a.history_refs || []).forEach(function (ref) { used[ref] = "Used as history"; });
+    (a.actions || []).forEach(function (action) {
+      if (action.knowledge_ref) { used[action.knowledge_ref] = "Used for a recommendation"; }
+    });
+
+    region.appendChild(heading("Knowledge retrieved"));
     region.appendChild(list(r.passages, function (p) {
-      return el("li", p.reference + " [" + p.category + "] " + p.title);
+      var line = el("li", p.reference + " [" + p.category + "] " + p.title + ": ");
+      var disposition = used[p.reference] || "Retrieved; not referenced in final assessment";
+      line.appendChild(el("span", disposition, used[p.reference] ? "ok" : ""));
+      return line;
     }));
 
     region.appendChild(heading("Observations admitted"));

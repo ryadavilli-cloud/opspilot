@@ -187,9 +187,66 @@ def test_the_activity_feed_carries_no_prompt_or_hidden_reasoning(incident, recor
     )
     final, _ = run(incident, model, service=ToolService(records))
 
-    body = " ".join(f"{e.action} {e.detail}" for e in final["events"])
+    body = " ".join(f"{e.action} {e.detail} {e.purpose}" for e in final["events"])
     assert "You are the" not in body  # no prompt text
     assert "hypothesis" not in body.lower()  # no working hypothesis
+
+
+def test_a_capability_entry_says_what_the_call_was_meant_to_answer(incident, records):
+    """The investigator states a question when it proposes a call, and the feed shows it. Without
+    it the engineer watches a list of capability names and cannot tell an investigation from a
+    sweep. Nothing is generated for this: the sentence already exists on the proposal, and the
+    same field decides whether the question has been answered before."""
+    question = "which alerts correlate with this incident"
+    model = ScriptedModel(evidence_selection=[_action(question=question), _finished()])
+
+    final, _ = run(incident, model, service=ToolService(records))
+
+    entry = next(e for e in final["events"] if e.capability == "get_correlated_alerts")
+    assert entry.purpose == question
+
+
+def test_a_refused_proposal_still_says_what_it_wanted_to_answer(incident, records):
+    """A refusal is the more interesting entry of the two, so it is the worse one to leave
+    unexplained: the engineer should see what was asked for and that code declined it."""
+    model = ScriptedModel(
+        evidence_selection=[_action(capability="not_a_capability", question="reach for something")]
+    )
+
+    final, _ = run(incident, model, service=ToolService(records))
+
+    refused = next(e for e in final["events"] if e.action == "proposal refused")
+    assert refused.purpose == "reach for something"
+
+
+def test_a_retrieval_entry_names_the_incidents_it_returned(incident, records):
+    """What a search of past incidents obtained is past incidents, so that is what the feed shows.
+    No score travels with them: ranking chose the order and says nothing about how well any of
+    them fits, and a number here would be read as a confidence nothing computed."""
+    model = ScriptedModel(
+        evidence_selection=[
+            json.dumps(
+                {
+                    "capability": "search_past_incidents",
+                    "arguments": {"query": "checkout failures after a deployment"},
+                    "question": "has a deployment caused checkout failures before",
+                }
+            ),
+            _finished(),
+        ]
+    )
+
+    final, _ = run(
+        incident,
+        model,
+        service=ToolService(records, retriever_factory=knowledge_retriever),
+    )
+
+    entry = next(e for e in final["events"] if e.capability == "search_past_incidents")
+    assert entry.purpose == "has a deployment caused checkout failures before"
+    assert entry.references, "the entry named nothing it retrieved"
+    assert all(ref.startswith("postmortem:") for ref in entry.references)
+    assert len(entry.references) == len(set(entry.references)), "one incident listed twice"
 
 
 # --- the record says what the run cost ----------------------------------------------------------
@@ -231,6 +288,48 @@ def test_the_saved_record_accounts_for_what_the_run_cost(incident, records):
         "completion_tokens": 100 * len(model.calls),
     }
     assert 0 < saved.duration_s < config.INVESTIGATION_DEADLINE_SECONDS
+
+
+def test_the_saved_record_names_the_corpus_the_run_could_retrieve_from(incident, records):
+    """Retrieval behavior moves with the corpus while the deployment and the prompt versions stay
+    still, so the corpus is named on the record whether or not this particular run searched it: a
+    run that retrieved nothing is still comparable only with runs over the same corpus."""
+    service = ToolService(records, retriever_factory=knowledge_retriever)
+    model = ScriptedModel(evidence_selection=[_action(), _finished()])
+    first, _ = run(incident, model, service=service)
+
+    model = ScriptedModel(
+        evidence_selection=[_action(), _finished()],
+        rca_synthesis=[_assessment().replace("REF", _admitted_ref(first))],
+    )
+    _, record = run(incident, model, service=service)
+    saved = record.get("inv-1")
+
+    assert saved is not None
+    assert saved.corpus_fingerprint == knowledge_retriever().corpus_fingerprint(deadline_s=5.0)
+
+
+def test_a_run_whose_corpus_cannot_be_named_still_saves_its_record(incident, records):
+    """The identity of the corpus is a fact about the run, not a part of it. A container that will
+    not answer for it costs the record one field and never the investigation."""
+
+    def unavailable():
+        raise RuntimeError("no credential")
+
+    service = ToolService(records, retriever_factory=unavailable)
+    model = ScriptedModel(evidence_selection=[_action(), _finished()])
+    first, _ = run(incident, model, service=service)
+
+    model = ScriptedModel(
+        evidence_selection=[_action(), _finished()],
+        rca_synthesis=[_assessment().replace("REF", _admitted_ref(first))],
+    )
+    _, record = run(incident, model, service=service)
+    saved = record.get("inv-1")
+
+    assert saved is not None
+    assert saved.outcome is Outcome.COMPLETE
+    assert saved.corpus_fingerprint == ""
 
 
 def test_a_model_that_reports_no_usage_leaves_the_usage_empty_rather_than_invented(
@@ -701,6 +800,32 @@ def test_analysis_can_send_the_investigation_back_to_gather_once(incident, recor
     assert model.count("rca_synthesis") == 2, "synthesis did not run again after the return"
     assert "returned to gathering" in [e.action for e in final["events"]]
     assert final.get("failure") is None
+
+
+def test_the_record_says_the_investigation_returned_for_more_evidence(incident, records, reference):
+    """A reader holding the record can tell a run that went back for evidence from one that did
+    not. Only the fact is kept: the question it turned on is the analyst's to state in the
+    assessment's unknowns, and the field the Supervisor routed on is a proposal."""
+    model = _returning(reference)
+
+    _, record = run(incident, model, service=ToolService(records))
+    saved = record.get("inv-1")
+
+    assert saved is not None
+    assert saved.analysis_return_used is True
+
+
+def test_a_run_that_settled_without_returning_says_so(incident, records, reference):
+    model = ScriptedModel(
+        evidence_selection=[_action(), _finished()],
+        rca_synthesis=[_assessment().replace("REF", reference)],
+    )
+
+    _, record = run(incident, model, service=ToolService(records))
+    saved = record.get("inv-1")
+
+    assert saved is not None
+    assert saved.analysis_return_used is False
 
 
 def test_the_question_reaches_the_investigator(incident, records, reference):

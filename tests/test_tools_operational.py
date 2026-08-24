@@ -72,6 +72,28 @@ def test_get_metrics_all_metrics_for_infra_entity():
     assert r.answered and {x.metric for x in r.results} >= {"ru_throttled_rate"}
 
 
+def test_a_service_learned_from_a_dependency_lookup_can_then_be_queried():
+    """Nothing about the reservation worker is hidden or special-cased. Its evidence is ordinary
+    and reachable the moment a caller can name it, which is what makes the difference between an
+    adaptive path and a predetermined one a difference in what each can ask rather than in what
+    each is allowed to see."""
+    downstream = SVC.get_service_dependencies(service="inventory-api")
+    assert downstream.answered
+    learned = {edge.to_service for edge in downstream.results}
+    assert "inventory-reservation-worker" in learned
+
+    depth = SVC.get_metrics(
+        service="inventory-reservation-worker",
+        metric="reservation_queue_depth",
+        start_time=_dt("2026-06-25T15:45:00Z"),
+        end_time=_dt("2026-06-25T16:45:00Z"),
+    )
+    assert depth.answered and depth.results
+    assert "metrics:inventory-reservation-worker:reservation_queue_depth@2026-06-25T16:15:00Z" in (
+        depth.evidence_refs
+    )
+
+
 def test_get_metrics_bad_window_error():
     r = SVC.get_metrics(
         service="payment-api",

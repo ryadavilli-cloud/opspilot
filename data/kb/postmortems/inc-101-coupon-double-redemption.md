@@ -1,9 +1,10 @@
 ---
-id: postmortem:inc-101-coupon-double-redemption
+id: postmortem:inc-101
 title: "INC-101: Coupon Double-Redemption via Concurrent Checkout"
 kind: postmortem
+incident_id: inc-101
 services: [checkout-api, redis-cache, cosmos-db]
-source: "synthetic (RetailEase); distractor — not a labeled retrieval target"
+source: "synthetic (RetailEase); structure after real SRE practice"
 ---
 
 # INC-101: Coupon Double-Redemption via Concurrent Checkout

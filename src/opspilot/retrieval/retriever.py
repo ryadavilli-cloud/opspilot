@@ -28,6 +28,7 @@ from opspilot.data.knowledge_records import (
 )
 from opspilot.retrieval.base import tokenize
 from opspilot.retrieval.embeddings import QueryEmbedder, default_query_embedder
+from opspilot.retrieval.fingerprint import fingerprint
 
 # The three logical collections a capability may name. Fixed at three; a fourth would need its own
 # accepted collection.
@@ -119,20 +120,31 @@ class Retriever:
     def __init__(self, records: KnowledgeRecords, embedder: QueryEmbedder) -> None:
         self._records = records
         self._embedder = embedder
+        self._fingerprint: str | None = None
 
-    def search(
+    def corpus_fingerprint(self, *, deadline_s: float) -> str:
+        """What corpus this retriever searches, as one value (D-012).
+
+        Read once and kept, because the corpus is prepared by a setup principal this process is
+        not and cannot change underneath a running one: a re-seed is a deployment, and a
+        deployment is a new process. Computing it per investigation would pay for the whole
+        container on every run to learn what the first run already established.
+        """
+        if self._fingerprint is None:
+            rows = self._records.corpus_rows(deadline_s=deadline_s)
+            self._fingerprint = fingerprint(rows, embedding=self._embedder.identity)
+        return self._fingerprint
+
+    def _ranked(
         self,
         query: str,
         *,
-        k: int,
-        collection: str | tuple[str, ...],
-        services: tuple[str, ...] | None = None,
+        categories: tuple[str, ...],
+        services: tuple[str, ...] | None,
         deadline_s: float,
-    ) -> list[Passage]:
-        # The collection is named by the capability that called, never inferred here. One name or
-        # several; the only normalization is that both arrive as a tuple.
-        categories = (collection,) if isinstance(collection, str) else tuple(collection)
-
+    ) -> tuple[list[str], dict[str, dict[str, Any]], dict[str, float]]:
+        """Every step up to and including promotion: the ordered unit ids, the rows they name, and
+        the fused score each carries. One ranking pipeline over whatever the corpus indexed."""
         # One deadline for the search, not one per operation inside it. A retrieval embeds, then
         # searches by vector, then reads candidates lexically, and handing the same duration to
         # each would let three sequential operations take three times what the caller allowed while
@@ -154,7 +166,30 @@ class Retriever:
         rows_by_id = {row["id"]: row for row in (*dense_rows, *candidate_rows)}
         fused = _fuse(query, dense_rows, candidate_rows)
         ranked = [row_id for row_id, _ in sorted(fused.items(), key=lambda item: -item[1])]
-        chosen = _promote(ranked, rows_by_id, query)[: min(k, PASSAGE_BUDGET)]
+        return _promote(ranked, rows_by_id, query), rows_by_id, fused
+
+    def search(
+        self,
+        query: str,
+        *,
+        k: int,
+        collection: str | tuple[str, ...],
+        services: tuple[str, ...] | None = None,
+        deadline_s: float,
+    ) -> list[Passage]:
+        """The best units the named collection holds for this question.
+
+        What a unit is was decided when the corpus was prepared: a section of guidance, or a past
+        incident whole. So a budget of five means five sections of a runbook or five distinct
+        precedents, according to what was asked for, and nothing here needs to know which.
+        """
+        # The collection is named by the capability that called, never inferred here. One name or
+        # several; the only normalization is that both arrive as a tuple.
+        categories = (collection,) if isinstance(collection, str) else tuple(collection)
+        ranked, rows_by_id, fused = self._ranked(
+            query, categories=categories, services=services, deadline_s=deadline_s
+        )
+        chosen = ranked[: min(k, PASSAGE_BUDGET)]
         return [_to_passage(rows_by_id[row_id], fused[row_id]) for row_id in chosen]
 
 

@@ -2,7 +2,7 @@
 id: architecture:observability-strategy
 title: RetailEase Observability & Investigation Strategy
 kind: architecture
-services: [checkout-api, payment-api, inventory-api, catalog-api, notification-worker, service-bus, cosmos-db, redis-cache, payment-gateway, email-provider]
+services: [checkout-api, payment-api, inventory-api, catalog-api, notification-worker, inventory-reservation-worker, service-bus, cosmos-db, redis-cache, payment-gateway, email-provider]
 source: "synthetic (RetailEase); structure after real SRE practice"
 ---
 
@@ -20,13 +20,14 @@ RetailEase is observed through **Azure Monitor**. This document describes what t
 
 ## Key metrics per entity
 
-Services (`checkout-api`, `payment-api`, `inventory-api`, `catalog-api`, `notification-worker`):
+Services (`checkout-api`, `payment-api`, `inventory-api`, `catalog-api`, `notification-worker`, `inventory-reservation-worker`):
 - `http_5xx_rate` — server-error rate; the primary signal that a service is failing requests.
 - `p95_latency_ms` — 95th-percentile request latency; the primary signal that a service is slow.
 
 Entity-specific metrics:
 - `inventory-api`: `reservation_error_rate` — rate of failed stock reservations.
 - `notification-worker`: `restart_count` — container restarts, indicating crash loops or instability.
+- `inventory-reservation-worker`: `reservation_queue_depth` — reservations accepted but not yet applied. No alert rule watches it, so depth is read on request rather than paged on; a backlog here is visible only to someone who thinks to look.
 - `cosmos-db`: `ru_throttled_rate` — rate of throttled (429) requests; `used_ru_pct` — provisioned throughput utilization.
 - `service-bus`: `active_message_count` — queue backlog of unconsumed order events.
 - `redis-cache`: `used_memory_pct` — memory utilization; `evicted_keys_rate` — rate of keys evicted under memory pressure.

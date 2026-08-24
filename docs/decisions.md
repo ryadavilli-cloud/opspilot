@@ -19,6 +19,9 @@ Retired records keep an identifier and one line so the number is never reused.
 | D-008 Reference encoding | Accepted |
 | D-009 Evaluation artifact storage | Accepted |
 | D-010 Analysis-to-gathering return | Accepted |
+| D-011 Nearest-history baseline | Accepted |
+| D-012 Corpus identity on a run | Accepted |
+| D-013 The analysis return on the record | Accepted |
 
 ---
 
@@ -47,10 +50,21 @@ routing exists between the two.
 
 **Decision.** One retriever over the categorized Cosmos knowledge container: embed the question
 with the embedding deployment; vector search over the collection the capability names; a lexical
-term-overlap pass over the same category-filtered candidates;
-reciprocal-rank fusion of the two ranked lists; stable promotion of passages whose extracted
-identifiers match identifier-like terms in the question; truncation to a small passage budget.
-Passages carry text and reference. No model reranker.
+term-overlap pass over the same category-filtered candidates; reciprocal-rank fusion of the two
+ranked lists; stable promotion of passages whose extracted identifiers match identifier-like terms
+in the question; truncation to a small passage budget. Passages carry text and reference. No model
+reranker. Which identifiers a question matched is not recorded on the passage or in the completed
+record: promotion is deterministic, so the answer is re-derivable from the passage and the question
+it was retrieved for, and a stored copy would be a second answer free to disagree with the one the
+retriever computes.
+
+What a retrieval unit is, corpus preparation decides, and it decides by what the capability
+searching will be asking. A runbook and an architecture note are indexed a section at a time,
+because how something is handled is answered by the part that handles it and the rest of the
+document is not the answer. A past incident is indexed whole, because whether this has happened
+before is a question about an incident, and its cause, its impact and what settled it are one
+account rather than alternatives to each other. Ranking then has one path over whatever preparation
+produced, and nothing regroups or re-shapes results afterwards.
 
 **Why.** Vector search carries meaning; the lexical pass carries operational tokens and exact
 identifiers; reciprocal-rank fusion combines two differently-scaled lists without calibration and
@@ -59,8 +73,20 @@ that makes an exact service name, error code, or deploy id trustworthy near the 
 identifiers on the passage side already exist from corpus preparation; the query-side match is a
 small deterministic helper and needs no record of its own.
 
+The unit differs by collection because splitting a write-up puts its parts in competition for the
+same result budget: the most quotable incident occupies slots the incidents it should be weighed
+against would have taken, and a budget of five stops meaning five precedents. What comes back is
+then whichever parts echoed the question, as likely an impact and a timeline as a cause and a
+resolution, so the one thing a precedent is retrieved to say can be the thing left behind. Keeping
+the write-up whole removes both problems and the machinery that would otherwise work around them.
+
 **Cost.** The lexical pass rescans the filtered candidates on every query, acceptable at this corpus
-size. The passage budget is an engineering limit, not a tuned value.
+size. The passage budget is an engineering limit, not a tuned value. A past incident brings its
+whole text to a prompt, which is more than a section: that is watched during hosted validation
+rather than assumed affordable, and if it bites the lever is a smaller budget of precedents rather
+than a return to fragments. Identifier extraction is per unit, so a deploy id named anywhere in a
+write-up promotes the write-up rather than one part of it, which is the coarser behavior and the
+honest one for a unit that is the whole incident.
 
 ### D-004 MCP realization
 
@@ -102,16 +128,36 @@ model; that is why it is advisory and reported beside the deterministic results.
 ### D-006 Evaluation scenario selections
 
 **Decision.** inc-005 is the fast change-time scenario. inc-004 is the analysis-to-gathering return
-demonstration and the ambiguous case. inc-006 is the correct-partial case. inc-007 is the
-retrieval-influence controlled comparison. The adaptive-versus-fixed-path scenario is not
-preselected: it is the authored incident on which the controlled comparison shows the adaptive path
-reaching a meaningfully better result. inc-004 is the likely candidate because its evidence path is
-contingent; it is a candidate until measured.
+demonstration and the ambiguous case. inc-006 is the correct-partial case and carries the
+adaptive-versus-fixed-path comparison. inc-007 is the retrieval-influence controlled comparison. The
+nearest-history baseline (D-011) runs on inc-004 and inc-007 and nowhere else.
+
+inc-006 carries adaptive value on one condition, which the corpus must satisfy: its second
+contributor lives on a target that is discoverable only through service-dependency lookup, named
+neither by the incident, nor by the correlated alerts, nor by the alerting service's logs, nor by
+anything else the fixed path reaches before it. Whether the analysis return fires on any given run
+stays the model's to decide and is not forced.
 
 **Why.** inc-004 carries an authored red herring and an externally unobservable third party, so a
 first pass cannot close it. inc-006 is the only scenario where partial is correct rather than a
 shortfall. inc-007's match is reached through a postmortem's recurrence signature rather than
 operational evidence, so knowledge changes its path.
+
+inc-006 is where adaptive value can be shown structurally rather than as a matter of ordering. The
+fixed path is a predetermined sequence that ends at dependencies, so a target first learned there
+can never be queried: the claim becomes that the fixed path cannot formulate the necessary query at
+all, which no reordering of the same script would rescue. A contributor the fixed path can reach by
+running its own steps proves only that one order was worse than another.
+
+**Cost.** RetailEase carries a service that exists so that one contributor can sit somewhere the
+alerting service's own telemetry does not reach, and the topology, its metrics and logs, the
+architecture documents describing the graph, and the authored expectation all have to keep saying
+the same thing about it. The condition is a property of the data rather than of any prose, so it is
+held by tests over the incident record, the storm, and the alerting service's logs, metrics, and
+deploys; without them a later edit could hand the target over early and nothing would notice. The
+storm is kept off the worker by the scenario naming it as watched by no alert rule, which is
+truthful and is also a second thing to keep true. What this record selects inc-006 for is still
+measured rather than assumed: the comparison has to be run for the claim to hold.
 
 ### D-007 Normalized incident context
 
@@ -136,10 +182,11 @@ decide by inspection whether a reference may stand as current operational suppor
 ### D-009 Evaluation artifact storage
 
 **Decision.** A kept evaluation run is persisted as one document in its own Cosmos container,
-partitioned by `run_id`, in the shape `evaluation.md` states: the configuration identity including
-the judge's, per-scenario results with deterministic checks and judge categories in separate
-fields, and both comparisons. The application identity holds read on that container and the
-principal running evaluation holds write, so the application reads kept runs and never writes one.
+partitioned by `run_id`, in the shape `evaluation.md` states: the configuration identity, which
+carries the judge's and the corpus the run retrieved from, per-scenario results with deterministic
+checks and judge categories in separate fields, and the comparisons. The application identity holds
+read on that container and the principal running evaluation holds write, so the application reads
+kept runs and never writes one.
 A saved run is never edited or deleted, and a second save under one `run_id` is refused. The
 report document the runner writes beside it is a convention.
 
@@ -168,3 +215,59 @@ field on the proposal is smaller than a dedicated contract.
 
 **Cost.** A question that a first return cannot close remains an unknown; there is no second
 return.
+### D-011 Nearest-history baseline
+
+**Decision.** Evaluation reaches a conclusion the cheap way and reports it beside the
+investigation's: a query derived from the incident, one search of past incidents, the top write-up
+returned, and that write-up's recorded cause and resolution taken directly as the answer. It makes
+no model call and holds nothing constant, because it runs no investigation. It runs on inc-004 and
+inc-007 and nowhere else.
+
+**Why.** The other two comparisons hold OpsPilot against itself, so neither answers the reader who
+would not have built OpsPilot at all: the nearest past incident already carries a cause and a
+resolution, and reasoning over current evidence has to be worth more than copying them. Keeping the
+baseline thoughtless is what makes it the alternative anyone actually reaches for; one that weighed
+a precedent against current evidence would be a second investigation, and beating that would say
+nothing about whether retrieval alone suffices. Two scenarios, because the shortcut fails in two
+ways and only one of them looks like failure: on the ambiguous incident it should land confidently
+on the wrong cause, and on the recurrence it should land on the right one having verified nothing.
+
+**Cost.** Two more arms in the evaluation runner. The baseline's value rests on the history being
+authored to hold a convincing near-match for the ambiguous incident; where the corpus does not
+supply one, the comparison shows nothing and is better not run than run and read as a pass.
+
+### D-012 Corpus identity on a run
+
+**Decision.** One deterministic fingerprint over the retrieval-relevant content of the prepared
+corpus and the identity of the embedding that vectorized it, carried on the completed investigation
+and in a kept evaluation run's configuration identity. Preparing the same corpus twice produces the
+same value, and a change to passage text, metadata, or embedding identity changes it. It lands
+before the corpus changes. Records written before it exists read as not recorded, which is a
+different claim from a mismatch.
+
+**Why.** Retrieval behavior moves with the corpus and needs no model or prompt change to do it, so
+two records from either side of a corpus edit carry identical version identity and are not
+comparable. Deployment and prompt versions already travel with a record for exactly this reason;
+the corpus was the one input that could change underneath a comparison and leave no trace.
+
+**Cost.** One field in two places, and a constraint on corpus preparation: anything that varies
+between two preparations of the same corpus, such as a timestamp or a generated id, cannot
+contribute to it. It says that two runs are not comparable, never why, and reading the difference
+is still a matter of looking at what changed.
+
+### D-013 The analysis return on the record
+
+**Decision.** The completed investigation records whether the analysis-to-gathering return was
+taken. One boolean. The unresolved question that routed it and the evidence kind naming what could
+answer it are not persisted beside it.
+
+**Why.** The return is what makes the RCA Analyst part of the investigation rather than a formatter
+at its end, and R-17 asks that a run be understandable afterwards from its record, not only while
+it is on screen. Without it a run that returned and one that never did persist identically. The
+question is left out because the analyst already states the same matter in the assessment's
+unknowns (D-010), and the field the Supervisor routes on is a proposal, which the record does not
+take.
+
+**Cost.** A reader who wants the question reads the unknowns and connects it themselves, and where
+the analyst worded the two differently that connection is theirs to make. The boolean says a return
+happened, never what it recovered.

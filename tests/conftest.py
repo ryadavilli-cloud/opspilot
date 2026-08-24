@@ -11,8 +11,10 @@ from fake_operational_records import FakeContainer, corpus_container
 from opspilot import api, config
 from opspilot.data import knowledge_records, operational_records
 from opspilot.data.operational_records import OperationalRecords
+from opspilot.evaluation import store as evaluation_store
 from opspilot.llm import client as llm_client
 from opspilot.obs import tracing
+from opspilot.record import cosmos as record_cosmos
 from opspilot.retrieval import embeddings as query_embeddings
 from opspilot.retrieval import retriever as retriever_module
 from opspilot.tools import service as tool_service_module
@@ -79,6 +81,39 @@ def _no_deployed_container(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(knowledge_records, "default_knowledge_records", _refuse_retriever)
     monkeypatch.setattr(retriever_module, "default_query_embedder", _refuse_retriever)
     monkeypatch.setattr(query_embeddings, "default_query_embedder", _refuse_retriever)
+
+
+@pytest.fixture(autouse=True)
+def _no_deployed_store(request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch) -> None:
+    """No test may fall through to a deployed record or evaluation-run container.
+
+    Both factories build a Cosmos client and a credential the moment they are called, unlike the
+    model adapters, whose clients stay unbuilt until something asks them to answer. So reaching one
+    of these resolves a credential during collection-time work that is supposed to touch nothing,
+    and what that costs depends on the machine: an ImportError where the Azure packages are absent,
+    and a credential lookup where they are installed and the environment carries real configuration.
+    The lane that installs the most dependency groups is again the one that pays.
+
+    Substitution is these seams' purpose and every test that needs a store already overrides the
+    dependency. Refusing here names the defect for the one that forgets, rather than leaving it to
+    surface as a slow suite on a developer's machine and a fast one in CI.
+
+    Left alone for a test marked `llm`, which has asked for the deployed world by saying so.
+    """
+    if "llm" in request.keywords:
+        return
+
+    def _refuse(*_: Any, **__: Any) -> Any:
+        raise AssertionError(
+            "a test reached a deployed Cosmos container. Override the dependency: "
+            "app.dependency_overrides[get_record] = InMemoryCompletedInvestigations, or "
+            "[get_evaluation_runs] = InMemoryEvaluationRuns."
+        )
+
+    # Both are imported inside the factory rather than at module load, so the defining module is
+    # where the name is resolved on every call and the only place a patch is consulted.
+    monkeypatch.setattr(record_cosmos, "default_completed_investigations", _refuse)
+    monkeypatch.setattr(evaluation_store, "default_evaluation_runs", _refuse)
 
 
 @pytest.fixture(autouse=True)
