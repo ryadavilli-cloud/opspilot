@@ -395,7 +395,13 @@ def _returning(*references: str):
     """A real retriever over hand-built write-ups, for the tops the authored corpus will not
     produce on demand. Real, because the capability accepts nothing else: it is typed to the
     retriever, so a duck-typed stand-in would be testing a path production cannot take."""
-    body = "checkout deployment queue notification cache"
+    # Carries the sections the shortcut reads, because it now answers from what retrieval returned
+    # rather than from the file behind the reference.
+    body = (
+        "checkout deployment queue notification cache\n\n"
+        "## Root cause\nA recorded cause for this write-up.\n\n"
+        "## Resolution\nWhat settled it at the time.\n"
+    )
     documents = [
         {
             "id": f"{ref}#0",
@@ -434,7 +440,7 @@ class _Spy:
         return [passage], [passage.reference]
 
 
-def test_the_shortcut_runs_on_the_scenarios_that_name_a_precedent_and_no_others():
+def test_the_shortcut_runs_on_the_scenarios_that_name_a_precedent_and_no_others(monkeypatch):
     """Which scenarios carry it is decided by the answer key naming the precedent a reasoning-free
     lookup should reach. Elsewhere there is nothing for the shortcut to be right or wrong about."""
     carrying = tuple(
@@ -442,6 +448,11 @@ def test_the_shortcut_runs_on_the_scenarios_that_name_a_precedent_and_no_others(
     )
     assert carrying == _SHORTCUT_SCENARIOS
 
+    # The real runner with no deployment configured, which is the documented path where the two
+    # model-dependent comparisons report themselves not evaluable. Without pinning it, this would
+    # try to obtain live conditions for them and reach a deployment, which is a live call in a lane
+    # that must make none.
+    monkeypatch.setattr(run_evaluation.config, "AZURE_OPENAI_DEPLOYMENT", "")
     ran = [
         c
         for c in run_evaluation.run_comparisons(answer_key.SCENARIOS)
@@ -478,15 +489,39 @@ def test_the_shortcut_searches_once_on_the_incident_as_reported(monkeypatch):
     assert nearest_history_query(incident) == incident.short_description
 
 
-def test_the_shortcut_reuses_the_recorded_answer_rather_than_the_current_one():
-    """It copies what the past incident says, which is the point: on the misdirection scenario that
-    recorded answer is a rollback, and the current incident's own cause is nowhere in it."""
-    result = nearest_history(_scenario("inc-004"), _incident("inc-004"), knowledge_retriever())
+def test_the_shortcut_answers_from_the_result_it_was_handed():
+    """It copies what the past incident says, which is the point: on the misdirection scenario the
+    recorded answer is a rollback, and the current incident's own cause is nowhere in it.
 
-    cause, resolution = historical_answer("postmortem:inc-104")
-    assert cause and resolution
+    The cause is read out of the returned result rather than out of the file behind it. A past
+    incident is one retrieval unit, so the result already holds the whole write-up, and reopening
+    the file would be a second source free to disagree with what the run was actually handed.
+    """
+    retriever = knowledge_retriever()
+    result = nearest_history(_scenario("inc-004"), _incident("inc-004"), retriever)
+
+    (top,) = [
+        p
+        for p in retriever.search(
+            _incident("inc-004").short_description, k=5, collection=POSTMORTEM, deadline_s=5.0
+        )
+        if p.reference == "postmortem:inc-104"
+    ]
+    cause, resolution = historical_answer(top.text)
+    assert cause and resolution, "the returned result did not carry the recorded answer"
     assert _condensed(cause) in result.conclusion
     assert "payment-gateway" not in result.conclusion, "the current incident's cause leaked in"
+
+
+def test_a_returned_past_incident_carries_the_answer_the_shortcut_needs():
+    """The property whole units buy: cause and resolution travel with the precedent, so the
+    shortcut never has to go looking for them anywhere else."""
+    for passage in knowledge_retriever().search(
+        "checkout-api returning 500s after a deployment", k=5, collection=POSTMORTEM, deadline_s=5.0
+    ):
+        cause, resolution = historical_answer(passage.text)
+        assert cause, f"{passage.reference} came back without its recorded cause"
+        assert resolution, f"{passage.reference} came back without its recorded resolution"
 
 
 def test_a_precedent_other_than_the_authored_one_is_reported_rather_than_replaced():

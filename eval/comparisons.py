@@ -15,7 +15,6 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
-from pathlib import Path
 from typing import Any
 
 from evaluation import Source, require_distinct
@@ -255,7 +254,6 @@ def _lead_of(candidate: Any) -> str:
 # nothing about whether retrieval alone suffices.
 NEAREST_HISTORY = "nearest history"
 
-_KB_POSTMORTEMS = Path(__file__).resolve().parents[1] / "data" / "kb" / "postmortems"
 _SECTION = re.compile(r"^##\s+(.+?)\s*$", re.MULTILINE)
 
 
@@ -281,19 +279,16 @@ def _sections(text: str) -> dict[str, str]:
     return found
 
 
-def historical_answer(reference: str) -> tuple[str, str]:
+def historical_answer(text: str) -> tuple[str, str]:
     """What a past incident was recorded as having been caused by, and what settled it.
 
-    Read from the authored write-up rather than from the passage retrieval returned, because the
-    two sections that ranked highest for a question are not necessarily the two that hold the
-    answer, and the shortcut is supposed to reuse the recorded answer rather than whatever text
-    came back. No model summarizes it.
+    Read out of the result retrieval returned, because a past incident is one retrieval unit and
+    the result therefore holds the whole write-up. Reopening the authored file to answer would be a
+    second source for the same text, free to disagree with what the run was actually handed, and
+    the shortcut is supposed to reuse what it got rather than what a file says it should have got.
+    No model summarizes it.
     """
-    incident_id = reference.split(":", 1)[1]
-    found = sorted(_KB_POSTMORTEMS.glob(f"{incident_id}-*.md"))
-    if not found:
-        return "", ""
-    sections = _sections(found[0].read_text(encoding="utf-8"))
+    sections = _sections(text)
     return sections.get("root cause", ""), sections.get("resolution", "")
 
 
@@ -327,7 +322,7 @@ def nearest_history(scenario: dict[str, Any], incident: Any, retriever: Any) -> 
             f"returned {top}, so the shortcut was not tested on the precedent it exists to test",
         )
 
-    cause, resolution = historical_answer(top)
+    cause, resolution = historical_answer(precedents[0].text)
     if not cause:
         return not_evaluable(
             NEAREST_HISTORY, scenario["id"], f"{top} records no cause the shortcut could reuse"

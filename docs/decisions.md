@@ -50,34 +50,21 @@ routing exists between the two.
 
 **Decision.** One retriever over the categorized Cosmos knowledge container: embed the question
 with the embedding deployment; vector search over the collection the capability names; a lexical
-term-overlap pass over the same category-filtered candidates;
-reciprocal-rank fusion of the two ranked lists; stable promotion of passages whose extracted
-identifiers match identifier-like terms in the question; truncation to a small passage budget.
-Passages carry text and reference. No model reranker. Which identifiers a question matched is not
-recorded on the passage or in the completed record: promotion is deterministic, so the answer is
-re-derivable from the passage and the question it was retrieved for, and a stored copy would be a
-second answer free to disagree with the one the retriever computes.
+term-overlap pass over the same category-filtered candidates; reciprocal-rank fusion of the two
+ranked lists; stable promotion of passages whose extracted identifiers match identifier-like terms
+in the question; truncation to a small passage budget. Passages carry text and reference. No model
+reranker. Which identifiers a question matched is not recorded on the passage or in the completed
+record: promotion is deterministic, so the answer is re-derivable from the passage and the question
+it was retrieved for, and a stored copy would be a second answer free to disagree with the one the
+retriever computes.
 
-Scoring is always over sections. What a result is depends on what the capability searches for.
-Guidance answers with sections, because one section can be exactly the right answer to how
-something is handled. Past-incident search answers with incidents: after promotion, sections are
-grouped by the write-up they came from, each write-up takes the position of its best section, and
-at most two of its highest-ranked sections travel with it under one title.
-
-**Why the grouping.** Asking whether this has happened before is a question about incidents, and a
-budget spent on several sections of one write-up returns one candidate presented repeatedly rather
-than several precedents to weigh. Grouping runs after promotion so an identifier lifts the section
-that carried it rather than every part of whatever document mentioned it somewhere. A write-up
-takes its best section's position and never the sum of its sections, because summing ranks by how
-much was written: more sections mean more chances to accumulate, and the longest history would win
-questions it has no claim to. Two sections rather than one, because a single winning section can
-say why an incident looked similar while saying nothing about what caused it or how it was settled;
-two rather than the whole write-up, because the question asked which incidents resemble this one.
-
-**Cost.** Two result shapes to hold in mind instead of one, and a bound of two sections that can
-cut off useful context in a long write-up. Both are answerable from measured behavior rather than
-preference. The grouping is applied to retrieved results and changes nothing stored, so the corpus
-identity a run records is unaffected by it.
+What a retrieval unit is, corpus preparation decides, and it decides by what the capability
+searching will be asking. A runbook and an architecture note are indexed a section at a time,
+because how something is handled is answered by the part that handles it and the rest of the
+document is not the answer. A past incident is indexed whole, because whether this has happened
+before is a question about an incident, and its cause, its impact and what settled it are one
+account rather than alternatives to each other. Ranking then has one path over whatever preparation
+produced, and nothing regroups or re-shapes results afterwards.
 
 **Why.** Vector search carries meaning; the lexical pass carries operational tokens and exact
 identifiers; reciprocal-rank fusion combines two differently-scaled lists without calibration and
@@ -86,8 +73,20 @@ that makes an exact service name, error code, or deploy id trustworthy near the 
 identifiers on the passage side already exist from corpus preparation; the query-side match is a
 small deterministic helper and needs no record of its own.
 
+The unit differs by collection because splitting a write-up puts its parts in competition for the
+same result budget: the most quotable incident occupies slots the incidents it should be weighed
+against would have taken, and a budget of five stops meaning five precedents. What comes back is
+then whichever parts echoed the question, as likely an impact and a timeline as a cause and a
+resolution, so the one thing a precedent is retrieved to say can be the thing left behind. Keeping
+the write-up whole removes both problems and the machinery that would otherwise work around them.
+
 **Cost.** The lexical pass rescans the filtered candidates on every query, acceptable at this corpus
-size. The passage budget is an engineering limit, not a tuned value.
+size. The passage budget is an engineering limit, not a tuned value. A past incident brings its
+whole text to a prompt, which is more than a section: that is watched during hosted validation
+rather than assumed affordable, and if it bites the lever is a smaller budget of precedents rather
+than a return to fragments. Identifier extraction is per unit, so a deploy id named anywhere in a
+write-up promotes the write-up rather than one part of it, which is the coarser behavior and the
+honest one for a unit that is the whole incident.
 
 ### D-004 MCP realization
 

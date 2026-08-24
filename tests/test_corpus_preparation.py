@@ -35,7 +35,11 @@ SCENARIOS = yaml.safe_load(
 )["scenarios"]
 
 
-# --- chunking (D-003: one passage per section, no overlap; short documents stay whole) ---------
+# --- retrieval units (D-003: the unit follows what the collection is searched for) -------------
+# Guidance is indexed a section at a time, because how something is handled is answered by the part
+# that handles it. A past incident is indexed whole, because whether this has happened before is a
+# question about an incident and its cause, impact and resolution are one account. No overlap
+# either way, and a document with no headings stays whole.
 def test_every_passage_belongs_to_exactly_one_document_section():
     # No overlap means no passage text appears under two ids. A duplicated id would also silently
     # collapse documents on upsert.
@@ -44,6 +48,35 @@ def test_every_passage_belongs_to_exactly_one_document_section():
     for doc in KNOWLEDGE:
         assert doc["chunk_id"].startswith(f"{doc['doc_id']}#")
         assert doc["id"] == prep.cosmos_id(doc["chunk_id"])
+
+
+def test_a_past_incident_is_prepared_as_one_unit():
+    """The property a search of past incidents rests on, owned here because preparation is where
+    it is decided. One unit per write-up is what makes a result budget mean that many precedents,
+    and what keeps a cause and its resolution travelling with the precedent that carries them."""
+    postmortems: dict[str, list[dict]] = {}
+    for doc in KNOWLEDGE:
+        if doc["category"] == "postmortem":
+            postmortems.setdefault(doc["doc_id"], []).append(doc)
+
+    assert postmortems, "no postmortems were prepared"
+    for doc_id, units in postmortems.items():
+        assert len(units) == 1, f"{doc_id} was split into {len(units)} units"
+        assert units[0]["chunk_id"] == f"{doc_id}#0"
+        assert "## Root cause" in units[0]["text"], f"{doc_id} lost its recorded cause"
+        assert "## Resolution" in units[0]["text"], f"{doc_id} lost its recorded resolution"
+
+
+def test_guidance_is_prepared_a_section_at_a_time():
+    """The other half of the same decision. A runbook answering a guidance question section by
+    section is why the unit differs by collection at all."""
+    sectioned = [doc for doc in KNOWLEDGE if doc["category"] in {"runbook", "architecture"}]
+    per_document: dict[str, int] = {}
+    for doc in sectioned:
+        per_document[doc["doc_id"]] = per_document.get(doc["doc_id"], 0) + 1
+
+    assert per_document, "no guidance documents were prepared"
+    assert max(per_document.values()) > 1, "guidance is no longer section-level"
 
 
 def test_document_ids_contain_no_character_cosmos_rejects():

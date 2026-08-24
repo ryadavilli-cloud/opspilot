@@ -144,10 +144,11 @@ asked again as the investigation learns enough to ask something different. A ser
 a caller supplies one, removes candidates before ranking rather than weighting them, so narrowing
 scope early forecloses what ranking could otherwise surface.
 
-Ranking always compares sections, because that is where precision is. What a result is follows
-what the capability searches for: guidance answers with the section that answers the question,
-and past-incident search answers with incidents, each carrying the few of its sections that ranked
-highest for the question asked. The realization is D-003's.
+What a result is follows what the capability searches for, and corpus preparation settles it by
+indexing guidance a section at a time and a past incident whole. Ranking runs once over whatever
+units the collection holds, so guidance answers with the section that answers the question and a
+search of past incidents answers with incidents. Nothing regroups results afterwards. The
+realization is D-003's.
 
 Structured query: the Evidence Investigator asks an operational question; the model proposes a
 bounded structure of predicates, projection, optional count, and limit over one approved
