@@ -194,10 +194,15 @@ def judged(
         return Judged(scenario_id, note=f"the judge call did not complete: {error}")
 
 
-# Which scenario the adaptive comparison is tried on, in order. None is declared to satisfy it
-# until a run shows the difference, so the first that does is the one it is reported on and the
-# ones before it are reported as having shown none.
-ADAPTIVE_CANDIDATES = ("inc-004", "inc-006", "inc-007")
+# The scenario the adaptive comparison is run on, and only that one. It used to walk a list and
+# stop at whichever scenario happened to differ, which suited a time when no scenario had been
+# built for the claim. inc-006 now is: its second contributor sits on a service the fixed path
+# cannot learn of until its final step, by which point the step that would have queried it is
+# spent. Walking a list would let an easier scenario answer for it, and what that easier scenario
+# shows is the weaker proposition that one order beat another, not that a query became possible
+# which the fixed path could never formulate. A run that shows no difference here is reported as
+# showing none.
+ADAPTIVE_SCENARIO = "inc-006"
 RETRIEVAL_SCENARIO = "inc-007"
 
 LIVE = "run live against the configured deployment"
@@ -277,9 +282,8 @@ def compare_retrieval_influence(scenario: dict[str, Any]) -> ComparisonResult:
 def run_comparisons(chosen: list[dict[str, Any]]) -> list[ComparisonResult]:
     """The three comparisons, where the chosen set includes their scenarios.
 
-    The adaptive one walks its candidates and stops at the first that shows a difference, because
-    it is a falsification test rather than a benchmark: one scenario where the adaptive path did
-    better is the claim, and the candidates it passed over are reported as having shown none.
+    Each runs on the scenario built for it. This is a falsification test rather than a benchmark,
+    so one scenario is the claim and a run that shows no difference is reported as showing none.
     """
     by_id = {scenario["id"]: scenario for scenario in chosen}
     results: list[ComparisonResult] = []
@@ -300,13 +304,8 @@ def run_comparisons(chosen: list[dict[str, Any]]) -> list[ComparisonResult]:
         )
         return results
 
-    for scenario_id in ADAPTIVE_CANDIDATES:
-        if scenario_id not in by_id:
-            continue
-        outcome = compare_adaptive(by_id[scenario_id])
-        results.append(outcome)
-        if outcome.differed:
-            break
+    if ADAPTIVE_SCENARIO in by_id:
+        results.append(compare_adaptive(by_id[ADAPTIVE_SCENARIO]))
 
     if RETRIEVAL_SCENARIO in by_id:
         results.append(compare_retrieval_influence(by_id[RETRIEVAL_SCENARIO]))

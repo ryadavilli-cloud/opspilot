@@ -101,10 +101,13 @@ tools in a predetermined order. The comparison reports whether the adaptive path
 meaningfully better result: a correct cause the fixed path missed, a red herring the fixed path
 accepted, or required evidence only the adaptive path reached.
 
-Which scenario carries it is settled in `decisions.md`, and it is settled as a selection to
-measure rather than a result to assume: no scenario is declared to satisfy this until the
-comparison has been run and shows the difference. One or a few scenarios suffice; this is a
-falsification test, not a benchmark.
+Which scenario carries it is settled in `decisions.md`, and it runs on that scenario alone. The
+claim is not that some scenario somewhere happens to favour the adaptive path, which any pair of
+differing orders might produce; it is that an investigation can ask something the predetermined
+sequence could never formulate, because the target only became nameable partway through. Only a
+scenario built for that can answer it, so a run showing no difference is reported as showing none
+rather than another scenario being tried until one does. This is a falsification test, not a
+benchmark.
 
 ---
 
@@ -113,8 +116,13 @@ falsification test, not a benchmark.
 One controlled comparison on inc-007, the scenario authored so that a postmortem's recurrence
 signature changes the investigation's path. Two runs of the same investigation: normally, and with
 retrieval still executing and still recorded but its passages withheld from the agents' prompts.
-Withholding influence rather than retrieval keeps the activity and tool counts comparable, so the
-only difference is whether the knowledge reached reasoning.
+The one thing done differently is whether those passages reach the prompts. What follows from that
+is the effect being measured: a run shown a precedent may ask for a different capability next, and
+may therefore retrieve a different amount, which is the treatment propagating rather than a second
+variable. Requiring the later activity to match would be requiring the knowledge to change nothing,
+which is the claim under test. What both conditions must have is knowledge to differ over: a
+condition that retrieved none had no influence to withhold or receive, and that is reported as a
+comparison nobody set up.
 
 Held constant across the two runs: the scenario, the model deployment and version, the prompt
 versions, the runtime configuration, and the evidence and tool environment. The one experimental

@@ -1,14 +1,16 @@
-"""The two controlled comparisons: change one thing about a run, and say what followed.
+"""What a run does differently when one thing about it changes, and what a shortcut would conclude.
 
-Each runs the same scenario under two conditions that differ in exactly one respect, and reports
-what differed. Neither gates anything, and neither reports a score. A comparison that finds no
-difference is a result, not a failure: the point is falsification, so a null result says the
-variable did not matter here rather than that something went wrong.
+Two of these are controlled comparisons: the same scenario under two conditions differing in
+exactly one respect, reporting what followed. The third holds no condition and runs no
+investigation; it reaches for the nearest past incident and says what reusing that answer would
+have concluded. None gates anything and none reports a score. A comparison that finds no difference
+is a result, not a failure: the point is falsification, so a null result says the variable did not
+matter here rather than that something went wrong.
 
-The two conditions may never read one recorded model response. Replaying the same cassette into
-both arms returns the same output whatever the condition changed, which does not show the variable
-made no difference; it shows the variable was never applied. `require_distinct` refuses that
-arrangement rather than leaving it as an instruction.
+The two conditions of a controlled comparison may never read one recorded model response. Replaying
+the same cassette into both arms returns the same output whatever the condition changed, which does
+not show the variable made no difference; it shows the variable was never applied.
+`require_distinct` refuses that arrangement rather than leaving it as an instruction.
 """
 
 from __future__ import annotations
@@ -165,11 +167,16 @@ def retrieval_influence(
 ) -> ComparisonResult:
     """Whether retrieved knowledge reaching reasoning changed the investigation.
 
-    Retrieval runs in both conditions and is recorded in both, so the tool counts and the activity
-    stay comparable and the one variable is whether the passages reached the prompts. A precondition
-    rather than an assumption: if the condition that was given its passages retrieved nothing, there
-    was no influence to withhold and the comparison has not been set up, which is reported instead
-    of being read as no difference.
+    Retrieval runs in both conditions and is recorded in both. The one thing done differently is
+    whether those passages reach the prompts, and everything that follows from that is the effect
+    being measured rather than a second variable: a run shown a precedent may ask for a different
+    capability next, and may therefore retrieve a different amount, which is the treatment
+    propagating and not the experiment losing control of itself. Requiring the later activity to
+    match would be requiring the knowledge to change nothing, which is the opposite of the claim.
+
+    What is a precondition is that both conditions had knowledge to differ over. A condition that
+    retrieved nothing had no influence to withhold or to receive, and that is reported as a
+    comparison nobody set up rather than read as no difference.
     """
     scenario_id = scenario["id"]
     result = ComparisonResult(name="retrieval influence", scenario_id=scenario_id)
@@ -182,11 +189,12 @@ def retrieval_influence(
             "the condition that was shown its passages retrieved none, so there was no influence "
             "to withhold",
         )
-    if len(without_knowledge.passages) != len(with_knowledge.passages):
-        result.note = (
-            f"retrieval differed between the conditions "
-            f"({len(with_knowledge.passages)} passages against "
-            f"{len(without_knowledge.passages)}), so more than the one variable moved"
+    if not without_knowledge.passages:
+        return not_evaluable(
+            "retrieval influence",
+            scenario_id,
+            "the condition that had its passages withheld retrieved none, so the two conditions "
+            "were not both given knowledge to differ over",
         )
 
     shown_only = sorted(set(_capabilities(with_knowledge)) - set(_capabilities(without_knowledge)))
