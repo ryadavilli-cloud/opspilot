@@ -176,6 +176,33 @@ def test_units_that_score_identically_come_back_in_a_stable_order():
     assert _by_score_then_id(scores) == ["beta", "alpha", "delta", "gamma"]
 
 
+def test_the_same_candidates_rank_the_same_however_the_store_returned_them():
+    """The whole property, at every boundary rather than only the last one.
+
+    A rank is given three times over: once by the vector distance the store sorts on, once by the
+    lexical score, and once by their fusion. None of those three distinguishes equals on its own,
+    so without a secondary key the order the store happened to return rows in decides the outcome,
+    and the store promises no order at all for the lexical candidates. Presenting one set of
+    candidates in two orders is what two stores, or one store on two days, would hand this.
+    """
+    rows = [
+        _doc("alpha", "checkout gateway timeout authorization failure"),
+        _doc("beta", "checkout gateway timeout authorization failure"),
+        _doc("gamma", "checkout gateway timeout authorization failure"),
+        _doc("delta", "an unrelated note about cache warmup"),
+    ]
+
+    forward, _, _ = retriever_from(rows)._ranked(
+        "checkout gateway timeout", categories=(RUNBOOK,), services=None, deadline_s=5.0
+    )
+    backward, _, _ = retriever_from(list(reversed(rows)))._ranked(
+        "checkout gateway timeout", categories=(RUNBOOK,), services=None, deadline_s=5.0
+    )
+
+    assert forward == backward, "the order the store returned rows in changed the ranking"
+    assert len(forward) == len(rows)
+
+
 # --- what a unit is, per collection --------------------------------------------------------------
 def _incidents(query: str, k: int = PASSAGE_BUDGET) -> list[Any]:
     return knowledge_retriever().search(query, k=k, collection=POSTMORTEM, deadline_s=5.0)
