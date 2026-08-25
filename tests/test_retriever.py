@@ -156,6 +156,26 @@ def test_promotion_reaches_a_passage_that_fusion_left_below_the_budget():
     assert hits[0].reference == "runbook:named"
 
 
+def test_units_that_score_identically_come_back_in_a_stable_order():
+    """Ties are ordinary rather than rare, because fusion scores a unit by the reciprocal of its
+    rank: a unit at rank r in the dense list and a different one at rank r in the lexical list
+    score the same. Left to the fused mapping's own order, the tie would fall to the iteration
+    order of a set of ids, which varies between processes with string hashing. The same question
+    would then return the same units in a different order on another run, and a recorded
+    investigation replayed elsewhere would diverge on a digest that listed them differently.
+
+    Asserted by presenting one set of scores in two insertion orders, which is what two processes
+    hand the sort.
+    """
+    from opspilot.retrieval.retriever import _by_score_then_id
+
+    scores = {"gamma": 0.5, "alpha": 0.5, "beta": 0.9, "delta": 0.5}
+    reversed_insertion = dict(reversed(list(scores.items())))
+
+    assert _by_score_then_id(scores) == _by_score_then_id(reversed_insertion)
+    assert _by_score_then_id(scores) == ["beta", "alpha", "delta", "gamma"]
+
+
 # --- what a unit is, per collection --------------------------------------------------------------
 def _incidents(query: str, k: int = PASSAGE_BUDGET) -> list[Any]:
     return knowledge_retriever().search(query, k=k, collection=POSTMORTEM, deadline_s=5.0)

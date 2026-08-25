@@ -141,6 +141,28 @@ def _references_in(node: object) -> set[str]:
     return found
 
 
+_RECORDED = sorted(
+    path.stem
+    for path in (Path(__file__).resolve().parents[1] / "eval" / "cassettes").glob("*.json")
+)
+
+
+@pytest.mark.parametrize("incident", _RECORDED)
+def test_every_recorded_scenario_still_replays(incident):
+    """Replay keys off the messages, so a recording is evidence only for as long as the run it
+    describes still asks the same things. Three recordings were exercised here and four were not,
+    and a retrieval order that varied between processes went unnoticed until the evaluation runner
+    reached one of the four: this suite was green while a committed recording could not be
+    replayed at all. Reading the directory rather than a list keeps that from recurring the next
+    time a recording is added.
+    """
+    events, record = _replay(incident)
+
+    assert events and events[-1]["event_type"] == "terminal"
+    assert events[-1]["failure"] is None, f"{incident} replayed into a failed execution"
+    assert record.get(events[0]["investigation_id"]) is not None
+
+
 def test_a_recorded_investigation_reaches_a_delivered_brief(replayed):
     """A miss raises rather than degrading, so arriving here at all proves the recorded requests
     matched. Asserted explicitly so a future prompt edit fails here, naming the cassette."""

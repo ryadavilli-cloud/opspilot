@@ -165,7 +165,7 @@ class Retriever:
 
         rows_by_id = {row["id"]: row for row in (*dense_rows, *candidate_rows)}
         fused = _fuse(query, dense_rows, candidate_rows)
-        ranked = [row_id for row_id, _ in sorted(fused.items(), key=lambda item: -item[1])]
+        ranked = _by_score_then_id(fused)
         return _promote(ranked, rows_by_id, query), rows_by_id, fused
 
     def search(
@@ -191,6 +191,20 @@ class Retriever:
         )
         chosen = ranked[: min(k, PASSAGE_BUDGET)]
         return [_to_passage(rows_by_id[row_id], fused[row_id]) for row_id in chosen]
+
+
+def _by_score_then_id(fused: dict[str, float]) -> list[str]:
+    """Fused units, best first, ties broken by the unit's own id.
+
+    Ties are ordinary here rather than rare: fusion scores a unit by the reciprocal of its rank, so
+    a unit lying at rank r in the dense list and a different one at rank r in the lexical list score
+    identically. Breaking that by the id makes the order a function of the corpus and the question
+    alone. Left to the mapping's own order, the tie would fall to the iteration order of the set the
+    candidate ids were gathered into, which varies between processes with string hashing: the same
+    question would return the same units in a different order on another run, and a recorded
+    investigation replayed elsewhere would diverge on a digest that listed them differently.
+    """
+    return [row_id for row_id, _ in sorted(fused.items(), key=lambda item: (-item[1], item[0]))]
 
 
 def _fuse(
