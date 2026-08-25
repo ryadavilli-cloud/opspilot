@@ -57,15 +57,15 @@ from opspilot.llm.client import build_chat_model  # noqa: E402
 from opspilot.record.memory import InMemoryCompletedInvestigations  # noqa: E402
 from opspilot.tools.service import ToolService  # noqa: E402
 
-# The incidents worth having a recording of, and why each one earns the model calls it costs.
-#   inc-005: a Redis eviction storm. Its authored answer key records no deployment anywhere in the
-#            window, so the run exercises an authoritative absence alongside ordinary evidence.
-#   inc-004: the ambiguous one. Its first pass cannot close, which is what gives analysis something
-#            real to send back for, so this is where the one return is observable on a real model.
-#   inc-007: a recurrence of an incident that already has a write-up. Whether retrieved knowledge
-#            changes what an investigation checks or concludes is answerable here and nowhere else
-#            in the corpus, because this is the only incident whose answer is already written down.
-RECORDABLE = ("inc-005", "inc-004", "inc-007")
+# Every authored scenario, because evaluation reads a missing recording as a scenario that did not
+# run. A set where four of the seven are skipped for want of a cassette reports on three and calls
+# itself full, and the scenarios most worth reporting on were among the missing: the one built to
+# show that a query can become possible partway through, and the three whose incidents already
+# happened and whose write-ups the rest of the history is weighed against.
+#
+# What each still costs is one model call per model call its run makes, which is why the set is the
+# authored scenarios and not everything that could be run.
+RECORDABLE = ("inc-001", "inc-002", "inc-003", "inc-004", "inc-005", "inc-006", "inc-007")
 DEFAULT_INCIDENT = "inc-005"
 
 

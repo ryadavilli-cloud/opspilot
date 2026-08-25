@@ -190,19 +190,36 @@ def test_a_scenario_with_a_recording_is_replayed_from_it():
     assert source.detail.endswith("inc-005.json")
 
 
+# Every authored scenario has a recording, so a scenario that has none is named here rather than
+# borrowed from the corpus: pointing this at a real scenario made the test pass for as long as
+# nobody had recorded it, and quietly assert nothing once somebody did.
+UNRECORDED = "inc-000"
+
+
 def test_a_scenario_with_no_recording_is_not_run_and_says_why():
-    source = Source.for_scenario("inc-001")
+    source = Source.for_scenario(UNRECORDED)
 
     assert source.provenance is Provenance.NOT_RUN
     assert "no recording" in source.detail
 
 
+def test_every_authored_scenario_has_a_recording_to_evaluate():
+    """A missing recording reads as a scenario that did not run, so a set where some are missing
+    reports on the rest and still calls itself full."""
+    from answer_key import SCENARIOS
+
+    missing = [
+        s["id"] for s in SCENARIOS if Source.for_scenario(s["id"]).provenance is Provenance.NOT_RUN
+    ]
+    assert not missing, f"authored scenarios evaluation would skip: {missing}"
+
+
 def test_a_scenario_that_did_not_run_is_neither_passed_nor_failed():
     """Coverage that varies between runs makes two reports look alike when they are not, so a
     scenario with no recording is a stated result rather than an omission."""
-    source = Source.for_scenario("inc-001")
+    source = Source.for_scenario(UNRECORDED)
 
-    result = evaluate("inc-001", None, {"accepted_outcomes": ["complete"]}, source)
+    result = evaluate(UNRECORDED, None, {"accepted_outcomes": ["complete"]}, source)
 
     assert not result.ran
     assert not result.passed
