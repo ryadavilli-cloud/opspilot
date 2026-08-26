@@ -195,17 +195,22 @@ def check_outcome_is_accepted(
     return []
 
 
-def check_no_immediate_action(record: CompletedInvestigation) -> list[str]:
-    """The benign case, where the correct answer is that nothing needs doing now.
+def check_benign_action_disposition(record: CompletedInvestigation) -> list[str]:
+    """The benign case, where the correct answer is that nothing needs doing now, said out loud.
 
     Affirmative rather than inferred from an empty list: saying nothing is not the same as saying
-    nothing is needed, and only one of those is a useful answer to an engineer.
+    nothing is needed, and only one of those is a useful answer to an engineer. The assessment
+    carries that as an ordinary action with `now` set, which is the shape the accepted design gives
+    it, so what can be checked mechanically is that such an entry is there.
+
+    Deliberately structural and deliberately weak. Whether the sentence in that entry really says
+    nothing needs doing, rather than recommending a restart, is a reading of prose and belongs to
+    the judge. Checking it here would mean either parsing the sentence or giving actions a second
+    kind so a machine could tell them apart, and an enum introduced so that evaluation can
+    understand a phrase is machinery the design does not ask for.
     """
-    if any(action.now for action in record.assessment.actions):
-        immediate = [action.action for action in record.assessment.actions if action.now]
-        return [f"benign: recommended immediate action on a benign case: {immediate}"]
-    if not record.assessment.actions:
-        return ["benign: recommended nothing at all, rather than affirmatively no action now"]
+    if not any(action.now for action in record.assessment.actions):
+        return ["benign: no affirmative no-immediate-action disposition was recorded"]
     return []
 
 
@@ -228,7 +233,7 @@ def evaluate(
     result.failures.extend(check_declared_absence_is_disclosed(record, expectation))
     result.failures.extend(check_outcome_is_accepted(record, expectation))
     if benign:
-        result.failures.extend(check_no_immediate_action(record))
+        result.failures.extend(check_benign_action_disposition(record))
 
     result.notes.append(f"outcome {record.outcome.value}")
     result.notes.append(
