@@ -3,7 +3,7 @@
 **How do we show that OpsPilot's important claims hold, that development was deliberate, and that
 the capstone demonstrates how agentic systems are evaluated?**
 
-This document owns evaluation technique. Evaluation runs offline over completed investigations,
+This document defines how OpsPilot is evaluated. Evaluation runs offline over completed investigations,
 informs rather than gates, and certifies nothing about production suitability. It is not a
 platform: one runner, authored expectations, deterministic checks, three comparisons, one LLM
 judge, one report.
@@ -97,16 +97,22 @@ rather than reimplementing them.
 
 One controlled comparison. The evaluation harness runs the same scenario twice: once normally, and
 once with the Evidence Investigator's next-action source replaced by a fixed script over the same
-tools in a predetermined order. The comparison reports whether the adaptive path reached a
-meaningfully better result: a correct cause the fixed path missed, a red herring the fixed path
-accepted, or required evidence only the adaptive path reached.
+tools in a predetermined order. Which scenario carries it is settled in `decisions.md`, and it runs
+on that scenario alone.
 
-Which scenario carries it is settled in `decisions.md`, and it runs on that scenario alone. The
-claim is not that some scenario somewhere happens to favour the adaptive path, which any pair of
-differing orders might produce; it is that an investigation can ask something the predetermined
-sequence could never formulate, because the target only became nameable partway through. Only a
-scenario built for that can answer it, so a run showing no difference is reported as showing none
-rather than another scenario being tried until one does. This is a falsification test, not a
+The comparison reports every difference it observes: a cause one path reached and the other did
+not, a red herring one path accepted, evidence present on one side only. Reporting a difference is
+not the same as demonstrating the claim. Two different orders over the same tools will often reach
+slightly different evidence, and that by itself proves nothing about adaptation.
+
+The claim is narrower. It is demonstrated only when the adaptive run uses something it learned
+during the run to reach evidence the predetermined path had no way to ask for: the target was not
+nameable from the opening symptom, so no fixed order could have contained a query for it. Reading
+the comparison means checking the difference against that bar, not counting differences.
+
+A run that shows no difference, or a difference that does not clear the bar, is reported as what it
+is. The scenario is not swapped for one that reads better, and the accepted outcomes are not
+adjusted after the fact. The comparison is allowed to produce a negative result; it is not a
 benchmark.
 
 ---
@@ -147,9 +153,9 @@ persisted state.
 
 ## 7. The nearest-history shortcut
 
-The claim an investigation has to earn is that reaching for the most similar past incident is not
-enough. The third comparison states what that shortcut would have concluded, so the claim is
-answered by a result rather than by assertion.
+The nearest-history baseline tests whether retrieving the closest past incident is enough. The
+third comparison states what that shortcut would have concluded on the same incident, so the
+question is answered by a result rather than by assertion.
 
 It is deterministic and makes no model call: a query derived from the incident, one search of past
 incidents, the top postmortem returned, and that write-up's recorded cause and resolution taken

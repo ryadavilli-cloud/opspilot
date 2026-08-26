@@ -9,7 +9,7 @@ is not measured as one.
 
 This document states what OpsPilot must accomplish and demonstrate, and the properties that make it
 trustworthy. It does not state how. Structure, components, execution mechanics, data and evidence
-semantics, runtime realization, evaluation method, settled technical choices, and implementation
+semantics, runtime implementation, evaluation method, settled technical choices, and implementation
 rules are each owned by their own document. Requirements names no library, framework, model,
 database, query language, or transport, with one exception: Azure is the fixed hosting environment,
 because that commitment is made here and portability is not a goal.
@@ -41,8 +41,8 @@ Many incidents are handled well by fixed dashboards and known-signature lookups,
 not compete with those. Adaptive investigation earns its place where the right evidence path cannot
 be known in advance: where one observation changes what should be checked next, and where a
 conclusion requires correlating several kinds of evidence. OpsPilot targets exactly those scenarios,
-and the authored corpus is built so that at least one shows an adaptive path outperforming a fixed
-one.
+and the corpus includes one designed to make the value of adaptive discovery testable against a
+fixed path.
 
 ---
 
@@ -122,8 +122,7 @@ was insufficient, and it never presents a best guess as an established finding.
 **R-6 Question.** The engineer may ask a question about a completed investigation and receive an
 answer drawn only from that investigation's retained record. A question gathers no new evidence,
 introduces no new conclusion, and creates no new investigation. Where the record cannot answer, the
-answer says so. A concise handoff or status summary derived from the same record is a preference,
-not a requirement (section 10).
+answer says so.
 
 ---
 
@@ -267,10 +266,16 @@ immediate action where none is justified. Failures are named.
 references resolve, that material incident claims have admitted support, that no prohibited
 operational write occurred, and that structured-query results match expected results.
 
-**R-29 Adaptive value.** A simple fixed-path baseline, using the same tools in a predetermined
-order, exists for comparison, and at least one authored scenario shows adaptive investigation
-reaching a better result than the fixed path. This is the falsification test for OpsPilot's central
-claim; it is not a benchmark across every incident.
+**R-29 Adaptive value is measurable.** A simple fixed-path baseline, using the same tools in a
+predetermined order, exists for comparison, and at least one authored scenario is built so that
+adaptive investigation can reach evidence the fixed path cannot: the target is only nameable after
+something earlier in the run reveals it, and the fixed order has no way back to query it. The
+comparison runs on that scenario and reports what it finds.
+
+What is required is that the claim can be tested and can fail. Whether a given run shows the
+difference is the model's behavior, not a property the design can guarantee, and a comparison that
+finds no difference is a result to report rather than a defect to remove. The comparison is
+allowed to produce a negative result, and it is not a benchmark across every incident.
 
 **R-30 Retrieval influence.** For scenarios where relevant knowledge is expected, evaluation
 demonstrates that retrieved knowledge materially influences an investigation action, hypothesis,
@@ -311,45 +316,25 @@ and deletes nothing.
 
 ---
 
-## 10. Preferences
+## 10. Out of scope
 
-These may be pursued after the primary journey works end to end. They create no obligation on any
-other document unless promoted here first.
+These are the exclusions that explain the shape of the system. Each one is a decision, not an
+omission.
 
-- **A concise handoff or status summary** derived from a completed investigation's record.
-- **Parallel execution of independent evidence actions**, where it is cheap and does not complicate
-  bounds, failure handling, or the activity view.
-- **A verification signal for an immediate mitigation**: what to observe to confirm it worked.
-- **Extending the R-31 rubric to entailment**: whether each cited piece of evidence actually
-  supports the claim it is attached to.
-- **Query rewriting or expansion; context compression; lightweight caching; a self-critique pass.**
-
----
-
-## 11. Deferred and Non-Goals
-
-Deferred, and not to be designed for unless promoted:
-
-- restart-resumable investigations;
-- long-term memory across investigations;
-- learning from engineer corrections;
-- a held-out generalization probe on unfamiliar evidence.
-
-Non-goals:
-
-- autonomous remediation or any operational write, and approval gates for writes, since there are
-  none;
-- incident detection, webhook ingestion, or replacement of monitoring and incident-management
-  platforms;
-- free-text incident intake and clarification; redirecting an investigation; engineer-supplied
-  evidence; explicit cancellation controls beyond disconnect handling;
-- support for arbitrary incidents or environments, or coordination of several incidents;
-- a general-purpose multi-agent platform, agent-to-agent interoperability, or exposing more than the
-  demonstration needs through MCP;
-- production availability, disaster recovery, scalability, tenancy, compliance certification,
-  service-level commitments, or production-scale performance and cost optimization;
-- calibrated root-cause probabilities;
-- a large production-like corpus;
-- voice or multimodal interaction, fine-tuning, learned sparse retrieval, canary and rollback
-  workflows, drift detection;
-- implementing any technique merely to claim coverage of it.
+- **No remediation and no writes.** OpsPilot recommends; every path is read-only. There are no
+  approval gates for writes because there are no writes to approve.
+- **Not an incident-management platform.** No detection, no webhook ingestion, no replacement for
+  monitoring or on-call tooling. It starts from an incident someone else already opened.
+- **No durable or recoverable workflow.** One request owns one run. If it is lost, the engineer
+  runs it again; there is no checkpointing, resumption, or job queue.
+- **No memory across investigations.** Each run starts from the incident and the corpus. Nothing
+  carries over, nothing is learned from engineer corrections, and there is no profile of past runs.
+- **Not a general multi-agent platform.** Three roles with fixed responsibilities, no agent
+  framework, no agent-to-agent interoperability, and no more exposed through MCP than the
+  demonstration needs.
+- **No production availability work.** No high availability, disaster recovery, scale, tenancy, or
+  compliance certification, and no service-level commitments.
+- **No arbitrary environments.** One synthetic domain, so every scenario is reproducible and every
+  answer checkable. Supporting real or unfamiliar environments is a different project.
+- **No calibrated probabilities.** Candidate support is qualitative; OpsPilot never presents a
+  number for how likely a cause is.

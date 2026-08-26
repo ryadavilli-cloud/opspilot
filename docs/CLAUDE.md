@@ -8,7 +8,7 @@ report what you left out), or to be analysed (findings only, change nothing).
 ## Who owns what
 
 - `requirements.md`: what OpsPilot must accomplish and demonstrate; scope, trust properties,
-  evaluation obligations, preferences, non-goals. Frozen.
+  evaluation obligations, what is out of scope. Frozen.
 - `architecture.md`: top-level shape, authority per concern, trust boundaries, major flow,
   structural principles. Concept-level language, no product names.
 - `system-design.md`: component responsibilities, permitted interactions, seams, evidence-access
@@ -17,8 +17,8 @@ report what you left out), or to be analysed (findings only, change nothing).
   return, grounding, correction, outcome, degradation and failure, bounds, the question.
 - `data-and-evidence.md`: trust model, references, tool results, admission, evidence versus
   knowledge, the assessment field set, grounding properties, the brief, the completed record.
-- `runtime-and-deployment.md`: runtime posture, transport, state, Azure resources, model
-  connectivity, Cosmos realization, configuration and secrets, telemetry, hosted verification.
+- `runtime-and-deployment.md`: how the application runs, transport, state, Azure resources, model
+  connectivity, how Cosmos is used, configuration and secrets, telemetry, hosted verification.
 - `evaluation.md`: inputs, scenario behavior, deterministic correctness, the two controlled
   comparisons, the nearest-history shortcut, the judge, the runner and report.
 - `decisions.md`: settled choices only, each with why and cost; retired records keep their number.
@@ -73,8 +73,6 @@ unimplementable is a `requirements.md` question. Neither is renegotiated by impl
 ## Rules in every mode
 
 - Touch only the file the prompt names.
-- Preferences listed in `requirements.md` live there and nowhere else; no other document designs
-  for them or reserves structure for them.
 - No em-dash on any line written. No invented identifier schemes, taxonomies, or numbering; only
   requirements and decisions carry identifiers.
 - Do not compare against or explain a decision by contrast with a previous design.

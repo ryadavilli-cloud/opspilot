@@ -8,9 +8,13 @@ which capability is called first, whether retrieval is consulted, whether analys
 to gathering, and which outcome the run reaches are all the model's to decide within bounds the
 code enforces. This guide therefore does not script a run. It says what each scenario is authored
 to expose, what observable behavior is worth watching, and how to read the paths a run may take.
-The properties being demonstrated are structural: they hold on every run, whichever path a
-particular run takes. When a run does something this guide did not predict, that is usually the
-demonstration working, and the sections below say how to read it.
+
+Some properties hold on every run because code enforces them: read-only access, the execution
+bounds, evidence admission, and the grounding check before delivery. Other behavior depends on
+what the model chooses: whether retrieval is consulted, whether analysis asks to return to
+gathering, and whether a run discovers an evidence target it could not have named at the start.
+Watch for the second kind rather than assuming it. When a run does something this guide did not
+predict, that is usually the system working, and the sections below say how to read it.
 
 Reach the screen locally per the README quickstart at `/investigation`, or at the hosted
 deployment, which is behind sign-in.
@@ -84,7 +88,7 @@ absence of one.
 The model proposed an action, and model intent is not execution authority: deterministic code
 refused the proposal, because it named an unregistered capability, repeated a question already
 answered or a call already made, or asked for a call the budget no longer affords. The refusal is
-recorded as the reason gathering ended, in the feed, which is bounded authority becoming visible.
+recorded in the feed as the reason gathering ended, so the limit is visible rather than implied.
 Do not engineer a run to produce one, and do not treat its absence as a gap: a run with no
 refusal is a run whose proposals were all authorized.
 
@@ -181,7 +185,10 @@ Watch for:
 - a possible return to gathering, if the first synthesis finds the reservation side unexplained.
 
 If the run reaches only the stale-cache half, read the brief for whether it says so rather than
-presenting half an explanation as a whole one. An honest partial account is a correct result here.
+presenting half an explanation as a whole one. An honest partial account is a valid result. It is
+not, though, the behavior this scenario exists to show: reaching the second contributor is what
+would demonstrate that the run used something it learned partway through, and a partial answer
+leaves that untested.
 
 Suggested follow-up: were there multiple contributing causes, and what led you to the second one?
 
@@ -215,8 +222,10 @@ and grounding and did not exercise knowledge influence.
 The demonstration should survive contact with a live model, and variation is mostly the point
 showing itself:
 
-- **A different tool order than last time**: evidence of model-directed adaptation. A fixed
-  script would not vary.
+- **A different tool order than last time**: on its own this is variance, not proof of anything.
+  What shows adaptation is a later call that follows from something an earlier result revealed:
+  a service, an error code, or a deploy id the run did not hold when it started.
+- **The same order as last time**: also fine. A path can be the right one twice.
 - **No return to gathering**: the analyst judged the existing evidence sufficient. The return is
   a bounded possibility, not a promise.
 - **No retrieval**: this run demonstrated the adaptive loop and grounding, and did not
@@ -226,7 +235,7 @@ showing itself:
   the "could not be established" section aloud; disclosure is the feature.
 - **An inconclusive outcome**: the system declined to invent certainty. Show that the brief
   names what is missing and what the most useful next check would be.
-- **A refused proposal**: bounded authority became visible; see above.
+- **A refused proposal**: a limit was reached and said so; see above.
 - **A failed execution**: the run itself could not complete, which is an infrastructure or
   runtime condition, not an investigative answer. Distinguish it from inconclusive, note that
   nothing was persisted, and run again.

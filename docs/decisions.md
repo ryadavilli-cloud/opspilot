@@ -11,8 +11,8 @@ Retired records keep an identifier and one line so the number is never reused.
 | --- | --- |
 | D-001 Orchestration | Accepted |
 | D-002 Model routing | Retired |
-| D-003 Retrieval realization | Accepted |
-| D-004 MCP realization | Accepted |
+| D-003 Retrieval design | Accepted |
+| D-004 MCP exposure | Accepted |
 | D-005 Offline judge | Accepted |
 | D-006 Evaluation scenario selections | Accepted |
 | D-007 Normalized incident context | Accepted |
@@ -43,10 +43,10 @@ neither. A dependency and its state model sit in the execution path.
 ### D-002 Model routing
 
 Retired. No requirement mandates routing between models inside the runtime. One chat deployment
-serves every runtime model task; the offline judge's own model is D-005's business, and no
+serves every runtime model task; the offline judge's own model is covered by D-005, and no
 routing exists between the two.
 
-### D-003 Retrieval realization
+### D-003 Retrieval design
 
 **Decision.** One retriever over the categorized Cosmos knowledge container: embed the question
 with the embedding deployment; vector search over the collection the capability names; a lexical
@@ -67,8 +67,8 @@ account rather than alternatives to each other. Ranking then has one path over w
 produced, and nothing regroups or re-shapes results afterwards.
 
 **Why.** Vector search carries meaning; the lexical pass carries operational tokens and exact
-identifiers; reciprocal-rank fusion combines two differently-scaled lists without calibration and
-is the clearest course-aligned hybrid technique; deterministic promotion is the smallest mechanism
+identifiers; reciprocal-rank fusion is a simple way to combine
+differently-scaled lexical and vector rankings without score calibration; deterministic promotion is the smallest mechanism
 that makes an exact service name, error code, or deploy id trustworthy near the passage cutoff. The
 identifiers on the passage side already exist from corpus preparation; the query-side match is a
 small deterministic helper and needs no record of its own.
@@ -88,7 +88,7 @@ than a return to fragments. Identifier extraction is per unit, so a deploy id na
 write-up promotes the write-up rather than one part of it, which is the coarser behavior and the
 honest one for a unit that is the whole incident.
 
-### D-004 MCP realization
+### D-004 MCP exposure
 
 **Decision.** The deployments capability is additionally exposed through an in-process MCP server
 built on the official Python `mcp` SDK over stdio, dispatching to the same registered
@@ -127,8 +127,9 @@ model; that is why it is advisory and reported beside the deterministic results.
 
 ### D-006 Evaluation scenario selections
 
-**Decision.** inc-005 is the fast change-time scenario. inc-004 is the analysis-to-gathering return
-demonstration and the ambiguous case. inc-006 is the correct-partial case and carries the
+**Decision.** inc-005 is the fast change-time scenario. inc-004 is the ambiguous case, and is
+authored to give the analysis-to-gathering return an opportunity to fire rather than to produce it
+on demand: whether any given run returns stays the model's to decide. inc-006 is the correct-partial case and carries the
 adaptive-versus-fixed-path comparison. inc-007 is the retrieval-influence controlled comparison. The
 nearest-history baseline (D-011) runs on inc-004 and inc-007 and nowhere else.
 
@@ -209,7 +210,7 @@ spent, the Supervisor does not follow the edge and does not edit the assessment.
 per investigation.
 
 **Why.** Analysis-to-gathering feedback is what makes the RCA Analyst part of the investigation
-rather than a formatter at its end. One return is enough for the authored demonstration (inc-004),
+rather than a formatter at its end. One return is enough for the scenario authored to offer one (inc-004),
 and a second has no scenario, adds no concept, and turns a bounded edge into a loop. An ordinary
 field on the proposal is smaller than a dedicated contract.
 

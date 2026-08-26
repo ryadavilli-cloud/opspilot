@@ -6,25 +6,44 @@ microservices environment, hosted on Azure.
 When an alert fires, an on-call engineer typically spends the first fifteen to twenty minutes
 gathering context before real diagnosis can begin: logs, metrics, recent changes, dependencies,
 runbooks, and similar past incidents. The same visible symptom often has several plausible causes,
-and the engineer must work out which one the evidence supports, what remains uncertain, and what
-can safely be done now. OpsPilot prepares that initial investigation and delivers it as one
-concise, evidence-supported brief the engineer can question afterwards.
+and the engineer has to work out which one the evidence supports, what remains uncertain, and what
+can safely be done now. OpsPilot does that first pass and delivers one concise brief the engineer
+can question afterwards.
 
-OpsPilot recommends; it does not remediate or mutate the systems it investigates. Every access on
-every path is read-only, and the synthetic environment is deliberate: it makes every scenario
-reproducible and every answer checkable.
+The question I wanted to answer was not whether an agent could produce an incident brief. It was
+when an investigation that adapts to what it finds earns its complexity over a predetermined path,
+and the evaluation is built so that the answer can come back no.
 
-## The agentic investigation
+OpsPilot recommends, and the engineer stays the investigator. Every path is read-only, so there is
+no write path to guard: none was built. I authored RetailEase rather than pointing this at a real
+environment, so every scenario is reproducible and every answer checkable. The scope is deliberate:
+this is not a production incident-management platform and is not measured as one.
 
-One investigation is carried out by three model-directed roles with distinct responsibilities: a
-Supervisor that interprets the incident into an objective and holds the bounds, an Evidence
-Investigator that decides what evidence to gather next through registered read-only capabilities,
-and an RCA Analyst that is the sole owner of causal synthesis. The evidence path is not scripted:
-each observation informs the next choice, so different incidents take demonstrably different
-paths. When synthesis names one material unresolved question that gathering could still answer,
-deterministic code may authorize one bounded return to gathering. Throughout, deterministic code
-owns every limit, admits every piece of evidence, checks the assessment against what was actually
-observed, and persists the completed investigation before anything is delivered.
+## Why it is interesting
+
+The hard part of an agent like this is not getting a model to call tools. It is deciding what the
+model is allowed to decide, and making the rest impossible rather than discouraged.
+
+- The evidence path is not scripted: each observation informs the next choice. One scenario is
+  built so the decisive evidence is only nameable after something earlier in the run reveals it.
+- Retrieved knowledge and current operational evidence are separate trust classes. A runbook or a
+  past postmortem can shape interpretation; neither can stand as proof of what is happening now,
+  and code enforces that at delivery rather than asking the model to remember it.
+- The model proposes a structured query; code validates it against an approved surface and runs one
+  parameterized read-only statement. Natural language never reaches the data store.
+- Retrieval is hybrid: vector search and a lexical pass fused by rank, with exact operational
+  identifiers promoted deterministically, because an embedding does not reliably distinguish
+  `checkout-api` from `checkout-web`.
+- Analysis can hand work back to gathering exactly once, when synthesis names a material unresolved
+  question, and code decides whether that return is granted.
+- The engineer watches what each agent and capability did and what it obtained, built from the same
+  facts as the traces and never chain-of-thought.
+
+## How an investigation works
+
+Three roles with distinct responsibilities: a Supervisor that turns the incident into an objective
+and holds the bounds, an Evidence Investigator that decides what to gather next through registered
+read-only capabilities, and an RCA Analyst that is the sole owner of causal synthesis.
 
 ```text
   Incident
@@ -50,189 +69,133 @@ observed, and persists the completed investigation before anything is delivered.
   brief + follow-up questions
 ```
 
-The activity an engineer watches is a compact projection of actions and outcomes, never
-chain-of-thought.
-
-## Model decisions and deterministic authority
-
-The investigation is genuinely model-directed, and authority stops in exactly stated places.
+The split of authority is explicit:
 
 | Models decide | Deterministic code controls |
 | --- | --- |
 | What the investigation must establish, from the incident context | The deadline, the capability-call cap, the model-call cap, the one correction, the one return |
-| Which evidence to gather next: which capability, with what arguments, to answer what question | The registered capability inventory; authorization of every proposal against it, the questions already put, the calls already made, and the remaining budget |
-| The structure of a governed query over approved operational data | Validation against the approved surface and translation into one parameterized read-only query |
-| The causal assessment: candidates, what supports and weakens each, unknowns | Admission: only a successful source result becomes evidence, an empty result becomes a citable absence, a failure becomes a stated limitation |
-| Recommended actions, and whether retrieved guidance or own judgement produced each | Grounding: every material claim must rest on evidence this run admitted, and retrieved knowledge may never stand as current proof |
-| One unresolved question that could justify returning to gathering | Whether the return is authorized, the outcome (complete, partial, inconclusive), persistence, and delivery order |
+| Which evidence to gather next: which capability, with what arguments, to answer what question | The registered inventory, and authorization of every proposal against it, the questions already put, the calls already made, and the remaining budget |
+| The structure of a query over approved operational data | Validation against the approved surface, then one parameterized read-only execution |
+| The causal assessment: candidates, what supports and weakens each, unknowns | Admission: only a successful result becomes evidence, an empty result becomes a citable absence, a failure becomes a stated limitation |
+| Recommended actions, and whether retrieved guidance or own judgement produced each | Grounding: every material claim rests on evidence this run admitted, and retrieved knowledge never counts as current proof |
+| One unresolved question that could justify returning to gathering | Whether the return is authorized, the outcome, persistence, and delivery order |
 
-The compact rule this implements: models propose; code authorizes.
+Models propose; code authorizes. A proposal naming a capability that does not exist is refused, a
+repeated call is refused by signature, a run cannot outlive its deadline, and an assessment
+claiming more than was observed gets one correction and then an explicit failure that persists
+nothing. A mutating capability is not forbidden by policy; it is absent from the surface.
 
-## Try one investigation
+Untrusted content gets the same treatment: incident text, tool output, retrieved passages, and the
+engineer's question are data beneath authored instructions, and what the model proposes afterwards
+is still bounded, admitted, and grounded. That limits what a persuaded model can do without
+claiming prompt-injection immunity. [docs/architecture.md](docs/architecture.md) states where the
+limit stops.
 
-Start inc-004: checkout-api returning 500s shortly after this morning's deployment.
+## What was actually validated
 
-A deployment really did occur near the failure. Watch what evidence the investigator chooses,
-whether later observations strengthen or weaken that initial correlation, how candidate causes are
-expressed with supporting and weakening evidence, and what deterministic checks run before the
-brief is delivered. Things worth looking for: capability choices changing in response to what came
-back, a possible return to gathering, grounding passing before delivery, each recommended action
-naming whether retrieved guidance or the analyst's own judgement produced it, and a refused
-proposal if one occurs. After the run, ask the record: was the morning deployment actually
-responsible, and what evidence supports that conclusion?
+**Gates.** Lint, format, `mypy` in strict mode with no override list, and a deterministic test lane
+that replays seven committed cassettes, one per authored scenario, recorded through the same Azure
+adapter the application ships. They pass without suppression or the change is not done.
 
-Setup and the screen's address are in the quickstart below.
+**Scenario evaluation.** Eight scenarios: seven authored incidents across overlapping failure
+families, each with an authored expectation of what a correct investigation establishes, plus one
+benign fixture where the correct answer is that no immediate action is warranted. In the final
+recorded run all eight completed and **five passed every deterministic check**:
 
-The full guide to reading a live run, scenario by scenario, is [docs/DEMO.md](docs/DEMO.md).
+- Two investigations reached a defensible conclusion without ever checking change history, where
+  the answer key expects that check. Their briefs read well; they simply never looked.
+- The benign fixture settled a cause on a run where the scenario expects restraint.
+
+These were left as findings. Tuning the prompt until they passed would have removed the evidence.
+
+**Controlled comparisons.** Two, run live with one variable changed at a time.
+
+- *Adaptive value*, on the scenario built for it: a second contributor that nothing in the opening
+  symptom points at. Across four observations the model reached both contributors once, ran out of
+  time once, and stopped at an honest partial answer once. The comparison against the fixed-order
+  baseline reported a difference on an ordinary log entry, not on the second contributor. The
+  mechanism is in place and the claim is testable, and **it has not been cleanly demonstrated.**
+- *Retrieval influence*: the same investigation with retrieved passages visible to reasoning and
+  with them withheld. **Observed in one of three paired attempts.** The other two were not
+  evaluable, because in each of them one arm retrieved nothing to compare.
+
+**A baseline with no model in it.** A nearest-history shortcut answers straight from the closest
+past incident. On the deployment scenario it recommended the rollback the real investigation had
+examined and declined: confident, cheap, and wrong. On the recurrence scenario it was right and had
+verified nothing. That is what a retrieval-only system would have said.
+
+**Semantic judgement.** An offline judge scores each brief on a deliberately different model family
+from the one that produced it. It is advisory, runs after the deterministic checks, is reported
+beside them and never folded into one number.
+
+**Hosted.** Every deploy finishes by running a smoke check against the revision it just shipped: an
+unauthenticated caller is refused, a real investigation runs end to end, the persisted record is
+read back from a separate request, and every reference the brief cites resolves from that record.
+The current revision passed it.
+
+The recorded observations are in [docs/engineering-notes.md](docs/engineering-notes.md). They
+describe what those runs did, not what future runs will do.
 
 ## Technology
 
 - Python 3.12, FastAPI, `uv`
-- LangGraph: one small compiled in-process graph over typed state, no checkpointer
-- Azure OpenAI: one chat deployment for every runtime model task and one embedding deployment,
-  called keyless as the managed identity
-- Claude Opus 5 in Microsoft Foundry: the offline evaluation judge, deliberately a different
-  model family from the runtime it scores, keyless
-- Azure Cosmos DB: the prepared corpus (knowledge and operational records) and the completed
-  investigations, including vector search for retrieval
-- Hybrid retrieval: vector search plus an in-process BM25-style lexical pass, combined by
-  reciprocal-rank fusion, with deterministic promotion of exact identifier matches
-- MCP: one capability additionally exposed through an in-process stdio server on the official
-  Python SDK
-- Azure Container Apps at zero to one replica, behind built-in authentication, with the one
-  secret in Key Vault
-- Bicep infrastructure and an OIDC GitHub Actions deploy with a post-deploy smoke run
-- One tracing seam correlated by investigation id, exported to the Log Analytics workspace with
-  a workspace-based Application Insights component over it
+- LangGraph: a small in-process graph for the investigation flow. Application code owns the state
+  and the execution bounds; there is no checkpointer and no durable workflow.
+- Azure OpenAI: one chat deployment for every runtime model task, one embedding deployment, called
+  keyless as the managed identity
+- Claude Opus 5 in Microsoft Foundry: the offline judge, a different model family from the runtime
+  it scores
+- Azure Cosmos DB: the corpus, the completed investigations, and the vector search behind retrieval
+- Hybrid retrieval: Cosmos vector search plus in-process BM25, fused by reciprocal rank
+- MCP: one capability additionally exposed through an in-process stdio server, transport recorded
+- Azure Container Apps behind built-in authentication, Bicep infrastructure, an OIDC GitHub Actions
+  deploy with a post-deploy smoke run
+- Application Insights: one tracing seam, every span correlated by investigation id
 
-## Architecture at a glance
+## What building it taught
+
+- Components that pass in isolation can be silent in composition: retrieval was present, wired, and
+  never meaningfully reached, and only an end-to-end evaluation showed it.
+- Predicting a model's choices is the fragile half of a proof. Tests asserting which tool would be
+  called broke on correct behavior; the durable checks assert what the run established instead.
+- Nondeterminism hid in the ranking, not the model. Tied retrieval scores were ordered by
+  hash-seeded set iteration, which made recorded runs unreplayable until every tie had a stable key.
+- An evaluator can encode the opposite of its own contract and still look green, which is what the
+  benign-scenario check did until a failing run exposed it.
+- Deployment failures are diagnosed faster from the platform's own telemetry than from probing the
+  endpoint, which is the argument OpsPilot itself makes.
+
+## Going deeper
+
+**Start here**
+
+- [docs/DEMO.md](docs/DEMO.md): how to run a live investigation and what to watch for, scenario by
+  scenario.
+
+**Technical deep dives**
+
+- [docs/architecture.md](docs/architecture.md): shape, authority per concern, trust boundaries.
+- [docs/evaluation.md](docs/evaluation.md): what is checked deterministically, how the two
+  comparisons are built, what the judge does and does not decide.
+- [docs/engineering-notes.md](docs/engineering-notes.md): the engineering retrospective. What
+  worked, what did not work reliably, and what the failures revealed.
+
+**Detailed engineering reference**
+
+- [requirements.md](docs/requirements.md): what it must accomplish, and what is out of scope
+- [system-design.md](docs/system-design.md): components, seams, capabilities, technology map
+- [workflow-design.md](docs/workflow-design.md): one investigation over time
+- [data-and-evidence.md](docs/data-and-evidence.md): references, admission, grounding, the brief
+- [runtime-and-deployment.md](docs/runtime-and-deployment.md): hosting, configuration, verification
+- [decisions.md](docs/decisions.md): settled choices, each with its reason and its cost
+- [code-guidelines.md](docs/code-guidelines.md): binding rules for changing the code
 
 ```text
-                                Engineer
-                                   │
-                    incident       │      activity · brief · answer
-                    question       ▼
-                  ┌────────────────────────────────┐
-                  │           Interface            │  one screen · one streaming request
-                  └───────────────┬────────────────┘
-                                  ▼
-     ┌────────────────────────────────────────────────────────────┐
-     │                       Supervisor  [agent]                   │
-     │  objective · bounds · continuation · one return ·           │
-     │  deterministic grounding gate · persist · deliver · answer  │
-     └──────┬────────────────────┬──────────────────────┬─────────┘
-            ▼                    ▼                      ▼
-   ┌────────────────┐  ┌───────────────────┐  ┌───────────────────────┐
-   │   Evidence     │  │    RCA Analyst    │  │  Investigation Record │
-   │  Investigator  │  │      [agent]      │  │  one completed record │
-   │    [agent]     │  │ sole synthesis    │  │  written once         │
-   └───────┬────────┘  └───────────────────┘  └───────────┬───────────┘
-           ▼                                              ▼
-   ┌────────────────────────────────────────┐        Evaluation
-   │           Evidence access              │     (offline reader,
-   │ registered read-only capabilities:     │      one LLM judge)
-   │ tools · retrieval · structured query · │
-   │ one MCP-exposed capability · admission │
-   └────────────────────┬───────────────────┘
-                        │ read-only
-   ═════════════════════│═══════════════════ OpsPilot boundary
-                        ▼
-                    RetailEase
+src/    implementation          tests/  deterministic tests
+eval/   runner, comparisons, judge, cassettes
+data/   synthetic RetailEase corpus and answer key
+infra/  Azure infrastructure and deployment
 ```
-
-The high-level design behind this shape, in reading order: what the system must accomplish in
-[docs/requirements.md](docs/requirements.md), the shape, authority, and trust boundaries in
-[docs/architecture.md](docs/architecture.md), and component responsibilities, seams, and the
-technology map in [docs/system-design.md](docs/system-design.md).
-
-## What the system demonstrates
-
-- Adaptive evidence paths rather than a fixed diagnostic script: the next capability is chosen
-  from what has already been observed.
-- Three distinct responsibilities: Supervisor, Evidence Investigator, and RCA Analyst, with
-  Supervisor-mediated coordination.
-- Synthesis-driven feedback: analysis can request one bounded return to gathering, and code
-  decides whether it is granted.
-- Execution bounds no agent can widen: a deadline propagated into every model and capability
-  call, a capability-call cap, a model-call cap, one correction, one return.
-- Typed, read-only capabilities behind one registry; a mutating capability is structurally
-  absent, not merely forbidden.
-- Deterministic evidence admission and a deterministic grounding gate between the assessment and
-  delivery.
-- Operational evidence held apart from retrieved knowledge, with different trust: knowledge
-  informs interpretation and can never establish the current incident's cause.
-- Hybrid retrieval combining semantic and lexical signals, with exact identifiers (service
-  names, error codes, deploy ids) deterministically promoted.
-- A governed, read-only structured query: the model proposes a bounded structure; code validates
-  it against an approved surface and executes one parameterized query.
-- One capability additionally exposed through MCP with the same behavior, transport recorded.
-- One persisted completed investigation per run, written before delivery, then questionable:
-  answers cite only references the record carries, checked by code.
-- Activity and telemetry built from the same facts at the same call sites, correlated end to end
-  by one investigation id.
-
-## Reliability by construction
-
-The defenses are structural: each failure mode meets a mechanism, not a guideline.
-
-| Failure | Structural response |
-| --- | --- |
-| A proposal names a capability that does not exist | Refused against the registered inventory; the refusal is recorded and visible |
-| A request does not fit the capability | Typed parameters validated at dispatch; the governed query validated against its approved surface before anything executes |
-| The same question or call is proposed again | Refused by the questions already put and the call signatures already executed |
-| A run tries to run forever | The deadline travels into every model and capability call; capability and model calls are capped |
-| The assessment claims more than was observed | The deterministic grounding gate returns issues; one correction, then explicit failure |
-| A retrieved document is offered as current evidence | Evidence and knowledge are separate trust classes; the gate refuses a knowledge reference as operational support |
-| A source cannot answer | A stated limitation, never a fabricated observation; an authoritative empty answer stays citable as an absence |
-| Synthesis returns something unusable | Structural admission refuses it; one correction, then a sanitized failed execution that persists nothing |
-| Anything attempts remediation | The capability surface is read-only on every path, including MCP, by construction |
-| A retrieved passage or incident text carries an instruction | Serialized as a data value it cannot break out of, beneath prompts stating that quoted material is content; whatever the model then proposes is still bounded, admitted, and grounded |
-
-### On untrusted content
-
-OpsPilot does not claim prompt-injection immunity. Runtime content it did not author, meaning
-incident text, source output, retrieved passages, and the engineer's own question, is serialized
-as data beneath authored instructions, and model output remains subject to deterministic
-authorization. That structurally limits what a persuaded model can do: it cannot widen a bound,
-reach an unregistered capability, repeat a spent call, fabricate an observation, or cite a
-reference this run did not obtain. It does not guarantee that untrusted prose cannot influence
-reasoning within the authority the model legitimately has.
-
-That residual is deliberate rather than overlooked, and it is why the grounding gate declines to
-read prose: whether a cited observation bears out the sentence attached to it is judgement. The
-offline judge makes that judgement afterwards, over completed investigations, and is advisory; it
-may notice bad reasoning during evaluation and contains nothing during a live run.
-
-## Evidence that the system works
-
-**Deterministic tests.** Every change runs the same gates repository-wide: `ruff check`,
-`ruff format --check`, `mypy` strict with no override list, and the deterministic lane
-`pytest -m "not llm"`, which excludes only the tests that call a live deployment. They pass
-without suppression or the change is not done, and the current figures are whatever the latest
-run on `main` reports rather than a number transcribed here to go stale. Three committed cassettes
-replay whole recorded investigations, taken through the same Azure adapter the application ships,
-so the lane replays real runs rather than scripted calls.
-
-**Authored scenario evaluation.** Seven authored incidents across five overlapping failure
-families, each carrying an authored expectation of what a correct investigation establishes, plus
-one distinct benign fixture where the correct answer is that no immediate action is warranted.
-
-**Controlled comparisons.** Two falsification tests, run live with one variable changed each. In
-the recorded runs, the adaptive path reached required evidence on the ambiguous deployment
-scenario that the same tools in a fixed order never did, and on the recurrence scenario the
-investigation with retrieved passages visible to reasoning differed from the same investigation
-with them withheld on every dimension the comparison watches. Both are observations from those
-runs, recorded in [docs/engineering-notes.md](docs/engineering-notes.md), not guarantees about
-future runs.
-
-**Semantic evaluation.** An offline LLM judge scores each delivered brief on a model deliberately
-different from the one that produced it, so the judge's blind spots are not the system's own:
-Claude Opus 5 in Microsoft Foundry, pinned to a concrete version, while every runtime task stays
-on the Azure OpenAI chat deployment. With one authored rubric it returns a category for four
-qualities of the brief plus the semantic diagnosis match, per scenario. It is advisory, runs after
-the deterministic checks, is reported beside them and never combined into one number, and a
-verdict outside its vocabulary is refused rather than repaired. The method is
-[docs/evaluation.md](docs/evaluation.md).
 
 ## Quickstart
 
@@ -242,51 +205,17 @@ uv run pytest -m "not llm" -q         # the deterministic CI lane
 uv run uvicorn opspilot.api:app --reload
 ```
 
-The investigation screen is at `http://localhost:8000/investigation`. The deterministic test lane
-needs nothing else: it replays recorded runs and reaches no service.
+The investigation screen is at `http://localhost:8000/investigation`. The deterministic lane needs
+nothing else: it replays recorded runs and reaches no service.
 
-A live local run reaches the same Azure resources the hosted application uses, keyless. Add the
-model clients, which the deterministic lane does not install, copy `.env.example` to `.env` and
-fill in the Azure OpenAI, Cosmos, and judge endpoints, then sign in with `az login` as an identity
-holding the data-plane roles:
+A live run reaches the same Azure resources the hosted application uses, keyless. Copy
+`.env.example` to `.env`, fill in the Azure OpenAI, Cosmos, and judge endpoints, and sign in with
+`az login` as an identity holding the data-plane roles. Offline evaluation runs from the same
+environment; a kept run and the investigations behind it are listed at
+`http://localhost:8000/agentops`.
 
 ```bash
 uv sync --group dev --group data --group llm
 uv run --group llm uvicorn opspilot.api:app --reload
-```
-
-The offline evaluation runs from the same environment. A run worth keeping is written to the
-evaluation store, and the application lists and reads those at
-`http://localhost:8000/agentops`, where a kept run and the investigations behind it can be
-inspected together:
-
-```bash
-uv run --group dev --group llm python eval/run_evaluation.py --full --keep "before prompt v6"
-```
-
-## Repository map
-
-```text
-README.md
-
-docs/
-  requirements.md          what OpsPilot must accomplish
-  architecture.md          shape, authority, trust boundaries
-  system-design.md         components, seams, technology map
-
-  workflow-design.md       one investigation over time
-  data-and-evidence.md     references, admission, evidence versus knowledge
-  runtime-and-deployment.md  hosting, configuration, hosted verification
-  evaluation.md            checks, comparisons, the judge
-  decisions.md             settled choices, each with why and cost
-
-  engineering-notes.md     what building and hosting it revealed
-  DEMO.md                  how to read a live demonstration
-  code-guidelines.md       binding rules for changing the code
-
-src/       implementation
-tests/     deterministic tests
-eval/      offline evaluation: runner, comparisons, judge, cassettes
-data/      synthetic RetailEase corpus and answer key
-infra/     Azure infrastructure and deployment
+uv run --group dev --group llm python eval/run_evaluation.py --full --keep "milestone"
 ```

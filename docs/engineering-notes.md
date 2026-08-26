@@ -90,9 +90,10 @@ able to tell which.
 
 The deterministic environment ranks a near-match above that recurrence, so the shortcut reports
 that its premise was not satisfied and names what actually came first rather than substituting the
-expected answer. That refusal is the mechanism working: a fixture embedding in a fraction of the
-deployed dimensions is not evidence about the deployed ordering, and a comparison that quietly
-supplied the expected precedent would be reporting an experiment nobody ran.
+expected answer. That is the expected behavior: the baseline refuses to substitute the
+precedent it was supposed to find. A fixture embedding in a fraction of the deployed dimensions is
+not evidence about the deployed ordering, and a comparison that quietly supplied the expected
+precedent would be reporting an experiment nobody ran.
 
 **Retrieval reaching reasoning changed the investigation, once out of three paired attempts.**
 Where both conditions retrieved, the trajectory differed in the capability proposed next, the
@@ -102,7 +103,7 @@ nothing and once because the shown condition did. Retrieval is the model's to ch
 this comparison up is itself uncertain, and an attempt that did not establish the condition is
 reported as that rather than as knowledge having made no difference.
 
-**The multi-contributor scenario is structurally permitted and not demonstrated.** Its second
+**The multi-contributor scenario is possible to solve and was not reliably solved.** Its second
 contributor sits on a service no alert names and the alerting service's own telemetry does not
 reveal, so the question that reaches it can only be formulated once something returns that
 service's name. Across four observations the model reached both contributors once. One run
@@ -112,10 +113,10 @@ judge marked as missing the expected diagnosis. The adaptive comparison against 
 order has returned a null result and, on another run, a difference resting on an ordinary log
 rather than on the evidence the scenario was built around.
 
-So the corpus and the scenario make the discovery possible and the model does not take it
-reliably. That is worth stating precisely: what has been shown is the opportunity, not the
-behavior. Raising the capability budget would remove the finding rather than the limitation, since
-what a run spends its calls on when it has to choose is the thing under observation.
+So the corpus and the scenario make the discovery reachable, and the model does not reach it
+reliably. What has been shown is the opportunity, not the behavior. Raising the capability budget
+would remove the finding rather than the limitation, since what a run spends its calls on when it
+has to choose is the thing being observed.
 
 **Two defects surfaced only when every scenario was evaluated.** Retrieval fuses two ranked lists
 by the reciprocal of each rank, so a unit lying at the same rank in both lists scores identically,
@@ -135,7 +136,7 @@ Neither was reachable by the suite as it stood. Three of seven recordings were r
 were not, so a committed recording could be unreplayable while everything was green. Replay
 coverage now reads the recordings directory rather than a list.
 
-**What still fails, and is meant to.** Two scenarios reach a conclusion without checking the change
+**Remaining model failures.** Two scenarios reach a conclusion without checking the change
 history, so the absence the corpus deliberately holds goes undisclosed; both are authored to expect
 that check. The benign fixture, which runs live rather than from a recording, settled a cause on
 one run where the scenario expects restraint. These are the investigation behaving imperfectly
@@ -283,9 +284,9 @@ and the hosted brief cited a runbook and an architecture note instead.
 
 In each case the prediction was wrong and the behavior was right. Which incident a model finds
 unsettled, and which written record answers it, are properties of the model and the corpus, not of
-the design. The consequence runs through the proofs: deterministic tests hold the mechanisms still
-and prove them exactly, hosted verification proves the envelope and the delivered brief, and no
-proof asserts that a named scenario will exhibit a model-directed behavior on demand.
+the design. That changed what the tests should assert: deterministic tests hold the mechanisms still and
+check them exactly, hosted verification checks the envelope and the delivered brief, and no test
+asserts that a named scenario will exhibit a model-directed behavior on demand.
 
 ## A partner model deploys under different rules than a first-party one
 
@@ -313,8 +314,8 @@ that family. And the requested capacity now matches the allocation exactly, beca
 more than the subscription holds fails the whole template at preflight rather than queueing or
 scaling down to what is available.
 
-Both failures were free, which is the part worth keeping. Preflight validation rejects a template
-before it creates anything, so `az deployment group validate` against the real resource group
+Both were caught during preflight validation, before anything was deployed, which is the part
+worth keeping. Preflight validation rejects a template before it creates anything, so `az deployment group validate` against the real resource group
 answers both questions in seconds without a deployment, a revision, or a partial rollout to undo.
 
 ## A grant nobody passes is a dependency nobody can reach
