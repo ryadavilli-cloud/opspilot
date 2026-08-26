@@ -211,7 +211,7 @@ nothing else: it replays recorded runs and reaches no service.
 A live run reaches the same Azure resources the hosted application uses, keyless. Copy
 `.env.example` to `.env`, fill in the Azure OpenAI, Cosmos, and judge endpoints, and sign in with
 `az login` as an identity holding the data-plane roles. Offline evaluation runs from the same
-environment; a kept run and the investigations behind it are listed at
+environment; kept evaluation runs and completed investigations are listed at
 `http://localhost:8000/agentops`.
 
 ```bash

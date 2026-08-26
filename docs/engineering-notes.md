@@ -106,12 +106,24 @@ reported as that rather than as knowledge having made no difference.
 **The multi-contributor scenario is possible to solve and was not reliably solved.** Its second
 contributor sits on a service no alert names and the alerting service's own telemetry does not
 reveal, so the question that reaches it can only be formulated once something returns that
-service's name. Across four observations the model reached both contributors once. One run
-expired, one reached a single contributor having spent its capability budget without ever asking
-what the alerting service depends on, and the replayed run drew a single-factor account that the
-judge marked as missing the expected diagnosis. The adaptive comparison against a predetermined
-order has returned a null result and, on another run, a difference resting on an ordinary log
-rather than on the evidence the scenario was built around.
+service's name. Across four observations the model reached both contributors once, and one run
+expired.
+
+The replayed run is the only one that can still be inspected, and it is the strongest evidence
+available about why the discovery is missed. It stopped voluntarily with 7 of 8 capability calls
+and 12 of 14 model calls spent, so it had room to continue. The analysis return was granted and
+came back without proposing anything. Dependency lookup was not overlooked: `stopped_because` names
+service-dependencies among the capabilities still available and dismisses it as unable to supply
+what the run was after. What the run was after came from the objective, which asked it to quantify
+the affected reservations, customers, and orders rather than to explain the oversell. Every call it
+made served that. On this one run the binding constraint was what the investigation was aimed at,
+not a hard execution bound; one run is not enough to call that a defect in objective framing, and
+it is enough to say that raising the capability cap would not have helped here. The judge marked
+the resulting single-factor account as missing the expected diagnosis.
+
+The adaptive comparison against a predetermined order has returned a null result and, on another
+run, a difference resting on an ordinary log rather than on the evidence the scenario was built
+around.
 
 So the corpus and the scenario make the discovery reachable, and the model does not reach it
 reliably. What has been shown is the opportunity, not the behavior. Raising the capability budget
@@ -141,6 +153,26 @@ history, so the absence the corpus deliberately holds goes undisclosed; both are
 that check. The benign fixture, which runs live rather than from a recording, settled a cause on
 one run where the scenario expects restraint. These are the investigation behaving imperfectly
 rather than the evaluation being wrong about it, and the scorecard is more useful for saying so.
+
+## Live evaluation runs leave nothing to go back to
+
+Three earlier observations of the multi-contributor scenario were made live, discussed, and written
+up, and none of them can be re-examined. The evaluation harness builds its completed investigations
+in an in-memory investigation store, so the record exists for the length of the process and then
+does not. Keeping a run persists the evaluation-run result, which holds the outcome, the named
+check failures, and the judge's categories; it does not persist the investigation records those
+results were computed from. A failed execution persists nothing anywhere by design, which removes
+the expired run for a second and independent reason.
+
+What survives a live run is therefore the report, and the report answers what happened rather than
+why. The fields that carry the why, the objective the Supervisor formed, the sequence of proposals,
+the calls spent against the cap, and the sentence the run gave for stopping, are exactly the ones
+that are gone. Confirming this cost a read-only data-plane grant and a query that returned no rows:
+the product's investigation container holds no record of any of those runs, because none was ever
+offered to it.
+
+The scenario whose behavior most needs studying is the one whose runs are hardest to study, and
+that is a property of where the harness writes rather than of the investigation.
 
 ## The Azure OpenAI rate ceiling
 
@@ -284,9 +316,9 @@ and the hosted brief cited a runbook and an architecture note instead.
 
 In each case the prediction was wrong and the behavior was right. Which incident a model finds
 unsettled, and which written record answers it, are properties of the model and the corpus, not of
-the design. That changed what the tests should assert: deterministic tests hold the mechanisms still and
-check them exactly, hosted verification checks the envelope and the delivered brief, and no test
-asserts that a named scenario will exhibit a model-directed behavior on demand.
+the design. That changed what the tests should assert: deterministic tests hold the mechanisms
+still and check them exactly, hosted verification checks the envelope and the delivered brief, and
+no test asserts that a named scenario will exhibit a model-directed behavior on demand.
 
 ## A partner model deploys under different rules than a first-party one
 
@@ -315,7 +347,8 @@ more than the subscription holds fails the whole template at preflight rather th
 scaling down to what is available.
 
 Both were caught during preflight validation, before anything was deployed, which is the part
-worth keeping. Preflight validation rejects a template before it creates anything, so `az deployment group validate` against the real resource group
+worth keeping. Preflight validation rejects a template before it creates anything, so
+`az deployment group validate` against the real resource group
 answers both questions in seconds without a deployment, a revision, or a partial rollout to undo.
 
 ## A grant nobody passes is a dependency nobody can reach
