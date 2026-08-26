@@ -1,4 +1,4 @@
-"""The injection seam and the two controlled comparisons.
+"""The injection seam, the two controlled comparisons, and the nearest-history shortcut.
 
 The seam's most important property is negative: nothing a caller can send reaches it. That is
 asserted against the route's own construction rather than by reasoning about it, because a seam
@@ -331,16 +331,30 @@ def test_a_capability_only_one_condition_asked_for_is_reported():
     assert any(d.dimension == "a capability proposed" for d in result.differences)
 
 
-def test_retrieval_differing_between_conditions_is_noted_as_a_second_variable():
-    """Withholding influence keeps the tool counts comparable. If they moved anyway then more than
-    the one variable did, and the comparison says so rather than reading the difference as the
-    effect of the variable."""
+def test_conditions_that_retrieved_different_amounts_are_still_comparable():
+    """Knowledge reaching reasoning is allowed to change what gets asked for next, and asking for
+    something else is allowed to retrieve a different amount. That is the treatment propagating.
+    Reporting it as a second variable would be requiring the knowledge to change nothing, which is
+    the claim under test."""
     shown = _with(passages=[PASSAGE, _record().passages[0]])
     withheld = _with(passages=[PASSAGE])
 
     result = retrieval_influence(RETRIEVAL, shown, withheld, LIVE, OTHER_LIVE)
 
-    assert "more than the one variable moved" in result.note
+    assert result.ran
+    assert "variable" not in result.note
+
+
+def test_a_condition_that_retrieved_nothing_is_a_comparison_nobody_set_up():
+    """Both conditions need knowledge to differ over. One that retrieved none had no influence to
+    withhold or to receive, which is not the same as the knowledge having made no difference."""
+    shown = _with(passages=[PASSAGE])
+    withheld = _with(passages=[])
+
+    result = retrieval_influence(RETRIEVAL, shown, withheld, LIVE, OTHER_LIVE)
+
+    assert not result.ran
+    assert "withheld" in result.note
 
 
 # --- a throttled condition is a comparison nobody could set up, not a lost report ----------------

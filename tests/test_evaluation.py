@@ -25,9 +25,9 @@ from evaluation import (
     Provenance,
     ScenarioResult,
     Source,
+    check_benign_action_disposition,
     check_declared_absence_is_disclosed,
     check_grounding,
-    check_no_immediate_action,
     check_no_write_was_attempted,
     check_outcome_is_accepted,
     evaluate,
@@ -156,7 +156,43 @@ def test_an_outcome_the_scenario_does_not_accept_is_reported():
 
 
 # --- the benign case, answered affirmatively ------------------------------------------------------
+# The accepted design carries "nothing needs doing now" as an ordinary action with `now` set, so
+# that is the entry a mechanical check can look for. It cannot read the sentence inside it, and it
+# does not try: whether the words really say nothing needs doing is the judge's reading.
 def test_a_benign_case_answered_with_an_affirmative_no_action_now_passes():
+    record = _mutated(
+        assessment=_record().assessment.model_copy(
+            update={
+                "actions": [
+                    Action(
+                        action=(
+                            "No immediate remediation required: the event was isolated, retried, "
+                            "and served from cache with no measurable impact"
+                        ),
+                        now=True,
+                    )
+                ]
+            }
+        )
+    )
+
+    assert check_benign_action_disposition(record) == []
+
+
+def test_a_benign_case_answered_with_silence_is_reported_rather_than_passed():
+    """The check exists to prove the system said nothing needs doing, which an empty brief does not
+    say. Reading no recommendations as agreement would pass a run that simply produced nothing."""
+    record = _mutated(assessment=_record().assessment.model_copy(update={"actions": []}))
+
+    failures = check_benign_action_disposition(record)
+
+    assert failures and "no affirmative" in failures[0]
+
+
+def test_a_benign_case_answered_only_with_later_follow_up_is_reported():
+    """Follow-up is not a disposition about now. A run that says only what to watch over the next
+    hour has not said whether anything needs doing at this moment, which is the question the
+    scenario asks."""
     record = _mutated(
         assessment=_record().assessment.model_copy(
             update={
@@ -165,21 +201,9 @@ def test_a_benign_case_answered_with_an_affirmative_no_action_now_passes():
         )
     )
 
-    assert check_no_immediate_action(record) == []
+    failures = check_benign_action_disposition(record)
 
-
-def test_a_benign_case_answered_with_immediate_action_is_reported():
-    assert check_no_immediate_action(_record()), "an immediate action on a benign case was accepted"
-
-
-def test_a_benign_case_answered_with_silence_is_reported_rather_than_passed():
-    """The check exists to prove the system said nothing needs doing, which an empty brief does not
-    say. Reading no recommendations as agreement would pass a run that simply produced nothing."""
-    record = _mutated(assessment=_record().assessment.model_copy(update={"actions": []}))
-
-    failures = check_no_immediate_action(record)
-
-    assert failures and "nothing at all" in failures[0]
+    assert failures and "no affirmative" in failures[0]
 
 
 # --- where an investigation came from -------------------------------------------------------------
@@ -190,19 +214,36 @@ def test_a_scenario_with_a_recording_is_replayed_from_it():
     assert source.detail.endswith("inc-005.json")
 
 
+# Every authored scenario has a recording, so a scenario that has none is named here rather than
+# borrowed from the corpus: pointing this at a real scenario made the test pass for as long as
+# nobody had recorded it, and quietly assert nothing once somebody did.
+UNRECORDED = "inc-000"
+
+
 def test_a_scenario_with_no_recording_is_not_run_and_says_why():
-    source = Source.for_scenario("inc-001")
+    source = Source.for_scenario(UNRECORDED)
 
     assert source.provenance is Provenance.NOT_RUN
     assert "no recording" in source.detail
 
 
+def test_every_authored_scenario_has_a_recording_to_evaluate():
+    """A missing recording reads as a scenario that did not run, so a set where some are missing
+    reports on the rest and still calls itself full."""
+    from answer_key import SCENARIOS
+
+    missing = [
+        s["id"] for s in SCENARIOS if Source.for_scenario(s["id"]).provenance is Provenance.NOT_RUN
+    ]
+    assert not missing, f"authored scenarios evaluation would skip: {missing}"
+
+
 def test_a_scenario_that_did_not_run_is_neither_passed_nor_failed():
     """Coverage that varies between runs makes two reports look alike when they are not, so a
     scenario with no recording is a stated result rather than an omission."""
-    source = Source.for_scenario("inc-001")
+    source = Source.for_scenario(UNRECORDED)
 
-    result = evaluate("inc-001", None, {"accepted_outcomes": ["complete"]}, source)
+    result = evaluate(UNRECORDED, None, {"accepted_outcomes": ["complete"]}, source)
 
     assert not result.ran
     assert not result.passed

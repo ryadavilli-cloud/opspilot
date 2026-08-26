@@ -17,6 +17,7 @@ from __future__ import annotations
 import time
 from collections.abc import Iterable
 from dataclasses import dataclass
+from itertools import groupby
 from typing import Any
 
 from rank_bm25 import BM25Okapi
@@ -165,7 +166,7 @@ class Retriever:
 
         rows_by_id = {row["id"]: row for row in (*dense_rows, *candidate_rows)}
         fused = _fuse(query, dense_rows, candidate_rows)
-        ranked = [row_id for row_id, _ in sorted(fused.items(), key=lambda item: -item[1])]
+        ranked = _by_score_then_id(fused)
         return _promote(ranked, rows_by_id, query), rows_by_id, fused
 
     def search(
@@ -193,18 +194,56 @@ class Retriever:
         return [_to_passage(rows_by_id[row_id], fused[row_id]) for row_id in chosen]
 
 
+def _settled(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """The dense candidates in the order the store ranked them, with equals settled by id.
+
+    Written without knowing which direction the score runs, because the two stores disagree: the
+    deployed one projects a distance and sorts it ascending, and the stand-in a similarity it sorts
+    descending. Only runs of equal score are reordered, so whatever the store meant by better is
+    left exactly as it found it.
+    """
+    ordered: list[dict[str, Any]] = []
+    for _, group in groupby(rows, key=lambda row: row.get("score")):
+        ordered.extend(sorted(group, key=lambda row: str(row["id"])))
+    return ordered
+
+
+def _by_score_then_id(fused: dict[str, float]) -> list[str]:
+    """Fused units, best first, ties broken by the unit's own id.
+
+    Ties are ordinary here rather than rare: fusion scores a unit by the reciprocal of its rank, so
+    a unit lying at rank r in the dense list and a different one at rank r in the lexical list score
+    identically. Breaking that by the id makes the order a function of the corpus and the question
+    alone. Left to the mapping's own order, the tie would fall to the iteration order of the set the
+    candidate ids were gathered into, which varies between processes with string hashing: the same
+    question would return the same units in a different order on another run, and a recorded
+    investigation replayed elsewhere would diverge on a digest that listed them differently.
+    """
+    return [row_id for row_id, _ in sorted(fused.items(), key=lambda item: (-item[1], item[0]))]
+
+
 def _fuse(
     query: str, dense_rows: list[dict[str, Any]], candidate_rows: list[dict[str, Any]]
 ) -> dict[str, float]:
     """Reciprocal rank fusion over the dense candidate set and the lexically re-ranked candidate
-    set. Both stay within `MAX_CANDIDATES` (D-003's fused-candidate ceiling)."""
-    dense_rank = {row["id"]: i for i, row in enumerate(dense_rows)}
+    set. Both stay within `MAX_CANDIDATES` (D-003's fused-candidate ceiling).
+
+    Every rank a unit is given here is settled by its id where the ranking signal itself is tied.
+    Both inputs arrive ordered by something that does not distinguish equals: the dense set by a
+    vector distance the store sorts on and nothing further, and the lexical candidates in whatever
+    order the store returned them, under a query that asks for no order at all. Without a
+    secondary key the store's own ordering becomes the tie-breaker, which makes the rank a fact
+    about the database rather than about the corpus and the question.
+    """
+    dense_rank = {row["id"]: i for i, row in enumerate(_settled(dense_rows))}
 
     lexical_rank: dict[str, int] = {}
     if candidate_rows:
         bm25 = BM25Okapi([tokenize(row["text"]) for row in candidate_rows])
         scores = bm25.get_scores(tokenize(query))
-        order = sorted(range(len(candidate_rows)), key=lambda i: -scores[i])[:MAX_CANDIDATES]
+        order = sorted(
+            range(len(candidate_rows)), key=lambda i: (-scores[i], str(candidate_rows[i]["id"]))
+        )[:MAX_CANDIDATES]
         lexical_rank = {candidate_rows[i]["id"]: rank for rank, i in enumerate(order)}
 
     fused: dict[str, float] = {}
