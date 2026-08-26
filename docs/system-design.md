@@ -68,8 +68,9 @@ once, read by identifier, listed as summaries. It routes nothing and validates n
 listed as summaries. It is written by the evaluation runner outside the live system and only read
 by the application. It routes nothing and validates nothing.
 
-**Evaluation** is outside the live system. It reads completed investigations and telemetry after
-the fact, and writes a kept run to the Evaluation Record.
+**Evaluation** is outside the live system. It evaluates completed investigation artifacts obtained
+through replay or produced by a live evaluation run, and writes a kept run to the Evaluation
+Record.
 
 ---
 
@@ -119,7 +120,9 @@ two cannot drift. Exporter selected by configuration; Application Insights when 
 the evaluation harness supplies. It can substitute a fixed next-action source or withhold retrieved
 passages at prompt assembly. The harness may also invoke the runner directly with the benign
 fixture's incident context; the fixture is not selectable in the product interface. Normal runtime
-never supplies the policy, and no API parameter reaches it.
+never supplies the policy, and no API parameter reaches it. A live evaluation run uses an in-memory
+Investigation Record: it does not write evaluation-generated investigations into the application's
+completed-investigation store.
 
 ---
 

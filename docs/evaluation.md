@@ -3,10 +3,10 @@
 **How do we show that OpsPilot's important claims hold, that development was deliberate, and that
 the capstone demonstrates how agentic systems are evaluated?**
 
-This document defines how OpsPilot is evaluated. Evaluation runs offline over completed investigations,
-informs rather than gates, and certifies nothing about production suitability. It is not a
-platform: one runner, authored expectations, deterministic checks, three comparisons, one LLM
-judge, one report.
+This document defines how OpsPilot is evaluated. Evaluation runs offline over completed
+investigations, informs rather than gates, and certifies nothing about production suitability. It
+is not a platform: one runner, authored expectations, deterministic checks, three comparisons, one
+LLM judge, one report.
 
 ---
 
@@ -19,8 +19,9 @@ at runtime, and never blocks delivery. Its results inform a change; they do not 
 pass or fail. The judge scores only qualities that need semantic judgement, and a deterministic
 result is never overridden by the judge.
 
-**The completed investigation is the unit.** Evaluation reads the persisted record and its
-telemetry. It does not score isolated model messages.
+**The completed investigation is the unit.** Evaluation works from the completed investigation
+artifact, replayed for deterministic evaluation or produced live by the evaluation harness. It does
+not score isolated model messages.
 
 **Named failures, no aggregate.** Results are per scenario, each failure named. No composite score,
 no threshold set before a measured baseline exists, and no published figure is a commitment.
@@ -214,6 +215,9 @@ fields, so nothing can merge them, and no aggregate is stored. Keeping is chosen
 that run, so an exploratory run does not enter the history. A kept run is written once, under the
 principal that ran evaluation, and is never edited or deleted; the application reads kept runs,
 lists them, and never writes one. Where kept runs live is settled in `decisions.md`.
+
+Live evaluation investigations are held in the harness's in-memory investigation store. Keeping a
+run persists the evaluation-run result; it does not persist those underlying investigation records.
 
 Cadence: the fast scenario on a meaningful change; the full set before a milestone. Both are
 advisory.
