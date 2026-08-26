@@ -2,7 +2,7 @@
 
 **How does one bounded investigation run over time, and what can happen to it?**
 
-This document owns behavior over time: the run lifecycle, gathering and continuation, synthesis,
+This document defines behavior over time: the run lifecycle, gathering and continuation, synthesis,
 the one analysis-to-gathering return, grounding, correction, persistence, delivery, degradation and
 failure, bounds, outcomes, and the question over a completed record. What each component owns
 belongs to `system-design.md`; what the information means belongs to `data-and-evidence.md`.

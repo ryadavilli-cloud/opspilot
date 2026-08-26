@@ -3,7 +3,7 @@
 **What information does OpsPilot trust, how does it become evidence, what does the assessment carry,
 and what makes a brief safe to deliver?**
 
-This document owns information meaning: the trust model, references, tool results, admission,
+This document defines information meaning: the trust model, references, tool results, admission,
 evidence versus retrieved knowledge, the assessment, grounding, the brief, and the completed
 investigation record. It defines the assessment's field set once. It does not prescribe one class
 per noun; a shape below is a class only where it crosses a boundary, persists, or holds an invariant

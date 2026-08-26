@@ -2,9 +2,9 @@
 
 **What is the shape of the system, who holds authority for what, and where does trust stop?**
 
-OpsPilot is an educational Agentic AI capstone: an incident-investigation assistant over a synthetic
-e-commerce environment, built to make agentic ideas visible and explainable. This document owns the
-top-level shape. Component responsibilities belong to `system-design.md`, behavior over time to
+OpsPilot is an incident-investigation assistant over a synthetic e-commerce environment, built
+to make agentic ideas visible and explainable. This document defines the top-level shape.
+Component responsibilities belong to `system-design.md`, behavior over time to
 `workflow-design.md`, information meaning to `data-and-evidence.md`, and hosting to
 `runtime-and-deployment.md`. `requirements.md` governs all of them.
 
@@ -33,15 +33,22 @@ top-level shape. Component responsibilities belong to `system-design.md`, behavi
    Engineer ──── selects one authored incident, watches, reads the brief, asks a question
        │
        ▼
-   OpsPilot ──── one process: interface, three agents, evidence access, record, evaluation
+   OpsPilot runtime ── one process: interface, three agents, evidence access, completed record
        │
        ▼ read-only, every path
    RetailEase ── synthetic environment: logs, metrics, deployments, dependencies, runbooks,
                  postmortems, prior incidents, structured operational records
+
+   Offline evaluation ── completed records and telemetry, read afterwards
+                         deterministic checks, controlled comparisons, one judge model
 ```
 
-Model access is to one chat model and one embedding model. Persistence is one document store.
-Telemetry goes to one sink. Nothing else is external.
+Evaluation runs outside the application, over records the runtime has already written.
+
+Model access is to one chat model and one embedding model, both Azure OpenAI. Persistence is one
+document store. Telemetry goes to one sink. Offline evaluation adds one more model, the Claude
+judge in Microsoft Foundry, which the running application never calls. Beyond those, and the Azure
+platform services that host and authenticate the application, nothing else is external.
 
 ---
 
@@ -55,7 +62,7 @@ These are explanatory groupings, not a component count and not a class per box.
                     incident       │      activity · brief · answer
                     question       ▼
                   ┌────────────────────────────────┐
-                  │           Interface            │  one screen · one streaming request
+                  │           Interface            │  one investigation screen · one stream
                   └───────────────┬────────────────┘
                                   ▼
      ┌────────────────────────────────────────────────────────────┐
@@ -133,7 +140,14 @@ capability all read. No write path exists to guard.
 how evidence is read. It cannot establish the cause of the current incident on its own.
 
 **Untrusted content is data.** Incident text, engineer questions, retrieved passages, and tool
-output carry no instruction authority.
+output carry no instruction authority. They are serialized as data values beneath authored
+instructions, and whatever the model proposes afterwards is still authorized, admitted, and
+grounded. The limit this sets is on what a persuaded model can do: it cannot widen a bound, reach
+an unregistered capability, repeat a spent call, fabricate an observation, or cite a reference the
+run did not obtain. It does not stop untrusted prose from influencing reasoning within the
+authority the model legitimately holds, and that residual is why the grounding check reads
+references rather than prose: whether a cited observation bears out the sentence attached to it is
+judgement, and the offline judge makes it afterwards.
 
 **Nothing is written until the investigation completes, and nothing is delivered until it is
 written.** In-progress state is ephemeral. The completed record is persisted once, before the
@@ -176,7 +190,8 @@ outcome.
 - **Inconclusive is a good result** when it is honest and names what is missing.
 - **Completed artifacts, not workflow machinery.** No checkpoints, no jobs, no recovery.
 - **Complexity earns its place.** An element stays only if removing it breaks a requirement, a
-  course demonstration, a trust boundary, credible evaluation, or basic troubleshooting.
+  an agentic capability being demonstrated, a trust boundary, credible evaluation, or basic
+  troubleshooting.
 
 ---
 
@@ -188,4 +203,4 @@ outcome.
 | Supervisor-mediated coordination | Inspectable routing, enforceable authority | Less flexible than open peer collaboration |
 | One synthesis authority | One assessment, simple grounding and provenance | Result quality rests on one role |
 | One evidence-access surface | One read-only boundary, one admission path, one provenance discipline | Several capabilities share one area and need internal separation |
-| One process, one replica, ephemeral in-progress state | Simple runtime, honest capstone scale | A lost request means running the investigation again |
+| One process, one replica, ephemeral in-progress state | Simple runtime, honest about its scale | A lost request means running the investigation again |

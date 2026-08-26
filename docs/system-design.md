@@ -3,7 +3,7 @@
 **What does each part of the system own, how do the parts reach each other, and which technology
 carries which responsibility?**
 
-This document owns component responsibilities, permitted interaction directions, the conceptual
+This document defines component responsibilities, permitted interaction directions, the conceptual
 seams, and the technology responsibility map. Behavior over time belongs to `workflow-design.md`;
 information meaning to `data-and-evidence.md`; hosting to `runtime-and-deployment.md`.
 
@@ -39,8 +39,9 @@ registry of agents, and no message bus between them.
 
 ### The non-agent areas
 
-**Interface.** One screen: incident selection, a compact activity feed, the brief as the dominant
-element, one expandable details area, and a question box for a completed investigation. One
+**Interface.** One primary investigation screen: incident selection, a compact activity feed, the
+brief as the dominant element, one expandable details area, and a question box for a completed
+investigation. One
 streaming request owns a run. It receives the question and presents the answer; the Supervisor
 produces the answer. It reaches no model of its own. A second page, reached from the screen, lists
 completed investigations and kept evaluation runs and shows one of either in full; it is read-only,
@@ -148,7 +149,7 @@ What a result is follows what the capability searches for, and corpus preparatio
 indexing guidance a section at a time and a past incident whole. Ranking runs once over whatever
 units the collection holds, so guidance answers with the section that answers the question and a
 search of past incidents answers with incidents. Nothing regroups results afterwards. The
-realization is D-003's.
+retrieval design is defined in D-003.
 
 Structured query: the Evidence Investigator asks an operational question; the model proposes a
 bounded structure of predicates, projection, optional count, and limit over one approved

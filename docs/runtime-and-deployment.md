@@ -2,14 +2,14 @@
 
 **How does OpsPilot run, how is it hosted in Azure, and how is a deployment verified?**
 
-This document owns runtime execution, hosting realization, configuration, and hosted verification.
-It describes a capstone-sized posture. Nothing here is a production availability, scaling, or
-security architecture, and the resource list is what the current design needs, not a contract on
-service count.
+This document defines runtime execution, hosting, configuration, and hosted verification. The
+scale is deliberately small. Nothing here is a production availability, scaling, or security
+architecture, and the resource list is what the current design needs, not a contract on service
+count.
 
 ---
 
-## 1. Runtime posture
+## 1. How it runs
 
 One application, one process, one container image, one Container App, zero to one replica.
 
@@ -80,9 +80,10 @@ local to its request.
 | Log Analytics and Application Insights | Telemetry sink |
 | Managed identity and role assignments | The application reads the corpus and kept evaluation runs, writes only completed investigations, and calls the model deployments as its managed identity; corpus preparation writes the corpus and evaluation writes kept runs, each under a separate identity |
 | Container Apps built-in authentication with one app registration | Caller authentication; presence of an authenticated caller is the whole check |
+| Key Vault | Holds the one client secret Container Apps built-in authentication requires |
 | OIDC deployment workflow | Builds, pushes, deploys, smokes |
 
-Absent by design: Service Bus, workers, queues, Key Vault unless a secret genuinely needs it, VNet,
+Absent by design: Service Bus, workers, queues, VNet,
 private endpoints, HA, DR, scaling rules, a second frontend, a second runtime chat deployment.
 
 ---
@@ -100,7 +101,7 @@ deterministic tests.
 
 ---
 
-## 7. Cosmos realization
+## 7. How Cosmos is used
 
 Four containers. `knowledge` holds section-level passages with text, embedding, collection
 category, extracted identifiers, and reference; retrieval reads it with vector search and reads the
@@ -119,9 +120,13 @@ different principal.
 
 Configuration is environment variables with a validated startup. The application refuses to start
 with a required setting missing or a capability enabled that the registry does not know, and says
-which setting by name and never its value. Model access is keyless: the application calls the
-model deployments as its managed identity, and no provider key exists. No secret enters source,
-configuration files, images, logs, telemetry, health output, or artifacts.
+which setting by name and never its value.
+
+Model and data access are keyless: the application calls the model deployments and the data store
+as its managed identity, and no provider key exists. The one application secret is the client
+secret Container Apps built-in authentication requires for its app registration; it is stored in
+Key Vault and read by the application identity. No secret enters source, configuration files,
+images, logs, telemetry, health output, or artifacts.
 
 ---
 
