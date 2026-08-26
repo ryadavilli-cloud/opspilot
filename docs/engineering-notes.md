@@ -38,7 +38,11 @@ feed and the trace cannot drift apart. And the deployment workflow queries the w
 smoke run's spans by `investigation_id`, so a revision whose composition drops telemetry fails the
 deploy rather than passing quietly.
 
-## The two controlled comparisons
+## Earlier comparison observations, before the history was enlarged
+
+These were measured against the corpus as it stood before the historical set was enlarged and
+before a past incident became one retrieval unit. They are what was observed then, and are kept as
+that rather than as statements about the corpus now; the section below records the later runs.
 
 The comparisons exist to falsify the two central claims: that adaptation changes results, and that
 retrieval influences reasoning rather than decorating output. Both were run live, with the
@@ -53,10 +57,11 @@ scenario's expectation requires. The result was reproduced across two separate r
 comparison stopped at the first candidate scenario, which was the one the design had predicted
 because its evidence path is contingent.
 
-**Retrieval visible against retrieval withheld, on inc-007.** Withholding keeps retrieved passages
-out of prompt assembly only: retrieval still executes, still spends its capability calls, and
-still reaches the grounding gate and the completed record, which is what keeps the two conditions
-comparable. In the recorded comparison the two conditions differed on every dimension the
+**Retrieval visible against retrieval withheld, on inc-007.** Retrieval still executes in both
+conditions. Withholding passages changes only whether retrieved knowledge is available to model
+reasoning; downstream capability choices, retrieval counts, and investigation paths may therefore
+diverge as consequences of that intervention. In the recorded comparison the two conditions
+differed on every dimension the
 comparison watches, each difference naming the condition it fell on: only the condition shown its
 passages asked for `search_runbooks`, only the withheld condition asked for `get_incident` and
 `search_past_incidents`, the leading candidates were two different accounts of the same incident,
@@ -67,6 +72,74 @@ conditions differed, which cannot answer whether knowledge reaching reasoning ch
 the direction is the finding, and a test now requires every reported difference to name its side.
 And a comparison whose shown-passages condition retrieved nothing is reported as a comparison
 nobody could set up, never as no difference found.
+
+## What the enlarged history measured
+
+Run against thirteen historical write-ups, a past incident indexed as one retrieval unit, and the
+hosted corpus identified as `748620de`. Deterministic evaluation runs against its own retrieval
+environment and carries its own corpus identity; the two are not interchangeable and neither
+answers for the other.
+
+**The nearest-history shortcut, on the deployed index.** Reaching for the closest past incident and
+reusing its recorded answer, with no model call and no current evidence, reached the misleading
+deploy write-up first for the ambiguous checkout incident and recommended rolling the deployment
+back. The investigation of the same incident established a downstream gateway timeout and declined
+that rollback. On the recurrence the same shortcut reached the right precedent and verified
+nothing. One mechanism, convincingly wrong once and accidentally right once, and in neither case
+able to tell which.
+
+The deterministic environment ranks a near-match above that recurrence, so the shortcut reports
+that its premise was not satisfied and names what actually came first rather than substituting the
+expected answer. That refusal is the mechanism working: a fixture embedding in a fraction of the
+deployed dimensions is not evidence about the deployed ordering, and a comparison that quietly
+supplied the expected precedent would be reporting an experiment nobody ran.
+
+**Retrieval reaching reasoning changed the investigation, once out of three paired attempts.**
+Where both conditions retrieved, the trajectory differed in the capability proposed next, the
+leading candidate, the interpretations stated and the actions recommended. The other two attempts
+never reached the state the experiment needs, once because the withheld condition retrieved
+nothing and once because the shown condition did. Retrieval is the model's to choose, so setting
+this comparison up is itself uncertain, and an attempt that did not establish the condition is
+reported as that rather than as knowledge having made no difference.
+
+**The multi-contributor scenario is structurally permitted and not demonstrated.** Its second
+contributor sits on a service no alert names and the alerting service's own telemetry does not
+reveal, so the question that reaches it can only be formulated once something returns that
+service's name. Across four observations the model reached both contributors once. One run
+expired, one reached a single contributor having spent its capability budget without ever asking
+what the alerting service depends on, and the replayed run drew a single-factor account that the
+judge marked as missing the expected diagnosis. The adaptive comparison against a predetermined
+order has returned a null result and, on another run, a difference resting on an ordinary log
+rather than on the evidence the scenario was built around.
+
+So the corpus and the scenario make the discovery possible and the model does not take it
+reliably. That is worth stating precisely: what has been shown is the opportunity, not the
+behavior. Raising the capability budget would remove the finding rather than the limitation, since
+what a run spends its calls on when it has to choose is the thing under observation.
+
+**Two defects surfaced only when every scenario was evaluated.** Retrieval fuses two ranked lists
+by the reciprocal of each rank, so a unit lying at the same rank in both lists scores identically,
+and ties are ordinary rather than rare. None of the three rankings carried a secondary key, so the
+order among equals fell to whatever the store returned and, at the fused step, to the iteration
+order of a set of ids, which varies between processes. The same question could return the same
+units in a different order on the next run. It surfaced as a replay diverging on a digest that
+listed three passages in a different order, with the recording correct and the retriever at fault.
+
+The second was in evaluation itself. The design carries "no immediate action is required" as an
+ordinary action with `now` set, so that saying nothing and saying nothing is needed stay different
+answers, and the deterministic check is that the entry is present. The check failed whenever any
+action carried `now`, which is the flag that entry is defined to carry, so a correct benign run
+could not pass it. It fired on a run the judge read as exactly the expected restraint.
+
+Neither was reachable by the suite as it stood. Three of seven recordings were replayed and four
+were not, so a committed recording could be unreplayable while everything was green. Replay
+coverage now reads the recordings directory rather than a list.
+
+**What still fails, and is meant to.** Two scenarios reach a conclusion without checking the change
+history, so the absence the corpus deliberately holds goes undisclosed; both are authored to expect
+that check. The benign fixture, which runs live rather than from a recording, settled a cause on
+one run where the scenario expects restraint. These are the investigation behaving imperfectly
+rather than the evaluation being wrong about it, and the scorecard is more useful for saying so.
 
 ## The Azure OpenAI rate ceiling
 
